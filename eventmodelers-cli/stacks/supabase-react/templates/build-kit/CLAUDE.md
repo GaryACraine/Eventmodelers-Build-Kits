@@ -98,6 +98,13 @@ and marks it `Blocked`, and you then stop work on this slice for this run. This 
 not a routine step — read `slice.json` and the matching build skill's own instructions fully first;
 most slices are fully specified and need none of this.
 
+**Exception: a missing `apiEndpoint`** (no backend endpoint/table decided yet) is a partial version of
+this — flag it, but don't fully stop. `build-state-change`/`build-state-view` Step 1 cover the exact
+mechanics: post a comment on the slice and mark it `Blocked` (same as `request-feedback`), but then
+keep going — build the slice normally against a provisional mock path/table name with meaningful
+sample data. The slice ends this run `Blocked` (step 6 below does not flip it to `Done`), but the code
+is there, mocked, ready to be pointed at the real API once one exists.
+
 When asked to build a slice, always follow this flow:
 
 1. Read the slice definition from `.build-kit/.slices/<contextSlug>/<sliceFolder>/slice.json`.
@@ -109,7 +116,9 @@ When asked to build a slice, always follow this flow:
 3. Invoke the matching skill and follow its instructions completely. Do not deviate.
 4. **Verify against slice.json**: After the skill completes, check that every command field, event field, and specification in slice.json appears in the implementation. No invented fields — if it is not in slice.json, it must not be in the code.
 5. Run `npm run build` and `npm run lint` (both must pass clean), then the slice's own tests only, if any exist.
-6. If checks pass, commit with `feat: [Slice Name]` and set slice status to `Done`.
+6. If checks pass, commit with `feat: [Slice Name]` and set slice status to `Done` — **unless** the
+   matching build skill flagged a missing `apiEndpoint` and already marked the slice `Blocked`
+   (Step 1 exception above); in that case, commit as normal but leave the status `Blocked`.
 
 After you are done, automatically run the tests for the slice that was edited.
 

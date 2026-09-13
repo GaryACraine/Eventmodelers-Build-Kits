@@ -34,9 +34,25 @@ Extract:
   - `fields[]` — one entry per data field (`name`, `type`, `optional?`, `cardinality?`, `example?`,
     `subfields?`). This is the **exact and complete** set of props the component takes — no more,
     no fewer.
-  - `apiEndpoint` — the path to POST to. **Read this literally from slice.json.** Do not guess a
-    REST convention, invent a path, or infer one from the command name — if `apiEndpoint` is
-    missing, stop and use `request-feedback` rather than guessing.
+  - `apiEndpoint` — the path to POST to. **Read this literally from slice.json when it's present**
+    — do not guess a REST convention, invent a path, or infer one from the command name while a real
+    one exists. **When `apiEndpoint` is missing** (no backend endpoint decided yet), flag it but keep
+    building — this is a partial variant of `request-feedback`, not a full stop:
+    1. Post a comment on this slice node naming the command and stating the endpoint is missing
+       (`mcp__eventmodelers__add_comment`, same call `request-feedback` Step 3 uses), and mark the
+       slice `Blocked` (`mcp__eventmodelers__update_slice_status`, same as `request-feedback` Step 4).
+    2. Unlike a normal `request-feedback` escalation, **do not stop here** — continue on to build the
+       component exactly as normal, but against a mocked backend: give `postCommand` a clearly
+       provisional path, e.g. `/api/mock/<command-title-kebab-case>`, with a one-line comment marking
+       it as a placeholder pending the real endpoint. `postCommand` already resolves locally under
+       `VITE_DATA_MODE=mock` regardless of what the path string is (see `src/lib/api.ts`), so the
+       component is fully functional offline either way — only make Step 4's samples do extra work in
+       this case: cover every `command.fields[]` entry with realistic, meaningful values (never
+       placeholders like `"foo"`/`"test"`), plus whatever edge cases `specifications[]` call out,
+       since those samples are the only data this slice will see until a real endpoint is wired in.
+    3. Leave the slice's status as `Blocked` when you finish (see this stack's `CLAUDE.md` "Building
+       a Slice" step 6) — the built, mocked component still needs a real endpoint before it's done,
+       so don't flip it to `Done`.
   - `description` — implementation hints (validation rules, business constraints).
 - **events[]** — informational only (what the backend is expected to emit); this stack does not
   act on them directly.
@@ -270,7 +286,8 @@ how many pages this app needs — not one page per slice.
 After writing the hook/component (and context/page, if any), confirm:
 - Every prop matches a `command.fields[]` entry exactly (name + type) — no invented or missing
   fields.
-- The `postCommand` call uses `command.apiEndpoint` verbatim.
+- The `postCommand` call uses `command.apiEndpoint` verbatim — or, when it was missing at build
+  time, the provisional `/api/mock/...` path noted in a comment (Step 1).
 - At least one numbered sample exists under this slice's `samples/` folder, shaped exactly like
   this component's props.
 - If a screen was read in Step 2, the rendered JSX matches the marked (or whole, if unmarked)

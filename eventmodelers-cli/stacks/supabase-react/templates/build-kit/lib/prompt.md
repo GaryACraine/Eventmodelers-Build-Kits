@@ -68,7 +68,9 @@ This is the build trigger. Setting `InProgress` and building are one atomic step
 
 7. If checks pass, commit all changes with message: `feat: [Slice Name]`.
 
-8. Call `/update-slice-status` to set the slice to `Done` on the board.
+8. Call `/update-slice-status` to set the slice to `Done` on the board — **unless** the matching
+   build skill flagged a missing `apiEndpoint` and already marked the slice `Blocked` (see
+   "Escalating Ambiguity" below); in that case, skip this step and leave it `Blocked`.
 
 #### `InProgress`
 Another agent is already building this slice. Log it and skip — do not build.
@@ -101,6 +103,14 @@ build — reply `<promise>DONE</promise>` as if the iteration's work was to rais
 implement the slice. This is an escalation path, not a routine step — read the slice.json and the
 matching build skill's own instructions fully first; most slices are fully specified and need none of
 this.
+
+**Exception: a missing `apiEndpoint`** (no backend endpoint/table decided yet) is a partial version of
+this — flag it, but don't fully stop. `build-state-change`/`build-state-view` Step 1 cover the exact
+mechanics: post a comment on the slice and mark it `Blocked` (same as `/request-feedback`), but then
+keep going — build the slice normally against a provisional mock path/table name with meaningful
+sample data. The slice ends this run `Blocked` (step 8 above does not apply for this case — leave it
+`Blocked` instead of setting `Done`), but the code is there, mocked, ready to be pointed at the real
+API once one exists.
 
 ## Progress Report Format
 

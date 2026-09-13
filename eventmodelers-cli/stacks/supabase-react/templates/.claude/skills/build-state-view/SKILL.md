@@ -47,8 +47,24 @@ Extract:
   - `fields[]` — the exact and complete set of columns/values the component displays — no more,
     no fewer.
   - `apiEndpoint` — in this stack, **the Postgres table or view name to query**, not a REST path.
-    Read it literally from slice.json; never invent or guess a table name. If it's missing, stop
-    and use `request-feedback` rather than guessing.
+    **Read it literally from slice.json when it's present** — never invent or guess a table name
+    while a real one exists. **When it's missing** (no table/view decided yet), flag it but keep
+    building — this is a partial variant of `request-feedback`, not a full stop:
+    1. Post a comment on this slice node naming the read model and stating the table/view is missing
+       (`mcp__eventmodelers__add_comment`, same call `request-feedback` Step 3 uses), and mark the
+       slice `Blocked` (`mcp__eventmodelers__update_slice_status`, same as `request-feedback` Step 4).
+    2. Unlike a normal `request-feedback` escalation, **do not stop here** — continue on to build the
+       component exactly as normal, but against a mocked read: give `queryReadModel` a clearly
+       provisional table name, e.g. `mock_<read_model_title_snake_case>`, with a one-line comment
+       marking it as a placeholder pending the real table/view. In mock mode `queryReadModel` never
+       touches Supabase regardless of the table name (see `src/lib/api.ts`), so the component is
+       fully functional offline either way — only make Step 4's samples do extra work in this case:
+       cover every `readmodel.fields[]` entry with realistic, meaningful values (never placeholders
+       like `"foo"`/`"test"`), plus whatever edge cases `specifications[]` call out, since those
+       samples are the only data this slice will see until a real table/view is wired in.
+    3. Leave the slice's status as `Blocked` when you finish (see this stack's `CLAUDE.md` "Building
+       a Slice" step 6) — the built, mocked component still needs a real table/view before it's done,
+       so don't flip it to `Done`.
   - `description` — implementation hints (filtering rules, sort order, business meaning).
 - **screens[]** — the actor `SCREEN` element(s) that display this data, if any (see Step 2).
 - **specifications[]** — GWT scenarios/storyline; treat as acceptance criteria (e.g. "given no
@@ -200,8 +216,9 @@ one page per slice.
 
 - Every rendered field traces back to a `readmodel.fields[]` entry — no invented or missing
   fields.
-- The `queryReadModel` call targets `readmodel.apiEndpoint` verbatim as `table` — never a raw
-  `fetch`, a direct `supabase.from(...)` call, or a hardcoded table name that doesn't match
+- The `queryReadModel` call targets `readmodel.apiEndpoint` verbatim as `table` — or, when it was
+  missing at build time, the provisional `mock_...` table name noted in a comment (Step 1) — never a
+  raw `fetch`, a direct `supabase.from(...)` call, or a hardcoded table name that doesn't match
   slice.json.
 - At least one numbered sample exists under this slice's `samples/` folder, shaped exactly like
   `queryReadModel`'s return value.

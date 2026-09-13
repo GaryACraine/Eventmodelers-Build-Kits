@@ -114,6 +114,9 @@ SCENARIO       // GWT scenario
 LANE           // Timeline row
 SLICE_BORDER   // Slice boundary marker
 MARKDOWN       // Free-text markdown note — the content type a `feedback` lane accepts (see §2)
+VIDEO          // Embedded video (YouTube/Loom link in `data.url`). API/MCP-only — no palette button in
+               // the UI, but renders on the board like any other node. Free-floating: create it via
+               // `submit_node_events` with a position and no chapterId/cellId, same as a drawing.
 ```
 
 ---
