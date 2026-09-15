@@ -182,6 +182,48 @@ async function handle{SliceName}(id: string, command: {SliceName}Command) {
 
 console.info('{function-name} started');
 
+/**
+ * @openapi
+ * /functions/v1/{function-name}:
+ *   post:
+ *     tags: [{Context}]
+ *     summary: {slice title from slice.json}
+ *     description: {slice.json description — which external system calls this, and when}
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [{command fields without optional: true}]
+ *             properties:
+ *               id:
+ *                 type: string
+ *                 description: Aggregate id — generated when the caller omits it
+ *               {fieldName}:
+ *                 type: string
+ *                 example: {the field's own example from slice.json, if it has one}
+ *     responses:
+ *       '201':
+ *         description: Accepted — {EventName} appended
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                 id:
+ *                   type: string
+ *                 nextExpectedStreamVersion:
+ *                   type: string
+ *                 lastEventGlobalPosition:
+ *                   type: string
+ *       '409':
+ *         description: {message thrown by decide — one line per error code}
+ *       '500':
+ *         description: Internal server error
+ */
 export default {
     fetch: withSupabase({auth: ['publishable', 'secret']}, async (req, _ctx) => {
         try {
@@ -230,6 +272,35 @@ export default {
 **`SUPABASE_DB_URL`** — PostgreSQL connection string. Available automatically as a built-in secret in Supabase Edge Functions — no manual configuration needed.
 
 **CORS** — `withSupabase` handles preflight automatically. No manual `OPTIONS` handler needed.
+
+---
+
+### Step 3a — OpenAPI annotation (required)
+
+`src/swagger.ts` scans `./supabase/functions/**/index.ts` alongside the express routes, so the webhook shows up in Swagger UI (`/api-docs`) and `/swagger.json` next to the rest of the API — but only if the function carries an `@openapi` JSDoc block. Without one the endpoint is undocumented, which matters more here than anywhere else: a webhook's only consumer is an external system whose integrator cannot read this codebase.
+
+The block goes directly above the `export default {` handler (as shown in the template above). Everything in it comes from slice.json.
+
+| slice.json field `type` | OpenAPI schema |
+|---|---|
+| `String` | `type: string` |
+| `UUID` | `type: string`, `format: uuid` |
+| `Int` | `type: integer`, `format: int32` |
+| `Long` | `type: integer`, `format: int64` |
+| `Double` | `type: number`, `format: double` |
+| `Decimal` | `type: number` |
+| `Boolean` | `type: boolean` |
+| `Date` | `type: string`, `format: date` |
+| `DateTime` | `type: string`, `format: date-time` |
+| `Custom` | `type: object` |
+
+Mapping rules:
+
+- **path key** — `/functions/v1/{function-name}`, the deployed URL, not the file path.
+- **requestBody properties** — exactly the `{SliceName}Payload` fields, which are exactly `commands[].fields`. **required** — every one not marked `optional: true` (never `id`, which the handler generates when absent).
+- **responses** — `'201'` with the body the handler returns; one `'409'` per error code thrown in `decide`; `'500'`.
+- **security** — a `verify_jwt = false` webhook takes no bearer token, so omit the `security:` block. When the function verifies a provider signature header instead (Stripe et al.), document that header under `parameters:` so the integrator knows to send it.
+- `example` only from the field's own `example` in slice.json; never invent one.
 
 ---
 
@@ -286,6 +357,8 @@ curl -i -X POST http://localhost:54321/functions/v1/{function-name} \
 - [ ] `supabase/config.toml` entry added with correct `verify_jwt` setting
 - [ ] `schema.migrate()` confirmed in backend startup (or run manually)
 - [ ] Local test with `supabase functions serve` passes
+- [ ] An `@openapi` block sits above the `export default` handler, keyed on `/functions/v1/{function-name}`
+- [ ] The documented request body is exactly the `{SliceName}Payload` fields, and every error code thrown in `decide` has a `'409'` line
 
 ---
 

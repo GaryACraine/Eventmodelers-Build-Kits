@@ -244,7 +244,7 @@ Put these in their own `describe` block named after the storyline (same pattern 
 
 File: `src/slices/{context}/{SliceName}/routes.ts`
 
-> **Concrete example**: `src/slices/example/routes.ts` — shows the full pattern with `requireUser`, `assertNotEmpty`, error mapping, and OpenAPI annotations. Read it before implementing.
+> **Pattern reference**: the template below is the full pattern — auth, error mapping, and the mandatory `@openapi` annotation (Step 5a). If the project already has slices under `src/slices/`, open one of their `routes.ts` files first and match it.
 
 ```typescript
 import {Request, Response, Router} from 'express';
@@ -254,6 +254,59 @@ import {{SliceName}Command, handle{SliceName}} from './{SliceName}Command';
 
 export const api = (): WebApiSetup => (router: Router): void => {
 
+    /**
+     * @openapi
+     * /api/{slicename}/{id}:
+     *   post:
+     *     tags: [{Context}]
+     *     summary: {slice title from slice.json}
+     *     description: {slice.json description — plus any comments that explain the endpoint}
+     *     security:
+     *       - bearerAuth: []
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Stream id this command is applied to
+     *       - in: header
+     *         name: correlation_id
+     *         required: false
+     *         schema:
+     *           type: string
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             required: [{command fields without optional: true}]
+     *             properties:
+     *               {fieldName}:
+     *                 type: string
+     *                 example: {the field's own example from slice.json, if it has one}
+     *     responses:
+     *       '201':
+     *         description: Accepted — {EmittedEventName} appended
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 ok:
+     *                   type: boolean
+     *                 next_expected_stream_version:
+     *                   type: string
+     *                 last_event_global_position:
+     *                   type: string
+     *       '401':
+     *         description: Not authenticated
+     *       '409':
+     *         description: {message errorMapping returns — one line per error code}
+     *       '500':
+     *         description: Server error
+     */
     router.post('/api/{slicename}/:id', async (req: Request, res: Response) => {
         const auth = await requireUser(req, res);
         if (auth.error) return;
@@ -306,6 +359,39 @@ const errorMapping = (code: string): string | null => {
 
 ---
 
+### Step 5a — OpenAPI annotation (required)
+
+`src/swagger.ts` builds the published OpenAPI document by scanning `./src/slices/**/routes.ts` for `@openapi` JSDoc blocks. A handler without one is **invisible** in Swagger UI (`/api-docs`) and in `/swagger.json` — the endpoint works, but nobody can find it. `src/swagger.ts` is shared infra and outside a slice's commit scope, so the block in this slice's own `routes.ts` is the only place the endpoint can be documented. The `openapi-annotation` commit check rejects a `routes.ts` whose handlers have no matching block.
+
+Everything in the block comes from slice.json — same rule as the code: no invented fields, no guessed types.
+
+| slice.json field `type` | OpenAPI schema |
+|---|---|
+| `String` | `type: string` |
+| `UUID` | `type: string`, `format: uuid` |
+| `Int` | `type: integer`, `format: int32` |
+| `Long` | `type: integer`, `format: int64` |
+| `Double` | `type: number`, `format: double` |
+| `Decimal` | `type: number` |
+| `Boolean` | `type: boolean` |
+| `Date` | `type: string`, `format: date` |
+| `DateTime` | `type: string`, `format: date-time` |
+| `Custom` | `type: object` |
+
+Mapping rules:
+
+- **path key** — the express path with `:param` rewritten as `{param}` (`/api/foo/:id` → `/api/foo/{id}`). If the two disagree, Swagger publishes a path that does not exist.
+- **tags** — `[{Context}]`, the slice's context, so every slice of one context groups under one heading.
+- **summary** — the slice title. **description** — slice.json `description`, plus any `comments[]` that explain what the endpoint does.
+- **requestBody properties** — exactly `commands[].fields`, minus the ones taken from the URL path or a header. Types from the table above.
+- **required** — every command field not marked `optional: true`.
+- **example** — only from the field's own `example` in slice.json. A field with no example gets no `example:` line; do not invent one.
+- **responses** — `'201'` with the body the handler actually returns; one `'409'` per error code in `errorMapping` (i.e. per failing specification); `'401'` whenever the handler enforces auth; `'500'`.
+
+A placeholder left unreplaced ships straight into the published spec, and `npm run build` will not catch it — open `/api-docs` and look at the rendered endpoint before marking the slice `Done`.
+
+---
+
 ## Step 6 — Wire up the route
 
 Find the application's router registration (usually `src/index.ts` or `src/app.ts`) and add:
@@ -354,3 +440,5 @@ Before marking this slice as `Done`, verify the implementation against slice.jso
 - [ ] No business rules, defaults, or constraints were added that do not appear in slice.json `description` or `comments`
 - [ ] No field names were assumed or guessed — if a field is not in slice.json, it is not in the code
 - [ ] If `storylines[]` is present, a storyline-derived test was added for every COMMAND beat matching this slice's command
+- [ ] `routes.ts` carries an `@openapi` JSDoc block above every handler, and its path key matches the registered route with `:param` written as `{param}`
+- [ ] The documented request body is exactly `commands[].fields`, and every error code in `errorMapping` has a `'409'` line — no undocumented fields, no invented ones

@@ -20,7 +20,9 @@ Read Events in src/events to understand the global structure.
 3. Follow TypeScript best practices for type definitions and interfaces
 
 Only check src/slices/{slice}/*.ts, do not check subfolders unless explicitely tasked to.
-If not tasked explicitely to change routes, ignore routes*.ts
+If not tasked explicitely to change routes, ignore routes*.ts — except the `routes.ts` of the slice you are
+building: the build skill owns that file, and its `@openapi` block has to stay in step with the slice's
+fields (the `openapi-annotation` check blocks the commit otherwise).
 
 Ignore case for files and slices in prompts. "CartItems" slice is the same as "cartitems"
 
@@ -76,6 +78,9 @@ and rejects the commit if any of them find a problem:
   `.build-kit/.slices/{context}/{slice}/slice.json`
 - **spec-coverage** — heuristic: the test file needs at least as many `it(...)` blocks as slice.json
   has `specifications[]` entries
+- **openapi-annotation** — every handler in a slice's `routes.ts` needs an `@openapi` JSDoc block
+  above it, keyed on the registered path (`:param` written as `{param}`); without it the endpoint
+  never reaches `/api-docs` or `/swagger.json`
 - **tsc-build** — `npx tsc --noEmit` must still pass
 
 If a commit is rejected, split it — commit the out-of-scope file separately from the slice work, or add

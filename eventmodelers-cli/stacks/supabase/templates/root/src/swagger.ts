@@ -28,7 +28,9 @@ const options = {
             },
         },
     },
-    apis: ['./src/slices/**/routes.ts'],
+    // Edge functions carry their own @openapi blocks (see the build-webhook skill),
+    // so a webhook shows up in the same document as the express routes.
+    apis: ['./src/slices/**/routes.ts', './supabase/functions/**/index.ts'],
 };
 
 export const specs = swaggerJsdoc(options);

@@ -327,7 +327,7 @@ Skip (do not fabricate) a segment when:
 
 File: `src/slices/{context}/{SliceName}/routes.ts`
 
-> **Concrete example**: `src/slices/example/routes.ts` — shows the full pattern with `requireUser`, `assertNotEmpty`, error mapping, and OpenAPI annotations. Read it before implementing.
+> **Pattern reference**: the template below is the full pattern — auth, error mapping, and the mandatory `@openapi` annotation (Step 6a). If the project already has slices under `src/slices/`, open one of their `routes.ts` files first and match it.
 
 ```typescript
 import {Request, Response, Router} from 'express';
@@ -339,6 +339,48 @@ import createClient from '../../../supabase/api';
 
 export const api = (): WebApiSetup => (router: Router): void => {
 
+    /**
+     * @openapi
+     * /api/query/{slicename}-collection:
+     *   get:
+     *     tags: [{Context}]
+     *     summary: {slice title from slice.json}
+     *     description: {slice.json description — what this read model answers}
+     *     security:
+     *       - bearerAuth: []
+     *     parameters:
+     *       - in: query
+     *         name: _id
+     *         required: false
+     *         schema:
+     *           type: string
+     *         description: When set, returns the single row with this id instead of the full collection
+     *     responses:
+     *       '200':
+     *         description: The {SliceName} read model
+     *         content:
+     *           application/json:
+     *             schema:
+     *               oneOf:
+     *                 - $ref: '#/components/schemas/{SliceName}ReadModel'
+     *                 - type: array
+     *                   items:
+     *                     $ref: '#/components/schemas/{SliceName}ReadModel'
+     *       '401':
+     *         description: Not authenticated
+     *       '500':
+     *         description: Server error
+     * components:
+     *   schemas:
+     *     {SliceName}ReadModel:
+     *       type: object
+     *       properties:
+     *         id:
+     *           type: string
+     *         {fieldName}:
+     *           type: string
+     *           example: {the field's own example from slice.json, if it has one}
+     */
     router.get('/api/query/{slicename}-collection', async (req: Request, res: Response) => {
         try {
             const principal = await requireUser(req, res, true);
@@ -366,6 +408,40 @@ export const api = (): WebApiSetup => (router: Router): void => {
     });
 };
 ```
+
+---
+
+### Step 6a — OpenAPI annotation (required)
+
+`src/swagger.ts` builds the published OpenAPI document by scanning `./src/slices/**/routes.ts` for `@openapi` JSDoc blocks. A handler without one is **invisible** in Swagger UI (`/api-docs`) and in `/swagger.json` — the endpoint works, but nobody can find it. `src/swagger.ts` is shared infra and outside a slice's commit scope, so the block in this slice's own `routes.ts` is the only place the endpoint can be documented. The `openapi-annotation` commit check rejects a `routes.ts` whose handlers have no matching block.
+
+Everything in the block comes from slice.json — same rule as the code: no invented fields, no guessed types.
+
+| slice.json field `type` | OpenAPI schema |
+|---|---|
+| `String` | `type: string` |
+| `UUID` | `type: string`, `format: uuid` |
+| `Int` | `type: integer`, `format: int32` |
+| `Long` | `type: integer`, `format: int64` |
+| `Double` | `type: number`, `format: double` |
+| `Decimal` | `type: number` |
+| `Boolean` | `type: boolean` |
+| `Date` | `type: string`, `format: date` |
+| `DateTime` | `type: string`, `format: date-time` |
+| `Custom` | `type: object` |
+
+Mapping rules:
+
+- **path key** — the express path exactly as registered (a query read model has no path params; if you do add one, rewrite `:param` as `{param}`).
+- **tags** — `[{Context}]`, the slice's context, so every slice of one context groups under one heading.
+- **summary** — the slice title. **description** — slice.json `description`, plus any `comments[]` that explain what the read model answers.
+- **schema properties** — exactly the read model fields from slice.json, the same set as the migration columns and the `{SliceName}ReadModel` type. Keep the JSON field spelling the route returns, not the snake_case column name, when they differ.
+- **required** — omit it unless slice.json marks fields as mandatory; a projection row can legitimately be sparse.
+- **example** — only from the field's own `example` in slice.json. A field with no example gets no `example:` line; do not invent one.
+- **`components.schemas`** — declaring the read model once and `$ref`-ing it keeps the single-row and collection responses in sync. swagger-jsdoc merges the `components` block from every scanned file, so name the schema `{SliceName}ReadModel` to avoid colliding with another slice's.
+- **responses** — `'200'` with the shape above, `'401'` whenever the handler enforces auth, `'500'`.
+
+A placeholder left unreplaced ships straight into the published spec, and `npm run build` will not catch it — open `/api-docs` and look at the rendered endpoint before marking the slice `Done`.
 
 ---
 
@@ -413,3 +489,5 @@ src/common/
 - [ ] Every event type in `events[]` is listed in the projection's `canHandle` — no assumed events
 - [ ] No extra columns or fields were added beyond what slice.json defines
 - [ ] No field names were assumed or guessed — if a field is not in slice.json, it is not in the code
+- [ ] `routes.ts` carries an `@openapi` JSDoc block above every handler, and its path key matches the registered route
+- [ ] The documented response schema lists exactly the read model fields from slice.json — same set as the migration columns and the `{SliceName}ReadModel` type

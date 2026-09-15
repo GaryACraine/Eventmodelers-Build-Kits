@@ -57,6 +57,9 @@ Follow the **build-state-change** skill to create:
 
 **Do NOT create a `routes.ts`** for automations — the command is fired internally by the processor, not via HTTP.
 
+**No `routes.ts` also means no OpenAPI block** — an automation has no HTTP surface, so it contributes nothing to `/api-docs` or `/swagger.json`. If the slice also defines a todo-list read model that is queried over HTTP, that endpoint belongs to **build-state-view**, and its `@openapi` annotation is required there (see that skill's Step 6a).
+
+
 Refer to the build-state-change skill for the full command handler structure.
 
 > **Storyline-derived tests**: if slice.json has a `storylines[]` array, build-state-change's Step 4b applies here too — treat the trigger EVENT beat as the "given" and the fired command's resulting EVENT beat(s) as "then", exactly as it would for an ordinary command-change slice. Skip silently if there's nothing relevant.
@@ -268,3 +271,4 @@ src/common/
 - [ ] Command data fields map exclusively from fields available on the trigger event per slice.json — no invented mappings
 - [ ] No filtering conditions were invented — all conditions come from slice.json `description` or `comments`
 - [ ] No field names were assumed or guessed — if a field is not in slice.json, it is not in the code
+- [ ] No `routes.ts`, therefore no `@openapi` block — any todo-list read-model query endpoint is documented by build-state-view instead
