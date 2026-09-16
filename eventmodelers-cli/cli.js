@@ -1309,7 +1309,16 @@ function ensureEnvToken(targetDir, token) {
 // from the kit's lib/config.js, to avoid duplicating the config-file-walk logic.
 // See `.agent-modeling-kit/CLAUDE.md` for the per-turn instructions this mode's
 // modeling session follows.
-async function runModeling(kitDir, projectDir, verbose = false) {
+//
+// `standalone` adds a second, self-directed lane on top of that: the loop also
+// listens on the board's own change channel (`board:<id>` — the same one the web
+// canvas subscribes to) and, when the board goes quiet after someone edits it,
+// dispatches a turn nobody asked for, so the agent can do what a human
+// collaborator would do unprompted — fill in example data on a fresh node, post a
+// question, sketch a screen. Without the flag that channel is still subscribed on
+// the same connection and every event on it is dropped, so the two modes differ by
+// one filter rather than by a whole second realtime stack.
+async function runModeling(kitDir, projectDir, verbose = false, standalone = false) {
   const configLibPath = join(kitDir, 'lib', 'config.js');
   if (!existsSync(configLibPath)) {
     console.error(`❌ ${relative(process.cwd(), configLibPath)} not found — --modeling needs a kit installed via \`init --modeling\`.`);
@@ -1343,6 +1352,15 @@ async function runModeling(kitDir, projectDir, verbose = false) {
   // gives the modeling session its one-time connect credentials. Every later turn
   // only carries the per-prompt fields that actually vary (board_id, comment_id, ...).
   let firstTurn = true;
+  // The preamble belongs to the *session*, not to prompts: in --standalone a
+  // board-change turn can just as well be the first turn a (re)spawned process
+  // ever sees, so both turn builders go through this rather than buildTurn owning it.
+  function withSessionHeader(body) {
+    if (!firstTurn) return body;
+    firstTurn = false;
+    return `MODE=modeling token=${cfg.token} org=${cfg.organizationId} baseUrl=${cfg.baseUrl} standalone=${standalone ? 'on' : 'off'}\n\n${QUESTIONING_RULE}Read .agent-modeling-kit/CLAUDE.md now and follow it for every prompt in this session — it's a one-time read; don't re-read it on later turns.\n\n${body}`;
+  }
+
   function buildTurn(p) {
     const fields = [
       `prompt_id=${p.id}`,
@@ -1352,10 +1370,7 @@ async function runModeling(kitDir, projectDir, verbose = false) {
       p.comment_id ? `comment_id=${p.comment_id}` : null,
       p.node_id ? `node_id=${p.node_id}` : null,
     ].filter(Boolean).join(' ');
-    const body = `${fields}\n\n${p.prompt}`;
-    if (!firstTurn) return body;
-    firstTurn = false;
-    return `MODE=modeling token=${cfg.token} org=${cfg.organizationId} baseUrl=${cfg.baseUrl}\n\n${QUESTIONING_RULE}Read .agent-modeling-kit/CLAUDE.md now and follow it for every prompt in this session — it's a one-time read; don't re-read it on later turns.\n\n${body}`;
+    return withSessionHeader(`${fields}\n\n${p.prompt}`);
   }
 
   const claudeArgs = ['--dangerously-skip-permissions', '-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose'];
@@ -1369,6 +1384,7 @@ async function runModeling(kitDir, projectDir, verbose = false) {
   let proc = null;
   let stdoutBuffer = '';
   let pending = null; // one in-flight turn at a time
+  let lastTurnEndedAt = 0; // when the last turn finished — the standalone lane's echo window (see below)
 
   // Collapses whitespace/newlines to a single line and truncates past `max` chars —
   // a long multi-line curl command or grep pattern wrapped across many terminal lines
@@ -1422,6 +1438,7 @@ async function runModeling(kitDir, projectDir, verbose = false) {
     }
     if (msg.type === 'result') {
       log(`done (${msg.duration_ms}ms${msg.total_cost_usd ? `, $${msg.total_cost_usd.toFixed(4)}` : ''})`);
+      lastTurnEndedAt = Date.now();
       const turn = pending;
       pending = null;
       if (turn) (msg.is_error ? turn.reject(new Error(msg.result || 'Claude turn errored')) : turn.resolve());
@@ -1439,6 +1456,7 @@ async function runModeling(kitDir, projectDir, verbose = false) {
     });
     proc.on('exit', (code) => {
       log(`process exited (${code}) — will respawn on next task`);
+      lastTurnEndedAt = Date.now();
       proc = null;
       firstTurn = true; // a respawned process is a fresh session — needs MODE=modeling again
       if (pending) {
@@ -1459,6 +1477,11 @@ async function runModeling(kitDir, projectDir, verbose = false) {
   }
 
   spawnProcess();
+  log(
+    standalone
+      ? 'standalone: ON — reacting to direct prompts AND to board changes on its own initiative'
+      : 'standalone: off — reacting to direct prompts only (board changes are dropped)',
+  );
 
   async function getRealtimeToken() {
     const res = await fetch(`${cfg.baseUrl}/api/org/${cfg.organizationId}/prompts/realtime-token`, {
@@ -1495,6 +1518,122 @@ async function runModeling(kitDir, projectDir, verbose = false) {
       }
     } finally {
       draining = false;
+    }
+  }
+
+
+  // ── Standalone lane: board changes, not just direct messages ───────────────
+  //
+  // `board:<id>` is the board's own change channel — the one the web canvas itself
+  // subscribes to — carrying node:created/changed/deleted, edge:added/removed and
+  // board:cleared with a minimal `{ type, id, node_id, user_id, seq, prev_seq }`
+  // payload. It rides the realtime connection this loop already holds open for the
+  // org prompt queue, so the non-standalone case joins it too and simply throws every
+  // event away (see onBoardEvent). One code path either way — and whatever the backend
+  // later adds to these payloads lands here without a client change.
+  const BOARD_CHANGE_EVENTS = ['node:created', 'node:changed', 'node:deleted', 'edge:added', 'edge:removed', 'board:cleared'];
+
+  // Three guards, because a board event can't tell you who caused it: the platform
+  // attributes an API token's writes to the org owner's user_id, so on this channel the
+  // agent's own edits are indistinguishable from the human's.
+  //   DEBOUNCE     — one gesture (place a node, drag a column) fans out into several
+  //                  events; wait for the board to fall quiet, then send a single turn.
+  //   ECHO_WINDOW  — anything arriving while a turn runs, or within this long after one
+  //                  ends, is assumed to be that turn's own writes coming back, and dropped.
+  //   MIN_INTERVAL — a floor between self-directed turns, so a mistake upstream can't
+  //                  become a self-feeding loop burning tokens unattended.
+  const envMs = (name, fallback) => {
+    const raw = Number(process.env[name]);
+    return Number.isFinite(raw) && raw >= 0 ? raw : fallback;
+  };
+  const STANDALONE_DEBOUNCE_MS = envMs('EVENTMODELERS_STANDALONE_DEBOUNCE_MS', 8_000);
+  const STANDALONE_ECHO_WINDOW_MS = envMs('EVENTMODELERS_STANDALONE_ECHO_WINDOW_MS', 20_000);
+  const STANDALONE_MIN_INTERVAL_MS = envMs('EVENTMODELERS_STANDALONE_MIN_INTERVAL_MS', 60_000);
+
+  const observed = new Map(); // node_id (or '(board)') -> event types seen since the last standalone turn
+  let observedCount = 0;
+  let seqLo = null;
+  let seqHi = null;
+  let standaloneTimer = null;
+  let lastStandaloneAt = 0;
+
+  function onBoardEvent(type, payload) {
+    if (!standalone) {
+      if (verbose) log(`board event ${type} dropped — not running with --standalone`);
+      return;
+    }
+    if (pending || draining) {
+      if (verbose) log(`board event ${type} dropped — a turn is in flight (assumed own write)`);
+      return;
+    }
+    const sinceTurn = Date.now() - lastTurnEndedAt;
+    if (lastTurnEndedAt && sinceTurn < STANDALONE_ECHO_WINDOW_MS) {
+      if (verbose) log(`board event ${type} dropped — ${Math.round(sinceTurn / 1000)}s after a turn (assumed own write)`);
+      return;
+    }
+    const nodeId = payload?.node_id ?? '(board)';
+    if (!observed.has(nodeId)) observed.set(nodeId, new Set());
+    observed.get(nodeId).add(type);
+    observedCount += 1;
+    const seq = Number(payload?.seq);
+    if (Number.isFinite(seq)) {
+      if (seqLo === null || seq < seqLo) seqLo = seq;
+      if (seqHi === null || seq > seqHi) seqHi = seq;
+    }
+    log(`board change: ${type} node=${nodeId}${Number.isFinite(seq) ? ` seq=${seq}` : ''}`);
+    armStandaloneTurn(STANDALONE_DEBOUNCE_MS);
+  }
+
+  function armStandaloneTurn(delayMs) {
+    if (standaloneTimer) clearTimeout(standaloneTimer);
+    standaloneTimer = setTimeout(() => {
+      standaloneTimer = null;
+      dispatchStandaloneTurn().catch((err) => log(`standalone dispatch error: ${err.message}`));
+    }, delayMs);
+  }
+
+  function buildStandaloneTurn() {
+    const lines = [...observed.entries()].map(([nodeId, types]) => `- ${nodeId}: ${[...types].join(', ')}`);
+    const header = [
+      'BOARD_CHANGE',
+      `board_id=${cfg.boardId}`,
+      `organization_id=${cfg.organizationId}`,
+      seqLo !== null ? `seq=${seqLo}${seqHi !== seqLo ? `..${seqHi}` : ''}` : null,
+      `events=${observedCount}`,
+    ].filter(Boolean).join(' ');
+    return withSessionHeader(
+      `${header}\nchanged:\n${lines.join('\n')}\n\n` +
+        'Nobody asked you for this — the board itself changed and you are acting on your own initiative. ' +
+        'Follow the "Standalone board-change turns" section of .agent-modeling-kit/CLAUDE.md: look at what changed, ' +
+        'decide whether there is genuinely useful modeling work to do, do at most one focused piece of it, and if ' +
+        'there is nothing worth doing, change nothing and reply <promise>NOOP</promise>.',
+    );
+  }
+
+  async function dispatchStandaloneTurn() {
+    if (!observed.size) return;
+    // A direct message always outranks the agent's own initiative — re-arm instead of
+    // queueing behind the prompt lane, so the buffer just keeps collecting meanwhile.
+    if (pending || draining) {
+      armStandaloneTurn(STANDALONE_DEBOUNCE_MS);
+      return;
+    }
+    const waitLeft = STANDALONE_MIN_INTERVAL_MS - (Date.now() - lastStandaloneAt);
+    if (lastStandaloneAt && waitLeft > 0) {
+      armStandaloneTurn(waitLeft);
+      return;
+    }
+    const text = buildStandaloneTurn();
+    log(`standalone turn: ${observedCount} board event(s) on ${observed.size} node(s)`);
+    observed.clear();
+    observedCount = 0;
+    seqLo = null;
+    seqHi = null;
+    lastStandaloneAt = Date.now();
+    try {
+      await runClaudeWarm(text);
+    } catch (err) {
+      log(`standalone turn failed: ${err.message}`);
     }
   }
 
@@ -1541,6 +1680,20 @@ async function runModeling(kitDir, projectDir, verbose = false) {
     },
   ).catch((err) => {
     log(`realtime subscribe failed, prompts won't be pushed live: ${err.message}`);
+  });
+
+  const boardChannelName = `board:${cfg.boardId}`;
+  realtime.subscribe(
+    boardChannelName,
+    Object.fromEntries(BOARD_CHANGE_EVENTS.map((event) => [event, (payload) => onBoardEvent(event, payload)])),
+    (status) => {
+      log(`channel "${boardChannelName}": ${status}${standalone ? '' : ' (events dropped — no --standalone)'}`);
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        refreshRealtimeToken(status).catch(() => {});
+      }
+    },
+  ).catch((err) => {
+    log(`board subscribe failed, board changes won't be seen live: ${err.message}`);
   });
 
   setInterval(() => {
@@ -1977,6 +2130,7 @@ program
   .option('--ollama', 'Use ralph-ollama.js instead of the default Claude runner (build-kit stacks only)')
   .option('--bash', 'Use the bash-only ralph.sh loop (build-kit stacks only, no realtime)')
   .option('--modeling', 'Keep one Claude process warm across prompts instead of spawning a fresh one per task, for low-latency voice/live use. Modeling-kit installs only — there is no cold-spawn/tasks.json loop for modeling-kit. Built into the CLI, not a per-project file.')
+  .option('--standalone', 'Let the modeling agent act on its own initiative: on top of direct prompts it subscribes to the board\'s change channel (like the build agents do) and, whenever the board goes quiet after an edit, decides for itself what a human collaborator would do next — fill in examples on a new node, post a comment, sketch a screen. Requires --modeling.')
   .option('--local', 'Skip platform config/credential lookup entirely and run the local-only loop (no board sync, no realtime agent) — even if .eventmodelers/config.json has credentials (build-kit stacks only)')
   .option('--verbose', 'Log every tool call\'s full input (commands, skill args, file paths) and assistant reasoning text. Default is condensed, high-level per-step logging only.')
   .action(async (opts) => {
@@ -2001,6 +2155,10 @@ program
     // to the other's mechanism, so each side is gated explicitly below rather than
     // just being left to fail on a missing file.
     if (opts.modeling) {
+      if (opts.standalone && (opts.bash || opts.ollama)) {
+        console.error('❌ --standalone is a --modeling-only mode — it has no meaning for the build-kit runners selected by --bash/--ollama.');
+        process.exit(1);
+      }
       if (opts.bash || opts.ollama) {
         console.error('❌ --modeling is mutually exclusive with --bash/--ollama — those select a build-kit runner, which --modeling has no use for.');
         process.exit(1);
@@ -2020,12 +2178,17 @@ program
       // runModeling's own [modeling] log lines instead of before them.
       await new Promise((res) => process.stdout.write(`▶ Starting modeling loop (warm Claude process) for ${relative(cwd, modelingKitDir)}...\n\n`, res));
       try {
-        await runModeling(modelingKitDir, resolve(modelingKitDir, '..'), !!opts.verbose);
+        await runModeling(modelingKitDir, resolve(modelingKitDir, '..'), !!opts.verbose, !!opts.standalone);
       } catch (err) {
         console.error('[modeling] Fatal:', err);
         process.exit(1);
       }
       return;
+    }
+
+    if (opts.standalone) {
+      console.error('❌ --standalone only applies to `run --modeling` — a build-kit agent already reacts to board changes (that is its only trigger), so there is nothing for this flag to switch on.');
+      process.exit(1);
     }
 
     if (!buildKitDir) {

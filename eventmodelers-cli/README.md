@@ -116,6 +116,8 @@ npx @eventmodelers/cli run                          # start the agent loop (ralp
 npx @eventmodelers/cli run --ollama                 # same, via local Ollama (ralph-ollama.js)
 npx @eventmodelers/cli run --bash                   # bash-only loop, no realtime (ralph.sh)
 npx @eventmodelers/cli run --local                  # skip platform config/credential lookup entirely — local-only, no board sync
+npx @eventmodelers/cli run --modeling               # modeling-kit: warm Claude process driven by the board's prompt queue
+npx @eventmodelers/cli run --modeling --standalone  # same, plus acting on board changes unprompted (see Power users)
 npx @eventmodelers/cli fetch --context <name>                     # pull full slice detail for one context on the board into <kit-dir>/.slices/
 npx @eventmodelers/cli fetch --context <name> --slice-id <id>     # same, then print just that slice
 npx @eventmodelers/cli fetch --context <name> --slice-title <title> # same, then print just the slice matching this title
@@ -152,6 +154,41 @@ npx @eventmodelers/cli init --build-kit
 This scaffolds `.build-kit/CLAUDE.md`, `lib/prompt.md`, `lib/backend-prompt.md`, and the `build-*` skills with TODO placeholders instead of real content. Fill in the TODOs against the actual stack you're integrating (build/test commands, file layout, framework idioms) while building something real with it, then follow "Adding a stack" below to promote it to a first-class stack once it works.
 
 Installing both a build stack and `init-modeling` into the same project reuses this one `.eventmodelers/config.json` — run whichever `init` command second and it finds the existing config already satisfies the required fields and skips straight past the credential prompt.
+
+### The modeling agent — `run --modeling` and `--standalone`
+
+A modeling-kit install has one runtime: a warm Claude process the CLI keeps alive across
+turns and feeds directly over stdin, so a prompt typed (or spoken) on the board is picked up
+with no cold start and no `tasks.json` round trip.
+
+```bash
+npx @eventmodelers/cli run --modeling               # react to prompts sent to this board
+npx @eventmodelers/cli run --modeling --standalone  # …and to board changes, on its own initiative
+```
+
+Without `--standalone` the agent only ever answers direct messages. With it, the loop also
+subscribes to the board's own change channel — the same one the canvas and the build agents
+use — and when the board falls quiet after someone edits it, the agent gets a turn nobody
+asked for and decides for itself whether there's something a human collaborator would
+obviously have done: example data on a freshly placed element, a missing attribute on the
+rest of the chain, a screen for an empty SCREEN node, a question comment on a gap. It does at
+most one focused thing per change, adds rather than deletes, and answers `NOOP` when there's
+nothing worth doing (see the "Standalone board-change turns" section in
+`.agent-modeling-kit/CLAUDE.md`).
+
+Its own writes come back on that same channel and the platform can't tell them apart from a
+human's, so the lane is deliberately damped: it waits for a quiet period, ignores everything
+that arrives while a turn runs or shortly after one ends, and never fires twice in quick
+succession. Override the three windows if the defaults don't suit your board:
+
+| Env var | Default | What it controls |
+|---|---|---|
+| `EVENTMODELERS_STANDALONE_DEBOUNCE_MS` | `8000` | quiet period before a board change turns into a turn |
+| `EVENTMODELERS_STANDALONE_ECHO_WINDOW_MS` | `20000` | after a turn, how long incoming changes are treated as the agent's own echo |
+| `EVENTMODELERS_STANDALONE_MIN_INTERVAL_MS` | `60000` | floor between two self-directed turns |
+
+Direct prompts always outrank the agent's own initiative — a standalone turn waits while
+anything from the prompt queue is running.
 
 ### Installing skills globally
 
