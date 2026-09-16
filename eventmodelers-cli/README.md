@@ -220,27 +220,56 @@ reading its own `.eventmodelers/config.json`.
 
 Without `--standalone` the agent only ever answers direct messages. With it, the loop also
 subscribes to the board's own change channel — the same one the canvas and the build agents
-use — and when the board falls quiet after someone edits it, the agent gets a turn nobody
-asked for and decides for itself whether there's something a human collaborator would
-obviously have done: example data on a freshly placed element, a missing attribute on the
-rest of the chain, a screen for an empty SCREEN node, a question comment on a gap. It does at
-most one focused thing per change, adds rather than deletes, and answers `NOOP` when there's
-nothing worth doing (see the "Standalone board-change turns" section in
+use — and the agent becomes a background collaborator on the board: when it falls quiet after
+someone edits it, and again whenever the board has simply been sitting still for a while
+(`EVENTMODELERS_STANDALONE_IDLE_MS`), the agent gets a turn nobody asked for.
+
+What it does with that turn is *not* "react to the last event". The changed nodes are a
+notification telling it where to look. The agent itself analyses all of them against the model
+as a whole — each changed area in its slice and chain, plus whatever else is still obviously
+unfinished — and decides what needs doing. Then it fans the work out: **one subagent per piece
+of work that needs doing, all dispatched in parallel** (pieces sharing a slice or chain are
+merged into one agent, so no two agents write to the same area). The decision stays with the
+main agent; each subagent is an executor that carries out the one piece it was given, invoking
+the matching skill for its own target — example data on a freshly placed element, a missing
+attribute on the rest of the chain, a screen for an empty SCREEN node, a question comment on a
+gap. Nothing needing doing means no agents are spawned at all: the turn adds nothing and
+answers `NOOP` (see the "Standalone board-change turns" section in
 `.agent-modeling-kit/CLAUDE.md`).
 
-Its own writes come back on that same channel and the platform can't tell them apart from a
-human's, so the lane is deliberately damped: it waits for a quiet period, ignores everything
-that arrives while a turn runs or shortly after one ends, and never fires twice in quick
-succession. Override the three windows if the defaults don't suit your board:
+`--max-agents <n>` caps that fan-out, so an unattended turn's cost stays bounded — default 5:
+
+```bash
+npx @eventmodelers/cli run --standalone --board-id <uuid> --max-agents 3
+```
+
+Work sharing a slice or chain is merged into one agent first (that part is about not clobbering
+the board, not about the cap); if more pieces are still left than the cap allows, the agent
+dispatches the most valuable ones and leaves the rest for a later turn. `--max-agents 1` means
+no subagents at all: the turn does the single most valuable piece itself. The cap rides along in
+the turn's own instructions rather than being enforced from outside — the `claude` process is
+what spawns the agents — so it's a budget the agent is told to keep, not a hard ceiling.
+
+Every event that arrives is remembered until a turn carries it — including events that land
+while a turn is running. Its own writes come back on that same channel and the platform can't
+tell them apart from a human's, so those are *labelled* for the agent rather than discarded,
+and the lane is damped on timing instead: it waits for a quiet period (but not forever), waits
+out the echo window of its last turn, never fires twice in quick succession, and widens that
+floor each time it answers `NOOP`, so a finished board goes quiet by itself. Override the
+windows if the defaults don't suit your board:
 
 | Env var | Default | What it controls |
 |---|---|---|
-| `EVENTMODELERS_STANDALONE_DEBOUNCE_MS` | `8000` | quiet period before a board change turns into a turn |
-| `EVENTMODELERS_STANDALONE_ECHO_WINDOW_MS` | `20000` | after a turn, how long incoming changes are treated as the agent's own echo |
+| `EVENTMODELERS_STANDALONE_DEBOUNCE_MS` | `8000` | quiet period before buffered board changes turn into a turn |
+| `EVENTMODELERS_STANDALONE_MAX_WAIT_MS` | `90000` | cap on that quiet period, so a board being edited continuously still gets a turn |
+| `EVENTMODELERS_STANDALONE_ECHO_WINDOW_MS` | `20000` | after a turn, how long incoming changes are labelled as probably the agent's own echo |
 | `EVENTMODELERS_STANDALONE_MIN_INTERVAL_MS` | `60000` | floor between two self-directed turns |
+| `EVENTMODELERS_STANDALONE_BACKOFF_CAP_MS` | `900000` | ceiling that floor doubles up to while turns keep answering `NOOP` |
+| `EVENTMODELERS_STANDALONE_IDLE_MS` | `900000` | with nothing happening at all, how long before the agent reviews the model anyway (`0` disables it) |
 
-Direct prompts always outrank the agent's own initiative — a standalone turn waits while
-anything from the prompt queue is running.
+Direct prompts always outrank the agent's own initiative — a self-directed turn waits while
+anything from the prompt queue is running, and the changes it was about keep accumulating
+meanwhile.
 
 ### Installing skills globally
 

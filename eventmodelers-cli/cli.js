@@ -393,6 +393,26 @@ async function promptPasteBlock() {
 // rather than silently disabling platform sync.
 const DEFAULT_BASE_URL = 'https://api.eventmodelers.ai';
 
+// How many subagents a self-directed --standalone turn may dispatch at once. It's a
+// budget, not a mechanism: the turn runs inside one `claude` process, which is what
+// actually spawns the agents, so the cap reaches it as part of the turn's instructions
+// (buildStandaloneTurn) rather than as something the CLI can enforce from outside. Five
+// keeps an unattended turn's cost in the same ballpark as a single prompt turn while
+// still covering the usual burst — a handful of nodes across a couple of slices.
+const DEFAULT_MAX_AGENTS = 5;
+
+// `--max-agents` is a cost guard, so a typo must not silently turn into "no limit" or
+// into the default: anything that isn't a positive integer is rejected outright.
+function parseMaxAgents(raw) {
+  if (raw === undefined || raw === null || raw === '') return DEFAULT_MAX_AGENTS;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1) {
+    console.error(`❌ --max-agents must be a positive integer (got "${raw}").`);
+    process.exit(1);
+  }
+  return n;
+}
+
 // This CLI's own version, stamped into every install manifest so the global modeling
 // install can tell whether it was written by the version now running (see ensureGlobalKit).
 const CLI_VERSION = readJsonSafe(join(__dirname, 'package.json')).version || '0.0.0';
@@ -1595,7 +1615,7 @@ async function ensureGlobalKit(baseUrl) {
 // question, sketch a screen. Without the flag that channel is still subscribed on
 // the same connection and every event on it is dropped, so the two modes differ by
 // one filter rather than by a whole second realtime stack.
-async function runModeling(kitDir, projectDir, verbose = false, standalone = false, overrides = null) {
+async function runModeling(kitDir, projectDir, verbose = false, standalone = false, overrides = null, maxAgents = DEFAULT_MAX_AGENTS) {
   const configLibPath = join(kitDir, 'lib', 'config.js');
   if (!existsSync(configLibPath)) {
     console.error(`❌ ${relative(process.cwd(), configLibPath)} not found — --modeling needs a kit installed via \`init --modeling\`.`);
@@ -1648,7 +1668,7 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
   function withSessionHeader(body) {
     if (!firstTurn) return body;
     firstTurn = false;
-    return `MODE=modeling token=${cfg.token} org=${cfg.organizationId} baseUrl=${cfg.baseUrl} standalone=${standalone ? 'on' : 'off'}\n\n${QUESTIONING_RULE}Read .agent-modeling-kit/CLAUDE.md now and follow it for every prompt in this session — it's a one-time read; don't re-read it on later turns.\n\n${body}`;
+    return `MODE=modeling token=${cfg.token} org=${cfg.organizationId} baseUrl=${cfg.baseUrl} standalone=${standalone ? 'on' : 'off'}${standalone ? ` max_agents=${maxAgents}` : ''}\n\n${QUESTIONING_RULE}Read .agent-modeling-kit/CLAUDE.md now and follow it for every prompt in this session — it's a one-time read; don't re-read it on later turns.\n\n${body}`;
   }
 
   function buildTurn(p) {
@@ -1731,7 +1751,9 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
       lastTurnEndedAt = Date.now();
       const turn = pending;
       pending = null;
-      if (turn) (msg.is_error ? turn.reject(new Error(msg.result || 'Claude turn errored')) : turn.resolve());
+      // The result text is what a standalone turn's NOOP/DONE answer rides in — the
+      // self-directed lane reads it to decide whether to back off (dispatchStandaloneTurn).
+      if (turn) (msg.is_error ? turn.reject(new Error(msg.result || 'Claude turn errored')) : turn.resolve(msg.result ?? ''));
     }
   }
 
@@ -1769,7 +1791,7 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
   spawnProcess();
   log(
     standalone
-      ? 'standalone: ON — reacting to direct prompts AND to board changes on its own initiative'
+      ? `standalone: ON — reacting to direct prompts AND to board changes on its own initiative (max ${maxAgents} subagent(s) per self-directed turn)`
       : 'standalone: off — reacting to direct prompts only (board changes are dropped)',
   );
 
@@ -1808,6 +1830,9 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
       }
     } finally {
       draining = false;
+      // A prompt turn counts as activity: the board isn't idle just because nobody edited
+      // it while the agent was busy answering someone.
+      armIdleReview();
     }
   }
 
@@ -1823,55 +1848,91 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
   // later adds to these payloads lands here without a client change.
   const BOARD_CHANGE_EVENTS = ['node:created', 'node:changed', 'node:deleted', 'edge:added', 'edge:removed', 'board:cleared'];
 
-  // Three guards, because a board event can't tell you who caused it: the platform
+  // Four knobs, because a board event can't tell you who caused it: the platform
   // attributes an API token's writes to the org owner's user_id, so on this channel the
-  // agent's own edits are indistinguishable from the human's.
+  // agent's own edits are indistinguishable from the human's. They all govern *when* a
+  // self-directed turn fires — never whether an event is remembered. Everything that
+  // arrives is buffered (see onBoardEvent): an event seen while a turn runs, or inside the
+  // echo window, is only *marked* as possibly the agent's own write, so a burst that
+  // straddles a turn boundary still reaches the next turn instead of being thrown away and
+  // leaving the agent looking at whichever single event happened to land last.
   //   DEBOUNCE     — one gesture (place a node, drag a column) fans out into several
   //                  events; wait for the board to fall quiet, then send a single turn.
-  //   ECHO_WINDOW  — anything arriving while a turn runs, or within this long after one
-  //                  ends, is assumed to be that turn's own writes coming back, and dropped.
+  //   MAX_WAIT     — cap on that quiet period: a board someone keeps editing never falls
+  //                  quiet, and the debounce alone would slide forever.
+  //   ECHO_WINDOW  — how long after a turn its own writes are expected back; changes in
+  //                  that window are labelled, and the next turn waits it out.
   //   MIN_INTERVAL — a floor between self-directed turns, so a mistake upstream can't
-  //                  become a self-feeding loop burning tokens unattended.
+  //                  become a self-feeding loop burning tokens unattended. Doubles per
+  //                  consecutive NOOP up to BACKOFF_CAP, and resets as soon as a turn
+  //                  actually does something.
+  //   IDLE         — with nothing at all happening on the board, how long before the agent
+  //                  looks the model over anyway (a BOARD_REVIEW turn). 0 disables it, and
+  //                  it answers to the same MIN_INTERVAL backoff, so a board with nothing
+  //                  left to do goes quiet by itself rather than being swept every IDLE ms.
   const envMs = (name, fallback) => {
     const raw = Number(process.env[name]);
     return Number.isFinite(raw) && raw >= 0 ? raw : fallback;
   };
   const STANDALONE_DEBOUNCE_MS = envMs('EVENTMODELERS_STANDALONE_DEBOUNCE_MS', 8_000);
+  const STANDALONE_MAX_WAIT_MS = envMs('EVENTMODELERS_STANDALONE_MAX_WAIT_MS', 90_000);
   const STANDALONE_ECHO_WINDOW_MS = envMs('EVENTMODELERS_STANDALONE_ECHO_WINDOW_MS', 20_000);
   const STANDALONE_MIN_INTERVAL_MS = envMs('EVENTMODELERS_STANDALONE_MIN_INTERVAL_MS', 60_000);
+  const STANDALONE_BACKOFF_CAP_MS = envMs('EVENTMODELERS_STANDALONE_BACKOFF_CAP_MS', 15 * 60_000);
+  const STANDALONE_IDLE_MS = envMs('EVENTMODELERS_STANDALONE_IDLE_MS', 15 * 60_000);
 
-  const observed = new Map(); // node_id (or '(board)') -> event types seen since the last standalone turn
+  // node_id (or '(board)') -> { types: Set<string>, count: number, maybeOwn: boolean }
+  // for everything seen since the last self-directed turn. `maybeOwn` stays true only
+  // while every event for that node arrived while a turn was running or inside the echo
+  // window — one event from outside that window and the node is a real change again.
+  const observed = new Map();
   let observedCount = 0;
   let seqLo = null;
   let seqHi = null;
   let standaloneTimer = null;
+  let firstObservedAt = 0; // start of the current burst — MAX_WAIT is measured from here
   let lastStandaloneAt = 0;
+  let noopStreak = 0;
+
+  // The floor between self-directed turns, widened while the agent keeps finding nothing
+  // to do. A quiet board therefore costs a turn every MIN_INTERVAL, then 2×, 4×, … up to
+  // BACKOFF_CAP, instead of one per interval forever.
+  function minIntervalMs() {
+    return Math.min(STANDALONE_MIN_INTERVAL_MS * 2 ** noopStreak, STANDALONE_BACKOFF_CAP_MS);
+  }
 
   function onBoardEvent(type, payload) {
     if (!standalone) {
       if (verbose) log(`board event ${type} dropped — not running with --standalone`);
       return;
     }
-    if (pending || draining) {
-      if (verbose) log(`board event ${type} dropped — a turn is in flight (assumed own write)`);
-      return;
-    }
     const sinceTurn = Date.now() - lastTurnEndedAt;
-    if (lastTurnEndedAt && sinceTurn < STANDALONE_ECHO_WINDOW_MS) {
-      if (verbose) log(`board event ${type} dropped — ${Math.round(sinceTurn / 1000)}s after a turn (assumed own write)`);
-      return;
-    }
+    const inEchoWindow = !!lastTurnEndedAt && sinceTurn < STANDALONE_ECHO_WINDOW_MS;
+    const maybeOwn = !!pending || draining || inEchoWindow;
     const nodeId = payload?.node_id ?? '(board)';
-    if (!observed.has(nodeId)) observed.set(nodeId, new Set());
-    observed.get(nodeId).add(type);
+    const entry = observed.get(nodeId) ?? { types: new Set(), count: 0, maybeOwn };
+    entry.types.add(type);
+    entry.count += 1;
+    if (!maybeOwn) entry.maybeOwn = false;
+    observed.set(nodeId, entry);
     observedCount += 1;
+    if (!firstObservedAt) firstObservedAt = Date.now();
     const seq = Number(payload?.seq);
     if (Number.isFinite(seq)) {
       if (seqLo === null || seq < seqLo) seqLo = seq;
       if (seqHi === null || seq > seqHi) seqHi = seq;
     }
-    log(`board change: ${type} node=${nodeId}${Number.isFinite(seq) ? ` seq=${seq}` : ''}`);
-    armStandaloneTurn(STANDALONE_DEBOUNCE_MS);
+    log(`board change: ${type} node=${nodeId}${Number.isFinite(seq) ? ` seq=${seq}` : ''}${maybeOwn ? ' (maybe own write)' : ''}`);
+    armStandaloneTurn(nextDelayMs());
+  }
+
+  // Debounce, but never past MAX_WAIT from the first event of the burst, and never before
+  // the echo window of the last turn has run out.
+  function nextDelayMs() {
+    const waitedSoFar = firstObservedAt ? Date.now() - firstObservedAt : 0;
+    const debounce = Math.max(0, Math.min(STANDALONE_DEBOUNCE_MS, STANDALONE_MAX_WAIT_MS - waitedSoFar));
+    const echoLeft = lastTurnEndedAt ? STANDALONE_ECHO_WINDOW_MS - (Date.now() - lastTurnEndedAt) : 0;
+    return Math.max(debounce, echoLeft, 0);
   }
 
   function armStandaloneTurn(delayMs) {
@@ -1882,50 +1943,139 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
     }, delayMs);
   }
 
+  // The changed-node list is a *pointer*, not the job: it says which corners of the board
+  // someone just touched. The turn's actual task is for the agent to analyse all of them
+  // against the model as a whole and then fan out — a subagent per piece of work that really
+  // needs doing, running in parallel. Without that framing the agent treats the last event as
+  // its work item and does one narrow thing (or nothing) even when the model needs something
+  // else entirely, which is exactly what a burst of events on several nodes used to degrade
+  // into.
+  // The fan-out budget (`--max-agents`). A turn nobody asked for still costs money, so the
+  // cap is stated in the turn itself — the `claude` process is what spawns the agents, and
+  // the CLI has no way to count them from out here.
+  const AGENT_BUDGET =
+    maxAgents > 1
+      ? `Dispatch at most ${maxAgents} Agents in this turn (--max-agents=${maxAgents}). Merge pieces that share a slice or ` +
+        'chain first — that is a correctness rule, not a way to fit the cap — and if more than that is still left, ' +
+        'take the most valuable pieces up to the cap and leave the rest; a later turn will see them again.'
+      : 'Do not dispatch any Agents in this turn (--max-agents=1) — that budget overrides the fan-out above: do ' +
+        'the single most valuable piece of work yourself, inline, and leave the rest for a later turn.';
+
+  const STANDALONE_TASK =
+    'Nobody asked you for this — you are working on this board in the background, on your own initiative. ' +
+    'The change list above is a notification, not the task: it tells you where something just happened and ' +
+    'which parts of the model to look at first. The task is to judge the model as a whole — each changed area ' +
+    'in its context (its slice, its chain, the timeline around it), plus anything still obviously unfinished ' +
+    'elsewhere — and then get the useful work done. Do not stop at the last event, and do not treat the ' +
+    'nodeId list as the boundary of the work. You do the analysis: look at every entry above, decide what ' +
+    'actually needs doing, and then work in parallel rather than serially — dispatch one Agent per piece of ' +
+    'work that needs doing, all in a single message, merging pieces that share a slice or chain so no two ' +
+    `agents write to the same area. ${AGENT_BUDGET} Follow the "Standalone board-change turns" section of ` +
+    '.agent-modeling-kit/CLAUDE.md, and if the model genuinely needs nothing right now, spawn nothing, change ' +
+    'nothing and reply <promise>NOOP</promise>.';
+
   function buildStandaloneTurn() {
-    const lines = [...observed.entries()].map(([nodeId, types]) => `- ${nodeId}: ${[...types].join(', ')}`);
+    const lines = [...observed.entries()].map(
+      ([nodeId, entry]) =>
+        `- ${nodeId}: ${[...entry.types].join(', ')} (${entry.count}×)${entry.maybeOwn ? ' — possibly your own earlier write' : ''}`,
+    );
     const header = [
       'BOARD_CHANGE',
       `board_id=${cfg.boardId}`,
       `organization_id=${cfg.organizationId}`,
       seqLo !== null ? `seq=${seqLo}${seqHi !== seqLo ? `..${seqHi}` : ''}` : null,
       `events=${observedCount}`,
+      `nodes=${observed.size}`,
     ].filter(Boolean).join(' ');
+    return withSessionHeader(`${header}\nchanged:\n${lines.join('\n')}\n\n${STANDALONE_TASK}`);
+  }
+
+  // No events at all — the board has been sitting still. Same self-directed turn, with the
+  // whole model as its subject instead of a changed corner of it.
+  function buildIdleReviewTurn() {
+    const header = [
+      'BOARD_REVIEW',
+      `board_id=${cfg.boardId}`,
+      `organization_id=${cfg.organizationId}`,
+      `idle_for=${Math.round(STANDALONE_IDLE_MS / 1000)}s`,
+    ].join(' ');
     return withSessionHeader(
-      `${header}\nchanged:\n${lines.join('\n')}\n\n` +
-        'Nobody asked you for this — the board itself changed and you are acting on your own initiative. ' +
-        'Follow the "Standalone board-change turns" section of .agent-modeling-kit/CLAUDE.md: look at what changed, ' +
-        'decide whether there is genuinely useful modeling work to do, do at most one focused piece of it, and if ' +
-        'there is nothing worth doing, change nothing and reply <promise>NOOP</promise>.',
+      `${header}\nchanged: nothing — the board has been quiet.\n\n` +
+        'Nobody asked you for this and nothing changed: you are working on this board in the background, on ' +
+        'your own initiative. Look over the model as a whole and decide what it still needs; for each piece of ' +
+        'work that needs doing, dispatch one Agent, all in a single message so they run in parallel, exactly ' +
+        `as the "Standalone board-change turns" section of .agent-modeling-kit/CLAUDE.md describes. ${AGENT_BUDGET} ` +
+        'If the model needs nothing, spawn nothing, change nothing and reply <promise>NOOP</promise>.',
     );
   }
 
-  async function dispatchStandaloneTurn() {
-    if (!observed.size) return;
+  let idleTimer = null;
+  function armIdleReview() {
+    if (!standalone || !STANDALONE_IDLE_MS) return;
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      idleTimer = null;
+      // A buffer that filled meanwhile has its own timer — let that turn carry the work.
+      if (observed.size || standaloneTimer || pending || draining) {
+        armIdleReview();
+        return;
+      }
+      dispatchStandaloneTurn({ idle: true }).catch((err) => log(`idle review dispatch error: ${err.message}`));
+    }, STANDALONE_IDLE_MS);
+  }
+
+  async function dispatchStandaloneTurn({ idle = false } = {}) {
+    if (!idle && !observed.size) return;
     // A direct message always outranks the agent's own initiative — re-arm instead of
     // queueing behind the prompt lane, so the buffer just keeps collecting meanwhile.
     if (pending || draining) {
-      armStandaloneTurn(STANDALONE_DEBOUNCE_MS);
+      if (idle) armIdleReview();
+      else armStandaloneTurn(nextDelayMs());
       return;
     }
-    const waitLeft = STANDALONE_MIN_INTERVAL_MS - (Date.now() - lastStandaloneAt);
+    const waitLeft = minIntervalMs() - (Date.now() - lastStandaloneAt);
     if (lastStandaloneAt && waitLeft > 0) {
-      armStandaloneTurn(waitLeft);
+      if (idle) armIdleReview();
+      else armStandaloneTurn(waitLeft);
       return;
     }
-    const text = buildStandaloneTurn();
-    log(`standalone turn: ${observedCount} board event(s) on ${observed.size} node(s)`);
+    const text = idle ? buildIdleReviewTurn() : buildStandaloneTurn();
+    if (idle) {
+      log(`standalone review turn: board quiet for ${Math.round(STANDALONE_IDLE_MS / 1000)}s`);
+    } else {
+      const ownOnly = [...observed.values()].every((entry) => entry.maybeOwn);
+      log(
+        `standalone turn: ${observedCount} board event(s) on ${observed.size} node(s)` +
+          `${ownOnly ? ' (all possibly own writes)' : ''}`,
+      );
+    }
     observed.clear();
     observedCount = 0;
     seqLo = null;
     seqHi = null;
+    firstObservedAt = 0;
     lastStandaloneAt = Date.now();
     try {
-      await runClaudeWarm(text);
+      const result = await runClaudeWarm(text);
+      // NOOP is the agent saying the board needs nothing — widen the floor so a finished
+      // board isn't revisited at full rate. Any real contribution resets it.
+      if (/NOOP/.test(String(result ?? ''))) {
+        noopStreak += 1;
+        log(`standalone turn: NOOP (${noopStreak} in a row — next no sooner than ${Math.round(minIntervalMs() / 1000)}s)`);
+      } else {
+        noopStreak = 0;
+      }
     } catch (err) {
       log(`standalone turn failed: ${err.message}`);
+    } finally {
+      // Events that arrived while this turn ran are still in the buffer — give them a turn
+      // of their own once the echo window has passed, instead of waiting for the next edit.
+      if (observed.size) armStandaloneTurn(nextDelayMs());
+      armIdleReview();
     }
   }
+
+  armIdleReview();
 
   const channelName = `org:${cfg.organizationId}`;
   const realtime = await createRealtimeAdapter(cfg, realtimeToken);
@@ -2458,7 +2608,8 @@ credentialFlags(program
   .option('--ollama', 'Use ralph-ollama.js instead of the default Claude runner (build-kit stacks only)')
   .option('--bash', 'Use the bash-only ralph.sh loop (build-kit stacks only, no realtime)')
   .option('--modeling', 'Keep one Claude process warm across prompts instead of spawning a fresh one per task, for low-latency voice/live use. Runs from a modeling-kit install in this directory, or from the global install (~/.eventmodelers/kit) when there is none. Built into the CLI, not a per-project file.')
-  .option('--standalone', 'Let the modeling agent act on its own initiative: on top of direct prompts it subscribes to the board\'s change channel (like the build agents do) and, whenever the board goes quiet after an edit, decides for itself what a human collaborator would do next — fill in examples on a new node, post a comment, sketch a screen. Implies --modeling.')
+  .option('--standalone', 'Let the modeling agent work the board in the background, on its own initiative: on top of direct prompts it subscribes to the board\'s change channel (like the build agents do) and, whenever the board goes quiet after an edit — or has simply been idle for a while — it takes a turn nobody asked for. Changed nodes are a notification, not the task: it judges the model as a whole and fans the work out over parallel subagents, one per changed area (examples on a new node, a missing attribute along a chain, a screen, a question comment). Implies --modeling.')
+  .option('--max-agents <n>', 'Cap how many subagents a self-directed --standalone turn may dispatch at once, to bound what an unattended agent can spend per turn. The agent merges work that shares a slice or chain first, then takes the most valuable pieces up to this many and leaves the rest for a later turn. 1 makes it do the single most valuable piece itself, without spawning anything. Default 5. Ignored without --standalone — prompt turns are one piece of work by definition.', '5')
   .option('--global', 'Run the modeling agent from the global install (~/.eventmodelers/kit), initializing it on first use, and ignore any kit in this directory. This is also what --modeling/--standalone fall back to on their own when nothing is installed here — pass it explicitly to prefer the global install over a local one. Credentials come from the flags below, EVENTMODELERS_* env vars, or ~/.eventmodelers/boards/<board>.json, so nothing is written into the current directory.')
   .option('--local', 'Skip platform config/credential lookup entirely and run the local-only loop (no board sync, no realtime agent) — even if .eventmodelers/config.json has credentials (build-kit stacks only)')
   .option('--verbose', 'Log every tool call\'s full input (commands, skill args, file paths) and assistant reasoning text. Default is condensed, high-level per-step logging only.')
@@ -2466,6 +2617,13 @@ credentialFlags(program
   .action(async (opts, command) => {
     const globalOpts = command.optsWithGlobals();
     const cwd = process.cwd();
+    // Validated up front, before any runner is selected: a cost guard given as garbage
+    // should fail on the spot, not once the loop is already up — and a cap passed where
+    // nothing will read it is worth saying out loud rather than ignoring silently.
+    const maxAgents = parseMaxAgents(opts.maxAgents);
+    if (command.getOptionValueSource('maxAgents') === 'cli' && !opts.standalone) {
+      console.log('ℹ️  --max-agents only applies to --standalone turns; ignoring it here.');
+    }
     // Both kit dirs can be installed side by side (e.g. running a build-kit and a
     // modeling-kit agent from the same project). findInstalledKitDir only ever
     // returns its first fixed-order match, which would silently prefer one stack
@@ -2529,7 +2687,7 @@ credentialFlags(program
       const shown = relative(cwd, kitDir);
       await new Promise((res) => process.stdout.write(`▶ Starting modeling loop (warm Claude process) for ${shown && !shown.startsWith('..') ? shown : kitDir}...\n\n`, res));
       try {
-        await runModeling(kitDir, projectDir, !!opts.verbose, !!opts.standalone, overrides);
+        await runModeling(kitDir, projectDir, !!opts.verbose, !!opts.standalone, overrides, maxAgents);
       } catch (err) {
         console.error('[modeling] Fatal:', err);
         process.exit(1);
