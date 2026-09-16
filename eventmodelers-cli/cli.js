@@ -349,7 +349,16 @@ function getSharedRl() {
 // called, hanging forever. Pulling from the iterator instead queues each line until
 // something asks for it, so nothing emitted ahead of time is ever lost between prompts.
 async function prompt(question = '') {
-  getSharedRl();
+  const rl = getSharedRl();
+  // selectPrompt pauses stdin when it tears down its raw-mode keypress handler. That was
+  // invisible for as long as every menu came BEFORE the first prompt() — getSharedRl's
+  // createInterface resumes stdin on the way in, so a freshly built readline never noticed.
+  // Once a prompt runs first (the Board ID question), the interface already exists and is
+  // reused, so the next prompt after a menu waits forever on a stream nobody resumed: the
+  // event loop drains and node reports an unsettled top-level await instead of reading the
+  // line. Both calls are no-ops when nothing paused anything.
+  rl.resume();
+  process.stdin.resume();
   if (question) process.stdout.write(question);
   const { value, done } = await sharedRlLines.next();
   return (done ? '' : value).trim();
@@ -1345,13 +1354,17 @@ function boardCredentialsPath(boardId) {
   return join(GLOBAL_DIR, 'boards', `${boardId}.json`);
 }
 
-// Two shapes, never mixed: the board's own credentials, or a note that this board just
-// uses the account-wide ones. The second is what makes the first-run question a
-// once-per-board event instead of something to dismiss on every start.
+// Three shapes, never mixed: the board's own credentials, a note that this board just uses
+// the account-wide ones, or a pointer to another board's file. All three exist for the same
+// reason — the first-run question has to be a once-per-board event rather than something to
+// dismiss on every start, so every possible answer has to be recordable against the board
+// that was ASKED about, including "actually, those credentials were for a different board".
 function writeBoardCredentials(config) {
   const path = boardCredentialsPath(config.boardId);
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  const body = config.useGlobal
+  const body = config.useBoard
+    ? { boardId: config.boardId, useBoard: config.useBoard }
+    : config.useGlobal
     ? { boardId: config.boardId, useGlobal: true, agentId: config.agentId }
     : {
         token: config.token,
@@ -1407,7 +1420,35 @@ async function resolveModelingCredentials(cwd, flags, explicitConfigPath, print)
   // Which board comes first — everything else is stored per board, so there is nothing to
   // look up until we know which board this run is for.
   let boardId = explicit.boardId || process.env.EVENTMODELERS_BOARD_ID || walked.boardId || null;
+
+  // Which board a run drives is the single most consequential thing about it, and a boardId
+  // inherited from a config file can be arbitrarily stale — so when it wasn't named on the
+  // command line, confirm it. Enter accepts whatever the config resolved to, keeping the
+  // common case to one keystroke. Skipped when there is no one to ask (--print, or a
+  // non-interactive stdin such as CI or a process supervisor), where the resolved value
+  // stands on its own exactly as before.
+  let boardChosen = !!(explicit.boardId || process.env.EVENTMODELERS_BOARD_ID);
+  if (!boardChosen && !print && process.stdin.isTTY) {
+    const answer = await prompt(boardId ? `\n  Board ID [${boardId}]: ` : '\n  Board ID: ');
+    if (answer) {
+      boardId = answer;
+      boardChosen = true;
+    }
+  }
+
   let stored = boardId ? readJsonSafe(boardCredentialsPath(boardId)) : {};
+
+  // Follow a pointer left by an earlier answer: this directory (or the account config) keeps
+  // resolving to one board, but the credentials pasted for it named another. Without this the
+  // question below would be re-asked on every single start, since the board that gets a file
+  // is never the board the next run resolves. Not followed when the board was named
+  // explicitly — that is a direct instruction, not an inherited default. One hop only: a
+  // pointer always targets a board that then holds real credentials, so a chain would mean a
+  // corrupted store rather than something to chase.
+  if (stored.useBoard && !boardChosen) {
+    boardId = stored.useBoard;
+    stored = readJsonSafe(boardCredentialsPath(boardId));
+  }
 
   // First time this machine has seen this board, ask the one question that can't be
   // guessed: does it get credentials of its own, or does it ride on the account-wide ones?
@@ -1439,8 +1480,15 @@ async function resolveModelingCredentials(cwd, flags, explicitConfigPath, print)
         console.error("\n❌ Couldn't make sense of that paste — nothing was saved.");
         process.exit(1);
       }
-      // The paste is the more specific answer about which board this is: someone who
-      // copied board B's credentials means board B, whatever the command line defaulted to.
+      // The paste is the more specific answer about which board this is: someone who copied
+      // board B's credentials means board B, whatever the command line defaulted to. But the
+      // question was asked ABOUT board A, so board A needs an answer on file too — otherwise
+      // the next run resolves A again, finds nothing, and asks all over again.
+      if (parsed.boardId && boardId && parsed.boardId !== boardId) {
+        writeBoardCredentials({ boardId, useBoard: parsed.boardId });
+        console.log(`\n  ℹ️  Those credentials are for board ${parsed.boardId}, not ${boardId} — noted, so this is asked once and not again.`);
+        console.log(`      Pass --board-id to pick a different board, or drop the stale boardId from ~/.eventmodelers/config.json.`);
+      }
       if (parsed.boardId) boardId = parsed.boardId;
       stored = parsed;
     } else {

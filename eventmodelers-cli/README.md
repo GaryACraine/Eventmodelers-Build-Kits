@@ -179,13 +179,22 @@ when you upgrade the CLI. Pass `--global` to prefer it even when a local kit doe
 npx @eventmodelers/cli run --standalone --board-id <uuid>   # from any directory, nothing written there
 ```
 
+**Which board?** When `--board-id` isn't given, the agent asks for it on start, pre-filled
+with whatever the config resolved to — press Enter to accept it, or paste a different board
+id. A board inherited from a config file can be arbitrarily stale, and which board a run
+drives is the one thing worth confirming. Skipped when there's no one to ask (`--print`, or a
+non-interactive stdin), where the resolved value stands on its own.
+
 **Credentials are per board, not per directory.** The first time this machine runs a board it
-asks one question — does this board get credentials of its own, or does it use your
+asks one more question — does this board get credentials of its own, or does it use your
 account-wide ones? Answer once and it's remembered: either the board's credentials or a
 `useGlobal` marker lands in `~/.eventmodelers/boards/<board>.json`, and you're not asked
-again. The question is skipped entirely when the answer is already implied (credentials given
-on the command line) or when there's no one to ask (`--print`, or a non-interactive stdin such
-as CI or a process supervisor).
+again. If the credentials you paste name a *different* board than the one asked about — an easy
+way to end up there is a stale `boardId` in `~/.eventmodelers/config.json` — the run switches
+to the pasted board and leaves a pointer behind for the one it asked about, so the question is
+asked once rather than on every start. The question is skipped entirely when the answer is
+already implied (credentials given on the command line) or when there's no one to ask
+(`--print`, or a non-interactive stdin such as CI or a process supervisor).
 
 To configure a board up front instead, paste the blob from
 [app.eventmodelers.ai/account](https://app.eventmodelers.ai/account):
