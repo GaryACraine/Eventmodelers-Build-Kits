@@ -117,7 +117,8 @@ npx @eventmodelers/cli run --ollama                 # same, via local Ollama (ra
 npx @eventmodelers/cli run --bash                   # bash-only loop, no realtime (ralph.sh)
 npx @eventmodelers/cli run --local                  # skip platform config/credential lookup entirely — local-only, no board sync
 npx @eventmodelers/cli run --modeling               # modeling-kit: warm Claude process driven by the board's prompt queue
-npx @eventmodelers/cli run --modeling --standalone  # same, plus acting on board changes unprompted (see Power users)
+npx @eventmodelers/cli run --standalone             # same, plus acting on board changes unprompted — and needs no install at all
+npx @eventmodelers/cli run --standalone --board-id <uuid>  # …from any directory, against any board (see Power users)
 npx @eventmodelers/cli fetch --context <name>                     # pull full slice detail for one context on the board into <kit-dir>/.slices/
 npx @eventmodelers/cli fetch --context <name> --slice-id <id>     # same, then print just that slice
 npx @eventmodelers/cli fetch --context <name> --slice-title <title> # same, then print just the slice matching this title
@@ -163,8 +164,50 @@ with no cold start and no `tasks.json` round trip.
 
 ```bash
 npx @eventmodelers/cli run --modeling               # react to prompts sent to this board
-npx @eventmodelers/cli run --modeling --standalone  # …and to board changes, on its own initiative
+npx @eventmodelers/cli run --standalone             # …and to board changes, on its own initiative
 ```
+
+`--standalone` implies `--modeling`, so you never need both.
+
+**No install required.** A modeling agent never touches the directory it was started from —
+it works against the board over MCP/REST — so it doesn't need a kit scaffolded there. When
+the current directory has no modeling kit, `run --modeling`/`run --standalone` fall back to a
+single global install under `~/.eventmodelers/kit`, initialized on first use and refreshed
+when you upgrade the CLI. Pass `--global` to prefer it even when a local kit does exist.
+
+```bash
+npx @eventmodelers/cli run --standalone --board-id <uuid>   # from any directory, nothing written there
+```
+
+**Credentials are per board, not per directory.** The first time this machine runs a board it
+asks one question — does this board get credentials of its own, or does it use your
+account-wide ones? Answer once and it's remembered: either the board's credentials or a
+`useGlobal` marker lands in `~/.eventmodelers/boards/<board>.json`, and you're not asked
+again. The question is skipped entirely when the answer is already implied (credentials given
+on the command line) or when there's no one to ask (`--print`, or a non-interactive stdin such
+as CI or a process supervisor).
+
+To configure a board up front instead, paste the blob from
+[app.eventmodelers.ai/account](https://app.eventmodelers.ai/account):
+
+```bash
+npx @eventmodelers/cli init-config --credentials "token=<uuid>,boardId=<uuid>,organizationId=<uuid>,baseUrl=https://api.eventmodelers.ai"
+npx @eventmodelers/cli run --standalone --board-id <uuid>    # all it needs from here on
+```
+
+`--credentials` also takes the equivalent JSON, or `-` to read either from stdin, so a token
+need never appear in your shell history or in `ps`. `run` accepts it too, for configuring and
+starting in one command. Resolution order for a run is `--credentials` and the individual
+`--token`/`--organization-id`/`--board-id`/`--base-url` flags, then `EVENTMODELERS_*` env vars,
+then `~/.eventmodelers/boards/<board>.json`, then the usual `.eventmodelers/config.json` walk,
+and finally the account's default board. Whatever a run resolves is saved back to the
+per-board file (`0600`, in a `0700` directory) along with a stable agent id for the board's
+alive-ping. One machine can therefore drive several boards, across several accounts, at once.
+The global kit itself holds no credentials at all — the token reaches `claude` through the
+spawned process's environment.
+
+A kit installed in the current directory still wins by default and behaves exactly as before,
+reading its own `.eventmodelers/config.json`.
 
 Without `--standalone` the agent only ever answers direct messages. With it, the loop also
 subscribes to the board's own change channel — the same one the canvas and the build agents
@@ -285,6 +328,8 @@ Running any command from inside `~/projects/checkout-app` resolves `organization
 ```bash
 npx @eventmodelers/cli init-config                      # interactive, writes to ./.eventmodelers/config.json
 npx @eventmodelers/cli init-config --board-id <uuid>     # non-interactive, just overrides one field
+npx @eventmodelers/cli init-config --credentials "token=...,boardId=...,organizationId=...,baseUrl=..."  # configure ONE board (~/.eventmodelers/boards/<board>.json), no prompts
+npx @eventmodelers/cli init-config --credentials -        # same, read from stdin (keeps the token out of shell history)
 ```
 
 ### Env vars and `--config` (scripted/CI installs)

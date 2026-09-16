@@ -111,12 +111,13 @@ Steps:
 5. **If you already said it, don't say it again.** Before posting a comment, read the node's
    existing comments — an unresolved question you (or anyone) already posted there means your
    contribution for this change is already on the board.
-6. Append a progress entry to `progress.txt` using the format below, with the `BOARD_CHANGE`
-   seq range as the identifier, and promote anything reusable to `.agent-modeling-kit/AGENTS.md`
-   (same as steps 8–9 of a prompt turn).
+6. **Write no progress entry.** A board-change turn is modeling, not tracked progress —
+   nothing goes into `progress.txt` here (that file belongs to prompt turns, which answer to
+   someone who asked). Still promote anything reusable to `.agent-modeling-kit/AGENTS.md`
+   (same as step 9 of a prompt turn).
 7. Reply `<promise>DONE</promise>` if you changed something, or — when the answer at step 2
    was "nothing worth doing" — change nothing at all and reply `<promise>NOOP</promise>`. A
-   NOOP is a perfectly good outcome and needs no progress entry.
+   NOOP is a perfectly good outcome.
 
 Keep these turns small and finished within the turn. Everything you write to the board comes
 back to this same channel as another change; the CLI suppresses your own echo for a short
@@ -145,6 +146,8 @@ reason.
 Read `.claude/skills/<skill-name>/SKILL.md` before executing — each skill has required inputs and step-by-step instructions.
 
 ## Progress Entry Format
+
+Prompt turns only — a standalone board-change turn never writes one.
 
 APPEND to `progress.txt` (never replace):
 ```

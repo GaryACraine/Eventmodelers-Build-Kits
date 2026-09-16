@@ -384,6 +384,10 @@ async function promptPasteBlock() {
 // rather than silently disabling platform sync.
 const DEFAULT_BASE_URL = 'https://api.eventmodelers.ai';
 
+// This CLI's own version, stamped into every install manifest so the global modeling
+// install can tell whether it was written by the version now running (see ensureGlobalKit).
+const CLI_VERSION = readJsonSafe(join(__dirname, 'package.json')).version || '0.0.0';
+
 // Canonical order the account page pastes values in, regardless of which fields a
 // given stack actually requires — a modeling-kit install (no boardId required) still
 // gets a paste containing all 4 fields, so we must not drop the ones we don't need.
@@ -745,7 +749,11 @@ async function installStack(stackKey, stackCfg, options = {}) {
     console.log('🚀 Eventmodelers CLI\n');
     console.log(`Using: ${stackKey} (${stackCfg.label})\n`);
 
-    const targetDir = process.cwd();
+    // Almost always the cwd. The exception is the global modeling install, which is
+    // scaffolded into ~/.eventmodelers/kit from wherever `run --standalone` was invoked
+    // (see ensureGlobalKit) — the mirror image of options.templatesSource below: where we
+    // install TO, versus where we install FROM.
+    const targetDir = options.targetDir ? resolve(options.targetDir) : process.cwd();
     // `init --git <url>` passes a resolved clone dir's templates/ here instead — every
     // other input (STACKS, MODELING_KIT, BRIDGE_KIT) keeps using the built-in path.
     const templatesSource = options.templatesSource || join(__dirname, 'stacks', stackKey, 'templates');
@@ -949,7 +957,11 @@ async function installStack(stackKey, stackCfg, options = {}) {
     }
 
     // --- 4. Install kit dependencies ---
-    if (existsSync(join(kitDir, 'package.json'))) {
+    // modeling-kit's package.json has no dependencies at all — it exists purely for its
+    // `"type": "module"`, so lib/config.js can be ESM-imported. Running npm for that buys
+    // a lockfile and nothing else, and it sits on the critical path of the global
+    // install's first-use scaffold (ensureGlobalKit), so skip it.
+    if (!isModelingKit && existsSync(join(kitDir, 'package.json'))) {
       console.log('📦 Installing kit dependencies...');
       try {
         execSync('npm install', { cwd: kitDir, stdio: ['ignore', 'inherit', 'inherit'] });
@@ -960,43 +972,48 @@ async function installStack(stackKey, stackCfg, options = {}) {
     }
 
     // --- 5. Credentials ---
-    console.log('🔐 Configuring credentials...');
+    // Skipped by the global modeling install (ensureGlobalKit): that one dir is reused
+    // across every board and account, so it deliberately keeps no credentials at rest.
+    // Each run resolves its own and hands them to the agent in memory instead.
+    if (!options.skipCredentials) {
+      console.log('🔐 Configuring credentials...');
 
-    // Written at the project root (not inside the kit dir) so a modeling-kit install
-    // and a build-kit install in the same project share one config.json instead of
-    // each prompting for and storing its own copy of the same credentials.
-    const configPath = options.configPath
-      ? resolve(targetDir, options.configPath)
-      : join(targetDir, '.eventmodelers', 'config.json');
+      // Written at the project root (not inside the kit dir) so a modeling-kit install
+      // and a build-kit install in the same project share one config.json instead of
+      // each prompting for and storing its own copy of the same credentials.
+      const configPath = options.configPath
+        ? resolve(targetDir, options.configPath)
+        : join(targetDir, '.eventmodelers', 'config.json');
 
-    const requiredFields = stackCfg.needsBoardId
-      ? ['organizationId', 'boardId', 'token']
-      : ['organizationId', 'token'];
+      const requiredFields = stackCfg.needsBoardId
+        ? ['organizationId', 'boardId', 'token']
+        : ['organizationId', 'token'];
 
-    const effective = loadEffectiveConfig(targetDir, kitDir, options.configPath);
-    if (effective.sources.length > 1) {
-      console.log(`\n  ✓ Found shared defaults in ${effective.sources[0]}`);
+      const effective = loadEffectiveConfig(targetDir, kitDir, options.configPath);
+      if (effective.sources.length > 1) {
+        console.log(`\n  ✓ Found shared defaults in ${effective.sources[0]}`);
+      }
+
+      const config = await configureCredentials({
+        config: effective.config,
+        configPath,
+        targetDir,
+        requiredFields,
+        boardIdOptional: !stackCfg.needsBoardId,
+        overrides: options.credentialOverrides,
+        print: options.print,
+        force: options.force,
+      });
+
+      // Register the MCP server up front so it's available from the very first
+      // `claude` invocation (whether that's an interactive session opened right
+      // after install, or the agent loop's first spawn) instead of only appearing
+      // once `run`/`run --modeling` or `init-mcp` happens to run. Safe to write
+      // even without a token yet — the file only ever holds the env-var
+      // placeholder, never the literal secret (see connect/SKILL.md's Security notes).
+      ensureMcpRegistered(targetDir, config.baseUrl || DEFAULT_BASE_URL);
+      ensureEnvToken(targetDir, config.token);
     }
-
-    const config = await configureCredentials({
-      config: effective.config,
-      configPath,
-      targetDir,
-      requiredFields,
-      boardIdOptional: !stackCfg.needsBoardId,
-      overrides: options.credentialOverrides,
-      print: options.print,
-      force: options.force,
-    });
-
-    // Register the MCP server up front so it's available from the very first
-    // `claude` invocation (whether that's an interactive session opened right
-    // after install, or the agent loop's first spawn) instead of only appearing
-    // once `run`/`run --modeling` or `init-mcp` happens to run. Safe to write
-    // even without a token yet — the file only ever holds the env-var
-    // placeholder, never the literal secret (see connect/SKILL.md's Security notes).
-    ensureMcpRegistered(targetDir, config.baseUrl || DEFAULT_BASE_URL);
-    ensureEnvToken(targetDir, config.token);
 
     // --- 6. Install manifest (drives precise `uninstall` later) ---
     // Only the footprint listed here is ever removed by `uninstall` — the root
@@ -1006,8 +1023,13 @@ async function installStack(stackKey, stackCfg, options = {}) {
     mkdirSync(manifestDir, { recursive: true });
     writeFileSync(
       join(manifestDir, 'install-manifest.json'),
-      JSON.stringify({ stack: stackKey, global: !!options.global, skills: installedSkills, claudeExtras, mcpRegistered: false }, null, 2),
+      JSON.stringify({ stack: stackKey, version: CLI_VERSION, global: !!options.global, skills: installedSkills, claudeExtras, mcpRegistered: false }, null, 2),
     );
+
+    // The global install scaffolds itself and then immediately starts the agent — printing
+    // "Done! Start your agent:" and an init-mcp hint there would be telling the user to do
+    // what this very command is already doing.
+    if (options.skipEpilogue) return;
 
     console.log('\n✅ Done! Start your agent:\n');
     if (isBridge) {
@@ -1298,6 +1320,213 @@ function ensureEnvToken(targetDir, token) {
   console.log('  ✓ Wrote EVENTMODELERS_TOKEN to .claude/settings.local.json (gitignored)');
 }
 
+// --- The global modeling install (`run --global`) ------------------------------
+//
+// A modeling agent never touches the filesystem it was launched from — it works against
+// the board over MCP/REST. A project install exists only so that the `claude` process has
+// a directory with the skills in it, which is a lot of ceremony to demand of someone who
+// just wants to point an agent at a board. So there is ONE installation under
+// ~/.eventmodelers/kit, initialized on first use, and `run --standalone` falls back to it
+// whenever this directory has no kit of its own.
+//
+// One dir, not one per board: the kit is byte-for-byte identical whatever board it drives
+// (skills, CLAUDE.md, a config.js), so there is nothing in it to key per board. What IS
+// per board is the credentials, and those live in their own files beside it — see
+// boardCredentialsPath. The kit itself holds no secret at all.
+const GLOBAL_DIR = join(homedir(), '.eventmodelers');
+const GLOBAL_KIT_DIR = join(GLOBAL_DIR, 'kit');
+
+// One file per board: `{token, organizationId, boardId, baseUrl, agentId}`. Credentials
+// ARE per board — a token is scoped to the org that owns it — so one machine can drive
+// several boards across several accounts at once, each with its own. Written 0600 in a
+// 0700 dir: unlike a project's .eventmodelers/config.json, there is no .gitignore standing
+// between this file and the rest of the world.
+function boardCredentialsPath(boardId) {
+  return join(GLOBAL_DIR, 'boards', `${boardId}.json`);
+}
+
+// Two shapes, never mixed: the board's own credentials, or a note that this board just
+// uses the account-wide ones. The second is what makes the first-run question a
+// once-per-board event instead of something to dismiss on every start.
+function writeBoardCredentials(config) {
+  const path = boardCredentialsPath(config.boardId);
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  const body = config.useGlobal
+    ? { boardId: config.boardId, useGlobal: true, agentId: config.agentId }
+    : {
+        token: config.token,
+        organizationId: config.organizationId,
+        boardId: config.boardId,
+        baseUrl: config.baseUrl,
+        agentId: config.agentId,
+      };
+  writeFileSync(path, JSON.stringify(body, null, 2), { mode: 0o600 });
+}
+
+// The account page hands credentials over as one comma-separated blob
+// (token=...,boardId=...,organizationId=...,baseUrl=...), and an interactive prompt used to
+// be the only place that shape was accepted. --credentials takes the same blob
+// non-interactively — the JSON form works too, and '-' reads it from stdin so a token need
+// never appear in shell history or a process list. parseCredentialsPaste does the actual
+// parsing; this only turns "unparseable" into a useful error.
+function parseCredentialsArg(value) {
+  const text = value === '-' ? readFileSync(0, 'utf-8') : value;
+  const parsed = parseCredentialsPaste(text, ['organizationId', 'token']);
+  if (!parsed) {
+    console.error('❌ Could not parse --credentials. Expected the blob from https://app.eventmodelers.ai/account:');
+    console.error('   token=<uuid>,boardId=<uuid>,organizationId=<uuid>,baseUrl=https://api.eventmodelers.ai');
+    console.error("   The JSON form works too, and '-' reads it from stdin.");
+    process.exit(1);
+  }
+  return parsed;
+}
+
+// The account's default board, for when neither --board-id nor any config on the way up
+// named one. Same endpoint the kit's own fetchPlatformConfig calls — inlined here because
+// that module lives inside the kit we may not have initialized yet.
+async function fetchDefaultBoardId(baseUrl, token) {
+  try {
+    const res = await fetch(`${baseUrl}/api/config`, { headers: { 'x-token': token } });
+    if (!res.ok) return null;
+    return (await res.json()).boardId ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Per-run credentials for the global install. Precedence is this CLI's usual one, with the
+// per-board file slotted in as the most specific *file*: explicit flags beat
+// EVENTMODELERS_* env vars beat ~/.eventmodelers/boards/<board>.json beat the nearest
+// .eventmodelers/config.json up the tree beat ~/.eventmodelers/config.json. So
+// `run --standalone --board-id <uuid>` is enough for a board used before, and any run can
+// be pointed somewhere else entirely with --token/--organization-id.
+async function resolveModelingCredentials(cwd, flags, explicitConfigPath, print) {
+  const walked = loadEffectiveConfig(cwd, null, explicitConfigPath).config;
+  const explicit = Object.fromEntries(Object.entries(flags ?? {}).filter(([, v]) => v));
+
+  // Which board comes first — everything else is stored per board, so there is nothing to
+  // look up until we know which board this run is for.
+  let boardId = explicit.boardId || process.env.EVENTMODELERS_BOARD_ID || walked.boardId || null;
+  let stored = boardId ? readJsonSafe(boardCredentialsPath(boardId)) : {};
+
+  // First time this machine has seen this board, ask the one question that can't be
+  // guessed: does it get credentials of its own, or does it ride on the account-wide ones?
+  // The answer is recorded either way (as credentials, or as a useGlobal marker), so this
+  // is a once-per-board question rather than a prompt to dismiss on every start. Skipped
+  // whenever the answer is already implied — explicit credentials on the command line — or
+  // when there is no one to ask: --print, or a non-interactive stdin such as CI or a
+  // supervisor that would otherwise hang here forever.
+  const knownBoard = !!(stored.useGlobal || stored.token);
+  if (!knownBoard && !print && !explicit.token && process.stdin.isTTY) {
+    const hasAccountWide = !!(walked.token && walked.organizationId);
+    const choice = await selectPrompt(
+      boardId
+        ? `Board ${boardId} hasn't been configured on this machine yet. Where should its credentials come from?`
+        : "This board hasn't been configured on this machine yet. Where should its credentials come from?",
+      [
+        { label: 'The account-wide credentials (~/.eventmodelers/config.json)', value: 'global' },
+        { label: 'Credentials of its own — paste them now', value: 'board' },
+      ],
+      hasAccountWide ? 0 : 1,
+    );
+
+    if (choice === 'board') {
+      console.log("\n  Copy this board's credentials from https://app.eventmodelers.ai/account,");
+      console.log('  then paste them below and press Enter:\n');
+      console.log('    token=<uuid>,boardId=<uuid>,organizationId=<uuid>,baseUrl=https://api.eventmodelers.ai\n');
+      const parsed = parseCredentialsPaste(await promptPasteBlock(), ['organizationId', 'token']);
+      if (!parsed) {
+        console.error("\n❌ Couldn't make sense of that paste — nothing was saved.");
+        process.exit(1);
+      }
+      // The paste is the more specific answer about which board this is: someone who
+      // copied board B's credentials means board B, whatever the command line defaulted to.
+      if (parsed.boardId) boardId = parsed.boardId;
+      stored = parsed;
+    } else {
+      stored = { useGlobal: true };
+    }
+  }
+
+  // applyEnvOverrides runs again here on purpose: loadEffectiveConfig already folded the
+  // env layer into 'walked', and spreading the board file over that would otherwise let a
+  // stored value outrank an env var the user set for this run. A useGlobal board keeps its
+  // marker out of the merge — it names no credentials, it only says where to find them.
+  let config = stored.useGlobal
+    ? { ...applyEnvOverrides(walked), ...explicit }
+    : { ...applyEnvOverrides({ ...walked, ...stored }), ...explicit };
+  if (boardId) config.boardId = boardId;
+
+  if (!config.token || !config.organizationId) {
+    // Nothing anywhere — ask once, and save it account-wide rather than into this
+    // directory, so every later run from anywhere is silent.
+    console.log('🔐 No Eventmodelers credentials found — configuring them once, account-wide.\n');
+    config = await configureCredentials({
+      config,
+      configPath: join(GLOBAL_DIR, 'config.json'),
+      targetDir: homedir(),
+      requiredFields: ['organizationId', 'token'],
+      boardIdOptional: true,
+      print,
+      skipGitignore: true,
+    });
+  }
+
+  if (!config.baseUrl) config.baseUrl = DEFAULT_BASE_URL;
+
+  if (!config.token || !config.organizationId) {
+    console.error('❌ A modeling agent needs a token and an organizationId — pass --token/--organization-id, set EVENTMODELERS_TOKEN/EVENTMODELERS_ORGANIZATION_ID, or run init-config --global once.');
+    process.exit(1);
+  }
+
+  // A modeling agent always runs for exactly one board (see runModeling) — fall back to
+  // the account default before giving up, since that is the board the web app opens too.
+  if (!config.boardId) config.boardId = await fetchDefaultBoardId(config.baseUrl, config.token);
+  if (!config.boardId) {
+    console.error('❌ No board id — a modeling agent always runs for exactly one board. Pass --board-id <uuid>.');
+    process.exit(1);
+  }
+
+  // Distinguishes this agent from any other pinging the same board, and has to stay stable
+  // across runs or the platform sees a brand-new agent on every restart. Per board, since
+  // that is the identity the alive-ping is scoped to.
+  config.agentId = stored.agentId || readJsonSafe(boardCredentialsPath(config.boardId)).agentId || randomUUID();
+  writeBoardCredentials(stored.useGlobal
+    ? { boardId: config.boardId, useGlobal: true, agentId: config.agentId }
+    : config);
+
+  return config;
+}
+
+// Initializes the global install if it isn't there (or was written by an older CLI) and
+// returns it, ready to be handed to runModeling as the project dir. Re-scaffolded only on
+// a version change, so the copy happens once per upgrade rather than once per run.
+async function ensureGlobalKit(baseUrl) {
+  const manifestPath = join(GLOBAL_KIT_DIR, MODELING_KIT.kitDirName, '.eventmodelers', 'install-manifest.json');
+
+  if (readJsonSafe(manifestPath).version !== CLI_VERSION) {
+    console.log(`📦 Initializing the global modeling install in ${GLOBAL_KIT_DIR}\n`);
+    await installStack(MODELING_KIT.key, MODELING_KIT, {
+      targetDir: GLOBAL_KIT_DIR,
+      // Nothing but the kit: no root CLAUDE.md router, no .gitignore merge, no credentials
+      // at rest, and no "now run this" epilogue in front of a loop about to start anyway.
+      skipRootScaffold: true,
+      skipCredentials: true,
+      skipEpilogue: true,
+      // Stands in for "yes" at the non-empty-kit-dir prompt — a re-scaffold after an
+      // upgrade is precisely what we are asking for, and there is no one here to ask.
+      print: true,
+    });
+  }
+
+  // Holds no secret — just the URL and a `${EVENTMODELERS_TOKEN}` placeholder, which
+  // `claude` expands from the process env runModeling's spawn sets. Rewritten every run
+  // because baseUrl is a per-run value here (prod vs beta), unlike in a project install.
+  ensureMcpRegistered(GLOBAL_KIT_DIR, baseUrl);
+
+  return GLOBAL_KIT_DIR;
+}
+
 // `run --modeling`: modeling-kit's one and only runtime mode — there is no
 // cold-spawn/tasks.json loop for this kit (that's a build-kit concept; see the
 // `run` command's build-kit-vs-modeling-kit gate above). It keeps ONE Claude
@@ -1318,7 +1547,7 @@ function ensureEnvToken(targetDir, token) {
 // question, sketch a screen. Without the flag that channel is still subscribed on
 // the same connection and every event on it is dropped, so the two modes differ by
 // one filter rather than by a whole second realtime stack.
-async function runModeling(kitDir, projectDir, verbose = false, standalone = false) {
+async function runModeling(kitDir, projectDir, verbose = false, standalone = false, overrides = null) {
   const configLibPath = join(kitDir, 'lib', 'config.js');
   if (!existsSync(configLibPath)) {
     console.error(`❌ ${relative(process.cwd(), configLibPath)} not found — --modeling needs a kit installed via \`init --modeling\`.`);
@@ -1326,13 +1555,26 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
   }
   const { loadLocalConfig, fetchPlatformConfig } = await import(pathToFileURL(configLibPath).href);
 
-  const local = loadLocalConfig(kitDir);
-  local.agentId = ensureAgentId(kitDir, 'MODELING');
+  // Overrides are applied twice, on purpose. Here, so the credential checks below and
+  // fetchPlatformConfig's own request use the token this run was given rather than
+  // whatever the config walk turned up; and again after that fetch, because it merges the
+  // platform's answer OVER the local config — without which the account's default board
+  // would quietly outrank an explicit --board-id.
+  // The global install never inherits a config file: its credentials are resolved per
+  // run (resolveModelingCredentials) and handed over whole. Walking the filesystem here
+  // would also print loadLocalConfig's "no config found — platform sync disabled" note,
+  // which is exactly backwards when a complete config was just passed in.
+  const local = overrides ? { ...overrides } : loadLocalConfig(kitDir);
+  // The global install's overrides carry their own agent id, kept per board in
+  // ~/.eventmodelers/boards/<board>.json — one dir driving several boards must not have
+  // them all upsert one shared alive row. A project install keeps its id in the project
+  // root config, namespaced by agent type, as it always has.
+  if (!overrides) local.agentId = ensureAgentId(kitDir, 'MODELING');
   if (!local.token || !local.organizationId) {
     console.error('❌ --modeling needs platform credentials in .eventmodelers/config.json (token + organizationId) — run `/connect` once or paste your config first.');
     process.exit(1);
   }
-  const cfg = await fetchPlatformConfig(local); // adds realtimeProvider + its provider-specific fields (supabaseUrl/supabaseAnonKey or pocketbaseUrl), + boardId if the config has a default one
+  const cfg = { ...(await fetchPlatformConfig(local)), ...(overrides ?? {}) }; // adds realtimeProvider + its provider-specific fields (supabaseUrl/supabaseAnonKey or pocketbaseUrl), + boardId if the config has a default one
   if (!cfg.boardId) {
     console.error('❌ --modeling needs a boardId — a modeling agent always runs for exactly one board. Run `/connect board=<uuid>` once, or add boardId to .eventmodelers/config.json.');
     process.exit(1);
@@ -1736,8 +1978,11 @@ program
 // only ever read/write an already-fetched .slices/, and report their own hint (run `fetch`
 // first) when that's missing. set-slice-status only touches credentials at all for --remote,
 // which prompts for them itself the same way fetch does. release-notes only reads the CLI's
-// own bundled RELEASE_NOTES.md, no project state involved at all.
-const NO_INIT_REQUIRED = new Set(['init', 'init-config', 'stacks', 'status', 'config', 'uninstall', 'fetch', 'activate-context', 'set-slice-status', 'release-notes']);
+// own bundled RELEASE_NOTES.md, no project state involved at all. run resolves its own kit
+// dir: a modeling run falls back to the global install (see ensureGlobalKit) rather than
+// requiring one here, and the build-kit branch reports a better-targeted error of its own
+// than this generic gate can.
+const NO_INIT_REQUIRED = new Set(['init', 'init-config', 'stacks', 'status', 'config', 'uninstall', 'fetch', 'activate-context', 'set-slice-status', 'release-notes', 'run']);
 
 program.hook('preAction', (_thisCommand, actionCommand) => {
   if (NO_INIT_REQUIRED.has(actionCommand.name())) return;
@@ -2064,10 +2309,36 @@ program
 credentialFlags(program
   .command('init-config')
   .description('Configure credentials only — writes .eventmodelers/config.json in the current directory, or ~/.eventmodelers/config.json with --global')
-  .option('--global', 'Write account-wide defaults (organizationId + token only) to ~/.eventmodelers/config.json instead of the project'))
+  .option('--global', 'Write account-wide defaults (organizationId + token only) to ~/.eventmodelers/config.json instead of the project')
+  .option('--credentials <values>', 'Credentials as the comma-separated blob from app.eventmodelers.ai/account (token=...,boardId=...,organizationId=...,baseUrl=...), the equivalent JSON, or - to read either from stdin. When the blob names a board it configures THAT board (~/.eventmodelers/boards/<board>.json), which is all a later run --standalone --board-id <uuid> then needs.'))
   .action(async (opts, command) => {
     const globalOpts = command.optsWithGlobals();
     const overrides = credentialOverridesFromOpts(opts);
+
+    // A blob naming a board configures that board's own file rather than a project or
+    // account-wide config: the per-board store is keyed by board id, and the blob is
+    // carrying one. --global still means account-wide identity only, and without
+    // --credentials nothing here changes, so no existing invocation behaves differently.
+    if (opts.credentials && !opts.global) {
+      const parsed = {
+        ...parseCredentialsArg(opts.credentials),
+        ...Object.fromEntries(Object.entries(overrides).filter(([, v]) => v)),
+      };
+      if (!parsed.boardId) {
+        console.error('❌ --credentials names no board — add boardId=<uuid> to it, or pass --board-id, so we know which board this configures.');
+        console.error('   (For account-wide identity with no board, use --global.)');
+        process.exit(1);
+      }
+      if (!parsed.baseUrl) parsed.baseUrl = DEFAULT_BASE_URL;
+      // Preserved across re-configuration: the platform keys a board's alive-ping on it, so
+      // regenerating it would present a long-running agent as a brand-new one.
+      parsed.agentId = readJsonSafe(boardCredentialsPath(parsed.boardId)).agentId || randomUUID();
+      writeBoardCredentials(parsed);
+      console.log('\n  ✓ Saved credentials for board ' + parsed.boardId + ' to ' + boardCredentialsPath(parsed.boardId));
+      console.log('\n  Start the agent from anywhere with:\n');
+      console.log('    npx @eventmodelers/cli run --standalone --board-id ' + parsed.boardId + '\n');
+      return;
+    }
 
     if (opts.global) {
       // Deliberately narrower than a project config: a board is specific to one
@@ -2077,7 +2348,12 @@ credentialFlags(program
       const configPath = join(homedir(), '.eventmodelers', 'config.json');
       const requiredFields = ['organizationId', 'token'];
       const existing = readJsonSafe(configPath);
+      const pasted = opts.credentials ? parseCredentialsArg(opts.credentials) : {};
       const base = { organizationId: existing.organizationId, token: existing.token };
+      // Any boardId/baseUrl in the blob is dropped here, exactly as the interactive paste
+      // flow's own result is below — --global persists identity and nothing else.
+      if (pasted.organizationId) base.organizationId = pasted.organizationId;
+      if (pasted.token) base.token = pasted.token;
       if (overrides.organizationId) base.organizationId = overrides.organizationId;
       if (overrides.token) base.token = overrides.token;
 
@@ -2090,7 +2366,11 @@ credentialFlags(program
         overrides: {},
         print: globalOpts.print,
         skipGitignore: true,
-        force: true,
+        // A bare "init-config --global" means "re-ask me", so it forces the prompt even
+        // when the config is already complete. Supplying --credentials (or --token /
+        // --organization-id) is the opposite instruction: the answer is right there on the
+        // command line, and prompting for it anyway would hang any non-interactive caller.
+        force: !(base.organizationId && base.token),
       });
 
       // configureCredentials' generic paste/manual flow may have picked up
@@ -2124,16 +2404,19 @@ credentialFlags(program
     }
   });
 
-program
+credentialFlags(program
   .command('run')
-  .description('Start the agent loop from the installed kit dir — build-kit stacks: ralph-claude.js (default); modeling-kit: requires --modeling')
+  .description('Start the agent loop from the installed kit dir — build-kit stacks: ralph-claude.js (default); modeling-kit: --modeling, or --standalone, which needs no install at all')
   .option('--ollama', 'Use ralph-ollama.js instead of the default Claude runner (build-kit stacks only)')
   .option('--bash', 'Use the bash-only ralph.sh loop (build-kit stacks only, no realtime)')
-  .option('--modeling', 'Keep one Claude process warm across prompts instead of spawning a fresh one per task, for low-latency voice/live use. Modeling-kit installs only — there is no cold-spawn/tasks.json loop for modeling-kit. Built into the CLI, not a per-project file.')
-  .option('--standalone', 'Let the modeling agent act on its own initiative: on top of direct prompts it subscribes to the board\'s change channel (like the build agents do) and, whenever the board goes quiet after an edit, decides for itself what a human collaborator would do next — fill in examples on a new node, post a comment, sketch a screen. Requires --modeling.')
+  .option('--modeling', 'Keep one Claude process warm across prompts instead of spawning a fresh one per task, for low-latency voice/live use. Runs from a modeling-kit install in this directory, or from the global install (~/.eventmodelers/kit) when there is none. Built into the CLI, not a per-project file.')
+  .option('--standalone', 'Let the modeling agent act on its own initiative: on top of direct prompts it subscribes to the board\'s change channel (like the build agents do) and, whenever the board goes quiet after an edit, decides for itself what a human collaborator would do next — fill in examples on a new node, post a comment, sketch a screen. Implies --modeling.')
+  .option('--global', 'Run the modeling agent from the global install (~/.eventmodelers/kit), initializing it on first use, and ignore any kit in this directory. This is also what --modeling/--standalone fall back to on their own when nothing is installed here — pass it explicitly to prefer the global install over a local one. Credentials come from the flags below, EVENTMODELERS_* env vars, or ~/.eventmodelers/boards/<board>.json, so nothing is written into the current directory.')
   .option('--local', 'Skip platform config/credential lookup entirely and run the local-only loop (no board sync, no realtime agent) — even if .eventmodelers/config.json has credentials (build-kit stacks only)')
   .option('--verbose', 'Log every tool call\'s full input (commands, skill args, file paths) and assistant reasoning text. Default is condensed, high-level per-step logging only.')
-  .action(async (opts) => {
+  .option('--credentials <values>', 'Credentials as the comma-separated blob from app.eventmodelers.ai/account (token=...,boardId=...,organizationId=...,baseUrl=...), the equivalent JSON, or - to read either from stdin. Saved to ~/.eventmodelers/boards/<board>.json, so it is only needed once per board, and passing it skips the first-run question. The individual flags below override single fields of it.'))
+  .action(async (opts, command) => {
+    const globalOpts = command.optsWithGlobals();
     const cwd = process.cwd();
     // Both kit dirs can be installed side by side (e.g. running a build-kit and a
     // modeling-kit agent from the same project). findInstalledKitDir only ever
@@ -2154,41 +2437,56 @@ program
     // cold-spawn/tasks.json loop (default, or --ollama/--bash). Neither falls back
     // to the other's mechanism, so each side is gated explicitly below rather than
     // just being left to fail on a missing file.
-    if (opts.modeling) {
-      if (opts.standalone && (opts.bash || opts.ollama)) {
-        console.error('❌ --standalone is a --modeling-only mode — it has no meaning for the build-kit runners selected by --bash/--ollama.');
-        process.exit(1);
-      }
+    // --standalone implies --modeling: it already refused every other runner, so there
+    // was never a second thing it could have selected, and requiring both flags only made
+    // the shorter, more obvious command fail. --global picks the modeling loop too — it has
+    // no meaning for a build kit, which is scaffolded per project by definition.
+    if (opts.modeling || opts.standalone || opts.global) {
+      const picked = opts.modeling ? '--modeling' : opts.standalone ? '--standalone' : '--global';
       if (opts.bash || opts.ollama) {
-        console.error('❌ --modeling is mutually exclusive with --bash/--ollama — those select a build-kit runner, which --modeling has no use for.');
+        console.error(`❌ ${picked} is mutually exclusive with --bash/--ollama — those select a build-kit runner, which the modeling loop has no use for.`);
         process.exit(1);
       }
       if (opts.local) {
-        console.error('❌ --modeling has no local-only mode — it is always driven by the org-wide realtime prompt queue, so --local has no use for it.');
+        console.error(`❌ ${picked} has no local-only mode — it is always driven by the org-wide realtime prompt queue, so --local has no use for it.`);
         process.exit(1);
       }
-      if (!modelingKitDir) {
-        console.error(`❌ --modeling only supports a modeling-kit install (${MODELING_KIT.kitDirName}/) — it subscribes to the org-wide prompt queue, which build-kit stacks don't have. Use \`eventmodelers run\` (optionally with --ollama/--bash) for build-kit's slice-status loop instead.`);
-        process.exit(1);
+
+      // A kit in this directory wins unless --global explicitly asks for the other one.
+      // Otherwise: the global install, initialized on first use, driven by this run's own
+      // credentials resolved from flags/env/~/.eventmodelers — so the current directory is
+      // neither read nor written, and the command works from anywhere.
+      let kitDir = opts.global ? null : modelingKitDir;
+      let projectDir = kitDir ? resolve(kitDir, '..') : null;
+      let overrides = null;
+      if (!kitDir) {
+        // The blob and the individual flags are both "explicit", so they share a
+        // precedence tier — with a single --token/--board-id winning, since overriding one
+        // field of a pasted blob is the only reason to pass both.
+        const flags = {
+          ...(opts.credentials ? parseCredentialsArg(opts.credentials) : {}),
+          ...Object.fromEntries(Object.entries(credentialOverridesFromOpts(opts)).filter(([, v]) => v)),
+        };
+        const config = await resolveModelingCredentials(cwd, flags, globalOpts.config, globalOpts.print);
+        projectDir = await ensureGlobalKit(config.baseUrl);
+        kitDir = join(projectDir, MODELING_KIT.kitDirName);
+        overrides = config;
       }
+
       // Writes to a stdout pipe are asynchronous on POSIX — without waiting for this
-      // write's own flush callback, the heavier synchronous/async work runModeling()
-      // does right after (dynamic imports, config reads) can eat the event-loop tick
-      // this write needed to drain, so a piped watcher sees the ping arrive after
-      // runModeling's own [modeling] log lines instead of before them.
-      await new Promise((res) => process.stdout.write(`▶ Starting modeling loop (warm Claude process) for ${relative(cwd, modelingKitDir)}...\n\n`, res));
+      // write's own flush callback, the heavier synchronous/async work runModeling() does
+      // right after (dynamic imports, config reads) can eat the event-loop tick this write
+      // needed to drain, so a piped watcher sees the ping arrive after runModeling's own
+      // [modeling] log lines instead of before them.
+      const shown = relative(cwd, kitDir);
+      await new Promise((res) => process.stdout.write(`▶ Starting modeling loop (warm Claude process) for ${shown && !shown.startsWith('..') ? shown : kitDir}...\n\n`, res));
       try {
-        await runModeling(modelingKitDir, resolve(modelingKitDir, '..'), !!opts.verbose, !!opts.standalone);
+        await runModeling(kitDir, projectDir, !!opts.verbose, !!opts.standalone, overrides);
       } catch (err) {
         console.error('[modeling] Fatal:', err);
         process.exit(1);
       }
       return;
-    }
-
-    if (opts.standalone) {
-      console.error('❌ --standalone only applies to `run --modeling` — a build-kit agent already reacts to board changes (that is its only trigger), so there is nothing for this flag to switch on.');
-      process.exit(1);
     }
 
     if (!buildKitDir) {
@@ -2198,6 +2496,7 @@ program
         console.error(`❌ A bridge-kit install (${BRIDGE_KIT.kitDirName}/) only runs via \`eventmodelers bridge\` — it has no --modeling/--ollama/--bash modes.`);
       } else {
         console.error(`❌ No kit installed in ${cwd} — run \`eventmodelers install\` first.`);
+        console.error('   (A modeling agent needs no install at all: eventmodelers run --standalone --board-id <uuid>)');
       }
       process.exit(1);
     }
