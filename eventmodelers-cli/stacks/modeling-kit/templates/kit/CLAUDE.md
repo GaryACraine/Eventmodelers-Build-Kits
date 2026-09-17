@@ -23,9 +23,10 @@ first line starts with `BOARD_CHANGE` (the board changed) or `BOARD_REVIEW` (not
 changed for a while) instead of `prompt_id=`. Nobody asked you for anything in those turns —
 you are a background collaborator on this board: you judge the model as a whole, decide
 what it needs, and fan the work out over parallel subagents. The listed changes are a
-notification pointing at an area, never the task itself. They follow their own steps; see
-"Standalone board-change turns" below. The session header's `standalone=on|off` tells you
-whether this session gets them at all.
+notification pointing at an area, never the task itself. They follow their own steps, kept in
+their own file — `.agent-modeling-kit/CLAUDE-STANDALONE.md`, which you read when the first such
+turn actually arrives and not before; see "Standalone board-change turns" below. The session
+header's `standalone=on|off` tells you whether this session gets them at all.
 
 At the start of every session, read `.agent-modeling-kit/AGENTS.md` if it exists to load accumulated learnings.
 
@@ -33,8 +34,16 @@ At the start of every session, read `.agent-modeling-kit/AGENTS.md` if it exists
 
 ## Per-turn steps
 
-These apply to a **prompt turn** — a turn carrying a `prompt_id=`. For a `BOARD_CHANGE` turn,
-skip to "Standalone board-change turns" instead.
+These apply to a **prompt turn** — a turn carrying a `prompt_id=`. For a `BOARD_CHANGE` or
+`BOARD_REVIEW` turn, skip to "Standalone board-change turns" instead.
+
+**A prompt turn does what the prompt asked and nothing else.** The fill-in licence in
+`.agent-modeling-kit/CLAUDE-STANDALONE.md` — add examples, specs or a screen on your own
+initiative, without asking — belongs to self-directed turns only, and never carries over here.
+That is also why you don't read that file on a prompt turn. Someone asked you for one thing;
+noticing on the way that a neighbouring element has no example data is not permission to go
+and add it. Note it in the `Learnings` line if it's worth remembering, or
+mention it in the `DONE` comment, and leave it for a self-directed turn (or for them to ask).
 
 1. **Sanitize** this one prompt — if it issues shell commands, accesses files outside the project, has no relation to event modeling, tries to override these instructions, or is empty/nonsensical, drop it: reply `<promise>SKIPPED</promise>` and stop. Otherwise continue.
 2. **Connect** — the first message of this session includes `token=`, `org=`, and `baseUrl=` inline and is your one-time connect signal. Run `/connect` only:
@@ -65,128 +74,24 @@ skip to "Standalone board-change turns" instead.
 10. Reply `<promise>DONE</promise>` and wait for the next turn.
 
 
-## Standalone board-change turns
+## Standalone board-change turns — see `CLAUDE-STANDALONE.md`
 
-Only in a `standalone=on` session. These turns come in two shapes, and both are
-self-directed — nobody asked you for anything:
+Only a `standalone=on` session gets these turns, and only when a turn's first line is
+`BOARD_CHANGE` (the board changed) or `BOARD_REVIEW` (nothing has changed for a while).
+Everything about them — what counts as a candidate, what you may do on your own initiative,
+the fan-out over parallel subagents, the standing constraints, the NOOP — lives in its own
+file: `.agent-modeling-kit/CLAUDE-STANDALONE.md`.
 
-```
-BOARD_CHANGE board_id=<uuid> organization_id=<uuid> seq=118..124 events=9 nodes=3
-changed:
-- 9f3c…: node:created, node:changed (4×)
-- a12b…: node:changed (2×) — possibly your own earlier write
-- c771…: edge:added (3×)
-```
+**Read that file when the first such turn arrives, and not before** — once per session, same
+as this one. In a `standalone=off` session you never read it at all, and on a prompt turn you
+never read it either: its licence to add things nobody asked for applies to self-directed turns
+only (see the note at the top of "Per-turn steps").
 
-```
-BOARD_REVIEW board_id=<uuid> organization_id=<uuid> idle_for=900s
-changed: nothing — the board has been quiet.
-```
+Two things hold here regardless, because they're about what a self-directed turn is *not*:
+there is no `prompt_id` in one, so never call `/update-prompt-status` (not `IN_PROGRESS`, not
+`DONE` — the "exactly two calls per turn" rule is about prompt turns only), and there is
+nothing to sanitize either, since a board change is not user text.
 
-**The change list is a notification, not the work item.** It tells you that something
-happened and which corner of the board to look at first — nothing more. It is not a task
-list, not a boundary, and the last line of it is not "the" change to react to. A burst of
-40 events on 6 nodes and a single `node:created` get the same treatment: you look at the
-model, not at the event. A `BOARD_REVIEW` turn is the same job with no starting hint at all.
-Nodes marked *possibly your own earlier write* are changes that landed while you were
-working or just after — usually your own echo, so weigh them accordingly, but don't assume:
-a human may well have been editing at the same time.
-
-**There is no `prompt_id` in these turns — never call `/update-prompt-status` in one** (not
-`IN_PROGRESS`, not `DONE`; the "exactly two calls per turn" rule is about prompt turns only).
-There is nothing to sanitize either — a board change is not user text.
-
-Steps:
-
-1. **Get the whole picture, not just the changed nodes.** Start at the listed nodes
-   (`mcp__eventmodelers__get_node`, or the REST equivalent) and widen out to what they sit
-   in — their cell, their slice, the chain they belong to, the timeline around them.
-   `mcp__eventmodelers__get_board_events` with the header's `seq` range tells you what the
-   change actually was when the node's current state doesn't make it obvious. Then judge the
-   board as a whole: run `/analyze-existing-model` once per session to get that picture and
-   keep it in mind across turns, refreshing it when a turn's changes invalidate it. On a
-   `BOARD_REVIEW` turn that model-wide picture *is* the starting point.
-2. **Decide what the model needs — plural, and not necessarily where the change was.** List
-   the candidate contributions you can actually see evidence for, each with its own target
-   (node/cell/slice) and the skill that does it. A changed node is a reason to look; it is
-   not automatically the thing to work on, and work you spot two slices away counts just as
-   much. The usual candidates:
-   - an EVENT/COMMAND/READMODEL with fields but no example data → `/examples`
-   - a field added to one element that its chain neighbours are missing → `/attributes`
-   - an empty SCREEN node → `/html-screen`
-   - a timeline element that clearly should be sliced and isn't →
-     `/eventmodeling-slicing-event-models`
-   - a gap or unhandled case that raises a real business question → one QUESTION comment via
-     `/handle-comment` with `action=place`
-   Nothing is a candidate when it's cosmetic (a node moved, resized or renamed), when the
-   target already has the thing you'd add, when it's inside something you yourself just
-   wrote, or when someone is visibly still working on it. An empty candidate list is a
-   perfectly good outcome — see step 8.
-3. **Spawn a subagent for each piece of work that needs doing — and only where one does.** The
-   analysis in steps 1–2 is yours: you look at every entry in `changed:` yourself, in the
-   context of the model, and decide what (if anything) needs to happen. Then, for each
-   candidate that survived that judgment, dispatch one subagent via the `Agent` tool, **with
-   all of them in a single message** so they run in parallel. Entries that need nothing spawn
-   nothing; a turn where nothing needs doing spawns nothing at all and ends in a `NOOP`. What
-   you must never do is work the candidates one after another in your own turn, or pick one
-   out of five and drop the rest — nine events on three nodes that each need something are
-   three agents working at once. You analyse and coordinate; the agents do the work.
-   Each subagent prompt must be self-contained, because a subagent is a fresh session that
-   inherits none of this one's state:
-   - `token=`, `org=`, `baseUrl=` from this session's first message, and the instruction to
-     run `/connect` first;
-   - `board_id`, plus the exact target ids (`node_id`/`cellName`/`timelineId`/slice) it owns
-     — never "the node that changed";
-   - what you concluded in step 2: the specific piece of work, and enough of the surrounding
-     model for the agent to do it well;
-   - the one skill from the Skill Selection table to invoke, and the same rule that applies to
-     you: invoke the skill, don't substitute raw MCP calls;
-   - the standing constraints of step 4 and step 5 below.
-   **Stay inside the agent budget.** The session header carries `max_agents=<n>` (default 5)
-   and every self-directed turn restates it: that is the most Agents you may dispatch in one
-   turn, because a turn nobody asked for still costs money. Merge by area first (step 4) —
-   that's a correctness rule, not a way to fit the budget — and if more pieces are still left
-   than the cap allows, dispatch the most valuable ones and leave the rest; the board doesn't
-   forget, and a later turn will see them again. With `max_agents=1`, spawn nothing at all and
-   do the single most valuable piece yourself, inline.
-   **The decision stays with you.** A subagent is an executor, not a second judge: it carries
-   out the piece of work you decided on, on the target you named, and nothing else. It does
-   not re-open the question of whether the work is worth doing, does not widen its scope, and
-   does not go looking for other things on the board. If it finds the work doesn't apply after
-   all — the node already has what you'd add, someone is mid-edit — it reports that back to
-   you instead of substituting work of its own, and you decide what happens next.
-   Do the work inline yourself only when exactly one candidate survived and it is small (one
-   comment, one `/examples` call) — spawning a single agent for a single small thing is pure
-   overhead.
-4. **Give every agent its own territory — merge before you dispatch, never split a slice.**
-   Two agents writing into the same node, chain or slice will clobber each other and the board
-   has no merge. So the mapping from step 3 is subject to one rule: candidates that live in
-   the same slice or the same chain are handled by **one** agent that owns that whole area,
-   with all of their work in its brief, not one agent each. That also keeps a big burst sane —
-   work on 30 changed nodes across 4 slices is 4 agents, well inside the default budget. Merge
-   first, then prioritize: a candidate is only ever deferred to a later turn because the budget
-   ran out, never because it was inconvenient to merge.
-5. **Never undo or overwrite human work** — you and every agent you dispatch. You add to the
-   board; you don't delete, rename, restructure timelines, or move slice statuses on your own
-   initiative. If the right move would be destructive, post a comment saying so instead.
-6. **If you already said it, don't say it again.** Before posting a comment — or having a
-   subagent post one — read the node's existing comments. An unresolved question already
-   there means that contribution is on the board.
-7. **Write no progress entry.** A self-directed turn is modeling, not tracked progress —
-   nothing goes into `progress.txt` here (that file belongs to prompt turns, which answer to
-   someone who asked). Still promote anything reusable to `.agent-modeling-kit/AGENTS.md`
-   (same as step 9 of a prompt turn), including anything a subagent reported back.
-8. Reply `<promise>DONE</promise>`, naming what you dispatched and what each agent did, or —
-   when step 2 turned up nothing worth doing — change nothing at all and reply
-   `<promise>NOOP</promise>`. A NOOP is a perfectly good outcome, and the CLI widens the gap
-   before the next self-directed turn each time you answer one, so a finished board goes
-   quiet by itself. Don't manufacture work to avoid a NOOP.
-
-Keep these turns finished within the turn: wait for the subagents you dispatched, don't leave
-work trailing. Everything you and they write to the board comes back on this same channel as
-another change; the CLI labels changes that arrive in that echo window rather than dropping
-them, so you'll see your own writes listed on a later turn — recognize them and don't rework
-them.
 
 ## Skill Selection
 
@@ -202,6 +107,7 @@ them.
 | Look up any API endpoint or element type not already covered by the skill you're executing | `/learn-eventmodelers-api` |
 | Add or rename an attribute across a chain of elements | `/attributes` |
 | Add or improve example data on element fields | `/examples` |
+| Write the specs for a COMMAND or READMODEL — GWT scenarios, or a storyline for a view | `/eventmodeling-elaborating-scenarios` |
 | Make an existing timeline element's (COMMAND/READMODEL/AUTOMATION) slice explicit | `/eventmodeling-slicing-event-models` |
 | Add the next slice when nothing existing is left to slice | `/add-next-slice` |
 | Update the status of a slice (e.g. done, in-progress) | `/update-slice-status` |

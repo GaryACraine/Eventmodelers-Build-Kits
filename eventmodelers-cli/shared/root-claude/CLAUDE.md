@@ -11,3 +11,8 @@ together:
 
 Neither is guaranteed to exist — this file is installed once, up front, before either kit
 is known to be present.
+
+`.agent-modeling-kit/CLAUDE-STANDALONE.md` is deliberately *not* in that list: it holds the
+rules for the self-directed turns a `run --standalone` session gets, and the agent in such a
+session reads it itself when the first one arrives. Leave it alone otherwise — it licenses
+work nobody asked for, which is right for those turns and wrong everywhere else.

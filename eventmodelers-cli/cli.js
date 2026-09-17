@@ -1605,7 +1605,9 @@ async function ensureGlobalKit(baseUrl) {
 // read-only config resolution (`loadLocalConfig`/`fetchPlatformConfig`) is reused
 // from the kit's lib/config.js, to avoid duplicating the config-file-walk logic.
 // See `.agent-modeling-kit/CLAUDE.md` for the per-turn instructions this mode's
-// modeling session follows.
+// modeling session follows — and `.agent-modeling-kit/CLAUDE-STANDALONE.md` for the
+// self-directed turns below, kept in their own file precisely so a non-standalone
+// session (and a prompt turn in a standalone one) never loads them.
 //
 // `standalone` adds a second, self-directed lane on top of that: the loop also
 // listens on the board's own change channel (`board:<id>` — the same one the web
@@ -1967,12 +1969,19 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
     'which parts of the model to look at first. The task is to judge the model as a whole — each changed area ' +
     'in its context (its slice, its chain, the timeline around it), plus anything still obviously unfinished ' +
     'elsewhere — and then get the useful work done. Do not stop at the last event, and do not treat the ' +
-    'nodeId list as the boundary of the work. You do the analysis: look at every entry above, decide what ' +
+    'nodeId list as the boundary of the work. Filling in detail behind a human who is still building is ' +
+    'exactly what you are for: example data, specs (GWT/storyline), a missing attribute along a chain and ' +
+    'empty screens are additive, cheap to undo and need no permission — a node placed a minute ago is the ' +
+    'best target for them, not a reason to wait, and the board was already quiet before this turn was ' +
+    'handed to you. Only board-wide sweeps and structural moves (renames, deletions, re-shaping, slice ' +
+    'statuses) get a comment first instead of being done. An unanswered question you posted earlier parks ' +
+    'that one sweep, never the fill-in work. You do the analysis: look at every entry above, decide what ' +
     'actually needs doing, and then work in parallel rather than serially — dispatch one Agent per piece of ' +
     'work that needs doing, all in a single message, merging pieces that share a slice or chain so no two ' +
-    `agents write to the same area. ${AGENT_BUDGET} Follow the "Standalone board-change turns" section of ` +
-    '.agent-modeling-kit/CLAUDE.md, and if the model genuinely needs nothing right now, spawn nothing, change ' +
-    'nothing and reply <promise>NOOP</promise>.';
+    `agents write to the same area. ${AGENT_BUDGET} Read .agent-modeling-kit/CLAUDE-STANDALONE.md now (once ` +
+    'per session — skip it if you already read it on an earlier self-directed turn) and follow it: it holds the ' +
+    'steps for this kind of turn, and only this kind. If the model genuinely needs nothing right now, spawn ' +
+    'nothing, change nothing and reply <promise>NOOP</promise>.';
 
   function buildStandaloneTurn() {
     const lines = [...observed.entries()].map(
@@ -2004,7 +2013,8 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
         'Nobody asked you for this and nothing changed: you are working on this board in the background, on ' +
         'your own initiative. Look over the model as a whole and decide what it still needs; for each piece of ' +
         'work that needs doing, dispatch one Agent, all in a single message so they run in parallel, exactly ' +
-        `as the "Standalone board-change turns" section of .agent-modeling-kit/CLAUDE.md describes. ${AGENT_BUDGET} ` +
+        'as .agent-modeling-kit/CLAUDE-STANDALONE.md describes — read it now unless you already read it on an ' +
+        `earlier self-directed turn in this session. ${AGENT_BUDGET} ` +
         'If the model needs nothing, spawn nothing, change nothing and reply <promise>NOOP</promise>.',
     );
   }
@@ -2608,7 +2618,7 @@ credentialFlags(program
   .option('--ollama', 'Use ralph-ollama.js instead of the default Claude runner (build-kit stacks only)')
   .option('--bash', 'Use the bash-only ralph.sh loop (build-kit stacks only, no realtime)')
   .option('--modeling', 'Keep one Claude process warm across prompts instead of spawning a fresh one per task, for low-latency voice/live use. Runs from a modeling-kit install in this directory, or from the global install (~/.eventmodelers/kit) when there is none. Built into the CLI, not a per-project file.')
-  .option('--standalone', 'Let the modeling agent work the board in the background, on its own initiative: on top of direct prompts it subscribes to the board\'s change channel (like the build agents do) and, whenever the board goes quiet after an edit — or has simply been idle for a while — it takes a turn nobody asked for. Changed nodes are a notification, not the task: it judges the model as a whole and fans the work out over parallel subagents, one per changed area (examples on a new node, a missing attribute along a chain, a screen, a question comment). Implies --modeling.')
+  .option('--standalone', 'Let the modeling agent work the board in the background, on its own initiative: on top of direct prompts it subscribes to the board\'s change channel (like the build agents do) and, whenever the board goes quiet after an edit — or has simply been idle for a while — it takes a turn nobody asked for. Changed nodes are a notification, not the task: it judges the model as a whole and fans the work out over parallel subagents, one per changed area (examples on a new node, specs for a new command or read model, a missing attribute along a chain, a screen, a question comment). Filling that detail in while the human keeps modeling is the point — it does not wait for the board to be finished. Implies --modeling.')
   .option('--max-agents <n>', 'Cap how many subagents a self-directed --standalone turn may dispatch at once, to bound what an unattended agent can spend per turn. The agent merges work that shares a slice or chain first, then takes the most valuable pieces up to this many and leaves the rest for a later turn. 1 makes it do the single most valuable piece itself, without spawning anything. Default 5. Ignored without --standalone — prompt turns are one piece of work by definition.', '5')
   .option('--global', 'Run the modeling agent from the global install (~/.eventmodelers/kit), initializing it on first use, and ignore any kit in this directory. This is also what --modeling/--standalone fall back to on their own when nothing is installed here — pass it explicitly to prefer the global install over a local one. Credentials come from the flags below, EVENTMODELERS_* env vars, or ~/.eventmodelers/boards/<board>.json, so nothing is written into the current directory.')
   .option('--local', 'Skip platform config/credential lookup entirely and run the local-only loop (no board sync, no realtime agent) — even if .eventmodelers/config.json has credentials (build-kit stacks only)')

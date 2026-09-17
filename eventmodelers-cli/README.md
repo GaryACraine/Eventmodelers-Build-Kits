@@ -231,11 +231,22 @@ unfinished — and decides what needs doing. Then it fans the work out: **one su
 of work that needs doing, all dispatched in parallel** (pieces sharing a slice or chain are
 merged into one agent, so no two agents write to the same area). The decision stays with the
 main agent; each subagent is an executor that carries out the one piece it was given, invoking
-the matching skill for its own target — example data on a freshly placed element, a missing
-attribute on the rest of the chain, a screen for an empty SCREEN node, a question comment on a
-gap. Nothing needing doing means no agents are spawned at all: the turn adds nothing and
-answers `NOOP` (see the "Standalone board-change turns" section in
-`.agent-modeling-kit/CLAUDE.md`).
+the matching skill for its own target — example data on a freshly placed element, the specs
+(GWT scenarios or a storyline) for a new command or read model, a missing attribute on the rest
+of the chain, a screen for an empty SCREEN node, a question comment on a gap.
+
+That fill-in work is deliberately not gated on the human being done. It is additive, scoped to
+one element or chain, and cheap to undo, so the agent does it while they keep modeling — a node
+placed a minute ago is the best target for it, not a reason to wait (the loop already waited for
+the board to fall quiet before taking the turn at all). Only the other tier — board-wide sweeps,
+renames, deletions, re-shaping, slice statuses — gets a comment first instead of being done, and
+an unanswered comment parks that one sweep rather than the modeling work. Nothing needing doing
+means no agents are spawned at all: the turn adds nothing and answers `NOOP`.
+
+All of that lives in its own instruction file, `.agent-modeling-kit/CLAUDE-STANDALONE.md`,
+which the agent reads only once a self-directed turn actually arrives: a `--modeling` session
+without `--standalone` never loads it, and neither does a prompt turn inside a standalone
+session — a turn someone asked for does what was asked and nothing more.
 
 `--max-agents <n>` caps that fan-out, so an unattended turn's cost stays bounded — default 5:
 
