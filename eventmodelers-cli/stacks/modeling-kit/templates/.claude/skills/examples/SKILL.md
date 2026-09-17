@@ -25,6 +25,18 @@ From `$ARGUMENTS`, extract:
 
 ---
 
+## Step 1b — Many targets at once
+
+`target` is singular, but the common real request is "fill in the examples across this chapter". When you have more than one target, **do not run this skill once per element and do not fetch context a node at a time.**
+
+1. Read the chapter **once**: `mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "chapterId": "$CHAPTER_ID" }`. That single response carries every element's `meta.fields` *including the `example` values already filled in* — which is exactly the canonical-value pool Step 3c asks for, for the whole chapter, in one call.
+2. Pick the canonical value per field name from that pool (e.g. `customerId: "cust-123"`, `email: "jane@example.com"`) before writing anything, so every element ends up consistent.
+3. Then fill the targets. `add_field_examples` is still the preferred writer, one call per target — but it is the *only* per-target call you should be making. If you are generating the values yourself instead, batch every element's update into a single `submit_node_events { events: [...] }` call.
+
+A run that opens each element with its own `get_node` to "read existing examples first" is doing step 1 N times over.
+
+---
+
 ## Step 2 — Resolve and generate examples (prefer MCP)
 
 `add_field_examples` is a whole-algorithm convenience tool: it resolves the node, loads linked neighbours for cross-element consistency, fills any empty field examples, and writes the result back — collapsing the entire "find node → find linked nodes → build examples → submit_node_events" flow (Steps 2–5 below) into one call. Call it with whichever identifier matches `target`:

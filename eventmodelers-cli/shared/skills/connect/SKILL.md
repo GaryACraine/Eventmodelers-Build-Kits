@@ -9,6 +9,8 @@ description: Resolve eventmodelers connection config (token, boardId, baseUrl) f
 
 **This should happen once per session, not once per skill.** If `TOKEN`/`BOARD_ID`/`ORG_ID`/`BASE_URL` are already resolved and verified from earlier in the current session — including earlier in the *same turn*, e.g. one skill internally invoking a second skill (`add-next-slice` → `html-screen`) — every subsequent "invoke `connect`" instruction is satisfied immediately by reusing those values. Do not re-run Steps 0–4 below. Only re-run this skill from scratch when a value actually needs to change: a fresh `401`/`403`/access-denied response from some other call, a different `board_id` on this turn, or a new inline param that overrides what's already resolved.
 
+**Subagents are a fresh session — hand them the resolved values.** When you spawn a subagent to do board work, put the already-resolved credentials inline in its prompt (`token=… board=… org=… baseUrl=…`). Its `connect` then satisfies everything at Step 0 and skips Steps 1–4 entirely: no config-file walk, no MCP re-registration, no verify call. Spawning three subagents without passing them down means paying the whole resolve-and-verify round three more times for values you already have.
+
 This skill also registers the **eventmodelers MCP server** for the project (Step 3.5) so other skills can call MCP tools (`mcp__eventmodelers__*`) instead of raw curl. MCP is the preferred transport; curl remains a fallback for hosts without MCP support, or for the one or two endpoints (documented in `learn-eventmodelers-api`) the MCP server doesn't expose.
 
 ---
@@ -211,6 +213,23 @@ curl -s -o /dev/null -w "%{http_code}" \
 | `403` | Token organization does not match board. Tell the user to check that the token was issued for the correct workspace. Re-run from Step 2 for both fields. |
 | `404` | Board not found. Tell the user and re-run from Step 2, clearing `boardId`. |
 | Any other | Print the status code and raw response. Ask the user how to proceed. |
+
+---
+
+## Step 5 — Read the board once
+
+Connecting is also where the session's read discipline starts. Every skill that runs after this one shares the same board, so **fetch it once and index it in memory** instead of re-deriving it per step:
+
+- **Orientation** (what is where, how is it wired) — `get_board_outline { boardId, chapterId }`. One compact call per chapter: per-column node lists plus a flat edge list, no HTML pages or field bodies.
+- **Working set** (you need `meta.fields`, examples, descriptions) — `get_nodes { boardId, chapterId }`. One call returns every node in the chapter with full `meta`, plus `node.position` and `node.parentId`. A whole 70-node board is well under 100 KB unscoped; scoped to a chapter it is smaller still.
+- **A known, scattered subset** — `get_nodes { boardId, nodeIds: [...] }`. One call, not one per id.
+- **Just names/types** — add `projection: "line"`. **Just a chapter's grid** — `get_node { nodeId: <chapterId>, projection: "cells" }`. **Just one node's wiring** — `get_node { nodeId, projection: "edges" }`.
+
+`get_node` without a projection is for **one** node you did not already load — most often re-reading a node right after writing it. A step that issues it in a loop over nodes that were already in a list response is doing the same fetch N times; collapse it to the single chapter-scoped read above.
+
+The same discipline applies to writes: `submit_node_events` takes `events[]`, so a multi-node edit is **one** call carrying every event, not one call per node. Pass `compact: true` when you don't need the per-node hash map back.
+
+Where per-node calls genuinely can't be avoided, issue them together in one message so they run concurrently rather than in sequence.
 
 ---
 

@@ -209,4 +209,43 @@ Minor — only ~6 individual deletions this round (4 wrong nodes from the Step 5
 
 ---
 
+## New round — 2026-09-17 (customerId propagation on board `64ad14b7`)
+
+### 18. `get_connected_nodes`: neighbour traversal from a single node
+**Evidence**: Renaming `custoemrId` → `customerId` on one COMMAND and carrying it through its chain took **7 reads** before a single write could be computed: 1 unscoped `GET /nodes`, 1 `?type=CHAPTER`, 5 parallel per-node fetches, then a hand-rolled geometric bucketing of `node.position.x/y` against `timelineData.columns[].width` / `rows[].height` to recover the chain. The preceding modeling run shows the same shape at scale — ~20 sequential `get_node` calls where one chapter-scoped read would have served.
+
+**Why the existing tools don't cover it**:
+- `get_attribute_chain` needs **both** endpoints as cell names (`targetCellName` + `sourceCellName`). That presumes you already know how far the chain runs. The real request is "fix this field on *this* element and carry it as far as it goes" — the extent is the answer, not the input. It also has no node-id entry point (only cell names), and it returns *every* node in the column range regardless of whether it participates in the chain.
+- `get_board_outline` returns a chapter's flat edge list, which is the right shape — but on hand-built or imported chapters **every node has `edges: []`** and the outline's edge list is empty. Chapter `foo` on board `64ad14b7` is exactly this case: nine placed elements, zero edges. The tool answers "not connected" when the model plainly is.
+- Neither derives connectivity from layout, which is what actually holds on those boards.
+
+**Proposed shape**:
+```
+get_connected_nodes {
+  boardId, nodeId,
+  direction?: 'inbound' | 'outbound' | 'both',   // default 'both'
+  depth?: number,                                 // default 1; walk transitively up to N hops
+  types?: ElementType[],                          // narrow to e.g. ['COMMAND','EVENT','READMODEL']
+  includeFields?: boolean                         // default false — omit meta.fields for cheap orientation
+}
+```
+Returns, per neighbour: `{ id, type, title, cellName, direction, hops, via: 'edge' | 'layout', fields? }`.
+
+`via` is the point of the tool. When a real edge exists it is reported as `'edge'`; when none does, the server applies the same layout rules the skills currently hand-roll (READMODEL ← EVENT same column; EVENT ← COMMAND same column; COMMAND ← READMODEL previous column) and reports `'layout'`. The caller sees which neighbours are wired and which are inferred, instead of every skill re-implementing the geometry — and inconsistently.
+
+With `depth` high enough this subsumes `get_attribute_chain`'s job from one endpoint instead of two; `get_attribute_chain` stays as-is for the case where both ends really are known.
+
+**Also worth folding into the same pass**: a `validate_model` check for *unwired placed elements* — a chapter with N placed nodes and 0 edges is almost always an auto-connect that never ran, not a deliberate model. Nothing currently surfaces that.
+
+**Three-part update when this lands**: tool description in `eventmodelers-plattform` + the `miro-eventmodeling` docs page + the Build-Kits skills (`attributes` Step 3, `examples` Step 1b, `eventmodeling-identifying-outputs`) — never the code alone.
+
+**Skill-side fixes already applied (2026-09-17, no server change needed)**:
+- `attributes` Step 3a now resolves the walk from one `get_board_outline` + one chapter-scoped `get_nodes` instead of a `get_node` per hop; 3b states outright that an empty edge list means geometry is the chain, not a dead end.
+- `attributes` Step 4 batches the whole chain into **one** `submit_node_events` call (was: one POST per node, "verify HTTP 200 before proceeding to the next"). Today's five-node, six-change edit went out as a single call.
+- `examples` gained Step 1b for the multi-target case: read the chapter once to build the canonical value pool, then write; no per-node context fetches.
+- `connect` gained a subagent rule (pass resolved `token`/`board`/`org`/`baseUrl` inline so the child skips Steps 1–4 — three subagents last round each re-resolved and re-verified) and a Step 5 "Read the board once" contract covering the projection/`nodeIds`/batch-write options.
+- Six skills in `~/.claude/skills` (`attributes`, `examples`, `storyboard`, `storyboard-screen`, `timeline`, `wdyt`) were frozen at 2026-07-28 pre-MCP curl-only versions and shadowed the current ones in plain sessions — re-synced from `stacks/modeling-kit/templates`.
+
+---
+
 **All 17 items now resolved** (done, partially done, or explicitly discarded — see status column above) as of 2026-08-30.

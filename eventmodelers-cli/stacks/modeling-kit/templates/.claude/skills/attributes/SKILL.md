@@ -59,24 +59,26 @@ Each node may have an `edges` array:
 ```json
 edges: [{ id, source, target, sourceHandle, targetHandle }]
 ```
-An **inbound** edge is one where `edge.target === currentNode.id`. For each inbound edge, fetch the source node:
+An **inbound** edge is one where `edge.target === currentNode.id`.
 
-**Prefer MCP:**
+Resolve the whole walk from **one** chapter-scoped read rather than a `get_node` per hop — `get_board_outline { "boardId": "$BOARD_ID", "chapterId": "$TIMELINE_ID" }` returns every node in the chapter (`{id, type, title, lane}` per column) *plus* a flat edge list, which is exactly what the traversal needs. Index it in memory and walk it locally; you only need the per-node `meta.fields` (Step 4), which one `get_nodes { "boardId": "$BOARD_ID", "chapterId": "$TIMELINE_ID" }` returns for the whole chapter in a single call.
+
+Reach for a single-node fetch only for a node genuinely outside that chapter:
 ```
-mcp__eventmodelers__get_node { "boardId": "$BOARD_ID", "nodeId": "$EDGE_SOURCE_ID" }
+mcp__eventmodelers__get_node { "boardId": "$BOARD_ID", "nodeId": "$EDGE_SOURCE_ID", "projection": "edges" }
 ```
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "3a — Use Node Edges".
 
 ### 3b — Column-based fallback (if no edges)
-If a node has no edges, use the chapter cell layout (already in memory) to find plausible inbound neighbours:
+Hand-built or imported chapters frequently have **no edges at all** — every node comes back with `edges: []` and `get_board_outline`'s edge list is empty. That is not an error and not a reason to stop: in that case grid geometry *is* the chain. Use the chapter cell layout (already in memory from 3a) to find inbound neighbours:
 
 In a standard event modeling layout:
 - **READMODEL** in the interaction row → its inbound EVENT is in the swimlane row of the **same column**
 - **EVENT** in the swimlane row → its inbound COMMAND is in the interaction row of the **same column**
 - **COMMAND** in the interaction row → its inbound READMODEL is in the swimlane row of the **previous column**
 
-Fetch candidate nodes by their cellId (live), skip any that don't exist or are already in the chain.
+Resolve candidates from the chapter read you already have — do **not** issue a `?cellId=` lookup per candidate. If the chapter's `meta.timelineData.cells` is sparse or absent, derive each node's (column, row) from `node.position.x/y` bucketed against `meta.timelineData.columns[].width` and `rows[].height`; that mapping is enough to apply the three rules above. Skip candidates that don't exist or are already in the chain.
 
 ### 3c — Stop condition
 Stop traversal when:
@@ -86,11 +88,11 @@ Stop traversal when:
 
 ---
 
-## Step 4 — Apply the change to each node in the chain
+## Step 4 — Apply the change to the whole chain in one write
 
-Process nodes in order: TARGET_NODE first, then backwards to SOURCE_NODE.
+Compute the updated `fields` array for **every** node in the chain first, in order (TARGET_NODE first, then backwards to SOURCE_NODE), then submit them all in a **single** `submit_node_events` call. Do not write one node, check it, and move to the next — the chain is one logical edit and `events[]` takes the whole batch.
 
-For each node:
+For each node, compute (don't write yet):
 
 ### If operation is `add`:
 - Check if a field with that name already exists in `meta.fields` — if so, skip this node (log it).
@@ -114,27 +116,35 @@ For each node:
 - Find the field where `name === oldName` (case-insensitive). If not found in this node, skip it (log it).
 - Update only the `name` property to `newName`. Leave all other field properties unchanged.
 
-Build the updated `fields` array and send a `node:changed` event.
+Collect one `node:changed` event per affected node, then send them together.
 
-**Prefer MCP** — same event body, passed as a tool arg instead of `-d`:
+**Prefer MCP** — one call for the entire chain, one event per node in `events[]`:
 ```
 mcp__eventmodelers__submit_node_events {
   "boardId": "$BOARD_ID",
-  "events": [{
-    "id": "<uuid>",
-    "eventType": "node:changed",
-    "nodeId": "<NODE_ID>",
-    "boardId": "$BOARD_ID",
-    "timestamp": <epoch-ms>,
-    "changedAttributes": ["meta.fields"],
-    "meta": { "fields": "<updated_fields_array>" }
-  }]
+  "compact": true,
+  "events": [
+    {
+      "id": "<uuid>",
+      "eventType": "node:changed",
+      "nodeId": "<NODE_ID_1>",
+      "boardId": "$BOARD_ID",
+      "timestamp": <epoch-ms>,
+      "changedAttributes": ["meta.fields"],
+      "meta": { "fields": "<updated_fields_array_1>" }
+    },
+    { "…one more event per remaining node in the chain…" }
+  ]
 }
 ```
 
-**Fallback (no MCP):** see `references/api-fallback.md` — "Step 4 — Apply the Change to Each Node in the Chain".
+Nodes that are skipped (field already exists / field not found) simply contribute no event — don't send a no-op change for them.
 
-Verify HTTP 200 before proceeding to the next node. If a node fails, report the error and stop.
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 4 — Apply the Change to Each Node in the Chain". The REST endpoint takes the same `NodeChangeEvent[]` body, so it batches identically — one POST, not one per node.
+
+Verify the response is HTTP 200. If the batch fails, report the error and stop; nothing was partially applied from your side, so re-run after fixing the cause rather than retrying node by node.
+
+If you also need to verify the result, re-read the whole chain in one call — `get_nodes { "boardId": "$BOARD_ID", "nodeIds": [<every node id you just wrote>] }` — never one `get_node` per node.
 
 ---
 
