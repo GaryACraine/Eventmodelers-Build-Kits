@@ -61,16 +61,30 @@ edges: [{ id, source, target, sourceHandle, targetHandle }]
 ```
 An **inbound** edge is one where `edge.target === currentNode.id`.
 
-Resolve the whole walk from **one** chapter-scoped read rather than a `get_node` per hop — `get_board_outline { "boardId": "$BOARD_ID", "chapterId": "$TIMELINE_ID" }` returns every node in the chapter (`{id, type, title, lane}` per column) *plus* a flat edge list, which is exactly what the traversal needs. Index it in memory and walk it locally; you only need the per-node `meta.fields` (Step 4), which one `get_nodes { "boardId": "$BOARD_ID", "chapterId": "$TIMELINE_ID" }` returns for the whole chapter in a single call.
+**Prefer `get_connected_nodes`** — it does this entire walk server-side, in one call, from the target alone:
+```
+mcp__eventmodelers__get_connected_nodes {
+  "boardId": "$BOARD_ID",
+  "nodeId": "<TARGET_NODE.id>",
+  "direction": "inbound",
+  "depth": 10,
+  "includeFields": true
+}
+```
+The result is already ordered by `hops` (nearest first) and carries each node's `cellName` and `fields[]`, which is everything Step 4 needs — so this replaces both the edge walk and the per-node field fetch. Stop at the node matching `SOURCE_NODE`; anything beyond it is outside the requested chain.
 
-Reach for a single-node fetch only for a node genuinely outside that chapter:
+Each neighbour reports `via`. `"edge"` means a real connection. `"layout"` means that node had no edge in that direction and the neighbour was inferred from the grid — correct, but worth a line in your Step 5 report so the user knows the chain was read off the layout rather than off wiring. A `chapterHasEdges: false` in the summary means the whole chapter is unwired.
+
+Reach for a single-node fetch only for a node genuinely outside the anchor's chapter:
 ```
 mcp__eventmodelers__get_node { "boardId": "$BOARD_ID", "nodeId": "$EDGE_SOURCE_ID", "projection": "edges" }
 ```
 
-**Fallback (no MCP):** see `references/api-fallback.md` — "3a — Use Node Edges".
+**Fallback (no MCP):** see `references/api-fallback.md` — "3a — Use Node Edges". Resolve the walk from **one** chapter-scoped read rather than a `get_node` per hop: `GET .../nodes?chapterId=` returns every node with full `meta`, `node.position` and `node.parentId` in a single response — index it and walk it locally.
 
 ### 3b — Column-based fallback (if no edges)
+Only needed without MCP; `get_connected_nodes` already applies this rule itself and labels the result `via: "layout"`.
+
 Hand-built or imported chapters frequently have **no edges at all** — every node comes back with `edges: []` and `get_board_outline`'s edge list is empty. That is not an error and not a reason to stop: in that case grid geometry *is* the chain. Use the chapter cell layout (already in memory from 3a) to find inbound neighbours:
 
 In a standard event modeling layout:

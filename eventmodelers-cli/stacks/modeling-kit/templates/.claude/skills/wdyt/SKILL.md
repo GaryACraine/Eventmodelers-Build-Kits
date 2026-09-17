@@ -7,6 +7,8 @@ description: Business analyst exploration of an event model board. Reads all sli
 
 > **Before doing anything else**, invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `BOARD_ID`, and `BASE_URL`. Do not proceed until the connect skill has completed.
 
+Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the REST calls below are the fallback for sessions without MCP connected.
+
 This step applies the shared element rules in **`eventmodeling-core-rules`** — read it once per session if you haven't already; it defines what a COMMAND/EVENT/READMODEL/SCREEN/AUTOMATION is, the anti-patterns to reject, and the four Structural Shapes (Category I below), so this step doesn't restate them.
 
 You are a **sharp business analyst** reviewing an event model. You don't know the domain yet — you're seeing it fresh. Your job is to read the model, understand the intended flows, and ask the hard questions that developers and domain experts tend to overlook because they're too close to the problem.
@@ -26,17 +28,27 @@ If the user already provided context name in their message, use it directly.
 
 ## Step 2 — Load the model
 
-**A. Get all slices:**
-```
-GET /api/org/{orgId}/boards/{boardId}/slicedata/slices
-```
-This returns `{ slices: [{ id, title, status }] }`.
+**Prefer MCP — one call loads the whole context.** `sliceId` is optional; omitting it returns the full element graph for *every* slice in the context at once. Do **not** list slices and then fetch them one by one:
 
-**B. For each slice, load its full data:**
 ```
-GET /api/org/{orgId}/boards/{boardId}/slicedata?contextName={contextName}&sliceId={sliceId}
+mcp__eventmodelers__get_slice_data {
+  "boardId": "$BOARD_ID",
+  "contextName": "<context name from Step 1>",
+  "format": "textual"
+}
 ```
-Load all slices in parallel. Each response contains the full element graph for that slice: screens, commands, events, read models, specs, scenarios, actors, automations.
+
+`format` matters here because this skill reads the entire model before it writes anything. `"textual"` is a compact markdown dump and `"toon"` a token-efficient tabular encoding — both carry the same graph as `"json"` in a fraction of the tokens. Use `"json"` only when you need to read exact `x`/`y`/`width`/`height` values for the drawings in Step 4.2.
+
+Each response contains screens, commands, events, read models, specs, scenarios, actors, automations, and the edges between them.
+
+`mcp__eventmodelers__list_slices { "boardId": "$BOARD_ID" }` is only needed when you must scope to **one** slice and don't know its id, or to read slice statuses — not as a precursor to loading the model.
+
+**Fallback (no MCP):**
+```
+GET /api/org/{orgId}/boards/{boardId}/slicedata?contextName={contextName}
+```
+Same shape — the whole context in one request. `&sliceId={sliceId}` narrows it to one slice; `GET .../slicedata/slices` lists `{ slices: [{ id, title, status }] }`.
 
 Keep track of:
 - All slice titles and their element types
@@ -132,10 +144,30 @@ Only post questions that are **genuinely unclear or missing** — don't post obs
 
 ### 4.2 Drawings (every relational or clustered finding, always)
 
-Use `POST /api/org/{orgId}/boards/{boardId}/drawing/draw` (auth headers same as every other call — `x-token`, `x-board-id`, `x-user-id: wdyt`). There are two kinds — no text-callout kind; a drawing never carries the question itself, only the shape of the concern:
+**Prefer MCP:** `mcp__eventmodelers__create_drawing` — one call per drawing, no auth headers needed.
 
-- **Arrow** (`kind: "path"`, `arrowEnd: true`) — the concern is about a missing or unclear relationship *between two elements* (e.g. "does this event actually reach this automation?"). Draw a straight line from one element's position to the other's. `path` is `M 0 0 L <dx> <dy>` in the box's own local coordinates; `x`/`y`/`width`/`height` describe that box in canvas space (so `width`/`height` = the delta between the two elements' positions). Get element positions from the slice data already loaded in Step 2 (or `GET .../nodes/{nodeId}` if not present).
-- **Group loop** (`kind: "rect"`, drawn around a computed bounding box) — the concern spans a *cluster* of elements together (e.g. "this whole flow assumes nothing ever fails"). There's no dedicated group endpoint — union the elements' own `x`/`y`/`width`/`height` (plus some padding) yourself and draw one `rect` around that box via `.../drawing/draw`. This is a visual grouping only — unrelated to the `MODEL_CONTEXT` node type; never touch a `modelContext` field to satisfy this.
+**Fallback (no MCP):** `POST /api/org/{orgId}/boards/{boardId}/drawing/draw` (auth headers same as every other call — `x-token`, `x-board-id`, `x-user-id: wdyt`). Same fields as the tool args below.
+
+There are two kinds — no text-callout kind; a drawing never carries the question itself, only the shape of the concern:
+
+- **Arrow** (`kind: "path"`, `arrowEnd: true`) — the concern is about a missing or unclear relationship *between two elements* (e.g. "does this event actually reach this automation?"). Draw a straight line from one element's position to the other's. `path` is `M 0 0 L <dx> <dy>` in the box's own local coordinates; `x`/`y`/`width`/`height` describe that box in canvas space (so `width`/`height` = the delta between the two elements' positions).
+```
+mcp__eventmodelers__create_drawing {
+  "boardId": "$BOARD_ID", "kind": "path",
+  "x": <sourceX>, "y": <sourceY>, "width": <dx>, "height": <dy>,
+  "path": "M 0 0 L <dx> <dy>", "arrowEnd": true
+}
+```
+Get element positions from the slice data already loaded in Step 2. If a position is missing, fetch the nodes you need in **one** call — `mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "nodeIds": [<the ids>] }` — not `get_node` per element.
+- **Group loop** (`kind: "rect"`, drawn around a computed bounding box) — the concern spans a *cluster* of elements together (e.g. "this whole flow assumes nothing ever fails"). There's no dedicated group endpoint — union the elements' own `x`/`y`/`width`/`height` (plus some padding) yourself and draw one `rect` around that box:
+```
+mcp__eventmodelers__create_drawing {
+  "boardId": "$BOARD_ID", "kind": "rect",
+  "x": <minX - pad>, "y": <minY - pad>,
+  "width": <maxX - minX + 2*pad>, "height": <maxY - minY + 2*pad>
+}
+```
+This is a visual grouping only — unrelated to the `MODEL_CONTEXT` node type; never touch a `modelContext` field to satisfy this.
 
 Every arrow/group loop is paired with a comment on the relevant node(s) from 4.1 — the drawing makes the concern visible at a glance on the canvas itself, the comment carries the actual worded question. Post both; neither replaces the other.
 
