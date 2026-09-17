@@ -1376,9 +1376,10 @@ function boardCredentialsPath(boardId) {
 
 // Three shapes, never mixed: the board's own credentials, a note that this board just uses
 // the account-wide ones, or a pointer to another board's file. All three exist for the same
-// reason — the first-run question has to be a once-per-board event rather than something to
-// dismiss on every start, so every possible answer has to be recordable against the board
-// that was ASKED about, including "actually, those credentials were for a different board".
+// reason — every possible answer to the where-from question has to be recordable against
+// the board that was ASKED about (including "actually, those credentials were for a
+// different board"), so that the next run can offer it back as the default rather than
+// asking for the same paste again.
 function writeBoardCredentials(config) {
   const path = boardCredentialsPath(config.boardId);
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
@@ -1470,28 +1471,46 @@ async function resolveModelingCredentials(cwd, flags, explicitConfigPath, print)
     stored = readJsonSafe(boardCredentialsPath(boardId));
   }
 
-  // First time this machine has seen this board, ask the one question that can't be
-  // guessed: does it get credentials of its own, or does it ride on the account-wide ones?
-  // The answer is recorded either way (as credentials, or as a useGlobal marker), so this
-  // is a once-per-board question rather than a prompt to dismiss on every start. Skipped
-  // whenever the answer is already implied — explicit credentials on the command line — or
-  // when there is no one to ask: --print, or a non-interactive stdin such as CI or a
-  // supervisor that would otherwise hang here forever.
-  const knownBoard = !!(stored.useGlobal || stored.token);
-  if (!knownBoard && !print && !explicit.token && process.stdin.isTTY) {
+  // Where this board's credentials come from is the one thing that can't be guessed: its
+  // own, or the account-wide ones. Asked on every interactive start rather than only the
+  // first, so a board can be repointed without hand-editing files — but a board that has
+  // been answered for already keeps that answer as the pre-selected entry, making the
+  // repeat a single Enter rather than a paste. Skipped whenever the answer is already
+  // implied — explicit credentials on the command line — or when there is no one to ask:
+  // --print, or a non-interactive stdin such as CI or a supervisor that would otherwise
+  // hang here forever (those keep using whatever is on file, silently).
+  if (!print && !explicit.token && process.stdin.isTTY) {
     const hasAccountWide = !!(walked.token && walked.organizationId);
+
+    // What "keep" would keep. A pointer entry is deliberately not offered: it says the
+    // paste belonged to a different board, which is an answer about that board, not a set
+    // of credentials this one can hold on to.
+    const existing = stored.token
+      ? { keep: stored, from: boardCredentialsPath(boardId).replace(homedir(), '~') }
+      : stored.useGlobal
+      ? { keep: { useGlobal: true }, from: 'the account-wide credentials' }
+      : null;
+
+    const choices = [
+      { label: 'The account-wide credentials (~/.eventmodelers/config.json)', value: 'global' },
+      { label: 'Credentials of its own — paste them now', value: 'board' },
+    ];
+    if (existing) choices.unshift({ label: `Keep the credentials already stored for this board (${existing.from})`, value: 'keep' });
+
+    const configured = existing ? 'is already configured on this machine' : "hasn't been configured on this machine yet";
     const choice = await selectPrompt(
       boardId
-        ? `Board ${boardId} hasn't been configured on this machine yet. Where should its credentials come from?`
-        : "This board hasn't been configured on this machine yet. Where should its credentials come from?",
-      [
-        { label: 'The account-wide credentials (~/.eventmodelers/config.json)', value: 'global' },
-        { label: 'Credentials of its own — paste them now', value: 'board' },
-      ],
-      hasAccountWide ? 0 : 1,
+        ? `Board ${boardId} ${configured}. Where should its credentials come from?`
+        : `This board ${configured}. Where should its credentials come from?`,
+      choices,
+      // 'keep' when there is something to keep, else the pre-existing default: account-wide
+      // when it actually holds credentials, otherwise the paste.
+      existing || hasAccountWide ? 0 : 1,
     );
 
-    if (choice === 'board') {
+    if (choice === 'keep') {
+      stored = existing.keep;
+    } else if (choice === 'board') {
       console.log("\n  Copy this board's credentials from https://app.eventmodelers.ai/account,");
       console.log('  then paste them below and press Enter:\n');
       console.log('    token=<uuid>,boardId=<uuid>,organizationId=<uuid>,baseUrl=https://api.eventmodelers.ai\n');
@@ -1506,7 +1525,7 @@ async function resolveModelingCredentials(cwd, flags, explicitConfigPath, print)
       // the next run resolves A again, finds nothing, and asks all over again.
       if (parsed.boardId && boardId && parsed.boardId !== boardId) {
         writeBoardCredentials({ boardId, useBoard: parsed.boardId });
-        console.log(`\n  ℹ️  Those credentials are for board ${parsed.boardId}, not ${boardId} — noted, so this is asked once and not again.`);
+        console.log(`\n  ℹ️  Those credentials are for board ${parsed.boardId}, not ${boardId} — noted, so this board isn't asked for a paste again.`);
         console.log(`      Pass --board-id to pick a different board, or drop the stale boardId from ~/.eventmodelers/config.json.`);
       }
       if (parsed.boardId) boardId = parsed.boardId;
@@ -1682,7 +1701,16 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
       p.comment_id ? `comment_id=${p.comment_id}` : null,
       p.node_id ? `node_id=${p.node_id}` : null,
     ].filter(Boolean).join(' ');
-    return withSessionHeader(`${fields}\n\n${p.prompt}`);
+    // What the user had selected and on screen when they submitted (selectedCell,
+    // selectedNodes, timelineId, focusArea). CLAUDE.md's step 3 resolves CELL_ID/NODE_ID/
+    // TIMELINE_ID from it in preference to the flat fields above, and a canvas "poke" —
+    // whose prompt text is the bare word `Focus` — is nothing BUT this context: drop it and
+    // the turn says "Focus" and names nowhere to look. Sent as JSON on its own line because
+    // it is structured, unlike the flat k=v fields.
+    const context = p.context && typeof p.context === 'object' && Object.keys(p.context).length
+      ? `\ncontext=${JSON.stringify(p.context)}`
+      : '';
+    return withSessionHeader(`${fields}${context}\n\n${p.prompt}`);
   }
 
   const claudeArgs = ['--dangerously-skip-permissions', '-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose'];
