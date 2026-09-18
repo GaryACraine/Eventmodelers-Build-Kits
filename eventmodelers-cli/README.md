@@ -416,6 +416,18 @@ npx @eventmodelers/cli run --id <id>                           # pin ONE identit
 
 `run --id` is what you want when an agent has to keep the same identity every time it starts: a supervisor that already knows the id, a second agent of the same type in one *project* (which would otherwise share the project's single minted id), or an agent a board has starred as its **preferred agent** — that star addresses prompts to one id, so an agent whose id changes per run loses it on restart. `run --id`/`run --name` are per-run only: nothing is written to disk.
 
+#### Working only what you were addressed (`--exclusive`)
+
+By default an agent claims two kinds of prompt: the ones addressed to its own id, and every prompt nobody addressed to anyone. That's right for the single agent on a board, and wrong for a dedicated one — a specialist sitting next to a general agent, or an agent a supervisor drives by id, ends up answering whatever the queue happens to hold. `--exclusive` drops that second kind:
+
+```bash
+npx @eventmodelers/cli run --standalone --board-id <uuid> --id <agent-uuid> --exclusive
+```
+
+Only prompts carrying this agent's id are worked. Anything untargeted is handed straight back to the queue (status `ADDED`) for another agent to take — the addressee filter lives in the queue's claim query, which hands an agent its own prompts *and* the untargeted ones, so claiming is the only way to find out which arrived. An exclusive run therefore claims as usual and gives back what wasn't meant for it, once it has walked past it to its own work.
+
+Pair it with `--id`: a `--standalone`/`--global` run mints a fresh id per run, so prompts addressed to the previous run's id are never claimed. `--exclusive` applies to the prompt queue only — a `--standalone` agent's self-directed turns are nobody's prompt, and it keeps taking them.
+
 ### Env vars and `--config` (scripted/CI installs)
 
 Every config field can be set via an `EVENTMODELERS_*` env var instead of the interactive prompts — these always win over whatever's in `config.json`, so a fully env-driven install never prompts for credentials or Claude execution settings:

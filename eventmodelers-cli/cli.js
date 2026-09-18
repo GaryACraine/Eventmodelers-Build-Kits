@@ -1672,7 +1672,13 @@ async function ensureGlobalKit(baseUrl) {
 // question, sketch a screen. Without the flag that channel is still subscribed on
 // the same connection and every event on it is dropped, so the two modes differ by
 // one filter rather than by a whole second realtime stack.
-async function runModeling(kitDir, projectDir, verbose = false, standalone = false, overrides = null, maxAgents = DEFAULT_MAX_AGENTS, identity = {}) {
+//
+// `exclusive` narrows the prompt lane to this agent alone: only a prompt the user
+// addressed to this agent id (the board's "preferred agent") is worked, and anything
+// untargeted is handed straight back to the queue for another agent to take. It says
+// nothing about the standalone lane — a self-directed turn is nobody's task, so an
+// exclusive standalone agent still works the board on its own initiative.
+async function runModeling(kitDir, projectDir, { verbose = false, standalone = false, exclusive = false, overrides = null, maxAgents = DEFAULT_MAX_AGENTS, identity = {} } = {}) {
   const configLibPath = join(kitDir, 'lib', 'config.js');
   if (!existsSync(configLibPath)) {
     console.error(`❌ ${relative(process.cwd(), configLibPath)} not found — --modeling needs a kit installed via \`init --modeling\`.`);
@@ -1708,6 +1714,12 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
   const cfg = { ...(await fetchPlatformConfig(local)), ...(overrides ?? {}), ...(identity.agentId ? { agentId: identity.agentId } : {}), ...(identity.agentName ? { agentName: identity.agentName } : {}) }; // adds realtimeProvider + its provider-specific fields (supabaseUrl/supabaseAnonKey or pocketbaseUrl), + boardId if the config has a default one
   if (!cfg.boardId) {
     console.error('❌ --modeling needs a boardId — a modeling agent always runs for exactly one board. Run `/connect board=<uuid>` once, or add boardId to .eventmodelers/config.json.');
+    process.exit(1);
+  }
+  // Nothing can be addressed to an agent with no id, so an exclusive run without one would
+  // hand every prompt back and sit idle forever — a silent no-op worth failing on instead.
+  if (exclusive && !cfg.agentId) {
+    console.error('❌ --exclusive needs an agent id — that is what a prompt is addressed to. Pass `run --id <uuid>` (or let the kit mint one) and address the prompt to it on the board.');
     process.exit(1);
   }
 
@@ -1928,6 +1940,13 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
       ? `standalone: ON — reacting to direct prompts AND to board changes on its own initiative (max ${maxAgents} subagent(s) per self-directed turn)`
       : 'standalone: off — reacting to direct prompts only (board changes are dropped)',
   );
+  if (exclusive) {
+    log(`exclusive: ON — only prompts addressed to ${cfg.agentId} are worked; every untargeted prompt is handed back to the queue`);
+    // A global/standalone run mints its id per run (see resolveModelingCredentials), so an id
+    // someone addressed a prompt to yesterday is not this agent — worth saying out loud here,
+    // where the alternative is an agent that looks healthy and quietly works nothing.
+    if (overrides && !identity.agentId) log('exclusive: this run minted a fresh agent id — star it on the board now, or restart with `--id <uuid>` to keep one addressable identity');
+  }
   warmUpSession();
 
   async function getRealtimeToken() {
@@ -1947,15 +1966,47 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
     return res.json();
   }
 
+  // Puts a prompt this agent claimed but will not work back on the queue (CLAIMED -> ADDED),
+  // so whichever agent it was actually open to can still take it. `x-token` only — the status
+  // endpoint is meant to be called by the agent holding the prompt.
+  async function releasePrompt(promptId) {
+    const res = await fetch(`${cfg.baseUrl}/api/org/${cfg.organizationId}/prompts/${promptId}/status`, {
+      method: 'POST',
+      headers: { 'x-token': cfg.token, 'Content-Type': 'application/json', ...agentHeaders(cfg) },
+      body: JSON.stringify({ status: 'ADDED' }),
+    });
+    if (!res.ok) throw new Error(`prompts/${promptId}/status: HTTP ${res.status}`);
+  }
+
   let realtimeToken = await getRealtimeToken();
 
   let draining = false;
   async function drain() {
     if (draining) return;
     draining = true;
+    // --exclusive only: prompts claimed in this pass that weren't addressed to this agent,
+    // handed back once the pass is over (see below).
+    const handBack = [];
     try {
       let p;
       while ((p = await fetchNextPrompt(realtimeToken)) !== null) {
+        // The queue can't filter by addressee for us: `prompts/next` hands an agent both the
+        // prompts addressed to it and every untargeted one (`agent_id IS NULL`) — claiming is
+        // what reveals which kind arrived — so an exclusive run claims as usual and gives back
+        // what wasn't meant for it.
+        //
+        // The hand-back is deferred to the end of the pass on purpose: a prompt released
+        // mid-loop goes straight back to the head of the very queue this loop is reading, so
+        // the next fetch would return the prompt just released instead of the addressed one
+        // queued behind it, and the agent would never reach its own work. Holding them CLAIMED
+        // until the queue runs dry walks past them instead. The cost is a brief CLAIMED blip on
+        // someone else's prompt, and — if no other agent happens to be draining when the
+        // hand-back lands — that prompt waiting for the next `prompt:created` to be noticed.
+        if (exclusive && (p.agent_id ?? null) !== cfg.agentId) {
+          log(`prompt ${p.id} ${p.agent_id ? `is addressed to agent ${p.agent_id}` : 'is addressed to no agent'} — handing it back (--exclusive)`);
+          handBack.push(p.id);
+          continue;
+        }
         log(`prompt received: "${p.prompt}" (board=${p.board_id ?? cfg.boardId ?? 'n/a'}, priority=${p.priority})`);
         try {
           await runClaudeWarm(buildTurn(p));
@@ -1964,6 +2015,16 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
         }
       }
     } finally {
+      for (const id of handBack) {
+        try {
+          await releasePrompt(id);
+        } catch (err) {
+          // Left CLAIMED, which is worse for whoever sent it than a retry would be — but
+          // retrying here risks wedging the loop, and the next pass claims nothing new
+          // while this one is still unwinding. Say so and move on.
+          log(`handing prompt ${id} back failed, it stays CLAIMED: ${err.message}`);
+        }
+      }
       draining = false;
       // A prompt turn counts as activity: the board isn't idle just because nobody edited
       // it while the agent was busy answering someone.
@@ -2806,6 +2867,7 @@ credentialFlags(program
   .option('--modeling', 'Keep one Claude process warm across prompts instead of spawning a fresh one per task, for low-latency voice/live use. Runs from a modeling-kit install in this directory, or from the global install (~/.eventmodelers/kit) when there is none. Built into the CLI, not a per-project file.')
   .option('--standalone', 'Let the modeling agent work the board in the background, on its own initiative: on top of direct prompts it subscribes to the board\'s change channel (like the build agents do) and, whenever the board goes quiet after an edit — or has simply been idle for a while — it takes a turn nobody asked for. Changed nodes are a notification, not the task: it judges the model as a whole and fans the work out over parallel subagents, one per changed area (examples on a new node, specs for a new command or read model, a missing attribute along a chain, a screen, a question comment). Filling that detail in while the human keeps modeling is the point — it does not wait for the board to be finished. Implies --modeling.')
   .option('--max-agents <n>', 'Cap how many subagents a self-directed --standalone turn may dispatch at once, to bound what an unattended agent can spend per turn. The agent merges work that shares a slice or chain first, then takes the most valuable pieces up to this many and leaves the rest for a later turn. 1 makes it do the single most valuable piece itself, without spawning anything. Default 5. Ignored without --standalone — prompt turns are one piece of work by definition.', '5')
+  .option('--exclusive', 'Work only the prompts addressed to this agent\'s id — the board\'s "preferred agent" (the star in the prompts panel) — and hand every untargeted prompt straight back to the queue for another agent to take. Without it an agent also works everything nobody addressed to anyone, which is what you want for a single agent and exactly what you do not want for a dedicated one (a board with a general agent plus a specialist, or an agent a supervisor drives by id). Pair it with --id so the same agent is addressable across restarts — --global/--standalone otherwise mint a fresh id per run, and prompts addressed to the previous run\'s id are never claimed. Leaves --standalone alone: a self-directed turn is nobody\'s prompt, so an exclusive standalone agent still works the board on its own initiative.')
   .option('--global', 'Run the modeling agent from the global install (~/.eventmodelers/kit), initializing it on first use, and ignore any kit in this directory. This is also what --modeling/--standalone fall back to on their own when nothing is installed here — pass it explicitly to prefer the global install over a local one. Credentials come from the flags below, EVENTMODELERS_* env vars, or ~/.eventmodelers/boards/<board>.json, so nothing is written into the current directory.')
   .option('--local', 'Skip platform config/credential lookup entirely and run the local-only loop (no board sync, no realtime agent) — even if .eventmodelers/config.json has credentials (build-kit stacks only)')
   .option('--verbose', 'Log every tool call\'s full input (commands, skill args, file paths) and assistant reasoning text. Default is condensed, high-level per-step logging only.')
@@ -2821,6 +2883,11 @@ credentialFlags(program
     const maxAgents = parseMaxAgents(opts.maxAgents);
     if (command.getOptionValueSource('maxAgents') === 'cli' && !opts.standalone) {
       console.log('ℹ️  --max-agents only applies to --standalone turns; ignoring it here.');
+    }
+    // The build-kit runners claim their work from the same queue but have no addressee
+    // filter, so the flag would silently do nothing there rather than half of what it says.
+    if (opts.exclusive && !(opts.modeling || opts.standalone || opts.global)) {
+      console.log('ℹ️  --exclusive only applies to the modeling loop (--modeling/--standalone/--global); ignoring it here.');
     }
     // --id/--name are what the platform will see for this run, so a blank one is a
     // mistake worth failing on rather than silently falling back to the stored identity.
@@ -2902,7 +2969,7 @@ credentialFlags(program
       const shown = relative(cwd, kitDir);
       await new Promise((res) => process.stdout.write(`▶ Starting modeling loop (warm Claude process) for ${shown && !shown.startsWith('..') ? shown : kitDir}...\n\n`, res));
       try {
-        await runModeling(kitDir, projectDir, !!opts.verbose, !!opts.standalone, overrides, maxAgents, identity);
+        await runModeling(kitDir, projectDir, { verbose: !!opts.verbose, standalone: !!opts.standalone, exclusive: !!opts.exclusive, overrides, maxAgents, identity });
       } catch (err) {
         console.error('[modeling] Fatal:', err);
         process.exit(1);

@@ -860,6 +860,8 @@ Claim the next pending (`ADDED`) prompt for a board — atomically flips it to `
 
 Send `x-agent-id` here too: a prompt the user addressed to one preferred agent (`prompts.agent_id`) is only ever handed to the agent claiming with that id, and a caller without the header claims untargeted prompts only. Addressing one is `POST /api/org/:orgId/prompts` with `agent_id: "<uuid>"` — the board's prompts panel does it when someone stars an agent.
 
+Note what this endpoint does *not* do: an agent that sends its id still gets every untargeted prompt on top of its own. A caller that wants only what was addressed to it has to hand the rest back itself (`POST /prompts/:id/status` with `status: 'ADDED'`), which is what `eventmodelers run --exclusive` does.
+
 **Query params**: `board_id` (required)
 **Response**: `200` — the claimed row (now `status: "CLAIMED"`), including its parsed `context` and the `hidden` flag · `404` — no `ADDED` prompts available
 
