@@ -52,6 +52,7 @@ Omit `comment` entirely when there isn't one — don't pass an empty string.
 |----------|---------|--------|
 | `400` | `status` missing or not a valid value | Fix the value and retry — do not retry with the same bad value. |
 | `404` | Prompt not found | The prompt may have been deleted by its author while you were working. Report this and move on — do not treat it as a failure of your actual task work. |
+| `409` | The prompt already carries the status you asked for (`PROMPT_STATUS_ALREADY_SET`) | Somebody else — usually another agent working the same queue — already made this transition. Do not retry it; treat the transition as done and carry on. |
 | `401`/`403` | Token invalid or wrong organization | Re-run `connect` to refresh credentials, then retry once. |
 
 ---

@@ -1310,7 +1310,15 @@ function configureHooks({ hooksSrc, targetDir }) {
 // per task, or a long-lived warm process) must call this first — a `.mcp.json`
 // written mid-session by the process itself is too late for that same process.
 // The token itself is never written to disk here — `${EVENTMODELERS_TOKEN}` is
-// resolved by `claude` from its own process env, which the caller must set.
+// resolved by `claude` from its own process env, which the caller must set. Same for
+// `${EVENTMODELERS_AGENT_ID}`: without it on the transport, every MCP write this agent makes
+// reaches the platform unattributed (board_events.agent_id null), and the board shows one
+// anonymous robot for it instead of this agent's name. It belongs here rather than only in the
+// skill's Step 3.5 because this entry is rewritten on every run — it would otherwise overwrite
+// the header the skill just added — and because a `.mcp.json` fixed mid-session comes too late
+// for the `claude` process already running. An unset var arrives at the server as the literal
+// `${EVENTMODELERS_AGENT_ID}` text, which it drops (it only accepts a uuid), so the entry is the
+// same one for a human's session and an agent's.
 function ensureMcpRegistered(projectDir, baseUrl) {
   const mcpConfigPath = join(projectDir, '.mcp.json');
   const mcpConfig = readJsonSafe(mcpConfigPath);
@@ -1318,7 +1326,7 @@ function ensureMcpRegistered(projectDir, baseUrl) {
   mcpConfig.mcpServers.eventmodelers = {
     type: 'http',
     url: `${baseUrl}/mcp`,
-    headers: { 'x-token': '${EVENTMODELERS_TOKEN}' },
+    headers: { 'x-token': '${EVENTMODELERS_TOKEN}', 'x-agent-id': '${EVENTMODELERS_AGENT_ID}' },
   };
   writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2));
 }

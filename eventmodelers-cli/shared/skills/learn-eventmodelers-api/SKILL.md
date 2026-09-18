@@ -881,7 +881,7 @@ Set a prompt's status, optionally attaching a progress comment. Auth: `x-token` 
 ```
 
 **Response**: `200` — the updated row
-**Errors**: `400` invalid/missing `status` · `403` token not for this prompt's org · `404` prompt not found
+**Errors**: `400` invalid/missing `status` · `403` token not for this prompt's org · `404` prompt not found · `409` (`PROMPT_STATUS_ALREADY_SET`) the prompt already carries that status — another agent already made this transition, so don't retry it
 
 ---
 
