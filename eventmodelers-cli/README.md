@@ -211,8 +211,10 @@ starting in one command. Resolution order for a run is `--credentials` and the i
 `--token`/`--organization-id`/`--board-id`/`--base-url` flags, then `EVENTMODELERS_*` env vars,
 then `~/.eventmodelers/boards/<board>.json`, then the usual `.eventmodelers/config.json` walk,
 and finally the account's default board. Whatever a run resolves is saved back to the
-per-board file (`0600`, in a `0700` directory) along with a stable agent id for the board's
-alive-ping. One machine can therefore drive several boards, across several accounts, at once.
+per-board file (`0600`, in a `0700` directory). The agent id is *not* stored there — a standalone
+run mints a fresh one each time, so two ad-hoc agents on one board stay two agents (see
+[Naming an agent](#naming-an-agent)). One machine can therefore drive several boards, across
+several accounts, at once.
 The global kit itself holds no credentials at all — the token reaches `claude` through the
 spawned process's environment.
 
@@ -401,16 +403,18 @@ npx @eventmodelers/cli init-config --name ci-builder     # name the agent this c
 
 ### Naming an agent
 
-Every agent identifies itself to the platform with a stable `agentId` it mints on first use (per project, or per board for `run --standalone`), and the board's live-agent view shows that bare uuid. `--name` gives it a readable one instead — accepted by `init`, `re-init`, and `init-config`, saved into `config.json` as `agentName`, and sent with every heartbeat from then on:
+Every agent identifies itself to the platform with an `agentId`, and the board's live-agent view shows that bare uuid. A **project install** mints one on first use and reuses it on every restart (`agentIds` in the project root's `.eventmodelers/config.json`). A **standalone/global run** mints a fresh one per run instead: nothing stops two ad-hoc agents running for one board, and since the heartbeat is keyed on `(token, agentId, agentType)`, a shared id would make the second agent replace the first — one agent visible however many are running, and their board writes indistinguishable.
+
+`--name` gives an agent a readable label instead of the uuid — accepted by `init`, `re-init`, and `init-config`, saved into `config.json` as `agentName`, and sent with every heartbeat from then on:
 
 ```bash
 npx @eventmodelers/cli init --stack node --name ci-builder     # persisted for every later run of this kit
 npx @eventmodelers/cli init-config --name martins-laptop       # same, without re-installing
 npx @eventmodelers/cli run --name one-off-check                # override for a single run, nothing written
-npx @eventmodelers/cli run --id <id>                           # …and a second agent of the same type, side by side
+npx @eventmodelers/cli run --id <id>                           # pin ONE identity across restarts
 ```
 
-The heartbeat is keyed on `(token, agentId, agentType)`, so two agents of the same type in one project need distinct ids to both show up — that's what `run --id` is for. `run --id`/`run --name` are per-run only: the persisted `agentName` (and the minted id) stay untouched, so the next plain `run` is the same agent the platform already knows.
+`run --id` is what you want when an agent has to keep the same identity every time it starts: a supervisor that already knows the id, a second agent of the same type in one *project* (which would otherwise share the project's single minted id), or an agent a board has starred as its **preferred agent** — that star addresses prompts to one id, so an agent whose id changes per run loses it on restart. `run --id`/`run --name` are per-run only: nothing is written to disk.
 
 ### Env vars and `--config` (scripted/CI installs)
 

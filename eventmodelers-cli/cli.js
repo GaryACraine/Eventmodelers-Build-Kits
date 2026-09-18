@@ -1390,7 +1390,7 @@ function ensureEnvToken(targetDir, token) {
 const GLOBAL_DIR = join(homedir(), '.eventmodelers');
 const GLOBAL_KIT_DIR = join(GLOBAL_DIR, 'kit');
 
-// One file per board: `{token, organizationId, boardId, baseUrl, agentId}`. Credentials
+// One file per board: `{token, organizationId, boardId, baseUrl}`. Credentials
 // ARE per board — a token is scoped to the org that owns it — so one machine can drive
 // several boards across several accounts at once, each with its own. Written 0600 in a
 // 0700 dir: unlike a project's .eventmodelers/config.json, there is no .gitignore standing
@@ -1408,21 +1408,20 @@ function boardCredentialsPath(boardId) {
 function writeBoardCredentials(config) {
   const path = boardCredentialsPath(config.boardId);
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  // agentName rides along with agentId in both credential-bearing shapes: it is per-board
-  // identity, same as the id, and this file is the only config a `run --standalone` from an
-  // arbitrary directory ever reads — drop it here and `init-config --name` would be lost on
-  // the very next run.
+  // agentName is stored, the agent id is not: the name is a label for whoever runs here (and
+  // this file is the only config a `run --standalone` from an arbitrary directory reads, so
+  // dropping it would lose `init-config --name` on the very next run), while the id is minted
+  // per run now — see resolveModelingCredentials for why.
   const agentName = config.agentName ? { agentName: config.agentName } : {};
   const body = config.useBoard
     ? { boardId: config.boardId, useBoard: config.useBoard }
     : config.useGlobal
-    ? { boardId: config.boardId, useGlobal: true, agentId: config.agentId, ...agentName }
+    ? { boardId: config.boardId, useGlobal: true, ...agentName }
     : {
         token: config.token,
         organizationId: config.organizationId,
         boardId: config.boardId,
         baseUrl: config.baseUrl,
-        agentId: config.agentId,
         ...agentName,
       };
   writeFileSync(path, JSON.stringify(body, null, 2), { mode: 0o600 });
@@ -1605,12 +1604,18 @@ async function resolveModelingCredentials(cwd, flags, explicitConfigPath, print)
     process.exit(1);
   }
 
-  // Distinguishes this agent from any other pinging the same board, and has to stay stable
-  // across runs or the platform sees a brand-new agent on every restart. Per board, since
-  // that is the identity the alive-ping is scoped to.
-  config.agentId = stored.agentId || readJsonSafe(boardCredentialsPath(config.boardId)).agentId || randomUUID();
+  // A fresh identity for every standalone run, deliberately not persisted. A standalone agent
+  // is started ad hoc from wherever, and nothing stops two of them running for the same board —
+  // with one id stored per board they upserted the same alive row (the heartbeat is keyed on
+  // token + agent_id + agent_type), so the second agent replaced the first instead of joining
+  // it: the board showed one agent however many were running, and their writes were
+  // indistinguishable. A per-run uuid costs the identity its continuity across restarts (a
+  // restarted agent is a new row, and the old one lingers until its 45s window lapses) — pass
+  // `run --id <uuid>` when an agent needs to keep one identity, which is also what makes
+  // "preferred agent" on the board stick to it.
+  config.agentId = randomUUID();
   writeBoardCredentials(stored.useGlobal
-    ? { boardId: config.boardId, useGlobal: true, agentId: config.agentId, agentName: config.agentName }
+    ? { boardId: config.boardId, useGlobal: true, agentName: config.agentName }
     : config);
 
   return config;
@@ -1697,9 +1702,9 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
     console.error('❌ --modeling needs platform credentials in .eventmodelers/config.json (token + organizationId) — run `/connect` once or paste your config first.');
     process.exit(1);
   }
-  // The identity flags go on last: the global install's `overrides` carry the board's own
-  // stored agentId (already persisted by resolveModelingCredentials), which would otherwise
-  // win back over an explicit --id.
+  // The identity flags go on last: the global install's `overrides` carry the agent id
+  // resolveModelingCredentials just minted for this run, which would otherwise win back over
+  // an explicit --id.
   const cfg = { ...(await fetchPlatformConfig(local)), ...(overrides ?? {}), ...(identity.agentId ? { agentId: identity.agentId } : {}), ...(identity.agentName ? { agentName: identity.agentName } : {}) }; // adds realtimeProvider + its provider-specific fields (supabaseUrl/supabaseAnonKey or pocketbaseUrl), + boardId if the config has a default one
   if (!cfg.boardId) {
     console.error('❌ --modeling needs a boardId — a modeling agent always runs for exactly one board. Run `/connect board=<uuid>` once, or add boardId to .eventmodelers/config.json.');
@@ -1917,6 +1922,7 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
   }
 
   spawnProcess();
+  log(`agent: ${cfg.agentName ? `${cfg.agentName} (${cfg.agentId})` : cfg.agentId}`);
   log(
     standalone
       ? `standalone: ON — reacting to direct prompts AND to board changes on its own initiative (max ${maxAgents} subagent(s) per self-directed turn)`
@@ -2710,9 +2716,6 @@ credentialFlags(program
         process.exit(1);
       }
       if (!parsed.baseUrl) parsed.baseUrl = DEFAULT_BASE_URL;
-      // Preserved across re-configuration: the platform keys a board's alive-ping on it, so
-      // regenerating it would present a long-running agent as a brand-new one.
-      parsed.agentId = readJsonSafe(boardCredentialsPath(parsed.boardId)).agentId || randomUUID();
       writeBoardCredentials(parsed);
       console.log('\n  ✓ Saved credentials for board ' + parsed.boardId + ' to ' + boardCredentialsPath(parsed.boardId));
       console.log('\n  Start the agent from anywhere with:\n');
@@ -2806,7 +2809,7 @@ credentialFlags(program
   .option('--global', 'Run the modeling agent from the global install (~/.eventmodelers/kit), initializing it on first use, and ignore any kit in this directory. This is also what --modeling/--standalone fall back to on their own when nothing is installed here — pass it explicitly to prefer the global install over a local one. Credentials come from the flags below, EVENTMODELERS_* env vars, or ~/.eventmodelers/boards/<board>.json, so nothing is written into the current directory.')
   .option('--local', 'Skip platform config/credential lookup entirely and run the local-only loop (no board sync, no realtime agent) — even if .eventmodelers/config.json has credentials (build-kit stacks only)')
   .option('--verbose', 'Log every tool call\'s full input (commands, skill args, file paths) and assistant reasoning text. Default is condensed, high-level per-step logging only.')
-  .option('--id <id>', 'Override the agent id this run identifies itself with on the platform, instead of the stable one minted once per project (per board for --global/--standalone) and reused on every restart. The heartbeat is keyed on (token, agent_id, agent_type), so this is what lets a second agent of the same type run side by side without the two overwriting each other\'s row — or pins one to an id a supervisor already knows. Per-run only: nothing is written to disk, so the next run without the flag is the original agent again.')
+  .option('--id <id>', 'Pin the agent id this run identifies itself with on the platform. A project install otherwise mints one id per project and reuses it on every restart; --global/--standalone mints a fresh one per run, since two ad-hoc agents for one board must not share a row (the heartbeat is keyed on token + agent_id + agent_type, so the second would replace the first). Pass this when an agent has to keep ONE identity across restarts — a supervisor that already knows the id, or a board where it is the starred "preferred agent". Per-run only: nothing is written to disk.')
   .option('--name <name>', 'A human-readable name for this agent, sent with every heartbeat so the board shows which agent is live rather than a bare uuid (e.g. "ci-builder", "martins-laptop"). Per-run only, like --id: the persistent name is `agentName` in config.json (set via `init --name` / `init-config --name`), and this overrides it for one run without writing anything.')
   .option('--credentials <values>', 'Credentials as the comma-separated blob from app.eventmodelers.ai/account (token=...,boardId=...,organizationId=...,baseUrl=...), the equivalent JSON, or - to read either from stdin. Saved to ~/.eventmodelers/boards/<board>.json, so it is only needed once per board, and passing it skips the first-run question. The individual flags below override single fields of it.'))
   .action(async (opts, command) => {
