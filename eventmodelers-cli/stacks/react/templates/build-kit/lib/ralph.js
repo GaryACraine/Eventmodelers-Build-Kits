@@ -153,9 +153,18 @@ function ensureAgentId(kitDir, agentType) {
   return agentId;
 }
 
+// `x-agent-id` on every platform call this loop makes, when it knows its own agent id (see
+// ensureAgentId above / RALPH_AGENT_ID). The heartbeat says this agent is alive; the header says
+// which calls are its, so its board writes are attributed to it and a prompt the user addressed
+// to one preferred agent is only ever claimed by that agent.
+function agentHeaders(cfg) {
+  const agentId = cfg?.agentId || process.env.RALPH_AGENT_ID || process.env.EVENTMODELERS_AGENT_ID || '';
+  return agentId ? { 'x-agent-id': agentId } : {};
+}
+
 async function fetchPlatformConfig(local) {
   const remote = await fetchJSON(`${local.baseUrl}/api/config`, {
-    headers: { 'x-token': local.token },
+    headers: { 'x-token': local.token, ...agentHeaders(local) },
   });
   return { ...local, ...remote };
 }
@@ -169,7 +178,7 @@ function slugify(str) {
 async function fetchAndPersistSlices(cfg, kitDir) {
   const url = `${cfg.baseUrl}/api/org/${cfg.organizationId}/boards/${cfg.boardId}/slicedata/slices`;
   const { slices } = await fetchJSON(url, {
-    headers: { 'x-token': cfg.token, 'x-board-id': cfg.boardId },
+    headers: { 'x-token': cfg.token, 'x-board-id': cfg.boardId, ...agentHeaders(cfg) },
   });
   const slicesDir = join(kitDir, '.slices');
   mkdirSync(slicesDir, { recursive: true });
@@ -391,7 +400,7 @@ async function blockStuckSlice(kitDir, cfg, credentialed, planned, attempts) {
     try {
       await fetchJSON(`${cfg.baseUrl}/api/org/${cfg.organizationId}/boards/${cfg.boardId}/nodes/events`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-token': cfg.token, 'x-board-id': cfg.boardId, 'x-user-id': 'ralph-loop' },
+        headers: { 'Content-Type': 'application/json', 'x-token': cfg.token, 'x-board-id': cfg.boardId, 'x-user-id': 'ralph-loop', ...agentHeaders(cfg) },
         body: JSON.stringify([{
           id: randomUUID(),
           eventType: 'node:changed',

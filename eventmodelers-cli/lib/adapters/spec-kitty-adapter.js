@@ -48,8 +48,12 @@ function slugify(text) {
 async function fetchFullSliceData(cfg, contextName) {
   const baseUrl = cfg.baseUrl || DEFAULT_BASE_URL;
   const url = `${baseUrl}/api/org/${cfg.organizationId}/boards/${cfg.boardId}/slicedata?contextName=${encodeURIComponent(contextName)}`;
+  const agentId = cfg.agentId || process.env.EVENTMODELERS_AGENT_ID || '';
   const res = await fetch(url, {
-    headers: { 'x-token': cfg.token, 'x-board-id': cfg.boardId, 'x-user-id': 'spec-kitty-adapter' },
+    headers: {
+      'x-token': cfg.token, 'x-board-id': cfg.boardId, 'x-user-id': 'spec-kitty-adapter',
+      ...(agentId ? { 'x-agent-id': agentId } : {}),
+    },
   });
   if (!res.ok) throw new Error(`slicedata fetch failed for context "${contextName}": HTTP ${res.status}`);
   return res.json();

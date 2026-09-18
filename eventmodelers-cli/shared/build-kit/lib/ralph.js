@@ -148,9 +148,18 @@ function ensureAgentId(kitDir, agentType) {
   return agentId;
 }
 
+// `x-agent-id` on every platform call this loop makes, when it knows its own agent id (see
+// ensureAgentId above / RALPH_AGENT_ID). The heartbeat says this agent is alive; the header says
+// which calls are its, so its board writes are attributed to it and a prompt the user addressed
+// to one preferred agent is only ever claimed by that agent.
+function agentHeaders(cfg) {
+  const agentId = cfg?.agentId || process.env.RALPH_AGENT_ID || process.env.EVENTMODELERS_AGENT_ID || '';
+  return agentId ? { 'x-agent-id': agentId } : {};
+}
+
 async function fetchPlatformConfig(local) {
   const remote = await fetchJSON(`${local.baseUrl}/api/config`, {
-    headers: { 'x-token': local.token },
+    headers: { 'x-token': local.token, ...agentHeaders(local) },
   });
   return { ...local, ...remote };
 }
@@ -160,7 +169,7 @@ async function fetchPlatformConfig(local) {
 async function getRealtimeToken(cfg) {
   const { token } = await fetchJSON(
     `${cfg.baseUrl}/api/org/${cfg.organizationId}/prompts/realtime-token`,
-    { headers: { 'x-token': cfg.token } },
+    { headers: { 'x-token': cfg.token, ...agentHeaders(cfg) } },
   );
   return token;
 }
@@ -172,7 +181,7 @@ function slugify(str) {
 async function fetchAndPersistSlices(cfg, kitDir) {
   const url = `${cfg.baseUrl}/api/org/${cfg.organizationId}/boards/${cfg.boardId}/slicedata/slices`;
   const { slices } = await fetchJSON(url, {
-    headers: { 'x-token': cfg.token, 'x-board-id': cfg.boardId },
+    headers: { 'x-token': cfg.token, 'x-board-id': cfg.boardId, ...agentHeaders(cfg) },
   });
   const slicesDir = join(kitDir, '.slices');
   mkdirSync(slicesDir, { recursive: true });
@@ -367,7 +376,7 @@ async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', queueAllSt
       const res = await fetch(`${cfg.baseUrl}/api/agent-alive`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${realtimeToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: cfg.token, board_id: cfg.boardId, agent_type: agentType, agent_id: cfg.agentId }),
+        body: JSON.stringify({ token: cfg.token, board_id: cfg.boardId, agent_type: agentType, agent_id: cfg.agentId, ...(cfg.agentName ? { agent_name: cfg.agentName } : {}) }),
         signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) {
@@ -489,7 +498,7 @@ async function blockStuckSlice(kitDir, cfg, credentialed, planned, attempts) {
     try {
       await fetchJSON(`${cfg.baseUrl}/api/org/${cfg.organizationId}/boards/${cfg.boardId}/nodes/events`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-token': cfg.token, 'x-board-id': cfg.boardId, 'x-user-id': 'ralph-loop' },
+        headers: { 'Content-Type': 'application/json', 'x-token': cfg.token, 'x-board-id': cfg.boardId, 'x-user-id': 'ralph-loop', ...agentHeaders(cfg) },
         body: JSON.stringify([{
           id: randomUUID(),
           eventType: 'node:changed',
@@ -583,10 +592,17 @@ export { loadLocalConfig, fetchPlatformConfig, retryOn401, startRealtimeAgent };
 
 export async function startRalph({ kitDir, projectDir, onTask, onPlannedSlice, agentType = 'BUILD', queueAllStatuses = false, localOnly = false }) {
   const local = loadLocalConfig(kitDir);
-  local.agentId = ensureAgentId(kitDir, agentType);
+  // RALPH_AGENT_ID/RALPH_AGENT_NAME are `eventmodelers run --id/--name`, passed down as env
+  // (see cli.js's run dispatcher): a per-run identity override so a second agent of the same
+  // type can run side by side without the two overwriting each other's heartbeat row, and so
+  // the board can show a name instead of a bare uuid. An override skips ensureAgentId rather
+  // than overwriting it — the project's stable id stays on disk for the next plain run.
+  local.agentId = process.env.RALPH_AGENT_ID || ensureAgentId(kitDir, agentType);
+  if (process.env.RALPH_AGENT_NAME) local.agentName = process.env.RALPH_AGENT_NAME;
 
   console.log(`Ralph — kit: ${kitDir}`);
   console.log(`         project: ${projectDir}`);
+  console.log(`         agent: ${local.agentName ? `${local.agentName} (${local.agentId})` : local.agentId}`);
 
   // localOnly (set via `eventmodelers run --local`) forces this branch even when
   // credentials are present — it skips fetchPlatformConfig's network call to

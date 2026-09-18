@@ -312,6 +312,7 @@ const ENV_CONFIG_MAP = {
   EVENTMODELERS_ANTHROPIC_BASE_URL: 'anthropicBaseUrl',
   EVENTMODELERS_MODEL: 'model',
   EVENTMODELERS_SUBAGENT_MODEL: 'subagentModel',
+  EVENTMODELERS_AGENT_NAME: 'agentName',
 };
 
 function applyEnvOverrides(config) {
@@ -584,6 +585,17 @@ function readJsonSafe(path) {
   } catch {
     return {};
   }
+}
+
+// The `x-agent-id` header every platform call carries when this process knows its own id.
+// The heartbeat says an agent is alive; this says which of the calls arriving are its — the
+// platform stamps it on the board_events a write produces (so the board can show "alice moved
+// this" rather than one anonymous robot), and matches it when claiming a prompt the user
+// addressed to one preferred agent. Optional everywhere: an id-less caller behaves exactly as
+// callers did before it existed.
+function agentHeaders(cfg) {
+  const agentId = cfg?.agentId || process.env.EVENTMODELERS_AGENT_ID || '';
+  return agentId ? { 'x-agent-id': agentId } : {};
 }
 
 // Distinguishes this agent process from any other agent pinging the same
@@ -1089,8 +1101,9 @@ async function installStack(stackKey, stackCfg, options = {}) {
 // Extracted from installStack so `init-config` can reuse the exact same
 // paste/manual/instructions/skip flow without also scaffolding a stack.
 // `overrides` are values passed directly on the command line (--token, --board-id,
-// --organization-id, --base-url) — the most explicit source available, so they
-// win over both the config file and env vars before we even check what's missing.
+// --organization-id, --base-url, plus --name as `agentName`) — the most explicit source
+// available, so they win over both the config file and env vars before we even check
+// what's missing. Any field is written through verbatim; only requiredFields gate the prompt.
 async function configureCredentials({ config, configPath, targetDir, requiredFields, boardIdOptional, overrides = {}, print, skipGitignore = false, force = false }) {
   config = { ...config };
   for (const [field, value] of Object.entries(overrides)) {
@@ -1395,16 +1408,22 @@ function boardCredentialsPath(boardId) {
 function writeBoardCredentials(config) {
   const path = boardCredentialsPath(config.boardId);
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  // agentName rides along with agentId in both credential-bearing shapes: it is per-board
+  // identity, same as the id, and this file is the only config a `run --standalone` from an
+  // arbitrary directory ever reads — drop it here and `init-config --name` would be lost on
+  // the very next run.
+  const agentName = config.agentName ? { agentName: config.agentName } : {};
   const body = config.useBoard
     ? { boardId: config.boardId, useBoard: config.useBoard }
     : config.useGlobal
-    ? { boardId: config.boardId, useGlobal: true, agentId: config.agentId }
+    ? { boardId: config.boardId, useGlobal: true, agentId: config.agentId, ...agentName }
     : {
         token: config.token,
         organizationId: config.organizationId,
         boardId: config.boardId,
         baseUrl: config.baseUrl,
         agentId: config.agentId,
+        ...agentName,
       };
   writeFileSync(path, JSON.stringify(body, null, 2), { mode: 0o600 });
 }
@@ -1591,7 +1610,7 @@ async function resolveModelingCredentials(cwd, flags, explicitConfigPath, print)
   // that is the identity the alive-ping is scoped to.
   config.agentId = stored.agentId || readJsonSafe(boardCredentialsPath(config.boardId)).agentId || randomUUID();
   writeBoardCredentials(stored.useGlobal
-    ? { boardId: config.boardId, useGlobal: true, agentId: config.agentId }
+    ? { boardId: config.boardId, useGlobal: true, agentId: config.agentId, agentName: config.agentName }
     : config);
 
   return config;
@@ -1648,7 +1667,7 @@ async function ensureGlobalKit(baseUrl) {
 // question, sketch a screen. Without the flag that channel is still subscribed on
 // the same connection and every event on it is dropped, so the two modes differ by
 // one filter rather than by a whole second realtime stack.
-async function runModeling(kitDir, projectDir, verbose = false, standalone = false, overrides = null, maxAgents = DEFAULT_MAX_AGENTS) {
+async function runModeling(kitDir, projectDir, verbose = false, standalone = false, overrides = null, maxAgents = DEFAULT_MAX_AGENTS, identity = {}) {
   const configLibPath = join(kitDir, 'lib', 'config.js');
   if (!existsSync(configLibPath)) {
     console.error(`❌ ${relative(process.cwd(), configLibPath)} not found — --modeling needs a kit installed via \`init --modeling\`.`);
@@ -1670,12 +1689,18 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
   // ~/.eventmodelers/boards/<board>.json — one dir driving several boards must not have
   // them all upsert one shared alive row. A project install keeps its id in the project
   // root config, namespaced by agent type, as it always has.
-  if (!overrides) local.agentId = ensureAgentId(kitDir, 'MODELING');
+  // `run --id` overrides that for this run only — ensureAgentId is skipped rather than
+  // overwritten, so the project's own stable id stays on disk and the next run without the
+  // flag is the same agent the platform saw before.
+  if (!overrides) local.agentId = identity.agentId || ensureAgentId(kitDir, 'MODELING');
   if (!local.token || !local.organizationId) {
     console.error('❌ --modeling needs platform credentials in .eventmodelers/config.json (token + organizationId) — run `/connect` once or paste your config first.');
     process.exit(1);
   }
-  const cfg = { ...(await fetchPlatformConfig(local)), ...(overrides ?? {}) }; // adds realtimeProvider + its provider-specific fields (supabaseUrl/supabaseAnonKey or pocketbaseUrl), + boardId if the config has a default one
+  // The identity flags go on last: the global install's `overrides` carry the board's own
+  // stored agentId (already persisted by resolveModelingCredentials), which would otherwise
+  // win back over an explicit --id.
+  const cfg = { ...(await fetchPlatformConfig(local)), ...(overrides ?? {}), ...(identity.agentId ? { agentId: identity.agentId } : {}), ...(identity.agentName ? { agentName: identity.agentName } : {}) }; // adds realtimeProvider + its provider-specific fields (supabaseUrl/supabaseAnonKey or pocketbaseUrl), + boardId if the config has a default one
   if (!cfg.boardId) {
     console.error('❌ --modeling needs a boardId — a modeling agent always runs for exactly one board. Run `/connect board=<uuid>` once, or add boardId to .eventmodelers/config.json.');
     process.exit(1);
@@ -1733,6 +1758,9 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
     ...process.env,
     ...(cfg.anthropicBaseUrl ? { ANTHROPIC_BASE_URL: cfg.anthropicBaseUrl } : {}),
     EVENTMODELERS_TOKEN: cfg.token,
+    // What the connect skill puts in `.mcp.json`'s x-agent-id header and every curl-fallback
+    // call, so the board work this agent does on the platform is attributed to this agent.
+    ...(cfg.agentId ? { EVENTMODELERS_AGENT_ID: cfg.agentId } : {}),
   };
 
   let proc = null;
@@ -1898,7 +1926,7 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
 
   async function getRealtimeToken() {
     const res = await fetch(`${cfg.baseUrl}/api/org/${cfg.organizationId}/prompts/realtime-token`, {
-      headers: { 'x-token': cfg.token },
+      headers: { 'x-token': cfg.token, ...agentHeaders(cfg) },
     });
     if (!res.ok) throw new Error(`realtime-token: HTTP ${res.status}`);
     return (await res.json()).token;
@@ -1906,7 +1934,7 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
 
   async function fetchNextPrompt(jwtToken) {
     const res = await fetch(`${cfg.baseUrl}/api/org/${cfg.organizationId}/prompts/next?board_id=${encodeURIComponent(cfg.boardId)}`, {
-      headers: { 'x-token': cfg.token, Authorization: `Bearer ${jwtToken}` },
+      headers: { 'x-token': cfg.token, Authorization: `Bearer ${jwtToken}`, ...agentHeaders(cfg) },
     });
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`prompts/next: HTTP ${res.status}`);
@@ -2279,7 +2307,7 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
       const res = await fetch(`${cfg.baseUrl}/api/agent-alive`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${realtimeToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: cfg.token, board_id: cfg.boardId, agent_type: 'MODELING', agent_id: cfg.agentId }),
+        body: JSON.stringify({ token: cfg.token, board_id: cfg.boardId, agent_type: 'MODELING', agent_id: cfg.agentId, ...(cfg.agentName ? { agent_name: cfg.agentName } : {}) }),
         signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) log(`ping failed: ${res.status} ${await res.text().catch(() => '')}`);
@@ -2344,6 +2372,23 @@ function credentialOverridesFromOpts(opts) {
   return { token: opts.token, boardId: opts.boardId, organizationId: opts.organizationId, baseUrl: opts.baseUrl };
 }
 
+// `--name` is not a credential — it's the display name of the agent a kit runs, sent with
+// every heartbeat (POST /api/agent-alive's agent_name) so the board can show which agent is
+// live instead of a bare uuid. It belongs beside the credentials in config.json rather than
+// on every command line, so `init`/`re-init`/`init-config` persist it as `agentName` and
+// every later run of that kit's agent picks it up from the config walk (both runtimes merge
+// unknown config fields through verbatim). `run --name` is the per-run override on top, and
+// writes nothing.
+const AGENT_NAME_OPTION = [
+  '--name <name>',
+  'Human-readable name for the agent this kit runs (e.g. "ci-builder", "martins-laptop"), saved to config.json as `agentName` and sent with every heartbeat so the board shows a name instead of a bare uuid. Also settable via EVENTMODELERS_AGENT_NAME, and overridable for a single run with `run --name`.',
+];
+
+function identityOverridesFromOpts(opts) {
+  const agentName = typeof opts.name === 'string' ? opts.name.trim() : undefined;
+  return agentName ? { agentName } : {};
+}
+
 credentialFlags(program
   .command('init')
   .alias('install')
@@ -2358,7 +2403,8 @@ credentialFlags(program
   .option('--build-kit', 'Install a blank build-kit scaffold (.build-kit/ + .claude/skills/build-*/SKILL.md placeholders, all TODO-marked) for a stack not built into this CLI yet — no fixed backend. Mutually exclusive with --stack/--modeling/--bridge.')
   .option('--hooks', 'Install the slice commit-scope guard (.githooks/pre-commit, running .build-kit/lib/check-commit-scope.cjs) and wire it up via `git config core.hooksPath .githooks` — only meaningful with --stack (build-kit stacks). Off by default.')
   .option('--global', 'Install skills into ~/.claude/skills/ instead of the project — available in every project')
-  .option('-f, --force', 'Re-prompt for credentials even if a config already has everything required — overwrites the existing config.json'))
+  .option('-f, --force', 'Re-prompt for credentials even if a config already has everything required — overwrites the existing config.json')
+  .option(...AGENT_NAME_OPTION))
   .action(async (opts, command) => {
     const globalOpts = command.optsWithGlobals();
 
@@ -2376,7 +2422,7 @@ credentialFlags(program
         print: globalOpts.print,
         global: opts.global,
         force: opts.force,
-        credentialOverrides: credentialOverridesFromOpts(opts),
+        credentialOverrides: { ...credentialOverridesFromOpts(opts), ...identityOverridesFromOpts(opts) },
       });
       return;
     }
@@ -2387,7 +2433,7 @@ credentialFlags(program
         print: globalOpts.print,
         global: opts.global,
         force: opts.force,
-        credentialOverrides: credentialOverridesFromOpts(opts),
+        credentialOverrides: { ...credentialOverridesFromOpts(opts), ...identityOverridesFromOpts(opts) },
       });
       return;
     }
@@ -2406,7 +2452,7 @@ credentialFlags(program
         print: globalOpts.print,
         global: opts.global,
         force: opts.force,
-        credentialOverrides: credentialOverridesFromOpts(opts),
+        credentialOverrides: { ...credentialOverridesFromOpts(opts), ...identityOverridesFromOpts(opts) },
         target: opts.target,
       });
       // Deliberately NOT under .bridge-kit/.eventmodelers/ — that whole name is
@@ -2444,7 +2490,7 @@ credentialFlags(program
         print: globalOpts.print,
         global: opts.global,
         force: opts.force,
-        credentialOverrides: credentialOverridesFromOpts(opts),
+        credentialOverrides: { ...credentialOverridesFromOpts(opts), ...identityOverridesFromOpts(opts) },
         templatesSource: join(clonedDir, 'templates'),
         hooks: opts.hooks,
       });
@@ -2457,7 +2503,7 @@ credentialFlags(program
       print: globalOpts.print,
       global: opts.global,
       force: opts.force,
-      credentialOverrides: credentialOverridesFromOpts(opts),
+      credentialOverrides: { ...credentialOverridesFromOpts(opts), ...identityOverridesFromOpts(opts) },
       hooks: opts.hooks,
     });
   });
@@ -2474,7 +2520,8 @@ credentialFlags(program
   .option('--stack <name>', `Override which stack to refresh from (${Object.keys(REINITIABLE_STACKS).join(', ')}) instead of the one recorded in install-manifest.json — use this when the manifest is missing/stale, or to switch a .build-kit install to a different stack`)
   .option('--hooks', 'Install the slice commit-scope guard (.githooks/pre-commit) and wire it up via `git config core.hooksPath .githooks` — same as `init --hooks`, for turning it on after the fact without a full re-scaffold. Off by default.')
   .option('--global', 'Re-install skills into ~/.claude/skills/ instead of the project — defaults to however they were originally installed')
-  .option('-f, --force', 'Re-prompt for credentials even if a config already has everything required — overwrites the existing config.json'))
+  .option('-f, --force', 'Re-prompt for credentials even if a config already has everything required — overwrites the existing config.json')
+  .option(...AGENT_NAME_OPTION))
   .action(async (opts, command) => {
     const globalOpts = command.optsWithGlobals();
     const targetDir = process.cwd();
@@ -2512,7 +2559,7 @@ credentialFlags(program
       print: globalOpts.print,
       global: opts.global !== undefined ? opts.global : !!manifest.global,
       force: opts.force,
-      credentialOverrides: credentialOverridesFromOpts(opts),
+      credentialOverrides: { ...credentialOverridesFromOpts(opts), ...identityOverridesFromOpts(opts) },
       skipRootScaffold: true,
       hooks: opts.hooks,
     });
@@ -2642,10 +2689,11 @@ credentialFlags(program
   .command('init-config')
   .description('Configure credentials only — writes .eventmodelers/config.json in the current directory, or ~/.eventmodelers/config.json with --global')
   .option('--global', 'Write account-wide defaults (organizationId + token only) to ~/.eventmodelers/config.json instead of the project')
-  .option('--credentials <values>', 'Credentials as the comma-separated blob from app.eventmodelers.ai/account (token=...,boardId=...,organizationId=...,baseUrl=...), the equivalent JSON, or - to read either from stdin. When the blob names a board it configures THAT board (~/.eventmodelers/boards/<board>.json), which is all a later run --standalone --board-id <uuid> then needs.'))
+  .option('--credentials <values>', 'Credentials as the comma-separated blob from app.eventmodelers.ai/account (token=...,boardId=...,organizationId=...,baseUrl=...), the equivalent JSON, or - to read either from stdin. When the blob names a board it configures THAT board (~/.eventmodelers/boards/<board>.json), which is all a later run --standalone --board-id <uuid> then needs.')
+  .option(...AGENT_NAME_OPTION))
   .action(async (opts, command) => {
     const globalOpts = command.optsWithGlobals();
-    const overrides = credentialOverridesFromOpts(opts);
+    const overrides = { ...credentialOverridesFromOpts(opts), ...identityOverridesFromOpts(opts) };
 
     // A blob naming a board configures that board's own file rather than a project or
     // account-wide config: the per-board store is keyed by board id, and the blob is
@@ -2688,6 +2736,11 @@ credentialFlags(program
       if (pasted.token) base.token = pasted.token;
       if (overrides.organizationId) base.organizationId = overrides.organizationId;
       if (overrides.token) base.token = overrides.token;
+      // Carried through the same narrowing: this branch rebuilds the file from scratch, so
+      // an already-configured agentName has to be read back in or a later `init-config
+      // --global` (e.g. rotating the token) would silently drop it.
+      if (existing.agentName) base.agentName = existing.agentName;
+      if (overrides.agentName) base.agentName = overrides.agentName;
 
       const configured = await configureCredentials({
         config: base,
@@ -2708,7 +2761,9 @@ credentialFlags(program
       // configureCredentials' generic paste/manual flow may have picked up
       // boardId/baseUrl too (e.g. from a pasted JSON blob) — strip them back out
       // before the final write, since --global only ever persists identity.
-      writeFileSync(configPath, JSON.stringify({ organizationId: configured.organizationId, token: configured.token }, null, 2));
+      // --name is the one non-credential that belongs here: it names the agent, not the
+      // project, so an account-wide default is as portable as the org/token beside it.
+      writeFileSync(configPath, JSON.stringify({ organizationId: configured.organizationId, token: configured.token, ...(configured.agentName ? { agentName: configured.agentName } : {}) }, null, 2));
       console.log(`\n  ✓ Saved account-wide defaults to ${configPath}`);
     } else {
       const targetDir = process.cwd();
@@ -2724,7 +2779,11 @@ credentialFlags(program
         boardIdOptional: true,
         overrides,
         print: globalOpts.print,
-        force: true,
+        // Same reasoning as the --global branch above: a bare `init-config` means "re-ask
+        // me", but an invocation that already carries its answers on the command line —
+        // credentials, or just a --name to record — must not stop to prompt, or every
+        // non-interactive caller hangs (a closed stdin crashes outright).
+        force: !Object.values(overrides).some(Boolean),
       });
 
       // Keep `.mcp.json` in sync — this command can change `baseUrl` (e.g.
@@ -2747,6 +2806,8 @@ credentialFlags(program
   .option('--global', 'Run the modeling agent from the global install (~/.eventmodelers/kit), initializing it on first use, and ignore any kit in this directory. This is also what --modeling/--standalone fall back to on their own when nothing is installed here — pass it explicitly to prefer the global install over a local one. Credentials come from the flags below, EVENTMODELERS_* env vars, or ~/.eventmodelers/boards/<board>.json, so nothing is written into the current directory.')
   .option('--local', 'Skip platform config/credential lookup entirely and run the local-only loop (no board sync, no realtime agent) — even if .eventmodelers/config.json has credentials (build-kit stacks only)')
   .option('--verbose', 'Log every tool call\'s full input (commands, skill args, file paths) and assistant reasoning text. Default is condensed, high-level per-step logging only.')
+  .option('--id <id>', 'Override the agent id this run identifies itself with on the platform, instead of the stable one minted once per project (per board for --global/--standalone) and reused on every restart. The heartbeat is keyed on (token, agent_id, agent_type), so this is what lets a second agent of the same type run side by side without the two overwriting each other\'s row — or pins one to an id a supervisor already knows. Per-run only: nothing is written to disk, so the next run without the flag is the original agent again.')
+  .option('--name <name>', 'A human-readable name for this agent, sent with every heartbeat so the board shows which agent is live rather than a bare uuid (e.g. "ci-builder", "martins-laptop"). Per-run only, like --id: the persistent name is `agentName` in config.json (set via `init --name` / `init-config --name`), and this overrides it for one run without writing anything.')
   .option('--credentials <values>', 'Credentials as the comma-separated blob from app.eventmodelers.ai/account (token=...,boardId=...,organizationId=...,baseUrl=...), the equivalent JSON, or - to read either from stdin. Saved to ~/.eventmodelers/boards/<board>.json, so it is only needed once per board, and passing it skips the first-run question. The individual flags below override single fields of it.'))
   .action(async (opts, command) => {
     const globalOpts = command.optsWithGlobals();
@@ -2757,6 +2818,23 @@ credentialFlags(program
     const maxAgents = parseMaxAgents(opts.maxAgents);
     if (command.getOptionValueSource('maxAgents') === 'cli' && !opts.standalone) {
       console.log('ℹ️  --max-agents only applies to --standalone turns; ignoring it here.');
+    }
+    // --id/--name are what the platform will see for this run, so a blank one is a
+    // mistake worth failing on rather than silently falling back to the stored identity.
+    const identity = {
+      agentId: opts.id === undefined ? null : String(opts.id).trim(),
+      agentName: opts.name === undefined ? null : String(opts.name).trim(),
+    };
+    for (const [flag, value] of [['--id', identity.agentId], ['--name', identity.agentName]]) {
+      if (value === '') {
+        console.error(`❌ ${flag} needs a non-empty value.`);
+        process.exit(1);
+      }
+    }
+    // ralph.sh has no realtime agent and never pings /api/agent-alive, so there is no
+    // identity for either flag to override there.
+    if ((identity.agentId || identity.agentName) && opts.bash) {
+      console.log('ℹ️  --id/--name only apply to agents that ping the platform; the --bash loop does not, so they are ignored here.');
     }
     // Both kit dirs can be installed side by side (e.g. running a build-kit and a
     // modeling-kit agent from the same project). findInstalledKitDir only ever
@@ -2821,7 +2899,7 @@ credentialFlags(program
       const shown = relative(cwd, kitDir);
       await new Promise((res) => process.stdout.write(`▶ Starting modeling loop (warm Claude process) for ${shown && !shown.startsWith('..') ? shown : kitDir}...\n\n`, res));
       try {
-        await runModeling(kitDir, projectDir, !!opts.verbose, !!opts.standalone, overrides, maxAgents);
+        await runModeling(kitDir, projectDir, !!opts.verbose, !!opts.standalone, overrides, maxAgents, identity);
       } catch (err) {
         console.error('[modeling] Fatal:', err);
         process.exit(1);
@@ -2866,7 +2944,9 @@ credentialFlags(program
       // their own separate output paths with no stream-json parsing to gate. RALPH_LOCAL is
       // read by all three runners (ralph.js's startRalph, and ralph.sh directly) to force the
       // local-only branch even when .eventmodelers/config.json has valid credentials.
-      execSync(cmd, { cwd: kitDir, stdio: 'inherit', env: { ...process.env, RALPH_VERBOSE: opts.verbose ? '1' : '', RALPH_LOCAL: opts.local ? '1' : '' } });
+      // RALPH_AGENT_ID/RALPH_AGENT_NAME (--id/--name) are read in ralph.js's startRalph, so
+      // they reach both node runners but not ralph.sh, which has no heartbeat to identify.
+      execSync(cmd, { cwd: kitDir, stdio: 'inherit', env: { ...process.env, RALPH_VERBOSE: opts.verbose ? '1' : '', RALPH_LOCAL: opts.local ? '1' : '', RALPH_AGENT_ID: identity.agentId ?? '', RALPH_AGENT_NAME: identity.agentName ?? '' } });
     } catch (err) {
       process.exit(err.status || 1);
     }
@@ -3180,6 +3260,7 @@ program
           'x-token': cfg.token,
           'x-board-id': cfg.boardId,
           'x-user-id': 'cli-set-slice-status',
+          ...agentHeaders(cfg),
         },
         body: JSON.stringify([{
           id: randomUUID(),

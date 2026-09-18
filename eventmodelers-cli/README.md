@@ -119,6 +119,7 @@ npx @eventmodelers/cli run --local                  # skip platform config/crede
 npx @eventmodelers/cli run --modeling               # modeling-kit: warm Claude process driven by the board's prompt queue
 npx @eventmodelers/cli run --standalone             # same, plus acting on board changes unprompted — and needs no install at all
 npx @eventmodelers/cli run --standalone --board-id <uuid>  # …from any directory, against any board (see Power users)
+npx @eventmodelers/cli run --id <id> --name <label>  # override this run's agent identity (id + display name); `init --name` persists a name instead
 npx @eventmodelers/cli fetch --context <name>                     # pull full slice detail for one context on the board into <kit-dir>/.slices/
 npx @eventmodelers/cli fetch --context <name> --slice-id <id>     # same, then print just that slice
 npx @eventmodelers/cli fetch --context <name> --slice-title <title> # same, then print just the slice matching this title
@@ -395,7 +396,21 @@ npx @eventmodelers/cli init-config                      # interactive, writes to
 npx @eventmodelers/cli init-config --board-id <uuid>     # non-interactive, just overrides one field
 npx @eventmodelers/cli init-config --credentials "token=...,boardId=...,organizationId=...,baseUrl=..."  # configure ONE board (~/.eventmodelers/boards/<board>.json), no prompts
 npx @eventmodelers/cli init-config --credentials -        # same, read from stdin (keeps the token out of shell history)
+npx @eventmodelers/cli init-config --name ci-builder     # name the agent this config's runs identify as
 ```
+
+### Naming an agent
+
+Every agent identifies itself to the platform with a stable `agentId` it mints on first use (per project, or per board for `run --standalone`), and the board's live-agent view shows that bare uuid. `--name` gives it a readable one instead — accepted by `init`, `re-init`, and `init-config`, saved into `config.json` as `agentName`, and sent with every heartbeat from then on:
+
+```bash
+npx @eventmodelers/cli init --stack node --name ci-builder     # persisted for every later run of this kit
+npx @eventmodelers/cli init-config --name martins-laptop       # same, without re-installing
+npx @eventmodelers/cli run --name one-off-check                # override for a single run, nothing written
+npx @eventmodelers/cli run --id <id>                           # …and a second agent of the same type, side by side
+```
+
+The heartbeat is keyed on `(token, agentId, agentType)`, so two agents of the same type in one project need distinct ids to both show up — that's what `run --id` is for. `run --id`/`run --name` are per-run only: the persisted `agentName` (and the minted id) stay untouched, so the next plain `run` is the same agent the platform already knows.
 
 ### Env vars and `--config` (scripted/CI installs)
 
@@ -410,6 +425,7 @@ Every config field can be set via an `EVENTMODELERS_*` env var instead of the in
 | `EVENTMODELERS_ANTHROPIC_BASE_URL` | `anthropicBaseUrl` |
 | `EVENTMODELERS_MODEL` | `model` |
 | `EVENTMODELERS_SUBAGENT_MODEL` | `subagentModel` |
+| `EVENTMODELERS_AGENT_NAME` | `agentName` |
 
 ```bash
 EVENTMODELERS_ORGANIZATION_ID=... EVENTMODELERS_BOARD_ID=... EVENTMODELERS_TOKEN=... \

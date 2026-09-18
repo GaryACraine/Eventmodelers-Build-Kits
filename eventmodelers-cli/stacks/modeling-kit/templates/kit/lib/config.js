@@ -89,7 +89,8 @@ function hasCredentials(cfg) {
 
 async function fetchPlatformConfig(local) {
   const remote = await fetchJSON(`${local.baseUrl}/api/config`, {
-    headers: { 'x-token': local.token },
+    // x-agent-id when this install knows its agent id — see the CLI's agentHeaders.
+    headers: { 'x-token': local.token, ...(local.agentId || process.env.EVENTMODELERS_AGENT_ID ? { 'x-agent-id': local.agentId || process.env.EVENTMODELERS_AGENT_ID } : {}) },
   });
   return { ...local, ...remote };
 }

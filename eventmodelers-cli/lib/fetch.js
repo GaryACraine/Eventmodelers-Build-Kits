@@ -72,7 +72,13 @@ function sliceFolderName(title) {
 // { cwd, kitDir, cfg: { token, organizationId, boardId, baseUrl }, opts: { context, sliceId?, sliceTitle? } }
 export async function runFetch({ cwd, kitDir, cfg, opts = {} }) {
   const baseUrl = cfg.baseUrl || DEFAULT_BASE_URL;
-  const headers = { 'x-token': cfg.token, 'x-board-id': cfg.boardId, 'x-user-id': 'cli-fetch' };
+  // x-agent-id when we know it (see cli.js's agentHeaders) — a read doesn't write anything, but
+  // sending it everywhere keeps one rule instead of a per-call judgment about which calls count.
+  const agentId = cfg.agentId || process.env.EVENTMODELERS_AGENT_ID || '';
+  const headers = {
+    'x-token': cfg.token, 'x-board-id': cfg.boardId, 'x-user-id': 'cli-fetch',
+    ...(agentId ? { 'x-agent-id': agentId } : {}),
+  };
 
   // assertBoardAccess (the guard every one of these routes runs behind) only ever
   // answers 401/403 for credential/board-access problems — a 404 here always means

@@ -31,6 +31,9 @@ const claudeEnv = {
   ...process.env,
   ...(cfg.anthropicBaseUrl ? { ANTHROPIC_BASE_URL: cfg.anthropicBaseUrl } : {}),
   ...(cfg.token ? { EVENTMODELERS_TOKEN: cfg.token } : {}),
+  // Lets the skills this agent runs send x-agent-id on their own calls (connect puts it in
+  // `.mcp.json` and in every curl fallback), so their board writes are attributed to this agent.
+  ...(cfg.agentId ? { EVENTMODELERS_AGENT_ID: cfg.agentId } : {}),
 };
 
 // Collapses whitespace/newlines to a single line and truncates past `max` chars — a long
