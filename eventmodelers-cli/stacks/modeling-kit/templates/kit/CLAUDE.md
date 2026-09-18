@@ -30,6 +30,24 @@ header's `standalone=on|off` tells you whether this session gets them at all.
 
 At the start of every session, read `.agent-modeling-kit/AGENTS.md` if it exists to load accumulated learnings.
 
+**Only touch elements in a slice whose status is `Created`.** Every other status — `Planned`,
+`Assigned`, `InProgress`, `Review`, `Blocked`, `Done`, `Informational` — means someone is working
+on that slice: read it for context, but never change, move, rename or delete its elements, and
+never add scenarios, fields or examples to them. An element in no slice at all is not locked.
+`get_nodes` returns `sliceStatus` per node and `get_board_outline` per column, so the board read
+`/connect` Step 5 already makes answers this — no `list_slices`/`get_slice_data` call needed.
+If only part of what you were asked to do is locked, do the rest and name what you skipped and
+why; if all of it is, change nothing and post a `COMMENT` on that slice saying which status
+blocked it.
+
+**One board read, shared by the whole turn.** Orientation first — `get_board_outline`, or `get_nodes` with
+`projection: "line"` — to establish where the work actually is; then a single full-`meta` `get_nodes`, scoped by
+`chapterId` or `nodeIds`, covering the nodes you concluded you will touch. Both tiers are once per turn: keep what
+came back and answer later questions from it instead of re-fetching a chapter you already hold. `/connect` Step 5
+carries the full discipline — the two tiers, the one-call `submit_node_events` rule for writes, and the per-turn
+pool for the ids and timestamps a `node:created` needs. Whatever you hand a subagent comes out of that same read,
+never out of a second one it pays for itself (step 2).
+
 **Every prompt gets exactly two `/update-prompt-status` calls per turn — never zero, never one.** `IN_PROGRESS` before you start the work (step 4), `DONE` after you finish it (step 6). This holds even for a prompt that turns out to be trivial or a no-op — the board UI has no other way to know the agent picked it up and finished it.
 
 ## Per-turn steps
@@ -54,6 +72,8 @@ mention it in the `DONE` comment, and leave it for a self-directed turn (or for 
    Otherwise skip straight to executing the prompt — re-running `/connect` every turn defeats the point of a modeling session.
 
    This also applies **inside** a turn: when the skill you invoke in step 5 internally calls a second skill (e.g. `/add-next-slice` calling `/html-screen` to fill in the new screen), that second skill's own "invoke `connect` first" preamble is already satisfied by the connect you ran this turn — don't run it again just because the sub-skill's instructions say to.
+
+   And it applies **downwards**, to any subagent you dispatch. A subagent is a fresh session that inherits none of this one's state, so hand it `token=`, `org=`, `baseUrl=` and `board=` inline as already-resolved values and tell it explicitly not to invoke `/connect`: all four inline satisfy that skill outright at its Step 0. Three agents that each resolve and verify the same credentials pay for the connect you already did, three more times over.
 
    The same "don't reload what's already loaded" logic applies to `/learn-eventmodelers-api`: it's a lookup reference, not a mandatory preamble. Every skill already documents the exact API calls it needs inline — only invoke `/learn-eventmodelers-api` on demand, for a specific endpoint/field/type a skill's own instructions don't cover, and only once per session even then.
 3. **Resolve `BOARD_ID`** from this turn's `board_id` field; if absent, fall back to `boardId` in `.eventmodelers/config.json`.

@@ -311,6 +311,7 @@ const ENV_CONFIG_MAP = {
   EVENTMODELERS_BASE_URL: 'baseUrl',
   EVENTMODELERS_ANTHROPIC_BASE_URL: 'anthropicBaseUrl',
   EVENTMODELERS_MODEL: 'model',
+  EVENTMODELERS_SUBAGENT_MODEL: 'subagentModel',
 };
 
 function applyEnvOverrides(config) {
@@ -400,6 +401,17 @@ const DEFAULT_BASE_URL = 'https://api.eventmodelers.ai';
 // keeps an unattended turn's cost in the same ballpark as a single prompt turn while
 // still covering the usual burst — a handful of nodes across a couple of slices.
 const DEFAULT_MAX_AGENTS = 5;
+
+// What the subagents a turn fans out to run on (`subagentModel` in config.json, or
+// EVENTMODELERS_SUBAGENT_MODEL). The session's own model — `model`, which is what the
+// `claude` process is started with — is the one doing the judging: which areas need work,
+// what each piece is, who owns what. By the time an Agent is dispatched that is settled, and
+// what's left is execution against a written brief (fill in the examples, write the GWT
+// scenarios, render the screen, batch the writes), which the cheap model does just as well.
+// The agents inherit the session's model unless a turn says otherwise, so the turn says so.
+// This reaches the agent as the `Agent` tool's own `model` argument, which takes a short alias
+// (`sonnet`/`opus`/`haiku`) rather than the full model id `model` above is set with.
+const DEFAULT_SUBAGENT_MODEL = 'sonnet';
 
 // `--max-agents` is a cost guard, so a typo must not silently turn into "no limit" or
 // into the default: anything that isn't a positive integer is rejected outright.
@@ -1669,6 +1681,8 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
     process.exit(1);
   }
 
+  const subagentModel = cfg.subagentModel || DEFAULT_SUBAGENT_MODEL;
+
   const log = (line) => console.log(`[modeling] ${line}`);
 
   const QUESTIONING_RULE =
@@ -1689,7 +1703,7 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
   function withSessionHeader(body) {
     if (!firstTurn) return body;
     firstTurn = false;
-    return `MODE=modeling token=${cfg.token} org=${cfg.organizationId} baseUrl=${cfg.baseUrl} standalone=${standalone ? 'on' : 'off'}${standalone ? ` max_agents=${maxAgents}` : ''}\n\n${QUESTIONING_RULE}Read .agent-modeling-kit/CLAUDE.md now and follow it for every prompt in this session — it's a one-time read; don't re-read it on later turns.\n\n${body}`;
+    return `MODE=modeling token=${cfg.token} org=${cfg.organizationId} baseUrl=${cfg.baseUrl} standalone=${standalone ? 'on' : 'off'}${standalone ? ` max_agents=${maxAgents}` : ''} subagent_model=${subagentModel}\n\n${QUESTIONING_RULE}Read .agent-modeling-kit/CLAUDE.md now and follow it for every prompt in this session — it's a one-time read; don't re-read it on later turns.\n\n${body}`;
   }
 
   function buildTurn(p) {
@@ -1987,7 +2001,10 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
     maxAgents > 1
       ? `Dispatch at most ${maxAgents} Agents in this turn (--max-agents=${maxAgents}). Merge pieces that share a slice or ` +
         'chain first — that is a correctness rule, not a way to fit the cap — and if more than that is still left, ' +
-        'take the most valuable pieces up to the cap and leave the rest; a later turn will see them again.'
+        'take the most valuable pieces up to the cap and leave the rest; a later turn will see them again. ' +
+        `Dispatch each one with model: "${subagentModel}" (subagent_model), and with the credentials and the board ` +
+        'state you already read handed over inline — an Agent told only which node to work on re-runs /connect and ' +
+        're-fetches the whole board to learn what you already know, once per Agent.'
       : 'Do not dispatch any Agents in this turn (--max-agents=1) — that budget overrides the fan-out above: do ' +
         'the single most valuable piece of work yourself, inline, and leave the rest for a later turn.';
 
@@ -2003,7 +2020,9 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
     'best target for them, not a reason to wait, and the board was already quiet before this turn was ' +
     'handed to you. Only board-wide sweeps and structural moves (renames, deletions, re-shaping, slice ' +
     'statuses) get a comment first instead of being done. An unanswered question you posted earlier parks ' +
-    'that one sweep, never the fill-in work. You do the analysis: look at every entry above, decide what ' +
+    'that one sweep, never the fill-in work. Read the board in two calls, not twenty: every nodeId above in one ' +
+    'get_nodes, the area around them in one get_board_outline per chapter, and a full-meta read only on the nodes ' +
+    'you conclude you will actually touch. You do the analysis: look at every entry above, decide what ' +
     'actually needs doing, and then work in parallel rather than serially — dispatch one Agent per piece of ' +
     'work that needs doing, all in a single message, merging pieces that share a slice or chain so no two ' +
     `agents write to the same area. ${AGENT_BUDGET} Read .agent-modeling-kit/CLAUDE-STANDALONE.md now (once ` +

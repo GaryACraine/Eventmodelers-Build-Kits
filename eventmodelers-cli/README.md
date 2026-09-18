@@ -346,9 +346,18 @@ Both are stored alongside your credentials in the project root's `.eventmodelers
   "boardId": "...",
   "token": "...",
   "anthropicBaseUrl": "http://localhost:8000",
-  "model": "claude-sonnet-5"
+  "model": "claude-sonnet-5",
+  "subagentModel": "sonnet"
 }
 ```
+
+`model` is what the agent session itself runs on. `subagentModel` (default `sonnet`) is what the
+subagents it fans a turn out to run on — the session model does the judging (which parts of the
+board need work, what each piece is, who owns what), and by the time an agent is dispatched
+what's left is execution against a written brief, which doesn't need the expensive model. Set
+them to the same value to turn that split off. `subagentModel` reaches the agents as the `model`
+argument of the `Agent` tool, so it takes one of that tool's short aliases (`sonnet`, `opus`,
+`haiku`) — not a full model id like `model` does.
 
 Beyond the one-time install bootstrap, each stack's own `ralph.js`/`ralph-claude.js` governs how config is re-read at runtime — check `<kit-dir>/lib/` for the specifics of the stack you installed.
 
@@ -393,6 +402,7 @@ Every config field can be set via an `EVENTMODELERS_*` env var instead of the in
 | `EVENTMODELERS_BASE_URL` | `baseUrl` |
 | `EVENTMODELERS_ANTHROPIC_BASE_URL` | `anthropicBaseUrl` |
 | `EVENTMODELERS_MODEL` | `model` |
+| `EVENTMODELERS_SUBAGENT_MODEL` | `subagentModel` |
 
 ```bash
 EVENTMODELERS_ORGANIZATION_ID=... EVENTMODELERS_BOARD_ID=... EVENTMODELERS_TOKEN=... \

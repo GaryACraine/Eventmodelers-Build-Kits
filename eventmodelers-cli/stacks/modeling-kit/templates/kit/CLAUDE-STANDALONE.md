@@ -41,14 +41,25 @@ There is nothing to sanitize either — a board change is not user text.
 
 Steps:
 
-1. **Get the whole picture, not just the changed nodes.** Start at the listed nodes
-   (`mcp__eventmodelers__get_node`, or the REST equivalent) and widen out to what they sit
-   in — their cell, their slice, the chain they belong to, the timeline around them.
+1. **Get the whole picture, not just the changed nodes — in two reads, not twenty.** The
+   whole `changed:` list goes into **one**
+   `mcp__eventmodelers__get_nodes { boardId, nodeIds: [...] }` (or the REST equivalent), and
+   the area around it into **one** `get_board_outline` per chapter; `projection: "line"` is
+   enough for both whenever you only need names, types and slice statuses. That pair is your
+   orientation. Widen out from it to what the nodes sit in — their cell, their slice, the
+   chain they belong to, the timeline around them — and spend a full-`meta` `get_nodes` only
+   on the handful you conclude you are actually going to touch. One `get_node` per changed
+   node, or a second outline call for a chapter you already read this turn, is the same
+   fetch paid for twice (see `connect` Step 5).
    `mcp__eventmodelers__get_board_events` with the header's `seq` range tells you what the
    change actually was when the node's current state doesn't make it obvious. Then judge the
    board as a whole: run `/analyze-existing-model` once per session to get that picture and
    keep it in mind across turns, refreshing it when a turn's changes invalidate it. On a
    `BOARD_REVIEW` turn that model-wide picture *is* the starting point.
+   **What you read here is what you hand down in step 3.** Index it and keep it: every fact
+   an agent needs about its target — title, type, cell, fields, neighbours — is already in
+   this read, and re-fetching it once per agent is the single largest avoidable cost in a
+   fan-out turn.
 2. **Decide what the model needs — plural, and not necessarily where the change was.** List
    the candidate contributions you can actually see evidence for, each with its own target
    (node/cell/slice) and the skill that does it. A changed node is a reason to look; it is
@@ -105,10 +116,21 @@ Steps:
    three agents working at once. You analyse and coordinate; the agents do the work.
    Each subagent prompt must be self-contained, because a subagent is a fresh session that
    inherits none of this one's state:
-   - `token=`, `org=`, `baseUrl=` from this session's first message, and the instruction to
-     run `/connect` first;
+   - `token=`, `org=`, `baseUrl=` from this session's first message plus `board=<board_id>`,
+     marked as **already resolved and verified**, and an explicit instruction *not* to invoke
+     `/connect`: all four inline satisfy that skill outright at its Step 0, so an agent that
+     runs it anyway pays for a config-file walk and a verify call to be told what you just
+     told it — times the number of agents you dispatched;
    - `board_id`, plus the exact target ids (`node_id`/`cellName`/`timelineId`/slice) it owns
      — never "the node that changed";
+   - **the board state you already read, inline.** For each target: its id, title and type,
+     its cell (column/row), its `meta.fields` as you loaded them, its `sliceStatus`, and the
+     neighbours that bear on the work (the event a read model follows, the chain a field has
+     to travel, the persona and values other elements already use). All of it is sitting in
+     your step-1 read. An agent handed bare ids has exactly one way to recover it — fetch the
+     board again — so leaving it out doesn't save the read, it multiplies it. Hand over the
+     extract and say what it is: *this is the board state as of this turn; work from it, and
+     read the board only to re-check a node immediately before you write to it.*
    - what you concluded in step 2: the specific piece of work, and enough of the surrounding
      model for the agent to do it well;
    - the one skill to invoke, from the Skill Selection table in `.agent-modeling-kit/CLAUDE.md`,
@@ -117,6 +139,17 @@ Steps:
      `AskUserQuestion`, even where a skill lists it) — it posts a comment on its target and
      continues with the best reading of the work you gave it;
    - the standing constraints of step 4 and step 5 below.
+   **Dispatch executors on the cheap model.** Pass `model:` on every `Agent` call in this
+   turn, set to the session header's `subagent_model` (default `sonnet`). The judgment this
+   turn needs is yours and has already happened on this session's own model by the time you
+   dispatch: which areas need work, what the work is, who owns what, what each brief says.
+   What's left for an agent is execution against that brief — pick example values consistent
+   with the pool you handed it, write the GWT scenarios, render the screen, batch the writes —
+   and that does not need the expensive model. A turn nobody asked for is exactly where the
+   difference lands on the bill. Keep an agent on this session's model only where its piece
+   genuinely re-derives modeling structure rather than filling in detail: a translation
+   chain's shape, a slice boundary, anything you'd have wanted to decide yourself if the
+   budget allowed.
    **Stay inside the agent budget.** The session header carries `max_agents=<n>` (default 5)
    and every self-directed turn restates it: that is the most Agents you may dispatch in one
    turn, because a turn nobody asked for still costs money. Merge by area first (step 4) —
