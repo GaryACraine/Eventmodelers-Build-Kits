@@ -46,7 +46,8 @@ Steps:
    `mcp__eventmodelers__get_nodes { boardId, nodeIds: [...] }` (or the REST equivalent), and
    the area around it into **one** `get_board_outline` per chapter; `projection: "line"` is
    enough for both whenever you only need names, types and slice statuses. That pair is your
-   orientation. Widen out from it to what the nodes sit in — their cell, their slice, the
+   orientation — and the outline half of it you already have from the `SESSION_START` warm-up, so
+   re-read a chapter only where this turn's `changed:` list says it moved on. Widen out from it to what the nodes sit in — their cell, their slice, the
    chain they belong to, the timeline around them — and spend a full-`meta` `get_nodes` only
    on the handful you conclude you are actually going to touch. One `get_node` per changed
    node, or a second outline call for a chapter you already read this turn, is the same

@@ -1739,6 +1739,8 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
   let stdoutBuffer = '';
   let pending = null; // one in-flight turn at a time
   let lastTurnEndedAt = 0; // when the last turn finished — the standalone lane's echo window (see below)
+  let warmUp = null; // this process's session warm-up turn (see warmUpSession) — null until one is started
+  let warmingUp = false; // the in-flight turn is the warm-up: it only reads, so its writes can't echo
 
   // Collapses whitespace/newlines to a single line and truncates past `max` chars —
   // a long multi-line curl command or grep pattern wrapped across many terminal lines
@@ -1804,6 +1806,7 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
   function spawnProcess() {
     proc = spawn('claude', claudeArgs, { cwd: projectDir, env: claudeEnv, stdio: ['pipe', 'pipe', 'inherit'] });
     stdoutBuffer = '';
+    warmUp = null; // a fresh process has connected to nothing and read nothing
     proc.stdout.on('data', (chunk) => {
       stdoutBuffer += chunk.toString();
       const lines = stdoutBuffer.split('\n');
@@ -1815,6 +1818,8 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
       lastTurnEndedAt = Date.now();
       proc = null;
       firstTurn = true; // a respawned process is a fresh session — needs MODE=modeling again
+      warmUp = null; // …and a fresh warm-up before its first real turn
+      warmingUp = false;
       if (pending) {
         const turn = pending;
         pending = null;
@@ -1824,12 +1829,63 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
     log('modeling session started');
   }
 
-  function runClaudeWarm(text) {
-    if (!proc) spawnProcess();
+  function sendTurn(text) {
     return new Promise((resolveTurn, rejectTurn) => {
       pending = { resolve: resolveTurn, reject: rejectTurn };
       proc.stdin.write(JSON.stringify({ type: 'user', message: { role: 'user', content: text } }) + '\n');
     });
+  }
+
+  // A standalone session is long-lived and spends most of its life waiting, so the setup
+  // every turn needs — read CLAUDE.md, run /connect, read the board — is done once at
+  // startup instead of being paid by whoever happens to send the first prompt. By the time
+  // a real turn arrives the credentials are resolved and the board picture is in context,
+  // and the turn is straight into the work. It reads only: nothing is placed, no prompt
+  // status is touched (there is no prompt_id here), no subagent is dispatched.
+  const WARM_UP_TASK =
+    'This is the session warm-up, before any prompt or board change — nobody has asked for anything yet, and ' +
+    'there is nothing to sanitize, no prompt_id and no progress entry. Do exactly this and then stop: ' +
+    '(1) read .agent-modeling-kit/CLAUDE.md now, and .agent-modeling-kit/AGENTS.md if it exists, as your ' +
+    'one-time reads for this session — do NOT read .agent-modeling-kit/CLAUDE-STANDALONE.md, that one still ' +
+    'waits for the first self-directed turn; (2) invoke /connect with the credentials above and ' +
+    `board=${cfg.boardId} — this is the session's one-time connect, so no later turn runs it again; ` +
+    '(3) orient yourself on the board: one get_board_outline per chapter (or get_nodes with ' +
+    'projection: "line"), and keep what comes back as this session\'s board picture — chapters, columns, ' +
+    'elements, slice statuses — so the first real turn starts from it instead of re-reading the board. ' +
+    'Change nothing: no nodes, no comments, no slice statuses, no subagents. Reply <promise>READY</promise> ' +
+    'with a one-line summary of the board (chapters, rough element count, slice statuses).';
+
+  function buildWarmUpTurn() {
+    const header = ['SESSION_START', `board_id=${cfg.boardId}`, `organization_id=${cfg.organizationId}`].join(' ');
+    return withSessionHeader(`${header}\n\n${WARM_UP_TASK}`);
+  }
+
+  // Started eagerly at spawn, and awaited by every real turn — a prompt that lands mid
+  // warm-up queues behind it rather than racing it for the one in-flight `pending` slot.
+  function warmUpSession() {
+    if (warmUp) return warmUp;
+    if (!standalone) return (warmUp = Promise.resolve());
+    log('warm-up: connecting and reading the board before the first turn');
+    warmingUp = true;
+    warmUp = sendTurn(buildWarmUpTurn())
+      .then((result) => log(`warm-up done — ${oneLine(result, 200) || 'session ready'}`))
+      .catch((err) => {
+        // Not fatal: put the session header back so the next real turn carries the
+        // connect signal itself, exactly as it did before there was a warm-up.
+        firstTurn = true;
+        log(`warm-up failed (the first real turn will connect instead): ${err.message}`);
+      })
+      .finally(() => {
+        warmingUp = false;
+        lastTurnEndedAt = 0; // the warm-up wrote nothing, so there is no echo to wait out
+      });
+    return warmUp;
+  }
+
+  async function runClaudeWarm(text) {
+    if (!proc) spawnProcess();
+    await warmUpSession();
+    return sendTurn(text);
   }
 
   spawnProcess();
@@ -1838,6 +1894,7 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
       ? `standalone: ON — reacting to direct prompts AND to board changes on its own initiative (max ${maxAgents} subagent(s) per self-directed turn)`
       : 'standalone: off — reacting to direct prompts only (board changes are dropped)',
   );
+  warmUpSession();
 
   async function getRealtimeToken() {
     const res = await fetch(`${cfg.baseUrl}/api/org/${cfg.organizationId}/prompts/realtime-token`, {
@@ -1952,7 +2009,10 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
     }
     const sinceTurn = Date.now() - lastTurnEndedAt;
     const inEchoWindow = !!lastTurnEndedAt && sinceTurn < STANDALONE_ECHO_WINDOW_MS;
-    const maybeOwn = !!pending || draining || inEchoWindow;
+    // The warm-up turn is read-only, so a change that lands while it runs is somebody
+    // else's — labelling it "possibly your own write" would only teach the agent to
+    // discount the very edits it just came up to work on.
+    const maybeOwn = (!!pending && !warmingUp) || draining || inEchoWindow;
     const nodeId = payload?.node_id ?? '(board)';
     const entry = observed.get(nodeId) ?? { types: new Set(), count: 0, maybeOwn };
     entry.types.add(type);

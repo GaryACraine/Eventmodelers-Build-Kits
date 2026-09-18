@@ -218,6 +218,13 @@ spawned process's environment.
 A kit installed in the current directory still wins by default and behaves exactly as before,
 reading its own `.eventmodelers/config.json`.
 
+A `--standalone` session also warms itself up: the moment the agent process comes up — before
+any prompt or board change — it gets one `SESSION_START` turn in which it reads its instruction
+file, runs `/connect`, and reads the board's outline, then answers `READY` and waits. Nothing is
+written to the board there; the point is that the first person to send a prompt isn't the one
+paying for the connect and the board read. A plain `--modeling` session has no warm-up turn and
+does that setup on its first prompt, as before.
+
 Without `--standalone` the agent only ever answers direct messages. With it, the loop also
 subscribes to the board's own change channel — the same one the canvas and the build agents
 use — and the agent becomes a background collaborator on the board: when it falls quiet after
