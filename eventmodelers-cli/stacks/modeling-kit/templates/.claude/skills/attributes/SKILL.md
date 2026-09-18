@@ -87,12 +87,19 @@ Only needed without MCP; `get_connected_nodes` already applies this rule itself 
 
 Hand-built or imported chapters frequently have **no edges at all** — every node comes back with `edges: []` and `get_board_outline`'s edge list is empty. That is not an error and not a reason to stop: in that case grid geometry *is* the chain. Use the chapter cell layout (already in memory from 3a) to find inbound neighbours:
 
-In a standard event modeling layout:
+In a standard event modeling layout (rows per `eventmodeling-core-rules` — `actor`: SCREEN/AUTOMATION, `interaction`: COMMAND/READMODEL, `swimlane`: EVENT):
+
 - **READMODEL** in the interaction row → its inbound EVENT is in the swimlane row of the **same column**
 - **EVENT** in the swimlane row → its inbound COMMAND is in the interaction row of the **same column**
-- **COMMAND** in the interaction row → its inbound READMODEL is in the swimlane row of the **previous column**
+- **COMMAND** in the interaction row → its issuer is the SCREEN/AUTOMATION in the actor row of the **same column**; the READMODEL supplying that issuer is in the interaction row of the **previous column** — never this column, whose interaction row is already occupied by this COMMAND. A column's interaction row holds exactly one node, a COMMAND *or* a READMODEL, never both, so "same column" is not an option when walking back from a COMMAND
+- **SCREEN** in the actor row → its inbound READMODEL is in the interaction row of the **same column**, or of the **previous column** when this screen's own interaction row is taken by the COMMAND it issues
+- **AUTOMATION** in the actor row → its inbound READMODEL is in the interaction row of the **previous column** — never the same column, which already holds the COMMAND it issues
 
-Resolve candidates from the chapter read you already have — do **not** issue a `?cellId=` lookup per candidate. If the chapter's `meta.timelineData.cells` is sparse or absent, derive each node's (column, row) from `node.position.x/y` bucketed against `meta.timelineData.columns[].width` and `rows[].height`; that mapping is enough to apply the three rules above. Skip candidates that don't exist or are already in the chain.
+Walking **forward** (does this node have a consumer?), a READMODEL's SCREEN/AUTOMATION is in the actor row of its **own column or the very next one** — both are correct. Never conclude a read model is unconsumed from its own column alone; check the next column before reporting a gap.
+
+Two mistakes this list exists to prevent: a COMMAND's inbound READMODEL is in the **interaction** row (the same row type the COMMAND itself sits in, one column earlier), *not* the swimlane row, which holds EVENTs only. And a READMODEL feeding a consumer one column to its right is the normal shape, not a backward arrow (`eventmodeling-core-rules` — "Connections Read Forward").
+
+Resolve candidates from the chapter read you already have — do **not** issue a `?cellId=` lookup per candidate. If the chapter's `meta.timelineData.cells` is sparse or absent, derive each node's (column, row) from `node.position.x/y` bucketed against `meta.timelineData.columns[].width` and `rows[].height`; that mapping is enough to apply the rules above. Skip candidates that don't exist or are already in the chain.
 
 ### 3c — Stop condition
 Stop traversal when:
