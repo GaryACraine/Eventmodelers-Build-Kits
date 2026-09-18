@@ -316,11 +316,15 @@ async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', queueAllSt
     realtime.subscribe(
       channelName,
       {
+        // A kill names exactly one agent: {type: 'kill', id: '<agentId>', instruction: 'exit'}.
+        // Anything that doesn't name this agent is ignored — a broadcast reaches every agent on
+        // the board, and the older signal (the bare string "Exit") took all of them down at once.
+        // That string form is gone for good, not just unhandled: Supabase's broadcast API rejects
+        // a non-object payload with 422, so it never actually arrived here.
         message: (payload) => {
-          if (payload === 'Exit') {
-            console.log(`[agent] ${ts()} Received "Exit" — shutting down`);
-            process.exit(0);
-          }
+          if (payload?.type !== 'kill' || payload?.id !== cfg.agentId) return;
+          console.log(`[agent] ${ts()} Received kill (instruction: ${payload.instruction ?? 'exit'}) — shutting down`);
+          process.exit(0);
         },
         'slice:changed': (payload) => handleSliceChanged(payload, cfg, kitDir, queueAllStatuses),
       },

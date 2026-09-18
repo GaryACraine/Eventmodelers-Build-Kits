@@ -12,6 +12,20 @@ for their independent, self-contained slice-implementation tasks). Each user mes
 receive already IS the one prompt to handle; there's nothing to read, pre-filter, or pick
 from.
 
+### `standalone=on` is ad-hoc — write nothing to disk
+
+The session header carries `standalone=on` or `standalone=off`. `standalone=on` is an **ad-hoc**
+session: it belongs to no project, its kit dir is a `~/.eventmodelers/kit` shared by every board,
+and nobody goes looking in there afterwards. So in a `standalone=on` session the **board is the
+only place anything is kept** — comments, elements, slice statuses, scenarios. Write no file at
+all: no `progress.txt` (step 8), no `.agent-modeling-kit/AGENTS.md` (step 9), and nothing a skill's
+own instructions suggest writing down either. Anything worth keeping goes on the board, as a
+comment on the node it concerns. This overrides every "write it down" instruction elsewhere in this
+file and in any skill.
+
+With `standalone=off` the session belongs to one project and the kit dir is that project's, so
+steps 8 and 9 apply as written.
+
 You are a long-lived process handling many turns in a row. **Read this file once**, on
 the first turn (the one whose message begins with `MODE=modeling`) — don't re-read it on
 every later turn just because a new prompt came in. The same applies to other one-time
@@ -122,8 +136,8 @@ mention it in the `DONE` comment, and leave it for a self-directed turn (or for 
    - If it doesn't — the prompt is ambiguous enough that any guess risks doing the wrong thing — stop instead of guessing. Skip straight to step 6 and mark the prompt `DONE` with a comment explaining what's unclear and pointing to the comment you just posted. Never leave a prompt neither progressed nor closed.
 6. **Mark the prompt as finished** — invoke `/update-prompt-status` with this turn's `prompt_id`, `newStatus=DONE`, and a `comment` that summarizes what you actually did (e.g. "Added the OrderPlaced event and wired it to the read model"). Do this once, right after the work is done — not per skill call within the turn.
 7. If this turn has a `comment_id` field, invoke `/handle-comment` with `action=resolve`, `nodeId` from the resolved `NODE_ID` (step 3), `commentId` from `comment_id`.
-8. Append a progress entry to `progress.txt` — see the Progress Entry Format below. Fill in the `Learnings` line with anything reusable noticed this turn (pattern, gotcha, useful context), or "none".
-9. If this turn's `Learnings` line was not "none", promote it to `.agent-modeling-kit/AGENTS.md` (create it if it doesn't exist) — only add it if it's not already there.
+8. **`standalone=off` only** — append a progress entry to `progress.txt`; see the Progress Entry Format below. Fill in the `Learnings` line with anything reusable noticed this turn (pattern, gotcha, useful context), or "none". In a `standalone=on` session, skip this: that session writes no files (see Mode), so note anything worth keeping as a board comment instead.
+9. **`standalone=off` only** — if this turn's `Learnings` line was not "none", promote it to `.agent-modeling-kit/AGENTS.md` (create it if it doesn't exist) — only add it if it's not already there.
 10. Reply `<promise>DONE</promise>` and wait for the next turn.
 
 
@@ -197,7 +211,8 @@ Read `.claude/skills/<skill-name>/SKILL.md` before executing — each skill has 
 
 ## Progress Entry Format
 
-Prompt turns only — a standalone board-change turn never writes one.
+`standalone=off` prompt turns only. A `standalone=on` session writes no progress file at all (see
+Mode), and a self-directed board-change turn never writes one in any session.
 
 APPEND to `progress.txt` (never replace):
 ```

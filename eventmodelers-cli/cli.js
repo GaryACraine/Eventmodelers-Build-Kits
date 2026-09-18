@@ -2212,15 +2212,32 @@ async function runModeling(kitDir, projectDir, verbose = false, standalone = fal
     }
   }
 
+  // A kill names exactly one agent: {type: 'kill', id: '<agentId>', instruction: 'exit'}. Anything
+  // that doesn't name this agent is ignored — a broadcast reaches every agent on the board, and
+  // the older signal (the bare string "Exit") took all of them down at once. That string form is
+  // gone for good, not just unhandled: Supabase's broadcast API rejects a non-object payload with
+  // 422, so it never actually arrived here.
+  const exitIfAddressed = (payload) => {
+    if (payload?.type !== 'kill' || payload?.id !== cfg.agentId) return;
+    log(`received kill (instruction: ${payload.instruction ?? 'exit'}) — shutting down`);
+    process.exit(0);
+  };
+
+  // The kill signal is broadcast on the BOARD channel (see the platform's agent-kill /
+  // backoffice/killagent slices), not on the org channel this agent uses for prompts — without
+  // this second subscription a modeling agent can only be stopped with a kill(1).
+  realtime.subscribe(
+    `board:${cfg.boardId}-slicechanged`,
+    {message: exitIfAddressed},
+    (status) => log(`channel "board:${cfg.boardId}-slicechanged": ${status}`),
+  ).catch((err) => {
+    log(`board channel subscribe failed, remote kill won't reach this agent: ${err.message}`);
+  });
+
   realtime.subscribe(
     channelName,
     {
-      message: (payload) => {
-        if (payload === 'Exit') {
-          log('received "Exit" — shutting down');
-          process.exit(0);
-        }
-      },
+      message: exitIfAddressed,
       'prompt:created': () => {
         drain().catch((err) => log(`drain error: ${err.message}`));
       },

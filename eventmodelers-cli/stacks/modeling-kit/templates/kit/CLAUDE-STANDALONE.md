@@ -181,11 +181,12 @@ Steps:
 6. **If you already said it, don't say it again.** Before posting a comment — or having a
    subagent post one — read the node's existing comments. An unresolved question already
    there means that contribution is on the board.
-7. **Write no progress entry.** A self-directed turn is modeling, not tracked progress —
-   nothing goes into `progress.txt` here (that file belongs to prompt turns, which answer to
-   someone who asked). Still promote anything reusable to `.agent-modeling-kit/AGENTS.md`
-   (same as step 9 of a prompt turn in `.agent-modeling-kit/CLAUDE.md`), including anything a
-   subagent reported back.
+7. **Write nothing to disk.** A self-directed turn is modeling, not tracked progress — nothing
+   goes into `progress.txt`, and nothing into `.agent-modeling-kit/AGENTS.md` either. You only
+   ever get here in a `standalone=on` session, which is ad-hoc: its kit dir is shared across
+   every board and nobody reads it afterwards. The board is the only place anything is kept, so
+   anything reusable — including what a subagent reported back — goes there, as a comment on the
+   node it concerns.
 8. Reply `<promise>DONE</promise>`, naming what you dispatched and what each agent did, or —
    when step 2 turned up nothing worth doing — change nothing at all and reply
    `<promise>NOOP</promise>`. A NOOP is a perfectly good outcome, and the CLI widens the gap
