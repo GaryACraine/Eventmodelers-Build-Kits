@@ -7,7 +7,7 @@ Config directory for modeling-only projects — skills + agent loop, no backend 
 There's exactly one runtime mode for a modeling-kit install: a single warm Claude
 process, kept alive across turns, that a prompt is written straight into as soon as
 it's fetched off the board's queue. There is no cold-spawn loop and no `tasks.json`
-file — that's what build-kit stacks (`node`, `supabase`, `axon`, `cratis-csharp`) use
+file — that's what build-kit stacks (`node`, `supabase`, `axon`, `umadb`) use
 instead, for their independent, self-contained slice-implementation tasks.
 
 The loop itself lives in `@eventmodelers/cli`, not in this directory — start it from

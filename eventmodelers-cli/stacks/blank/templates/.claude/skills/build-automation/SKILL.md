@@ -6,7 +6,7 @@ description: TODO — one-line description of how a reactive slice (a processor/
 # Build Automation Slice
 
 > **TODO — placeholder installed by `init --build-kit`.** Study an existing stack's
-> build-automation/SKILL.md (stacks/node, stacks/supabase, stacks/axon, or stacks/cratis-csharp,
+> build-automation/SKILL.md (stacks/node, stacks/supabase, stacks/axon, or stacks/umadb,
 > under `templates/.claude/skills/`) for the level of detail expected, then rewrite
 > every section below for your stack's real conventions — file layout, naming, and
 > the actual framework/language idioms. Delete this callout once done.

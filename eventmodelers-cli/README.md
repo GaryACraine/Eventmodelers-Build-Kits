@@ -18,7 +18,6 @@ Running without `--stack` shows an arrow-key picker. Or go straight to a stack:
 npx @eventmodelers/cli init --stack node            # Node.js / TypeScript
 npx @eventmodelers/cli init --stack supabase         # Supabase
 npx @eventmodelers/cli init --stack axon             # Axon Framework (Java/Kotlin)
-npx @eventmodelers/cli init --stack cratis-csharp    # Cratis (.NET/C#)
 npx @eventmodelers/cli init --stack opencqrs         # OpenCQRS (Java, EventSourcingDB)
 npx @eventmodelers/cli init --stack umadb            # UmaDB (Java)
 npx @eventmodelers/cli init --stack kurrent          # Kurrent (Java, KurrentDB)
@@ -89,7 +88,7 @@ your-project/
 └── CLAUDE.md                      ← agent instructions
 ```
 
-The seven backend stacks (`node`, `supabase`, `axon`, `cratis-csharp`, `opencqrs`, `umadb`, `kurrent`) also scaffold a real project skeleton into your project root (`templates/root/`) — source layout, build files, migrations, etc.
+The six backend stacks (`node`, `supabase`, `axon`, `opencqrs`, `umadb`, `kurrent`) also scaffold a real project skeleton into your project root (`templates/root/`) — source layout, build files, migrations, etc.
 
 `react` and `supabase-react` are two more registered stacks (installable the same way). `supabase-react` is real, filled-in content — a Vite + React 19 + TypeScript scaffold that authenticates and issues command POSTs via a Supabase session (`src/lib/api.ts`/`src/lib/supabase.ts`), plus `init-style-guide`/`learn-styleguide` skills so generated UI stays on-brand. It's UI-only: `.build-kit/CLAUDE.md` only routes `STATE_CHANGE`/`STATE_VIEW` slices to `build-state-change`/`build-state-view` — an `AUTOMATION` slice has no UI counterpart and gets flagged via `request-feedback` instead, since it belongs to whichever backend stack is installed alongside this one. It needs no overrides at all and uses `shared/build-kit`'s realtime agent as-is.
 
@@ -162,10 +161,18 @@ npx @eventmodelers/cli init --build-kit              # blank build-kit scaffold 
 **Building a new kit for an unsupported stack:**
 
 ```bash
-npx @eventmodelers/cli init --build-kit
+npx @eventmodelers/cli init --build-kit --demo
 ```
 
 This scaffolds `.build-kit/CLAUDE.md`, `lib/prompt.md`, `lib/backend-prompt.md`, and the `build-*` skills with TODO placeholders instead of real content. Fill in the TODOs against the actual stack you're integrating (build/test commands, file layout, framework idioms) while building something real with it, then follow "Adding a stack" below to promote it to a first-class stack once it works.
+
+`--demo` is what gives you something to build *against* while you do that: it seeds the kit's `.slices/` with the ready-made 16-slice **Understanding Eventsourcing** model (see "Trying it out before you have a board of your own" above), so you don't need a board, credentials, or a connected project to exercise the kit you're writing. With it in place the whole loop is:
+
+```bash
+npx @eventmodelers/cli run --local
+```
+
+and the agent starts building — `--local` skips platform config and credential lookup entirely, so it works straight out of `init` with nothing connected. Every TODO you fill in gets exercised on the next iteration against real slice data covering all four slice types (state change, state view, automation, translation), which is exactly the coverage a new stack's `build-*` skills need before it's worth promoting.
 
 Installing both a build stack and `init-modeling` into the same project reuses this one `.eventmodelers/config.json` — run whichever `init` command second and it finds the existing config already satisfies the required fields and skips straight past the credential prompt.
 

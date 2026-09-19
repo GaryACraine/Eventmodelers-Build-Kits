@@ -63,13 +63,6 @@ const STACKS = {
     useShared: true,
     needsBoardId: true,
   },
-  'cratis-csharp': {
-    label: 'Cratis (.NET/C#)',
-    kitSubdir: 'build-kit',
-    kitDirName: '.build-kit',
-    useShared: true,
-    needsBoardId: true,
-  },
   opencqrs: {
     label: 'OpenCQRS (Java, EventSourcingDB)',
     kitSubdir: 'build-kit',

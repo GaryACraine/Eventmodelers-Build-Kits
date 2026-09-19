@@ -7,7 +7,7 @@ layout, a slices directory the skills in `.claude/skills/` generate into, and wh
 local infra (docker-compose, migrations, etc.) it needs to run.
 
 See an existing stack's `templates/root/` in the eventmodelers-cli source —
-`stacks/node`, `stacks/supabase`, `stacks/axon`, `stacks/cratis-csharp` — for the shape
+`stacks/node`, `stacks/supabase`, `stacks/axon`, `stacks/umadb` — for the shape
 a real one takes.
 
 Once this is filled in and working, consider contributing it back as a first-class
