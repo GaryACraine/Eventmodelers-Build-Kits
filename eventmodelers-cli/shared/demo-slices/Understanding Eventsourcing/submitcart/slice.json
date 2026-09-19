@@ -1,6 +1,6 @@
 {
   "id": "46e2eee1-54ef-4a9c-9403-a3403bf45943",
-  "status": "Created",
+  "status": "Planned",
   "title": "Submit Cart",
   "context": "Understanding Eventsourcing",
   "sliceType": "STATE_CHANGE",

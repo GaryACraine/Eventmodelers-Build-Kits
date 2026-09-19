@@ -1,6 +1,6 @@
 {
   "id": "d7e5ba77-fd22-4975-b131-3e942b4859b0",
-  "status": "Created",
+  "status": "Planned",
   "title": "Clear Cart",
   "context": "Understanding Eventsourcing",
   "sliceType": "STATE_CHANGE",

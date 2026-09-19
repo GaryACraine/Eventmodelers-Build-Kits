@@ -1,6 +1,6 @@
 {
   "id": "47781f50-9bf5-425d-adc5-810801b94fb2",
-  "status": "Created",
+  "status": "Planned",
   "title": "cart items",
   "context": "Understanding Eventsourcing",
   "sliceType": "STATE_VIEW",

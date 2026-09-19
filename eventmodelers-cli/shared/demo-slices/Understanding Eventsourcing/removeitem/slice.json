@@ -1,6 +1,6 @@
 {
   "id": "f263e451-78a6-475e-a112-bff181295e65",
-  "status": "Created",
+  "status": "Planned",
   "title": "Remove Item",
   "context": "Understanding Eventsourcing",
   "sliceType": "STATE_CHANGE",

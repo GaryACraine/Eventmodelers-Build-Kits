@@ -6,7 +6,7 @@
       "index": 0,
       "context": "Understanding Eventsourcing",
       "folder": "additem",
-      "status": "Created"
+      "status": "Planned"
     },
     {
       "id": "1ee269a6-cdb5-4c83-9c78-a71246bb4985",
@@ -14,7 +14,7 @@
       "index": 0,
       "context": "Understanding Eventsourcing",
       "folder": "itemadded",
-      "status": "Created"
+      "status": "Planned"
     },
     {
       "id": "f263e451-78a6-475e-a112-bff181295e65",
@@ -22,7 +22,7 @@
       "index": 0,
       "context": "Understanding Eventsourcing",
       "folder": "removeitem",
-      "status": "Created"
+      "status": "Planned"
     },
     {
       "id": "47781f50-9bf5-425d-adc5-810801b94fb2",
@@ -30,7 +30,7 @@
       "index": 0,
       "context": "Understanding Eventsourcing",
       "folder": "cartitems",
-      "status": "Created"
+      "status": "Planned"
     },
     {
       "id": "d7e5ba77-fd22-4975-b131-3e942b4859b0",
@@ -38,7 +38,7 @@
       "index": 0,
       "context": "Understanding Eventsourcing",
       "folder": "clearcart",
-      "status": "Created"
+      "status": "Planned"
     },
     {
       "id": "472e6e49-ab4d-408c-9653-df364587036d",
@@ -46,7 +46,7 @@
       "index": 0,
       "context": "Understanding Eventsourcing",
       "folder": "changeinventory",
-      "status": "Created"
+      "status": "Planned"
     },
     {
       "id": "0631d89b-9b87-4981-9b37-e745842a6d48",
@@ -54,7 +54,7 @@
       "index": 0,
       "context": "Understanding Eventsourcing",
       "folder": "inventories",
-      "status": "Created"
+      "status": "Planned"
     },
     {
       "id": "bffefd48-cb91-482a-b2cc-e17b16fff358",
@@ -62,7 +62,7 @@
       "index": 0,
       "context": "Understanding Eventsourcing",
       "folder": "changeprice",
-      "status": "Created"
+      "status": "Planned"
     },
     {
       "id": "b7e24b44-1c2c-4d42-b81d-298eb48ce19c",
@@ -70,7 +70,7 @@
       "index": 0,
       "context": "Understanding Eventsourcing",
       "folder": "cartswithproducts",
-      "status": "Created"
+      "status": "Planned"
     },
     {
       "id": "4dbc8407-87a0-4e5b-a9ee-61d0f83d437e",
@@ -78,7 +78,7 @@
       "index": 0,
       "context": "Understanding Eventsourcing",
       "folder": "changedprices",
-      "status": "Created"
+      "status": "Planned"
     },
     {
       "id": "ecb9f15d-1700-483e-be5a-71b3aa822644",
@@ -86,7 +86,7 @@
       "index": 0,
       "context": "Understanding Eventsourcing",
       "folder": "archiveitem",
-      "status": "Created"
+      "status": "Planned"
     },
     {
       "id": "46e2eee1-54ef-4a9c-9403-a3403bf45943",
@@ -94,7 +94,7 @@
       "index": 0,
       "context": "Understanding Eventsourcing",
       "folder": "submitcart",
-      "status": "Created"
+      "status": "Planned"
     },
     {
       "id": "412dfce9-0843-4ac0-82e5-4e645716d502",
@@ -102,7 +102,7 @@
       "index": 0,
       "context": "Understanding Eventsourcing",
       "folder": "submittedcartdata",
-      "status": "Created"
+      "status": "Planned"
     },
     {
       "id": "c8427265-9c14-4d11-91ee-a88f22ee74cd",
@@ -110,7 +110,7 @@
       "index": 0,
       "context": "Understanding Eventsourcing",
       "folder": "publishcart",
-      "status": "Created"
+      "status": "Planned"
     },
     {
       "id": "4d9b60f9-f59f-4475-bfd8-8a4ca686f17f",
@@ -118,7 +118,7 @@
       "index": 0,
       "context": "Understanding Eventsourcing",
       "folder": "cartpublicationfailed",
-      "status": "Created"
+      "status": "Planned"
     },
     {
       "id": "cccef300-beb0-41de-8127-df7a8fd8a5b7",
@@ -126,7 +126,7 @@
       "index": 0,
       "context": "Understanding Eventsourcing",
       "folder": "cartpublished",
-      "status": "Created"
+      "status": "Planned"
     }
   ]
 }

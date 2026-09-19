@@ -1,6 +1,6 @@
 {
   "id": "0631d89b-9b87-4981-9b37-e745842a6d48",
-  "status": "Created",
+  "status": "Planned",
   "title": "Inventories",
   "context": "Understanding Eventsourcing",
   "sliceType": "STATE_VIEW",

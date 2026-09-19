@@ -1,6 +1,6 @@
 {
   "id": "6829844f-fbb5-41ab-b948-fdef54c7e9c1",
-  "status": "Created",
+  "status": "Planned",
   "title": "Add Item",
   "context": "Understanding Eventsourcing",
   "sliceType": "STATE_CHANGE",
