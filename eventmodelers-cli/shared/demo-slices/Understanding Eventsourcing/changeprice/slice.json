@@ -1,0 +1,220 @@
+{
+  "id": "bffefd48-cb91-482a-b2cc-e17b16fff358",
+  "status": "Created",
+  "title": "Change Price",
+  "context": "Understanding Eventsourcing",
+  "sliceType": "AUTOMATION",
+  "commands": [
+    {
+      "id": "b3c543d7-e049-4d3e-a953-45b23d156273",
+      "tags": [],
+      "lane": "Interaction",
+      "modelContext": "Understanding Eventsourcing",
+      "slice": "Change Price",
+      "title": "Change Price",
+      "fields": [
+        {
+          "name": "newPrice",
+          "type": "Double",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "subfields": [],
+          "cardinality": "Single",
+          "idAttribute": false
+        },
+        {
+          "name": "oldPrice",
+          "type": "Double",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "subfields": [],
+          "cardinality": "Single",
+          "idAttribute": false
+        },
+        {
+          "name": "productId",
+          "type": "String",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "subfields": [],
+          "cardinality": "Single",
+          "idAttribute": false
+        }
+      ],
+      "type": "COMMAND",
+      "description": "",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "dependencies": [
+        {
+          "id": "5a70c236-a04e-49b2-8dec-ffaffa20cecb",
+          "type": "OUTBOUND",
+          "title": "Price Changed",
+          "elementType": "EVENT"
+        },
+        {
+          "id": "297ddf35-aa5b-4a5a-b520-e458ea04ed7e",
+          "type": "INBOUND",
+          "title": "automation",
+          "elementType": "AUTOMATION"
+        }
+      ],
+      "apiEndpoint": "",
+      "createsAggregate": false,
+      "triggers": [],
+      "elementCopy": false,
+      "linkedId": "b3c543d7-e049-4d3e-a953-45b23d156273",
+      "sketched": false,
+      "prototype": {
+        "activeByDefault": false
+      },
+      "comments": []
+    }
+  ],
+  "events": [
+    {
+      "id": "5a70c236-a04e-49b2-8dec-ffaffa20cecb",
+      "tags": [],
+      "lane": "Events",
+      "modelContext": "Understanding Eventsourcing",
+      "slice": "Change Price",
+      "title": "Price Changed",
+      "fields": [
+        {
+          "name": "newPrice",
+          "type": "Double",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "subfields": [],
+          "cardinality": "Single",
+          "idAttribute": false
+        },
+        {
+          "name": "oldPrice",
+          "type": "Double",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "subfields": [],
+          "cardinality": "Single",
+          "idAttribute": false
+        },
+        {
+          "name": "productId",
+          "type": "UUID",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "subfields": [],
+          "cardinality": "Single",
+          "idAttribute": false
+        }
+      ],
+      "type": "EVENT",
+      "description": "",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "dependencies": [
+        {
+          "id": "262b687e-a34a-4395-97a9-040945290cb5",
+          "type": "OUTBOUND",
+          "title": "Changed Prices",
+          "elementType": "READMODEL"
+        },
+        {
+          "id": "b3c543d7-e049-4d3e-a953-45b23d156273",
+          "type": "INBOUND",
+          "title": "Change Price",
+          "elementType": "COMMAND"
+        }
+      ],
+      "apiEndpoint": "",
+      "createsAggregate": false,
+      "triggers": [],
+      "elementCopy": false,
+      "linkedId": "5a70c236-a04e-49b2-8dec-ffaffa20cecb",
+      "sketched": false,
+      "prototype": {
+        "activeByDefault": false
+      },
+      "comments": []
+    }
+  ],
+  "readmodels": [],
+  "screens": [],
+  "screenImages": [],
+  "screenLayouts": [],
+  "processors": [
+    {
+      "id": "297ddf35-aa5b-4a5a-b520-e458ea04ed7e",
+      "tags": [],
+      "lane": "Actor",
+      "modelContext": "Understanding Eventsourcing",
+      "slice": "Change Price",
+      "title": "automation",
+      "fields": [
+        {
+          "name": "newPrice",
+          "type": "Double",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "cardinality": "Single",
+          "idAttribute": false
+        },
+        {
+          "name": "oldPrice",
+          "type": "Double",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "cardinality": "Single",
+          "idAttribute": false
+        },
+        {
+          "name": "productId",
+          "type": "String",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "cardinality": "Single",
+          "idAttribute": false
+        }
+      ],
+      "type": "AUTOMATION",
+      "description": "",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "dependencies": [
+        {
+          "id": "b3c543d7-e049-4d3e-a953-45b23d156273",
+          "type": "OUTBOUND",
+          "title": "Change Price",
+          "elementType": "COMMAND"
+        }
+      ],
+      "apiEndpoint": "",
+      "createsAggregate": false,
+      "triggers": [],
+      "elementCopy": false,
+      "linkedId": "297ddf35-aa5b-4a5a-b520-e458ea04ed7e",
+      "sketched": false,
+      "prototype": {
+        "activeByDefault": false
+      },
+      "comments": []
+    }
+  ],
+  "tables": [],
+  "specifications": [],
+  "storylines": [],
+  "chapter": "Understanding Eventsourcing",
+  "codeGen": {},
+  "notes": [],
+  "comments": [],
+  "aggregates": []
+}

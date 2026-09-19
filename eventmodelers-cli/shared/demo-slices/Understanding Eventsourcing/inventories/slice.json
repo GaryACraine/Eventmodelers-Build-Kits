@@ -1,0 +1,132 @@
+{
+  "id": "0631d89b-9b87-4981-9b37-e745842a6d48",
+  "status": "Created",
+  "title": "Inventories",
+  "context": "Understanding Eventsourcing",
+  "sliceType": "STATE_VIEW",
+  "commands": [],
+  "events": [],
+  "readmodels": [
+    {
+      "id": "eb95e57c-3b32-45a5-bb85-89078fe07476",
+      "tags": [],
+      "lane": "Interaction",
+      "modelContext": "Understanding Eventsourcing",
+      "slice": "Inventories",
+      "title": "Inventories",
+      "fields": [
+        {
+          "name": "inventory",
+          "type": "Int",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "subfields": [],
+          "cardinality": "Single",
+          "idAttribute": false
+        },
+        {
+          "name": "productId",
+          "type": "UUID",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "subfields": [],
+          "cardinality": "Single",
+          "idAttribute": true
+        }
+      ],
+      "type": "READMODEL",
+      "description": "",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "dependencies": [
+        {
+          "id": "70b2a647-3ff3-4d3f-b269-defda6a78122",
+          "type": "OUTBOUND",
+          "title": "title",
+          "elementType": "SCREEN"
+        },
+        {
+          "id": "ee37a976-e3af-48d5-8c4c-c168294bda9a",
+          "type": "INBOUND",
+          "title": "Inventory Changed",
+          "elementType": "EVENT"
+        }
+      ],
+      "apiEndpoint": "",
+      "createsAggregate": false,
+      "triggers": [],
+      "elementCopy": false,
+      "linkedId": "eb95e57c-3b32-45a5-bb85-89078fe07476",
+      "sketched": false,
+      "prototype": {
+        "activeByDefault": false
+      },
+      "comments": []
+    }
+  ],
+  "screens": [
+    {
+      "id": "70b2a647-3ff3-4d3f-b269-defda6a78122",
+      "tags": [],
+      "lane": "Actor",
+      "modelContext": "Understanding Eventsourcing",
+      "slice": "Inventories",
+      "title": "title",
+      "fields": [
+        {
+          "name": "inventory",
+          "type": "Int",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "cardinality": "Single",
+          "idAttribute": false
+        },
+        {
+          "name": "productId",
+          "type": "String",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "cardinality": "Single",
+          "idAttribute": false
+        }
+      ],
+      "type": "SCREEN",
+      "description": "",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "dependencies": [
+        {
+          "id": "eb95e57c-3b32-45a5-bb85-89078fe07476",
+          "type": "INBOUND",
+          "title": "Inventories",
+          "elementType": "READMODEL"
+        }
+      ],
+      "apiEndpoint": "",
+      "createsAggregate": false,
+      "triggers": [],
+      "elementCopy": false,
+      "linkedId": "70b2a647-3ff3-4d3f-b269-defda6a78122",
+      "sketched": false,
+      "prototype": {
+        "activeByDefault": false
+      },
+      "comments": []
+    }
+  ],
+  "screenImages": [],
+  "screenLayouts": [],
+  "processors": [],
+  "tables": [],
+  "specifications": [],
+  "storylines": [],
+  "chapter": "Understanding Eventsourcing",
+  "codeGen": {},
+  "notes": [],
+  "comments": [],
+  "aggregates": []
+}

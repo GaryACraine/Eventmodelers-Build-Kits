@@ -6,6 +6,8 @@
 npx @eventmodelers/cli init --stack node
 ```
 
+Add `--demo` to install a ready-made 16-slice example model alongside the scaffold, so the agent has something to build before you connect a board of your own.
+
 ## Official stacks
 
 | Stack key | Stack |

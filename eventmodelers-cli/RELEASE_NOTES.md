@@ -1,3 +1,8 @@
+## v1.0.72
+
+### Features
+- `init --demo` seeds the kit's `.slices/` with a ready-made model — the "Understanding Eventsourcing" context, a 16-slice shopping cart covering every slice type — so the `build-*` skills, `activate-context`, `set-slice-status`, and the agent loop all have something real to work on before the project is connected to a board. It is a verbatim `fetch --format json` tree, so nothing downstream has a demo-only path and a later `fetch --context <name>` simply replaces it. Skipped with a message when `.slices/` already holds fetched slices, so it can never overwrite real board state. Works with every install mode (`--stack`, `--modeling`, `--build-kit`, `--bridge`, `--git`); modeling-kit gets it at the project root, matching where `fetch` writes for that kit.
+
 ## v1.0.56
 
 ### Features

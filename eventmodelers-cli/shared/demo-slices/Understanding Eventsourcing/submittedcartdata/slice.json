@@ -1,0 +1,90 @@
+{
+  "id": "412dfce9-0843-4ac0-82e5-4e645716d502",
+  "status": "Created",
+  "title": "Submitted Cart Data",
+  "context": "Understanding Eventsourcing",
+  "sliceType": "STATE_VIEW",
+  "commands": [],
+  "events": [],
+  "readmodels": [
+    {
+      "id": "e3dc2c7e-7327-480a-bdb4-4b2055327540",
+      "tags": [],
+      "lane": "Interaction",
+      "modelContext": "Understanding Eventsourcing",
+      "slice": "Submitted Cart Data",
+      "title": "Submitted Cart Data",
+      "fields": [
+        {
+          "name": "aggregateId",
+          "type": "UUID",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "subfields": [],
+          "cardinality": "Single",
+          "idAttribute": false
+        },
+        {
+          "name": "orderedProducts",
+          "type": "Custom",
+          "example": "productId, price",
+          "mapping": "",
+          "optional": false,
+          "cardinality": "List",
+          "idAttribute": false
+        },
+        {
+          "name": "totalPrice",
+          "type": "Double",
+          "example": "",
+          "mapping": "orderedProducts",
+          "optional": false,
+          "subfields": [],
+          "cardinality": "Single",
+          "idAttribute": false
+        }
+      ],
+      "type": "READMODEL",
+      "description": "",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "dependencies": [
+        {
+          "id": "e3073105-b883-444b-b7d2-170de493e093",
+          "type": "OUTBOUND",
+          "title": "automation",
+          "elementType": "AUTOMATION"
+        },
+        {
+          "id": "29ae25b9-56cd-4086-bbfe-a64efb30d240",
+          "type": "INBOUND",
+          "title": "Cart Submitted",
+          "elementType": "EVENT"
+        }
+      ],
+      "apiEndpoint": "",
+      "createsAggregate": false,
+      "triggers": [],
+      "elementCopy": false,
+      "linkedId": "e3dc2c7e-7327-480a-bdb4-4b2055327540",
+      "sketched": false,
+      "prototype": {
+        "activeByDefault": false
+      },
+      "comments": []
+    }
+  ],
+  "screens": [],
+  "screenImages": [],
+  "screenLayouts": [],
+  "processors": [],
+  "tables": [],
+  "specifications": [],
+  "storylines": [],
+  "chapter": "Understanding Eventsourcing",
+  "codeGen": {},
+  "notes": [],
+  "comments": [],
+  "aggregates": []
+}

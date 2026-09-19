@@ -1,0 +1,91 @@
+{
+  "id": "4dbc8407-87a0-4e5b-a9ee-61d0f83d437e",
+  "status": "Created",
+  "title": "Changed Prices",
+  "context": "Understanding Eventsourcing",
+  "sliceType": "STATE_VIEW",
+  "commands": [],
+  "events": [],
+  "readmodels": [
+    {
+      "id": "262b687e-a34a-4395-97a9-040945290cb5",
+      "tags": [],
+      "lane": "Interaction",
+      "modelContext": "Understanding Eventsourcing",
+      "slice": "Changed Prices",
+      "title": "Changed Prices",
+      "fields": [
+        {
+          "name": "newPrice",
+          "type": "Double",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "subfields": [],
+          "cardinality": "Single",
+          "idAttribute": false
+        },
+        {
+          "name": "oldPrice",
+          "type": "Double",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "subfields": [],
+          "cardinality": "Single",
+          "idAttribute": false
+        },
+        {
+          "name": "productId",
+          "type": "String",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "subfields": [],
+          "cardinality": "Single",
+          "idAttribute": true
+        }
+      ],
+      "type": "READMODEL",
+      "description": "",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "dependencies": [
+        {
+          "id": "1ccbf498-e4eb-4eb7-90c9-7c113780a136",
+          "type": "OUTBOUND",
+          "title": "automation",
+          "elementType": "AUTOMATION"
+        },
+        {
+          "id": "5a70c236-a04e-49b2-8dec-ffaffa20cecb",
+          "type": "INBOUND",
+          "title": "Price Changed",
+          "elementType": "EVENT"
+        }
+      ],
+      "apiEndpoint": "",
+      "createsAggregate": false,
+      "triggers": [],
+      "elementCopy": false,
+      "linkedId": "262b687e-a34a-4395-97a9-040945290cb5",
+      "sketched": false,
+      "prototype": {
+        "activeByDefault": false
+      },
+      "comments": []
+    }
+  ],
+  "screens": [],
+  "screenImages": [],
+  "screenLayouts": [],
+  "processors": [],
+  "tables": [],
+  "specifications": [],
+  "storylines": [],
+  "chapter": "Understanding Eventsourcing",
+  "codeGen": {},
+  "notes": [],
+  "comments": [],
+  "aggregates": []
+}

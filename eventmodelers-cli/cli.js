@@ -176,6 +176,11 @@ const BLANK_BUILD_KIT = {
 
 const KIT_DIR_NAMES = [...new Set([...Object.values(STACKS), MODELING_KIT, BRIDGE_KIT, BLANK_BUILD_KIT].map((s) => s.kitDirName))];
 
+// What `init --demo` installs, for the messages it prints. Kept in step with
+// shared/demo-slices/ (context.json's name, and the slice folders beside it).
+const DEMO_CONTEXT_NAME = 'Understanding Eventsourcing';
+const DEMO_SLICE_COUNT = 16;
+
 // Same principle Playwright MCP uses per harness: one shared server, but each coding
 // agent has its own registration mechanism. Automate the ones with a real, verified
 // CLI install command; for the rest, print manual steps instead of guessing at an
@@ -1009,6 +1014,14 @@ async function installStack(stackKey, stackCfg, options = {}) {
       }
     }
 
+    // --- 3c. Opt-in demo model (`init --demo`) ---
+    // After the kit dir exists (the .slices/ tree nests inside it for every kit but
+    // modeling-kit) and before npm install/credentials, so the "demo installed" line
+    // lands with the rest of the file copying rather than after a credential prompt.
+    if (options.demo) {
+      installDemoSlices({ kitDir, targetDir, stackCfg });
+    }
+
     // --- 4. Install kit dependencies ---
     // modeling-kit's package.json has no dependencies at all — it exists purely for its
     // `"type": "module"`, so lib/config.js can be ESM-imported. Running npm for that buys
@@ -1281,6 +1294,46 @@ async function configureMcp(options = {}) {
 // standalone `init-hooks` command so all three copy/chmod/git-config identically
 // instead of drifting apart — callers are responsible for checking `hooksSrc`
 // exists first, since what "no template for this stack" means differs per caller.
+// `init --demo` — drop a ready-made .slices/ tree into the install so the build
+// skills (and `activate-context`/`slice-status`/the agent loop) have something real
+// to work on before the project is ever connected to a board. The tree under
+// shared/demo-slices/ is a verbatim `fetch --format json` output for the
+// "Understanding Eventsourcing" context (a 16-slice shopping-cart model, every slice
+// type represented), so it is byte-identical in shape to what a real fetch writes —
+// a later `fetch` just overwrites it, and nothing downstream needs a demo-only path.
+//
+// The destination mirrors `fetch`'s own resolution exactly (see the SLICES_DIR comment
+// there): nested under the kit dir for every kit whose code-export.mjs hardcodes
+// `.slices/` next to itself, and at the project root for modeling-kit, which has no
+// code-export.mjs and no skill reading a nested copy.
+function installDemoSlices({ kitDir, targetDir, stackCfg }) {
+  const slicesDir = stackCfg.kitDirName === MODELING_KIT.kitDirName
+    ? join(targetDir, '.slices')
+    : join(kitDir, '.slices');
+  const rel = relative(targetDir, slicesDir) || '.slices';
+
+  // An existing .slices/ is fetched board state — the user's real model. The copy
+  // below merges rather than replaces, so installing over it would leave a half-demo,
+  // half-real tree with a current_context.json pointing at the wrong one. Refuse
+  // instead. Deliberately not overridable by --force: that flag means "don't re-ask
+  // about credentials", never "discard fetched work".
+  if (existsSync(slicesDir) && readdirSync(slicesDir).length > 0) {
+    console.log(`  ℹ️  --demo skipped — ${rel}/ already has slices in it (delete it first if you really want the demo model)`);
+    return;
+  }
+
+  const demoSrc = join(__dirname, 'shared', 'demo-slices');
+  if (!existsSync(demoSrc)) {
+    console.log('  ℹ️  --demo was given but this CLI build ships no shared/demo-slices/ — nothing to install');
+    return;
+  }
+
+  console.log('📦 Installing the demo model...');
+  copyDirContents(demoSrc, slicesDir);
+  console.log(`  ✓ Demo context "${DEMO_CONTEXT_NAME}" (${DEMO_SLICE_COUNT} slices) is active in ${rel}/`);
+  console.log('  ℹ️  It is ordinary fetched slice data — `fetch --context <name>` replaces it with your own board whenever you are ready');
+}
+
 function configureHooks({ hooksSrc, targetDir }) {
   copyDirContents(hooksSrc, join(targetDir, '.githooks'));
   const preCommitHook = join(targetDir, '.githooks', 'pre-commit');
@@ -1890,11 +1943,17 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
   }
 
   // A standalone session is long-lived and spends most of its life waiting, so the setup
-  // every turn needs — read CLAUDE.md, run /connect, read the board — is done once at
-  // startup instead of being paid by whoever happens to send the first prompt. By the time
-  // a real turn arrives the credentials are resolved and the board picture is in context,
-  // and the turn is straight into the work. It reads only: nothing is placed, no prompt
-  // status is touched (there is no prompt_id here), no subagent is dispatched.
+  // every turn needs — read CLAUDE.md, run /connect, find out which chapters exist — is done
+  // once at startup instead of being paid by whoever happens to send the first prompt. By the
+  // time a real turn arrives the credentials are resolved and the turn is straight into the
+  // work. It reads only: nothing is placed, no prompt status is touched (there is no prompt_id
+  // here), no subagent is dispatched.
+  //
+  // What it deliberately does *not* do is read the board. Reading every chapter up front cost a
+  // minute and a dollar before anyone had asked for anything, on a board where a turn typically
+  // touches one chapter — and it front-loaded the context every later turn then carries. Chapters
+  // are read lazily instead: the first turn with business in one fetches its outline and keeps it
+  // for the rest of the session, so the cost is paid once and only for chapters that see work.
   const WARM_UP_TASK =
     'This is the session warm-up, before any prompt or board change — nobody has asked for anything yet, and ' +
     'there is nothing to sanitize, no prompt_id and no progress entry. Do exactly this and then stop: ' +
@@ -1902,11 +1961,13 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
     'one-time reads for this session — do NOT read .agent-modeling-kit/CLAUDE-STANDALONE.md, that one still ' +
     'waits for the first self-directed turn; (2) invoke /connect with the credentials above and ' +
     `board=${cfg.boardId} — this is the session's one-time connect, so no later turn runs it again; ` +
-    '(3) orient yourself on the board: one get_board_outline per chapter (or get_nodes with ' +
-    'projection: "line"), and keep what comes back as this session\'s board picture — chapters, columns, ' +
-    'elements, slice statuses — so the first real turn starts from it instead of re-reading the board. ' +
-    'Change nothing: no nodes, no comments, no slice statuses, no subagents. Reply <promise>READY</promise> ' +
-    'with a one-line summary of the board (chapters, rough element count, slice statuses).';
+    '(3) learn which chapters exist, and nothing beyond that: one get_chapter_bounds call returns every ' +
+    'chapter\'s id and title. Do NOT read any chapter\'s contents here — no get_board_outline, no ' +
+    'per-chapter get_nodes, and skip the board read /connect Step 5 would otherwise have you do. A chapter ' +
+    'is read on the first turn that actually has business in it, and kept for the rest of the session ' +
+    'from then on. Change nothing: no nodes, no comments, no slice statuses, no subagents. Reply ' +
+    '<promise>READY</promise> with the chapter list — titles and how many; say nothing about what is in ' +
+    'them, you have not looked.';
 
   function buildWarmUpTurn() {
     const header = ['SESSION_START', `board_id=${cfg.boardId}`, `organization_id=${cfg.organizationId}`].join(' ');
@@ -1918,7 +1979,7 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
   function warmUpSession() {
     if (warmUp) return warmUp;
     if (!standalone) return (warmUp = Promise.resolve());
-    log('warm-up: connecting and reading the board before the first turn');
+    log('warm-up: connecting and listing chapters before the first turn (chapters are read on first use)');
     warmingUp = true;
     warmUp = sendTurn(buildWarmUpTurn())
       .then((result) => log(`warm-up done — ${oneLine(result, 200) || 'session ready'}`))
@@ -2050,26 +2111,43 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
   // org prompt queue, so the non-standalone case joins it too and simply throws every
   // event away (see onBoardEvent). One code path either way — and whatever the backend
   // later adds to these payloads lands here without a client change.
-  const BOARD_CHANGE_EVENTS = ['node:created', 'node:changed', 'node:deleted', 'edge:added', 'edge:removed', 'board:cleared'];
+  //
+  // The edge events are deliberately *not* in this list. An edge is almost never a change
+  // on its own: placing an element auto-connects it to its neighbours, so `edge:added`
+  // arrives as the tail of a `node:created` this loop already woke up for — the same
+  // gesture counted twice, and counted onto `(board)` rather than onto a node, since an
+  // edge payload names no single node to go look at. Wiring an existing chain by hand says
+  // nothing about the model's content either. Subscribing to them bought a second turn per
+  // placement and nothing else, so board changes here mean node changes.
+  const BOARD_CHANGE_EVENTS = ['node:created', 'node:changed', 'node:deleted', 'board:cleared'];
 
-  // Four knobs, because a board event can't tell you who caused it: the platform
-  // attributes an API token's writes to the org owner's user_id, so on this channel the
-  // agent's own edits are indistinguishable from the human's. They all govern *when* a
-  // self-directed turn fires — never whether an event is remembered. Everything that
-  // arrives is buffered (see onBoardEvent): an event seen while a turn runs, or inside the
-  // echo window, is only *marked* as possibly the agent's own write, so a burst that
+  // Four knobs. They govern *when* a self-directed turn fires — never whether an event is
+  // remembered: everything that arrives is buffered (see onBoardEvent), so a burst that
   // straddles a turn boundary still reaches the next turn instead of being thrown away and
   // leaving the agent looking at whichever single event happened to land last.
+  // Who wrote an event is *read off the event*, not inferred from these windows: the payload
+  // carries `agent_id` (stamped from the writer's `x-agent-id` header) and `user_id` (a
+  // browser session), so this agent's own echo is identified exactly and dropped without
+  // costing a turn. The windows below only cover the one case attribution can't: a write that
+  // carries neither id.
   //   DEBOUNCE     — one gesture (place a node, drag a column) fans out into several
   //                  events; wait for the board to fall quiet, then send a single turn.
   //   MAX_WAIT     — cap on that quiet period: a board someone keeps editing never falls
   //                  quiet, and the debounce alone would slide forever.
-  //   ECHO_WINDOW  — how long after a turn its own writes are expected back; changes in
-  //                  that window are labelled, and the next turn waits it out.
+  //   ECHO_WINDOW  — how long after a turn its own writes are expected back; an
+  //                  *unattributed* change in that window is labelled a possible echo, and
+  //                  the next turn waits it out so a write and its echo don't each get one.
+  //                  Off by default: it predates the `agent_id` above, which answers the same
+  //                  question exactly and for free, and every turn paid its delay to cover a
+  //                  residue of unattributed writes that a stamping backend never produces.
+  //                  Set it (ms) on a backend where the logs below do show unattributed
+  //                  changes.
   //   MIN_INTERVAL — a floor between self-directed turns, so a mistake upstream can't
   //                  become a self-feeding loop burning tokens unattended. Doubles per
   //                  consecutive NOOP up to BACKOFF_CAP, and resets as soon as a turn
-  //                  actually does something.
+  //                  actually does something. A person's edit is exempt (see
+  //                  dispatchStandaloneTurn): a human cannot be the loop, and waiting a
+  //                  minute before reacting to them is the whole latency complaint.
   //   IDLE         — with nothing at all happening on the board, how long before the agent
   //                  looks the model over anyway (a BOARD_REVIEW turn). 0 disables it, and
   //                  it answers to the same MIN_INTERVAL backoff, so a board with nothing
@@ -2078,17 +2156,22 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
     const raw = Number(process.env[name]);
     return Number.isFinite(raw) && raw >= 0 ? raw : fallback;
   };
-  const STANDALONE_DEBOUNCE_MS = envMs('EVENTMODELERS_STANDALONE_DEBOUNCE_MS', 8_000);
+  const STANDALONE_DEBOUNCE_MS = envMs('EVENTMODELERS_STANDALONE_DEBOUNCE_MS', 2_500);
   const STANDALONE_MAX_WAIT_MS = envMs('EVENTMODELERS_STANDALONE_MAX_WAIT_MS', 90_000);
-  const STANDALONE_ECHO_WINDOW_MS = envMs('EVENTMODELERS_STANDALONE_ECHO_WINDOW_MS', 20_000);
+  const STANDALONE_ECHO_WINDOW_MS = envMs('EVENTMODELERS_STANDALONE_ECHO_WINDOW_MS', 0);
   const STANDALONE_MIN_INTERVAL_MS = envMs('EVENTMODELERS_STANDALONE_MIN_INTERVAL_MS', 60_000);
   const STANDALONE_BACKOFF_CAP_MS = envMs('EVENTMODELERS_STANDALONE_BACKOFF_CAP_MS', 15 * 60_000);
   const STANDALONE_IDLE_MS = envMs('EVENTMODELERS_STANDALONE_IDLE_MS', 15 * 60_000);
 
-  // node_id (or '(board)') -> { types: Set<string>, count: number, maybeOwn: boolean }
-  // for everything seen since the last self-directed turn. `maybeOwn` stays true only
-  // while every event for that node arrived while a turn was running or inside the echo
-  // window — one event from outside that window and the node is a real change again.
+  // node_id (or '(board)') -> { types: Set<string>, count, own, other, maybe, person } for
+  // everything seen since the last self-directed turn, each event counted into exactly one
+  // origin bucket: `own` = attributed to this agent's own id, `other` = attributed to a human
+  // or another agent, `maybe` = carries no attribution at all and landed inside the echo
+  // window, so it *might* be this agent's. Only `maybe` is a guess.
+  // `person` counts, alongside the bucket, the subset of `other` written from a browser
+  // session rather than by another agent. It is what lets a human's edit skip the
+  // MIN_INTERVAL floor: a person cannot be this agent's feedback loop, whereas two agents on
+  // one board can ping-pong, so another agent's write keeps waiting its turn.
   const observed = new Map();
   let observedCount = 0;
   let seqLo = null;
@@ -2105,6 +2188,16 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
     return Math.min(STANDALONE_MIN_INTERVAL_MS * 2 ** noopStreak, STANDALONE_BACKOFF_CAP_MS);
   }
 
+  // Empties the buffer — every field of it, which is why it is one function and not five
+  // lines repeated at each place a burst stops being pending.
+  function resetObserved() {
+    observed.clear();
+    observedCount = 0;
+    seqLo = null;
+    seqHi = null;
+    firstObservedAt = 0;
+  }
+
   function onBoardEvent(type, payload) {
     if (!standalone) {
       if (verbose) log(`board event ${type} dropped — not running with --standalone`);
@@ -2115,12 +2208,28 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
     // The warm-up turn is read-only, so a change that lands while it runs is somebody
     // else's — labelling it "possibly your own write" would only teach the agent to
     // discount the very edits it just came up to work on.
-    const maybeOwn = (!!pending && !warmingUp) || draining || inEchoWindow;
+    const guessOwn = (!!pending && !warmingUp) || draining || inEchoWindow;
+    // Attribution beats the clock in both directions. `agent_id === ours` is this agent's own
+    // write, certainly, whenever it comes back. Any *other* id — a person's user_id, another
+    // agent's — is certainly not ours, which is the half the timer used to get wrong: a human
+    // editing while this agent worked had their change written off as an echo of it.
+    const writerAgent = payload?.agent_id || null;
+    const writerUser = payload?.user_id || null;
+    const origin =
+      writerAgent && cfg.agentId && writerAgent === cfg.agentId
+        ? 'own'
+        : writerAgent || writerUser
+          ? 'other'
+          : guessOwn
+            ? 'maybe'
+            : 'other';
     const nodeId = payload?.node_id ?? '(board)';
-    const entry = observed.get(nodeId) ?? { types: new Set(), count: 0, maybeOwn };
+    const entry = observed.get(nodeId) ?? { types: new Set(), count: 0, own: 0, other: 0, maybe: 0, person: 0 };
     entry.types.add(type);
     entry.count += 1;
-    if (!maybeOwn) entry.maybeOwn = false;
+    entry[origin] += 1;
+    // A browser session id and no agent id: a human at the canvas.
+    if (writerUser && !writerAgent) entry.person += 1;
     observed.set(nodeId, entry);
     observedCount += 1;
     if (!firstObservedAt) firstObservedAt = Date.now();
@@ -2129,7 +2238,17 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
       if (seqLo === null || seq < seqLo) seqLo = seq;
       if (seqHi === null || seq > seqHi) seqHi = seq;
     }
-    log(`board change: ${type} node=${nodeId}${Number.isFinite(seq) ? ` seq=${seq}` : ''}${maybeOwn ? ' (maybe own write)' : ''}`);
+    const writtenBy =
+      origin === 'own'
+        ? ' — own write'
+        : origin === 'maybe'
+          ? ' — unattributed, maybe own write'
+          : writerUser
+            ? ' — by a person'
+            : writerAgent
+              ? ` — by agent ${writerAgent.slice(0, 8)}`
+              : '';
+    log(`board change: ${type} node=${nodeId}${Number.isFinite(seq) ? ` seq=${seq}` : ''}${writtenBy}`);
     armStandaloneTurn(nextDelayMs());
   }
 
@@ -2183,9 +2302,11 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
     'best target for them, not a reason to wait, and the board was already quiet before this turn was ' +
     'handed to you. Only board-wide sweeps and structural moves (renames, deletions, re-shaping, slice ' +
     'statuses) get a comment first instead of being done. An unanswered question you posted earlier parks ' +
-    'that one sweep, never the fill-in work. Read the board in two calls, not twenty: every nodeId above in one ' +
-    'get_nodes, the area around them in one get_board_outline per chapter, and a full-meta read only on the nodes ' +
-    'you conclude you will actually touch. You do the analysis: look at every entry above, decide what ' +
+    'that one sweep, never the fill-in work. Read what this turn needs and no more: every nodeId above in one ' +
+    'get_nodes, plus one get_board_outline for each chapter they land in that you have not already read this ' +
+    'session — a chapter you already hold is not fetched again, you carry it forward and apply this turn\'s ' +
+    'changes to your copy. A full-meta read only on the nodes you conclude you will actually touch. ' +
+    'You do the analysis: look at every entry above, decide what ' +
     'actually needs doing, and then work in parallel rather than serially — dispatch one Agent per piece of ' +
     'work that needs doing, all in a single message, merging pieces that share a slice or chain so no two ' +
     `agents write to the same area. ${AGENT_BUDGET} Read .agent-modeling-kit/CLAUDE-STANDALONE.md now (once ` +
@@ -2194,10 +2315,17 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
     'nothing, change nothing and reply <promise>NOOP</promise>.';
 
   function buildStandaloneTurn() {
-    const lines = [...observed.entries()].map(
-      ([nodeId, entry]) =>
-        `- ${nodeId}: ${[...entry.types].join(', ')} (${entry.count}×)${entry.maybeOwn ? ' — possibly your own earlier write' : ''}`,
-    );
+    const lines = [...observed.entries()].map(([nodeId, entry]) => {
+      const origin =
+        entry.own === entry.count
+          ? ' — YOUR OWN earlier write, echoed back'
+          : entry.own
+            ? ` — ${entry.own} of ${entry.count} are YOUR OWN earlier writes, the rest are not`
+            : entry.maybe === entry.count
+              ? ' — unattributed, possibly your own earlier write'
+              : '';
+      return `- ${nodeId}: ${[...entry.types].join(', ')} (${entry.count}×)${origin}`;
+    });
     const header = [
       'BOARD_CHANGE',
       `board_id=${cfg.boardId}`,
@@ -2246,6 +2374,15 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
 
   async function dispatchStandaloneTurn({ idle = false } = {}) {
     if (!idle && !observed.size) return;
+    // Every buffered event is provably this agent's own write coming back — attribution says
+    // so, not a timer. There is nothing new on the board, so it costs no turn; if the board
+    // then stays quiet the idle review still comes around.
+    if (!idle && [...observed.values()].every((entry) => entry.own === entry.count)) {
+      log(`standalone turn skipped: ${observedCount} board event(s) on ${observed.size} node(s), all own writes`);
+      resetObserved();
+      armIdleReview();
+      return;
+    }
     // A direct message always outranks the agent's own initiative — re-arm instead of
     // queueing behind the prompt lane, so the buffer just keeps collecting meanwhile.
     if (pending || draining) {
@@ -2253,27 +2390,38 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
       else armStandaloneTurn(nextDelayMs());
       return;
     }
+    // The floor is a runaway-loop guard, and a person is not a loop. Making a human wait out
+    // MIN_INTERVAL before their edit is even looked at is most of the delay they feel, and it
+    // guards nothing: the loop it exists to stop is this agent (or another one) reacting to a
+    // write and writing again, which `person` excludes by construction.
+    const byPerson = !idle && [...observed.values()].some((entry) => entry.person > 0);
     const waitLeft = minIntervalMs() - (Date.now() - lastStandaloneAt);
-    if (lastStandaloneAt && waitLeft > 0) {
+    if (lastStandaloneAt && waitLeft > 0 && !byPerson) {
       if (idle) armIdleReview();
       else armStandaloneTurn(waitLeft);
       return;
+    }
+    if (byPerson && lastStandaloneAt && waitLeft > 0) {
+      log(`standalone floor skipped: a person edited the board (${Math.round(waitLeft / 1000)}s of min-interval left)`);
     }
     const text = idle ? buildIdleReviewTurn() : buildStandaloneTurn();
     if (idle) {
       log(`standalone review turn: board quiet for ${Math.round(STANDALONE_IDLE_MS / 1000)}s`);
     } else {
-      const ownOnly = [...observed.values()].every((entry) => entry.maybeOwn);
+      const totals = [...observed.values()].reduce(
+        (acc, entry) => ({ own: acc.own + entry.own, maybe: acc.maybe + entry.maybe }),
+        { own: 0, maybe: 0 },
+      );
+      const breakdown = [
+        totals.own ? `${totals.own} own` : null,
+        totals.maybe ? `${totals.maybe} unattributed` : null,
+      ].filter(Boolean);
       log(
         `standalone turn: ${observedCount} board event(s) on ${observed.size} node(s)` +
-          `${ownOnly ? ' (all possibly own writes)' : ''}`,
+          `${breakdown.length ? ` (${breakdown.join(', ')})` : ''}`,
       );
     }
-    observed.clear();
-    observedCount = 0;
-    seqLo = null;
-    seqHi = null;
-    firstObservedAt = 0;
+    resetObserved();
     lastStandaloneAt = Date.now();
     try {
       const result = await runClaudeWarm(text);
@@ -2477,6 +2625,7 @@ credentialFlags(program
   .option('--hook <command>', 'Persist a default shell command hook for `bridge` to run per batch of slice changes instead of Claude/Ollama (e.g. commit + push .slices/ for a CI pipeline to pick up) — only meaningful with --bridge. Can also be set per-run with `bridge --hook`.')
   .option('--build-kit', 'Install a blank build-kit scaffold (.build-kit/ + .claude/skills/build-*/SKILL.md placeholders, all TODO-marked) for a stack not built into this CLI yet — no fixed backend. Mutually exclusive with --stack/--modeling/--bridge.')
   .option('--hooks', 'Install the slice commit-scope guard (.githooks/pre-commit, running .build-kit/lib/check-commit-scope.cjs) and wire it up via `git config core.hooksPath .githooks` — only meaningful with --stack (build-kit stacks). Off by default.')
+  .option('--demo', 'Install a ready-made demo model into the kit\'s .slices/ — the "Understanding Eventsourcing" context (16 shopping-cart slices covering every slice type), in exactly the shape `fetch` writes, so the build skills and the agent loop have something real to work on before this project is connected to a board. Skipped if .slices/ already holds fetched slices. Off by default.')
   .option('--global', 'Install skills into ~/.claude/skills/ instead of the project — available in every project')
   .option('-f, --force', 'Re-prompt for credentials even if a config already has everything required — overwrites the existing config.json')
   .option(...AGENT_NAME_OPTION))
@@ -2498,6 +2647,7 @@ credentialFlags(program
         global: opts.global,
         force: opts.force,
         credentialOverrides: { ...credentialOverridesFromOpts(opts), ...identityOverridesFromOpts(opts) },
+        demo: opts.demo,
       });
       return;
     }
@@ -2509,6 +2659,7 @@ credentialFlags(program
         global: opts.global,
         force: opts.force,
         credentialOverrides: { ...credentialOverridesFromOpts(opts), ...identityOverridesFromOpts(opts) },
+        demo: opts.demo,
       });
       return;
     }
@@ -2528,6 +2679,7 @@ credentialFlags(program
         global: opts.global,
         force: opts.force,
         credentialOverrides: { ...credentialOverridesFromOpts(opts), ...identityOverridesFromOpts(opts) },
+        demo: opts.demo,
         target: opts.target,
       });
       // Deliberately NOT under .bridge-kit/.eventmodelers/ — that whole name is
@@ -2566,6 +2718,7 @@ credentialFlags(program
         global: opts.global,
         force: opts.force,
         credentialOverrides: { ...credentialOverridesFromOpts(opts), ...identityOverridesFromOpts(opts) },
+        demo: opts.demo,
         templatesSource: join(clonedDir, 'templates'),
         hooks: opts.hooks,
       });
@@ -2579,6 +2732,7 @@ credentialFlags(program
       global: opts.global,
       force: opts.force,
       credentialOverrides: { ...credentialOverridesFromOpts(opts), ...identityOverridesFromOpts(opts) },
+        demo: opts.demo,
       hooks: opts.hooks,
     });
   });

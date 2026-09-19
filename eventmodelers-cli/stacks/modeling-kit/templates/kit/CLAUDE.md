@@ -47,10 +47,13 @@ On that turn, and only that turn:
 2. Run `/connect` with the header's `token=`/`org=`/`baseUrl=` and the turn's `board_id`. This
    is the session's one-time connect; step 2 below then applies unchanged, which means no later
    turn runs `/connect` again unless the board changed or an API call came back `401`/`403`.
-3. Do the orientation read — one `get_board_outline` per chapter, or `get_nodes` with
-   `projection: "line"` — and **keep it**. That is this session's board picture: chapters,
-   columns, elements, slice statuses. Later turns start from it instead of re-reading the board,
-   and refresh it when a turn's own changes invalidate it.
+3. Learn **which chapters exist** — one `get_chapter_bounds` gives every chapter's id and title —
+   and stop there. Do **not** read any chapter's contents on this turn: a board of a dozen chapters
+   read up front is a minute and a dollar spent before anyone has asked for anything, and most of
+   what comes back is never used. A chapter is read on the first turn that has business in it (one
+   `get_board_outline`, or `get_nodes` with `projection: "line"`) and **kept** from then on — that
+   growing set of read chapters is this session's board picture: columns, elements, slice statuses.
+   Later turns answer from it instead of re-reading, and refresh only the part a change invalidated.
 
 It is not a prompt turn and not a self-directed one: there is no `prompt_id` (so no
 `/update-prompt-status` — the "exactly two calls per turn" rule is about prompt turns), nothing
@@ -85,9 +88,11 @@ why; if all of it is, change nothing and post a `COMMENT` on that slice saying w
 blocked it.
 
 **One board read, shared by the whole turn.** Orientation first — `get_board_outline`, or `get_nodes` with
-`projection: "line"` — to establish where the work actually is. In a `standalone=on` session you already hold
-that orientation from the `SESSION_START` warm-up, so use it rather than re-fetching it, and refresh it only
-when this turn's own changes (or a change you were notified of) have made it stale. Then a single full-`meta` `get_nodes`, scoped by
+`projection: "line"` — to establish where the work actually is, and only for the chapter this turn is about.
+In a `standalone=on` session the `SESSION_START` warm-up gave you the chapter list but no chapter's contents,
+so the first turn to touch a chapter pays for its outline once and every later turn in the session reads it
+from memory; refresh only when this turn's own changes (or a change you were notified of) have made your copy
+stale. Then a single full-`meta` `get_nodes`, scoped by
 `chapterId` or `nodeIds`, covering the nodes you concluded you will touch. Both tiers are once per turn: keep what
 came back and answer later questions from it instead of re-fetching a chapter you already hold. `/connect` Step 5
 carries the full discipline — the two tiers, the one-call `submit_node_events` rule for writes, and the per-turn

@@ -1,0 +1,239 @@
+{
+  "id": "f263e451-78a6-475e-a112-bff181295e65",
+  "status": "Created",
+  "title": "Remove Item",
+  "context": "Understanding Eventsourcing",
+  "sliceType": "STATE_CHANGE",
+  "commands": [
+    {
+      "id": "f04eb51d-6afd-4a33-8e3d-941dea5a3abc",
+      "tags": [],
+      "lane": "Interaction",
+      "modelContext": "Understanding Eventsourcing",
+      "slice": "Remove Item",
+      "title": "Remove Item",
+      "fields": [
+        {
+          "name": "aggregateId",
+          "type": "UUID",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "subfields": [],
+          "cardinality": "Single",
+          "idAttribute": false
+        },
+        {
+          "name": "itemId",
+          "type": "UUID",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "subfields": [],
+          "cardinality": "Single",
+          "idAttribute": false
+        }
+      ],
+      "type": "COMMAND",
+      "description": "",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "dependencies": [
+        {
+          "id": "b5b7ae0a-d0a7-4b2b-bc14-2086993eface",
+          "type": "OUTBOUND",
+          "title": "Item Removed",
+          "elementType": "EVENT"
+        },
+        {
+          "id": "9e7ae82a-42f0-4298-85f4-fc2f0f689f43",
+          "type": "INBOUND",
+          "title": "title",
+          "elementType": "SCREEN"
+        }
+      ],
+      "apiEndpoint": "",
+      "createsAggregate": false,
+      "triggers": [],
+      "elementCopy": false,
+      "linkedId": "f04eb51d-6afd-4a33-8e3d-941dea5a3abc",
+      "sketched": false,
+      "prototype": {
+        "activeByDefault": false
+      },
+      "comments": []
+    }
+  ],
+  "events": [
+    {
+      "id": "b5b7ae0a-d0a7-4b2b-bc14-2086993eface",
+      "tags": [],
+      "lane": "Events",
+      "modelContext": "Understanding Eventsourcing",
+      "slice": "Remove Item",
+      "title": "Item Removed",
+      "fields": [
+        {
+          "name": "aggregateId",
+          "type": "UUID",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "subfields": [],
+          "cardinality": "Single",
+          "idAttribute": false
+        },
+        {
+          "name": "itemId",
+          "type": "UUID",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "subfields": [],
+          "cardinality": "Single",
+          "idAttribute": false
+        }
+      ],
+      "type": "EVENT",
+      "description": "",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "dependencies": [
+        {
+          "id": "22511305-2296-43ba-b8e8-d786d53cd25f",
+          "type": "OUTBOUND",
+          "title": "Carts with Products",
+          "elementType": "READMODEL"
+        },
+        {
+          "id": "631c5aa8-0f9e-4a8f-b7f6-91174cae2b82",
+          "type": "OUTBOUND",
+          "title": "cart items",
+          "elementType": "READMODEL"
+        },
+        {
+          "id": "f04eb51d-6afd-4a33-8e3d-941dea5a3abc",
+          "type": "INBOUND",
+          "title": "Remove Item",
+          "elementType": "COMMAND"
+        }
+      ],
+      "apiEndpoint": "",
+      "createsAggregate": false,
+      "triggers": [],
+      "elementCopy": false,
+      "linkedId": "b5b7ae0a-d0a7-4b2b-bc14-2086993eface",
+      "sketched": false,
+      "prototype": {
+        "activeByDefault": false
+      },
+      "comments": []
+    }
+  ],
+  "readmodels": [],
+  "screens": [
+    {
+      "id": "9e7ae82a-42f0-4298-85f4-fc2f0f689f43",
+      "tags": [],
+      "lane": "Actor",
+      "modelContext": "Understanding Eventsourcing",
+      "slice": "Remove Item",
+      "title": "title",
+      "fields": [
+        {
+          "name": "aggregateId",
+          "type": "UUID",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "cardinality": "Single",
+          "idAttribute": false
+        },
+        {
+          "name": "description",
+          "type": "String",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "cardinality": "Single",
+          "idAttribute": false
+        },
+        {
+          "name": "image",
+          "type": "String",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "cardinality": "Single",
+          "idAttribute": false
+        },
+        {
+          "name": "itemId",
+          "type": "UUID",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "cardinality": "Single",
+          "idAttribute": false
+        },
+        {
+          "name": "price",
+          "type": "Double",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "cardinality": "Single",
+          "idAttribute": false
+        },
+        {
+          "name": "totalPrice",
+          "type": "Double",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "cardinality": "Single",
+          "idAttribute": false
+        }
+      ],
+      "type": "SCREEN",
+      "description": "",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "dependencies": [
+        {
+          "id": "f04eb51d-6afd-4a33-8e3d-941dea5a3abc",
+          "type": "OUTBOUND",
+          "title": "Remove Item",
+          "elementType": "COMMAND"
+        },
+        {
+          "id": "631c5aa8-0f9e-4a8f-b7f6-91174cae2b82",
+          "type": "INBOUND",
+          "title": "cart items",
+          "elementType": "READMODEL"
+        }
+      ],
+      "apiEndpoint": "",
+      "createsAggregate": false,
+      "triggers": [],
+      "elementCopy": false,
+      "linkedId": "9e7ae82a-42f0-4298-85f4-fc2f0f689f43",
+      "sketched": false,
+      "prototype": {
+        "activeByDefault": false
+      },
+      "comments": []
+    }
+  ],
+  "screenImages": [],
+  "screenLayouts": [],
+  "processors": [],
+  "tables": [],
+  "specifications": [],
+  "storylines": [],
+  "chapter": "Understanding Eventsourcing",
+  "codeGen": {},
+  "notes": [],
+  "comments": [],
+  "aggregates": []
+}

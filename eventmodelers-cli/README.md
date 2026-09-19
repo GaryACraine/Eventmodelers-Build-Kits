@@ -38,6 +38,16 @@ npx @eventmodelers/cli init --stack node
 
 Answer the credential prompts once — the stack's scaffold, skills, and agent loop are all installed in this one step.
 
+**Trying it out before you have a board of your own:**
+
+```bash
+npx @eventmodelers/cli init --stack node --demo
+```
+
+`--demo` additionally writes a ready-made model into the kit's `.slices/` — the **Understanding Eventsourcing** context, a 16-slice shopping cart covering every slice type (state change, state view, automation, translation). It's ordinary fetched slice data in exactly the shape `fetch` writes, so the build skills, `activate-context`, `set-slice-status`, and the agent loop all work against it immediately, with no board connected. Build one with `/build-state-change` in Claude Code, or start `run` and let the agent work the queue.
+
+Nothing downstream treats it specially: `fetch --context <name>` replaces it with your own board whenever you're ready. `--demo` is skipped (with a message) if `.slices/` already holds slices, so it can never overwrite fetched work.
+
 **Already initialized — you just want the agent to start working the board:**
 
 ```bash
@@ -71,7 +81,8 @@ your-project/
 │   ├── ralph-claude.js            ← realtime agent + task loop
 │   ├── ralph-ollama.js            ← same, via local Ollama
 │   ├── ralph.sh                   ← bash-only loop (no realtime)
-│   └── lib/                       ← stack-specific agent prompts + helpers
+│   ├── lib/                       ← stack-specific agent prompts + helpers
+│   └── .slices/                   ← board slices, written by `fetch`/`listen` (or pre-seeded by `init --demo`)
 ├── .claude/
 │   └── skills/                    ← eventmodelers skills for Claude Code
 ├── src/ … (or the stack's own layout)
@@ -111,6 +122,7 @@ Which skills install depends on the chosen stack — see `stacks/<name>/template
 
 ```bash
 npx @eventmodelers/cli init --stack <name>          # scaffold a stack + install + configure (alias: install)
+npx @eventmodelers/cli init --stack <name> --demo   # same, plus a ready-made demo model in the kit's .slices/ to build against
 npx @eventmodelers/cli re-init                      # refresh an already-installed kit's scripts/skills only — never touches the root scaffold
 npx @eventmodelers/cli run                          # start the agent loop (ralph-claude.js) from the installed kit dir
 npx @eventmodelers/cli run --ollama                 # same, via local Ollama (ralph-ollama.js)
@@ -130,7 +142,7 @@ npx @eventmodelers/cli config                       # print the fully resolved c
 
 `run` is a thin dispatcher — it just finds the installed kit dir (whatever it's named for the stack) and execs the runner file already sitting in it. The agent loop's actual logic stays in the scaffolded `<kit-dir>/`, not in this package, since you (and the agent itself, via `AGENT.md`) may customize those files per project.
 
-`fetch` calls `slicedata?contextName=<name>` for the required `--context` (full slice detail — commands/events/readmodels/screens/processors/specifications/comments), and writes `.slices/<context>/<slice>/slice.json`, `index.json`, and `context.json`. It does not fetch screen images (those only arrive via `listen`'s push, see Power users). Unlike every other command, `fetch` also works with no kit installed at all — it only needs credentials, not kit-specific files. If credentials are missing, it prompts the same way `init-config` does. `--slice-id`/`--slice-title` still fetch and persist the whole context, then just print the one slice you asked about.
+`fetch` calls `slicedata?contextName=<name>` for the required `--context` (full slice detail — commands/events/readmodels/screens/processors/specifications/comments), and writes `.slices/<context>/<slice>/slice.json`, `index.json`, and `context.json`. It does not fetch screen images (those only arrive via `listen`'s push, see Power users). Unlike every other command, `fetch` also works with no kit installed at all — it only needs credentials, not kit-specific files. If credentials are missing, it prompts the same way `init-config` does. `--slice-id`/`--slice-title` still fetch and persist the whole context, then just print the one slice you asked about. `init --demo` seeds that same `.slices/` layout from a bundled example context instead of from a board, for trying the kit out before connecting one.
 
 ---
 
@@ -272,19 +284,22 @@ the turn's own instructions rather than being enforced from outside — the `cla
 what spawns the agents — so it's a budget the agent is told to keep, not a hard ceiling.
 
 Every event that arrives is remembered until a turn carries it — including events that land
-while a turn is running. Its own writes come back on that same channel and the platform can't
-tell them apart from a human's, so those are *labelled* for the agent rather than discarded,
-and the lane is damped on timing instead: it waits for a quiet period (but not forever), waits
+while a turn is running. Its own writes come back on that same channel, and each event says who
+made it (`agent_id` from the writer's `x-agent-id` header, `user_id` for a browser), so the
+agent's own echo is recognized exactly: a burst that is nothing but its own writes is dropped
+without spending a turn, and one that is mixed lists its own lines marked as such. Only a write
+that reached the platform with neither id falls back to the echo window's guess and is labelled
+"possibly your own". The lane is damped on timing on top of that: it waits for a quiet period (but not forever), waits
 out the echo window of its last turn, never fires twice in quick succession, and widens that
 floor each time it answers `NOOP`, so a finished board goes quiet by itself. Override the
 windows if the defaults don't suit your board:
 
 | Env var | Default | What it controls |
 |---|---|---|
-| `EVENTMODELERS_STANDALONE_DEBOUNCE_MS` | `8000` | quiet period before buffered board changes turn into a turn |
+| `EVENTMODELERS_STANDALONE_DEBOUNCE_MS` | `2500` | quiet period before buffered board changes turn into a turn — long enough to coalesce one gesture (a placement, a drag) into a single turn |
 | `EVENTMODELERS_STANDALONE_MAX_WAIT_MS` | `90000` | cap on that quiet period, so a board being edited continuously still gets a turn |
-| `EVENTMODELERS_STANDALONE_ECHO_WINDOW_MS` | `20000` | after a turn, how long incoming changes are labelled as probably the agent's own echo |
-| `EVENTMODELERS_STANDALONE_MIN_INTERVAL_MS` | `60000` | floor between two self-directed turns |
+| `EVENTMODELERS_STANDALONE_ECHO_WINDOW_MS` | `0` (off) | after a turn, how long an *unattributed* incoming change is labelled as probably the agent's own echo. Off because every event carries `agent_id`/`user_id`, which answers the same question exactly and costs no delay; set it only on a backend whose writes arrive unattributed (the run log names the origin of every change) |
+| `EVENTMODELERS_STANDALONE_MIN_INTERVAL_MS` | `60000` | floor between two self-directed turns — a runaway-loop guard, so a change written from a browser session skips it (a person is not a loop; another agent's write still waits) |
 | `EVENTMODELERS_STANDALONE_BACKOFF_CAP_MS` | `900000` | ceiling that floor doubles up to while turns keep answering `NOOP` |
 | `EVENTMODELERS_STANDALONE_IDLE_MS` | `900000` | with nothing happening at all, how long before the agent reviews the model anyway (`0` disables it) |
 
@@ -537,6 +552,8 @@ npx @eventmodelers/cli uninstall --modeling-kit      # remove .agent-modeling-ki
 ### Adding a stack
 
 Each stack lives under `stacks/<name>/templates/` with `.claude/` (skills), `root/` (spread into the project root), and either `build-kit/` (backend stacks) or `kit/` (modeling-only) for the agent runner. Files identical across all backend stacks live once in `shared/build-kit/` and get layered in automatically — only put stack-specific overrides under `stacks/<name>/templates/build-kit/`. Skills with no stack-specific content (`connect`, `learn-eventmodelers-api`, `update-slice-status`, `request-feedback`) work the same way via `shared/skills/` — a new stack gets them for free without copying anything; add a skill there only once it needs a stack-specific fork.
+
+The demo model `init --demo` installs is shared the same way, in `shared/demo-slices/` — a verbatim `fetch --format json` tree (`current_context.json` plus `<context>/{context,index,config}.json` and `<slice>/slice.json`), copied as-is into the kit's `.slices/`. It's stack-agnostic board data, so a new stack gets `--demo` for free. To replace or extend it, `fetch` a context into an empty directory and copy the result in, then update `DEMO_CONTEXT_NAME`/`DEMO_SLICE_COUNT` in `cli.js` (used only for the line `init` prints).
 
 Once your `init --build-kit` scaffold (see above) works against a real backend, promote it to a first-class stack:
 

@@ -1,0 +1,230 @@
+{
+  "id": "c8427265-9c14-4d11-91ee-a88f22ee74cd",
+  "status": "Created",
+  "title": "Publish Cart",
+  "context": "Understanding Eventsourcing",
+  "sliceType": "AUTOMATION",
+  "commands": [
+    {
+      "id": "1ecaf8a8-2e66-4212-8813-c9f614736e5a",
+      "tags": [],
+      "lane": "Interaction",
+      "modelContext": "Understanding Eventsourcing",
+      "slice": "Publish Cart",
+      "title": "Publish Cart",
+      "fields": [
+        {
+          "name": "aggregateId",
+          "type": "UUID",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "subfields": [],
+          "cardinality": "Single",
+          "idAttribute": false
+        },
+        {
+          "name": "orderedProducts",
+          "type": "Custom",
+          "example": "productId, price",
+          "mapping": "",
+          "optional": false,
+          "cardinality": "List",
+          "idAttribute": false
+        },
+        {
+          "name": "totalPrice",
+          "type": "Double",
+          "example": "",
+          "mapping": "orderedProducts",
+          "optional": false,
+          "subfields": [],
+          "cardinality": "Single",
+          "idAttribute": false
+        }
+      ],
+      "type": "COMMAND",
+      "description": "",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "dependencies": [
+        {
+          "id": "efe58df2-5a4a-4344-9759-d4d2779c1045",
+          "type": "OUTBOUND",
+          "title": "Cart Publication Failed",
+          "elementType": "EVENT"
+        },
+        {
+          "id": "8dc753b4-a03e-4052-b5c6-ffcb84fdb023",
+          "type": "OUTBOUND",
+          "title": "Cart Published",
+          "elementType": "EVENT"
+        },
+        {
+          "id": "eb816080-8140-4db8-8a65-f96df8876ec8",
+          "type": "OUTBOUND",
+          "title": "External Cart Published",
+          "elementType": "EVENT"
+        },
+        {
+          "id": "e3073105-b883-444b-b7d2-170de493e093",
+          "type": "INBOUND",
+          "title": "automation",
+          "elementType": "AUTOMATION"
+        }
+      ],
+      "apiEndpoint": "",
+      "createsAggregate": false,
+      "triggers": [],
+      "elementCopy": false,
+      "linkedId": "1ecaf8a8-2e66-4212-8813-c9f614736e5a",
+      "sketched": false,
+      "prototype": {
+        "activeByDefault": false
+      },
+      "comments": []
+    }
+  ],
+  "events": [
+    {
+      "id": "eb816080-8140-4db8-8a65-f96df8876ec8",
+      "tags": [],
+      "lane": "Events",
+      "modelContext": "Understanding Eventsourcing",
+      "slice": "Publish Cart",
+      "title": "External Cart Published",
+      "fields": [
+        {
+          "name": "aggregateId",
+          "type": "UUID",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "subfields": [],
+          "cardinality": "Single",
+          "idAttribute": false
+        },
+        {
+          "name": "orderedProducts",
+          "type": "Custom",
+          "example": "productId, price",
+          "mapping": "",
+          "optional": false,
+          "cardinality": "List",
+          "idAttribute": false
+        },
+        {
+          "name": "totalPrice",
+          "type": "Double",
+          "example": "",
+          "mapping": "orderedProducts",
+          "optional": false,
+          "subfields": [],
+          "cardinality": "Single",
+          "idAttribute": false
+        }
+      ],
+      "type": "EVENT",
+      "description": "",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "dependencies": [
+        {
+          "id": "1ecaf8a8-2e66-4212-8813-c9f614736e5a",
+          "type": "INBOUND",
+          "title": "Publish Cart",
+          "elementType": "COMMAND"
+        }
+      ],
+      "apiEndpoint": "",
+      "createsAggregate": false,
+      "triggers": [],
+      "elementCopy": false,
+      "linkedId": "eb816080-8140-4db8-8a65-f96df8876ec8",
+      "sketched": false,
+      "prototype": {
+        "activeByDefault": false
+      },
+      "comments": []
+    }
+  ],
+  "readmodels": [],
+  "screens": [],
+  "screenImages": [],
+  "screenLayouts": [],
+  "processors": [
+    {
+      "id": "e3073105-b883-444b-b7d2-170de493e093",
+      "tags": [],
+      "lane": "Actor",
+      "modelContext": "Understanding Eventsourcing",
+      "slice": "Publish Cart",
+      "title": "automation",
+      "fields": [
+        {
+          "name": "aggregateId",
+          "type": "UUID",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "cardinality": "Single",
+          "idAttribute": false
+        },
+        {
+          "name": "orderedProducts",
+          "type": "Custom",
+          "example": "productId, price",
+          "mapping": "",
+          "optional": false,
+          "cardinality": "List",
+          "idAttribute": false
+        },
+        {
+          "name": "totalPrice",
+          "type": "Double",
+          "example": "",
+          "mapping": "orderedProducts",
+          "optional": false,
+          "cardinality": "Single",
+          "idAttribute": false
+        }
+      ],
+      "type": "AUTOMATION",
+      "description": "",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "dependencies": [
+        {
+          "id": "1ecaf8a8-2e66-4212-8813-c9f614736e5a",
+          "type": "OUTBOUND",
+          "title": "Publish Cart",
+          "elementType": "COMMAND"
+        },
+        {
+          "id": "e3dc2c7e-7327-480a-bdb4-4b2055327540",
+          "type": "INBOUND",
+          "title": "Submitted Cart Data",
+          "elementType": "READMODEL"
+        }
+      ],
+      "apiEndpoint": "",
+      "createsAggregate": false,
+      "triggers": [],
+      "elementCopy": false,
+      "linkedId": "e3073105-b883-444b-b7d2-170de493e093",
+      "sketched": false,
+      "prototype": {
+        "activeByDefault": false
+      },
+      "comments": []
+    }
+  ],
+  "tables": [],
+  "specifications": [],
+  "storylines": [],
+  "chapter": "Understanding Eventsourcing",
+  "codeGen": {},
+  "notes": [],
+  "comments": [],
+  "aggregates": []
+}

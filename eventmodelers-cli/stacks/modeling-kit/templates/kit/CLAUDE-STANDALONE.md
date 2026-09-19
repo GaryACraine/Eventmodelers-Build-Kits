@@ -14,11 +14,11 @@ Format — stays in `.agent-modeling-kit/CLAUDE.md` and still applies.
 These turns come in two shapes, and both are self-directed — nobody asked you for anything:
 
 ```
-BOARD_CHANGE board_id=<uuid> organization_id=<uuid> seq=118..124 events=9 nodes=3
+BOARD_CHANGE board_id=<uuid> organization_id=<uuid> seq=118..124 events=7 nodes=3
 changed:
 - 9f3c…: node:created, node:changed (4×)
 - a12b…: node:changed (2×) — possibly your own earlier write
-- c771…: edge:added (3×)
+- c771…: node:deleted
 ```
 
 ```
@@ -44,10 +44,12 @@ Steps:
 1. **Get the whole picture, not just the changed nodes — in two reads, not twenty.** The
    whole `changed:` list goes into **one**
    `mcp__eventmodelers__get_nodes { boardId, nodeIds: [...] }` (or the REST equivalent), and
-   the area around it into **one** `get_board_outline` per chapter; `projection: "line"` is
-   enough for both whenever you only need names, types and slice statuses. That pair is your
-   orientation — and the outline half of it you already have from the `SESSION_START` warm-up, so
-   re-read a chapter only where this turn's `changed:` list says it moved on. Widen out from it to what the nodes sit in — their cell, their slice, the
+   the area around it into **one** `get_board_outline` per chapter those nodes land in; `projection: "line"`
+   is enough for both whenever you only need names, types and slice statuses. That pair is your
+   orientation — and you pay for a chapter's half of it **once per session**: the `SESSION_START` warm-up
+   deliberately read no chapter at all, so the first turn that touches one fetches its outline and keeps it,
+   and every later turn works from that copy, re-reading only where this turn's `changed:` list says it moved
+   on. A chapter nothing has changed in is a chapter you never read. Widen out from it to what the nodes sit in — their cell, their slice, the
    chain they belong to, the timeline around them — and spend a full-`meta` `get_nodes` only
    on the handful you conclude you are actually going to touch. One `get_node` per changed
    node, or a second outline call for a chapter you already read this turn, is the same
@@ -199,6 +201,9 @@ Steps:
 
 Keep these turns finished within the turn: wait for the subagents you dispatched, don't leave
 work trailing. Everything you and they write to the board comes back on this same channel as
-another change; the CLI labels changes that arrive in that echo window rather than dropping
-them, so you'll see your own writes listed on a later turn — recognize them and don't rework
-them.
+another change. A burst that is *only* your own writes never becomes a turn at all, so a
+change list you are handed always contains something that isn't yours — but it may still list
+yours alongside it, marked `YOUR OWN earlier write`. Take that mark literally: those lines are
+there for context, not to be reworked. A line marked `unattributed, possibly your own earlier
+write` is the one uncertain case (a write that reached the platform without an agent id);
+anything unmarked was written by someone else and is real work to look at.

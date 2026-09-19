@@ -1,0 +1,191 @@
+{
+  "id": "472e6e49-ab4d-408c-9653-df364587036d",
+  "status": "Created",
+  "title": "Change Inventory",
+  "context": "Understanding Eventsourcing",
+  "sliceType": "AUTOMATION",
+  "commands": [
+    {
+      "id": "9a4189b3-02f8-4c77-8f81-01d7317d5649",
+      "tags": [],
+      "lane": "Interaction",
+      "modelContext": "Understanding Eventsourcing",
+      "slice": "Change Inventory",
+      "title": "Change Inventory",
+      "fields": [
+        {
+          "name": "inventory",
+          "type": "Int",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "subfields": [],
+          "cardinality": "Single",
+          "idAttribute": false
+        },
+        {
+          "name": "productId",
+          "type": "UUID",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "subfields": [],
+          "cardinality": "Single",
+          "idAttribute": false
+        }
+      ],
+      "type": "COMMAND",
+      "description": "",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "dependencies": [
+        {
+          "id": "ee37a976-e3af-48d5-8c4c-c168294bda9a",
+          "type": "OUTBOUND",
+          "title": "Inventory Changed",
+          "elementType": "EVENT"
+        },
+        {
+          "id": "fb1aeac2-88f3-4d0d-8011-7588c1d743ae",
+          "type": "INBOUND",
+          "title": "automation",
+          "elementType": "AUTOMATION"
+        }
+      ],
+      "apiEndpoint": "",
+      "createsAggregate": false,
+      "triggers": [],
+      "elementCopy": false,
+      "linkedId": "9a4189b3-02f8-4c77-8f81-01d7317d5649",
+      "sketched": false,
+      "prototype": {
+        "activeByDefault": false
+      },
+      "comments": []
+    }
+  ],
+  "events": [
+    {
+      "id": "ee37a976-e3af-48d5-8c4c-c168294bda9a",
+      "tags": [],
+      "lane": "Events",
+      "modelContext": "Understanding Eventsourcing",
+      "slice": "Change Inventory",
+      "title": "Inventory Changed",
+      "fields": [
+        {
+          "name": "inventory",
+          "type": "Int",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "subfields": [],
+          "cardinality": "Single",
+          "idAttribute": false
+        },
+        {
+          "name": "productId",
+          "type": "UUID",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "subfields": [],
+          "cardinality": "Single",
+          "idAttribute": true
+        }
+      ],
+      "type": "EVENT",
+      "description": "",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "dependencies": [
+        {
+          "id": "eb95e57c-3b32-45a5-bb85-89078fe07476",
+          "type": "OUTBOUND",
+          "title": "Inventories",
+          "elementType": "READMODEL"
+        },
+        {
+          "id": "9a4189b3-02f8-4c77-8f81-01d7317d5649",
+          "type": "INBOUND",
+          "title": "Change Inventory",
+          "elementType": "COMMAND"
+        }
+      ],
+      "apiEndpoint": "",
+      "createsAggregate": false,
+      "triggers": [],
+      "elementCopy": false,
+      "linkedId": "ee37a976-e3af-48d5-8c4c-c168294bda9a",
+      "sketched": false,
+      "prototype": {
+        "activeByDefault": false
+      },
+      "comments": []
+    }
+  ],
+  "readmodels": [],
+  "screens": [],
+  "screenImages": [],
+  "screenLayouts": [],
+  "processors": [
+    {
+      "id": "fb1aeac2-88f3-4d0d-8011-7588c1d743ae",
+      "tags": [],
+      "lane": "Actor",
+      "modelContext": "Understanding Eventsourcing",
+      "slice": "Change Inventory",
+      "title": "automation",
+      "fields": [
+        {
+          "name": "inventory",
+          "type": "Int",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "cardinality": "Single",
+          "idAttribute": false
+        },
+        {
+          "name": "productId",
+          "type": "String",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "cardinality": "Single",
+          "idAttribute": false
+        }
+      ],
+      "type": "AUTOMATION",
+      "description": "",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "dependencies": [
+        {
+          "id": "9a4189b3-02f8-4c77-8f81-01d7317d5649",
+          "type": "OUTBOUND",
+          "title": "Change Inventory",
+          "elementType": "COMMAND"
+        }
+      ],
+      "apiEndpoint": "",
+      "createsAggregate": false,
+      "triggers": [],
+      "elementCopy": false,
+      "linkedId": "fb1aeac2-88f3-4d0d-8011-7588c1d743ae",
+      "sketched": false,
+      "prototype": {
+        "activeByDefault": false
+      },
+      "comments": []
+    }
+  ],
+  "tables": [],
+  "specifications": [],
+  "storylines": [],
+  "chapter": "Understanding Eventsourcing",
+  "codeGen": {},
+  "notes": [],
+  "comments": [],
+  "aggregates": []
+}

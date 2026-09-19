@@ -1,0 +1,65 @@
+{
+  "id": "cccef300-beb0-41de-8127-df7a8fd8a5b7",
+  "status": "Created",
+  "title": "Cart Published",
+  "context": "Understanding Eventsourcing",
+  "sliceType": "UNDEFINED",
+  "commands": [],
+  "events": [
+    {
+      "id": "8dc753b4-a03e-4052-b5c6-ffcb84fdb023",
+      "tags": [],
+      "lane": "Events",
+      "modelContext": "Understanding Eventsourcing",
+      "slice": "Cart Published",
+      "title": "Cart Published",
+      "fields": [
+        {
+          "name": "aggregateId",
+          "type": "UUID",
+          "example": "",
+          "mapping": "",
+          "optional": false,
+          "subfields": [],
+          "cardinality": "Single",
+          "idAttribute": false
+        }
+      ],
+      "type": "EVENT",
+      "description": "",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "dependencies": [
+        {
+          "id": "1ecaf8a8-2e66-4212-8813-c9f614736e5a",
+          "type": "INBOUND",
+          "title": "Publish Cart",
+          "elementType": "COMMAND"
+        }
+      ],
+      "apiEndpoint": "",
+      "createsAggregate": false,
+      "triggers": [],
+      "elementCopy": false,
+      "linkedId": "8dc753b4-a03e-4052-b5c6-ffcb84fdb023",
+      "sketched": false,
+      "prototype": {
+        "activeByDefault": false
+      },
+      "comments": []
+    }
+  ],
+  "readmodels": [],
+  "screens": [],
+  "screenImages": [],
+  "screenLayouts": [],
+  "processors": [],
+  "tables": [],
+  "specifications": [],
+  "storylines": [],
+  "chapter": "Understanding Eventsourcing",
+  "codeGen": {},
+  "notes": [],
+  "comments": [],
+  "aggregates": []
+}
