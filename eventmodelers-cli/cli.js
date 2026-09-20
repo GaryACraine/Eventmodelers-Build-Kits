@@ -222,9 +222,11 @@ const MCP_MANUAL_CLIENTS = [
 // directory tells it to go read the canonical .claude/skills/<name>/SKILL.md and
 // follow it — the same pattern spec-kitty uses (verified directly against its repo,
 // not just its docs: every "stub" host below reads plain Markdown, no per-host
-// format transform needed). Codex CLI, Mistral Vibe, Pi, and Letta Code share one
-// convention that already matches our native SKILL.md format, so those get the
-// real file copied as-is instead of a stub.
+// format transform needed). Codex CLI, Mistral Vibe, Pi, Letta Code, and Hermes
+// share one convention that already matches our native SKILL.md format, so those
+// get the real file copied as-is instead of a stub. (Hermes also has a native
+// .hermes/skills/ location, but its docs list .agents/skills/ as an equally
+// first-class project skill root, so there's no reason to write the tree twice.)
 const AGENT_HOSTS = {
   cursor: { label: 'Cursor', dir: '.cursor/commands', kind: 'stub' },
   windsurf: { label: 'Windsurf', dir: '.windsurf/workflows', kind: 'stub' },
@@ -238,11 +240,32 @@ const AGENT_HOSTS = {
   augment: { label: 'Augment Code', dir: '.augment/commands', kind: 'stub' },
   antigravity: { label: 'Google Antigravity', dir: '.agent/workflows', kind: 'stub' },
   codex: {
-    label: 'Codex CLI / Mistral Vibe / Pi / Letta Code (shared .agents/skills/ convention)',
+    label: 'Codex CLI / Mistral Vibe / Pi / Letta Code / Hermes (shared .agents/skills/ convention)',
     dir: '.agents/skills',
     kind: 'skill-package',
   },
 };
+
+// Several hosts share one directory convention, so they resolve to a single
+// canonical entry above instead of each getting their own: writing the same
+// .agents/skills/ tree four times would be pure duplication, and `--hosts all`
+// would print four "installed" lines for one install. These exist so people can
+// name the agent they actually use — `--hosts pi` is a friendlier spelling of
+// `--hosts codex`, not a different install.
+const AGENT_HOST_ALIASES = {
+  pi: 'codex',
+  hermes: 'codex',
+  vibe: 'codex',
+  'mistral-vibe': 'codex',
+  letta: 'codex',
+  'letta-code': 'codex',
+};
+
+// Alias -> canonical, deduped and order-preserving. Unknown keys pass through
+// untouched so the caller keeps reporting them as unknown.
+function resolveAgentHostKeys(keys) {
+  return [...new Set(keys.map((k) => AGENT_HOST_ALIASES[k] || k))];
+}
 
 function agentHostStub(skillName) {
   return `# ${skillName} (eventmodelers)\n\nThis host should read the canonical skill at:\n\n**\`.claude/skills/${skillName}/SKILL.md\`**\n\nFollow those instructions when this command is invoked.\n`;
@@ -269,15 +292,18 @@ async function configureAgentHosts({ hosts, global: useGlobal } = {}) {
   if (!hostKeys || !hostKeys.length) {
     console.log('\nAvailable agent hosts:');
     Object.entries(AGENT_HOSTS).forEach(([key, h]) => console.log(`  ${key.padEnd(12)} ${h.label}`));
+    const aliasKeys = Object.keys(AGENT_HOST_ALIASES);
+    if (aliasKeys.length) console.log(`\n  (also accepted: ${aliasKeys.join(', ')})`);
     const answer = await prompt('\nWhich hosts? (comma-separated keys, or "all"): ');
     hostKeys = answer.trim() === 'all'
       ? Object.keys(AGENT_HOSTS)
       : answer.split(',').map((s) => s.trim()).filter(Boolean);
   }
+  hostKeys = resolveAgentHostKeys(hostKeys);
 
   const unknown = hostKeys.filter((k) => !AGENT_HOSTS[k]);
   if (unknown.length) {
-    console.error(`❌ Unknown host(s): ${unknown.join(', ')}. Available: ${Object.keys(AGENT_HOSTS).join(', ')}`);
+    console.error(`❌ Unknown host(s): ${unknown.join(', ')}. Available: ${Object.keys(AGENT_HOSTS).join(', ')} (aliases: ${Object.keys(AGENT_HOST_ALIASES).join(', ')})`);
     process.exit(1);
   }
   if (!hostKeys.length) {
@@ -2821,7 +2847,7 @@ program
 program
   .command('init-agents')
   .description(`Expose installed skills to other AI agent hosts (${Object.keys(AGENT_HOSTS).join(', ')}) as thin stub commands pointing at the canonical .claude/skills/ files — no skill content duplicated per host`)
-  .option('--hosts <list>', `Comma-separated host keys (${Object.keys(AGENT_HOSTS).join(', ')})`)
+  .option('--hosts <list>', `Comma-separated host keys (${Object.keys(AGENT_HOSTS).join(', ')}; aliases: ${Object.keys(AGENT_HOST_ALIASES).join(', ')})`)
   .option('--all', 'Expose to every known host')
   .option('--global', 'Read skills from ~/.claude/skills/ instead of the project')
   .action(async (opts) => {
