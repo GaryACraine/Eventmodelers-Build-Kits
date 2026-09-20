@@ -31,7 +31,7 @@ const __dirname = dirname(__filename);
 
 // Each stack is a template set under stacks/<key>/templates/{.claude,root,<kitSubdir>}.
 // Stacks with useShared:true also get shared/build-kit/* copied into their kit dir
-// first (ralph.js, ralph-claude.js, ralph-local-ai.js, ralph.sh, realtime-agent.js,
+// first (ralph.js, ralph-claude.js, ralph-local-ai.js, ralph-exec.js, ralph.sh, realtime-agent.js,
 // code-export.mjs, lib/agent.sh, lib/local-ai-agent.js, package.json, README.md) —
 // those files have no per-stack content, so they live once instead of being
 // copy-pasted into every stack (that copy-pasting is exactly how they drifted out
@@ -1011,7 +1011,7 @@ async function installStack(stackKey, stackCfg, options = {}) {
     }
 
     // Make scripts executable
-    for (const script of ['ralph.sh', 'lib/agent.sh', 'ralph-claude.js', 'ralph-local-ai.js']) {
+    for (const script of ['ralph.sh', 'lib/agent.sh', 'ralph-claude.js', 'ralph-local-ai.js', 'ralph-exec.js']) {
       const p = join(kitDir, script);
       if (existsSync(p)) {
         try { execSync(`chmod +x "${p}"`); } catch {}
@@ -3041,6 +3041,7 @@ credentialFlags(program
   .command('run')
   .description('Start the agent loop from the installed kit dir — build-kit stacks: ralph-claude.js (default); modeling-kit: --modeling, or --standalone, which needs no install at all')
   .option('--local-ai [target]', `Drive the loop with a local (or self-hosted) model instead of the default Claude runner, via ralph-local-ai.js (build-kit stacks only). Optional target preset picks the URL and wire dialect: ${LOCAL_AI_TARGETS.join(', ')} — bare --local-ai means ollama. Anything OpenAI-compatible (vLLM, LM Studio, llama.cpp, TGI) works by pointing LOCAL_AI_URL at it; see LOCAL_AI_* in the docs. Claude remains the default when this flag is absent.`)
+  .option('--exec [command]', 'Hand each prompt to an external agent command instead of the default Claude runner, via ralph-exec.js (build-kit stacks only) — for agentic harnesses that bring their own tool loop, e.g. "codex exec --full-auto" or "opencode run". The prompt is appended as a quoted argument and also written to the file named by RALPH_PROMPT_FILE. Bare --exec uses localAi.exec from .eventmodelers/config.json. Claude remains the default when this flag is absent.')
   .option('--bash', 'Use the bash-only ralph.sh loop (build-kit stacks only, no realtime)')
   .option('--modeling', 'Keep one Claude process warm across prompts instead of spawning a fresh one per task, for low-latency voice/live use. Runs from a modeling-kit install in this directory, or from the global install (~/.eventmodelers/kit) when there is none. Built into the CLI, not a per-project file.')
   .option('--standalone', 'Let the modeling agent work the board in the background, on its own initiative: on top of direct prompts it subscribes to the board\'s change channel (like the build agents do) and, whenever the board goes quiet after an edit — or has simply been idle for a while — it takes a turn nobody asked for. Changed nodes are a notification, not the task: it judges the model as a whole and fans the work out over parallel subagents, one per changed area (examples on a new node, specs for a new command or read model, a missing attribute along a chain, a screen, a question comment). Filling that detail in while the human keeps modeling is the point — it does not wait for the board to be finished. Implies --modeling.')
@@ -3109,8 +3110,8 @@ credentialFlags(program
     // no meaning for a build kit, which is scaffolded per project by definition.
     if (opts.modeling || opts.standalone || opts.global) {
       const picked = opts.modeling ? '--modeling' : opts.standalone ? '--standalone' : '--global';
-      if (opts.bash || opts.localAi) {
-        console.error(`❌ ${picked} is mutually exclusive with --bash/--local-ai — those select a build-kit runner, which the modeling loop has no use for.`);
+      if (opts.bash || opts.localAi || opts.exec) {
+        console.error(`❌ ${picked} is mutually exclusive with --bash/--local-ai/--exec — those select a build-kit runner, which the modeling loop has no use for.`);
         process.exit(1);
       }
       if (opts.local) {
@@ -3169,9 +3170,9 @@ credentialFlags(program
     const kitDir = buildKitDir;
 
     const localAiTarget = resolveLocalAiTarget(opts);
-    const pickedCount = [opts.bash, localAiTarget !== null].filter(Boolean).length;
+    const pickedCount = [opts.bash, localAiTarget !== null, !!opts.exec].filter(Boolean).length;
     if (pickedCount > 1) {
-      console.error('❌ --bash and --local-ai are mutually exclusive — pick one.');
+      console.error('❌ --bash, --local-ai and --exec are mutually exclusive — pick one runner.');
       process.exit(1);
     }
 
@@ -3179,7 +3180,7 @@ credentialFlags(program
     // is just a thin dispatcher so users don't have to remember the kit-dir name or which
     // runner file to invoke. Users (and the agent itself, via AGENT.md) may customize these
     // files freely; `run` always executes whatever is currently on disk.
-    const runner = opts.bash ? 'ralph.sh' : localAiTarget !== null ? 'ralph-local-ai.js' : 'ralph-claude.js';
+    const runner = opts.bash ? 'ralph.sh' : opts.exec ? 'ralph-exec.js' : localAiTarget !== null ? 'ralph-local-ai.js' : 'ralph-claude.js';
     const runnerPath = join(kitDir, runner);
     if (!existsSync(runnerPath)) {
       console.error(`❌ ${relative(cwd, runnerPath)} not found.`);
@@ -3195,7 +3196,7 @@ credentialFlags(program
       // local-only branch even when .eventmodelers/config.json has valid credentials.
       // RALPH_AGENT_ID/RALPH_AGENT_NAME (--id/--name) are read in ralph.js's startRalph, so
       // they reach both node runners but not ralph.sh, which has no heartbeat to identify.
-      execSync(cmd, { cwd: kitDir, stdio: 'inherit', env: { ...process.env, RALPH_VERBOSE: opts.verbose ? '1' : '', RALPH_LOCAL: opts.local ? '1' : '', RALPH_AGENT_ID: identity.agentId ?? '', RALPH_AGENT_NAME: identity.agentName ?? '', ...(typeof localAiTarget === 'string' ? { LOCAL_AI_TARGET: localAiTarget } : {}) } });
+      execSync(cmd, { cwd: kitDir, stdio: 'inherit', env: { ...process.env, RALPH_VERBOSE: opts.verbose ? '1' : '', RALPH_LOCAL: opts.local ? '1' : '', RALPH_AGENT_ID: identity.agentId ?? '', RALPH_AGENT_NAME: identity.agentName ?? '', ...(typeof localAiTarget === 'string' ? { LOCAL_AI_TARGET: localAiTarget } : {}), ...(typeof opts.exec === 'string' ? { RALPH_EXEC_CMD: opts.exec } : {}) } });
     } catch (err) {
       process.exit(err.status || 1);
     }

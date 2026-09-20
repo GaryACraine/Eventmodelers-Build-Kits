@@ -17,7 +17,7 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
 
 0. Do not read the entire code base. Focus on the tasks in this description.
 1. Read `.build-kit/.slices/current_context.json` to find the active context name, then read `.build-kit/.slices/<contextName>/index.json`. Every item in status "planned" is a task.
-2. Read the progress log at `progress.txt` (check Codebase Patterns section first)
+2. Read the progress log at `progress.txt` **if it exists** (check Codebase Patterns section first) — it is absent until the first slice is built, which is not an error; create it when you write your first entry
 3. Make sure you are on the right branch "feature/<slicename>", if unsure, start from main.
 5. Pick the **highest priority** slice where status is **exactly** "Planned" (case insensitive). This becomes your PRD. Set the status "InProgress" in the index.json **and** update the slice status on the eventmodelers board using the `update-slice-status` skill (or MCP if available).
    **IMPORTANT: Only work on slices with status "Planned" in the CURRENT context. Never pick up a slice that is "InProgress", "Done", "Blocked", "Created", or any other status — even if it looks incomplete. If no slice has status "Planned" in the current context, reply with:**

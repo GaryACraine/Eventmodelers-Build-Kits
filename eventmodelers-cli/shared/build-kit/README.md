@@ -26,6 +26,7 @@ node .build-kit/ralph-claude.js /path/to/project
 |------|---------|
 | `ralph-claude.js` | Runs the full loop using Claude Code as the executor |
 | `ralph-local-ai.js` | Runs the full loop using a local/self-hosted model (Ollama, vLLM, LM Studio, llama.cpp) |
+| `ralph-exec.js` | Runs the full loop handing each prompt to an external agent command (Codex CLI, OpenCode, …) |
 | `ralph.sh` | Shell-based loop — alternative to the JS entry points |
 | `realtime-agent.js` | Standalone realtime agent — only needed to run it in a separate terminal |
 
@@ -86,6 +87,43 @@ fragment of the tool list and invents tool names instead of failing, which is wh
 default here is raised rather than left to the server. On the `openai` dialect the
 equivalent is set when you launch the server (vLLM `--max-model-len 32768`,
 llama.cpp `-c 32768`); an overflow there surfaces as an HTTP 400.
+
+
+## External agent commands (`--exec`)
+
+Agentic harnesses that bring their own tool loop — Codex CLI, OpenCode, Gemini CLI —
+are not `--local-ai` targets: `--local-ai` *supplies* the agent loop, while a harness
+already is one and only wants a prompt. They go through `ralph-exec.js` instead:
+
+```bash
+npx @eventmodelers/cli run --exec "codex exec --full-auto"
+npx @eventmodelers/cli run --exec "opencode run"
+
+# …or persist it and use the bare flag
+RALPH_EXEC_CMD="codex exec --full-auto" node .build-kit/ralph-exec.js
+```
+
+The prompt is appended to the command as one shell-quoted argument, and is also written
+to a temp file named by `RALPH_PROMPT_FILE` for commands that prefer to read it. The
+child runs with the project dir as its cwd and inherits stdio — a harness owns its own
+output format, so there is no condensed per-step logging here the way `ralph-claude.js`
+has it.
+
+Persist a default alongside the local-AI settings:
+
+```json
+{
+  "localAi": {
+    "exec": "codex exec --full-auto"
+  }
+}
+```
+
+One caveat worth knowing before reaching for this: the kits' prompts assume Claude
+Code's `Skill` tool and `CLAUDE.md`. Other harnesses read `AGENTS.md` and have no skill
+primitive, so `init-agents` puts the skill files where they can find them, but
+`lib/prompt.md` / `lib/backend-prompt.md` still need wording that says *read and follow*
+a skill file rather than *invoke* it.
 
 ## Config
 
