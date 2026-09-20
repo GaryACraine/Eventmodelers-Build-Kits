@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Standalone realtime agent — subscribes to board events and writes tasks.json.
-// The same logic runs embedded inside ralph-claude.js / ralph-ollama.js, so you
+// The same logic runs embedded inside ralph-claude.js / ralph-local-ai.js, so you
 // only need this if you want to run the agent independently (e.g. separate terminal).
 // Usage: node realtime-agent.js [kit_dir]
 

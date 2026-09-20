@@ -31,8 +31,8 @@ const __dirname = dirname(__filename);
 
 // Each stack is a template set under stacks/<key>/templates/{.claude,root,<kitSubdir>}.
 // Stacks with useShared:true also get shared/build-kit/* copied into their kit dir
-// first (ralph.js, ralph-claude.js, ralph-ollama.js, ralph.sh, realtime-agent.js,
-// code-export.mjs, lib/agent.sh, lib/ollama-agent.js, package.json, README.md) —
+// first (ralph.js, ralph-claude.js, ralph-local-ai.js, ralph.sh, realtime-agent.js,
+// code-export.mjs, lib/agent.sh, lib/local-ai-agent.js, package.json, README.md) —
 // those files have no per-stack content, so they live once instead of being
 // copy-pasted into every stack (that copy-pasting is exactly how they drifted out
 // of sync before: a bugfix or default landing in one stack's copy but not another's).
@@ -41,6 +41,29 @@ const __dirname = dirname(__filename);
 // modeling-kit (below) is the one kit that opts out of all of this (useShared:false)
 // — it has no cold-spawn/tasks.json runtime at all, so none of shared/build-kit/*
 // applies to it; see its own templates/kit for its (much smaller) self-contained set.
+// --- Local-AI runner selection ------------------------------------------------
+// One runner drives every local/self-hosted backend. What differs between Ollama,
+// vLLM, LM Studio and llama.cpp is the wire dialect (native /api/chat vs the
+// OpenAI-compatible /v1/chat/completions) plus a default URL — both handled inside
+// lib/local-ai-agent.js. Splitting this per vendor would multiply the one file that
+// is currently shared across every stack, so these are presets, not runners.
+// Claude (ralph-claude.js) stays the default executor; this is opt-in.
+const LOCAL_AI_TARGETS = ['ollama', 'vllm', 'lmstudio', 'llamacpp'];
+
+// null = not requested. true = requested with no preset (the agent then falls back to
+// LOCAL_AI_*/config, defaulting to Ollama). A string is a validated preset name.
+function resolveLocalAiTarget(opts) {
+  const raw = opts.localAi;
+  if (raw === undefined || raw === false) return null;
+  if (raw === true) return true;
+  if (!LOCAL_AI_TARGETS.includes(raw)) {
+    console.error(`❌ Unknown --local-ai target "${raw}" — one of: ${LOCAL_AI_TARGETS.join(', ')}.`);
+    console.error('   Any other OpenAI-compatible server works by URL instead: LOCAL_AI_URL=http://host:8000/v1');
+    process.exit(1);
+  }
+  return raw;
+}
+
 const STACKS = {
   node: {
     label: 'Node.js / TypeScript',
@@ -86,7 +109,7 @@ const STACKS = {
   },
   // Frontend-only kits (UI-only: build STATE_CHANGE/STATE_VIEW slices, not
   // AUTOMATION — those belong to whichever backend stack is installed alongside).
-  // react overrides lib/ralph.js (+ralph-claude.js/ralph-ollama.js/package.json/
+  // react overrides lib/ralph.js (+ralph-claude.js/ralph-local-ai.js/package.json/
   // README.md) for board-polling instead of the realtime channel every other
   // stack uses; supabase-react needs no overrides at all — it uses
   // shared/build-kit's realtime agent as-is. react's CLAUDE.md/build-*
@@ -988,7 +1011,7 @@ async function installStack(stackKey, stackCfg, options = {}) {
     }
 
     // Make scripts executable
-    for (const script of ['ralph.sh', 'lib/agent.sh', 'ralph-claude.js', 'ralph-ollama.js']) {
+    for (const script of ['ralph.sh', 'lib/agent.sh', 'ralph-claude.js', 'ralph-local-ai.js']) {
       const p = join(kitDir, script);
       if (existsSync(p)) {
         try { execSync(`chmod +x "${p}"`); } catch {}
@@ -1096,7 +1119,7 @@ async function installStack(stackKey, stackCfg, options = {}) {
     } else if (isModelingKit) {
       console.log('  npx @eventmodelers/cli run --modeling\n');
     } else {
-      console.log('  npx @eventmodelers/cli run          (--ollama or --bash for other runners)\n');
+      console.log('  npx @eventmodelers/cli run          (--local-ai or --bash for other runners)\n');
     }
     console.log('Connect this project to an MCP client (Claude Code, VS Code, ...):\n');
     console.log(`  npx @eventmodelers/cli init-mcp\n`);
@@ -3017,7 +3040,7 @@ credentialFlags(program
 credentialFlags(program
   .command('run')
   .description('Start the agent loop from the installed kit dir — build-kit stacks: ralph-claude.js (default); modeling-kit: --modeling, or --standalone, which needs no install at all')
-  .option('--ollama', 'Use ralph-ollama.js instead of the default Claude runner (build-kit stacks only)')
+  .option('--local-ai [target]', `Drive the loop with a local (or self-hosted) model instead of the default Claude runner, via ralph-local-ai.js (build-kit stacks only). Optional target preset picks the URL and wire dialect: ${LOCAL_AI_TARGETS.join(', ')} — bare --local-ai means ollama. Anything OpenAI-compatible (vLLM, LM Studio, llama.cpp, TGI) works by pointing LOCAL_AI_URL at it; see LOCAL_AI_* in the docs. Claude remains the default when this flag is absent.`)
   .option('--bash', 'Use the bash-only ralph.sh loop (build-kit stacks only, no realtime)')
   .option('--modeling', 'Keep one Claude process warm across prompts instead of spawning a fresh one per task, for low-latency voice/live use. Runs from a modeling-kit install in this directory, or from the global install (~/.eventmodelers/kit) when there is none. Built into the CLI, not a per-project file.')
   .option('--standalone', 'Let the modeling agent work the board in the background, on its own initiative: on top of direct prompts it subscribes to the board\'s change channel (like the build agents do) and, whenever the board goes quiet after an edit — or has simply been idle for a while — it takes a turn nobody asked for. Changed nodes are a notification, not the task: it judges the model as a whole and fans the work out over parallel subagents, one per changed area (examples on a new node, specs for a new command or read model, a missing attribute along a chain, a screen, a question comment). Filling that detail in while the human keeps modeling is the point — it does not wait for the board to be finished. Implies --modeling.')
@@ -3071,13 +3094,13 @@ credentialFlags(program
     const bridgeKitDir = installedKitDirs.find((d) => d.endsWith(BRIDGE_KIT.kitDirName)) ?? null;
     // A bridge kit is not a build-kit stand-in even though it also reuses
     // lib/ralph.js — it has its own `eventmodelers bridge` entrypoint (no
-    // onPlannedSlice/--ollama/--bash support), so it's excluded here rather
+    // onPlannedSlice/--local-ai/--bash support), so it's excluded here rather
     // than falling through to the generic build-kit runner below.
     const buildKitDir = installedKitDirs.find((d) => d !== modelingKitDir && d !== bridgeKitDir) ?? null;
 
     // No overlap between the two stacks' runtimes: modeling-kit only ever runs the
     // warm, direct-dispatch loop (--modeling); build-kit only ever runs the
-    // cold-spawn/tasks.json loop (default, or --ollama/--bash). Neither falls back
+    // cold-spawn/tasks.json loop (default, or --local-ai/--bash). Neither falls back
     // to the other's mechanism, so each side is gated explicitly below rather than
     // just being left to fail on a missing file.
     // --standalone implies --modeling: it already refused every other runner, so there
@@ -3086,8 +3109,8 @@ credentialFlags(program
     // no meaning for a build kit, which is scaffolded per project by definition.
     if (opts.modeling || opts.standalone || opts.global) {
       const picked = opts.modeling ? '--modeling' : opts.standalone ? '--standalone' : '--global';
-      if (opts.bash || opts.ollama) {
-        console.error(`❌ ${picked} is mutually exclusive with --bash/--ollama — those select a build-kit runner, which the modeling loop has no use for.`);
+      if (opts.bash || opts.localAi) {
+        console.error(`❌ ${picked} is mutually exclusive with --bash/--local-ai — those select a build-kit runner, which the modeling loop has no use for.`);
         process.exit(1);
       }
       if (opts.local) {
@@ -3136,7 +3159,7 @@ credentialFlags(program
       if (modelingKitDir) {
         console.error(`❌ A modeling-kit install (${MODELING_KIT.kitDirName}/) only runs via \`eventmodelers run --modeling\` — there is no cold-spawn/tasks.json loop for modeling-only projects.`);
       } else if (bridgeKitDir) {
-        console.error(`❌ A bridge-kit install (${BRIDGE_KIT.kitDirName}/) only runs via \`eventmodelers bridge\` — it has no --modeling/--ollama/--bash modes.`);
+        console.error(`❌ A bridge-kit install (${BRIDGE_KIT.kitDirName}/) only runs via \`eventmodelers bridge\` — it has no --modeling/--local-ai/--bash modes.`);
       } else {
         console.error(`❌ No kit installed in ${cwd} — run \`eventmodelers install\` first.`);
         console.error('   (A modeling agent needs no install at all: eventmodelers run --standalone --board-id <uuid>)');
@@ -3145,9 +3168,10 @@ credentialFlags(program
     }
     const kitDir = buildKitDir;
 
-    const pickedCount = [opts.bash, opts.ollama].filter(Boolean).length;
+    const localAiTarget = resolveLocalAiTarget(opts);
+    const pickedCount = [opts.bash, localAiTarget !== null].filter(Boolean).length;
     if (pickedCount > 1) {
-      console.error('❌ --bash and --ollama are mutually exclusive — pick one.');
+      console.error('❌ --bash and --local-ai are mutually exclusive — pick one.');
       process.exit(1);
     }
 
@@ -3155,7 +3179,7 @@ credentialFlags(program
     // is just a thin dispatcher so users don't have to remember the kit-dir name or which
     // runner file to invoke. Users (and the agent itself, via AGENT.md) may customize these
     // files freely; `run` always executes whatever is currently on disk.
-    const runner = opts.bash ? 'ralph.sh' : opts.ollama ? 'ralph-ollama.js' : 'ralph-claude.js';
+    const runner = opts.bash ? 'ralph.sh' : localAiTarget !== null ? 'ralph-local-ai.js' : 'ralph-claude.js';
     const runnerPath = join(kitDir, runner);
     if (!existsSync(runnerPath)) {
       console.error(`❌ ${relative(cwd, runnerPath)} not found.`);
@@ -3165,13 +3189,13 @@ credentialFlags(program
     console.log(`▶ Starting ${relative(cwd, runnerPath)}...\n`);
     const cmd = runner.endsWith('.sh') ? `"${runnerPath}"` : `node "${runnerPath}"`;
     try {
-      // Only ralph-claude.js reads RALPH_VERBOSE — the bash loop and the ollama executor have
+      // Only ralph-claude.js reads RALPH_VERBOSE — the bash loop and the local-AI executor have
       // their own separate output paths with no stream-json parsing to gate. RALPH_LOCAL is
       // read by all three runners (ralph.js's startRalph, and ralph.sh directly) to force the
       // local-only branch even when .eventmodelers/config.json has valid credentials.
       // RALPH_AGENT_ID/RALPH_AGENT_NAME (--id/--name) are read in ralph.js's startRalph, so
       // they reach both node runners but not ralph.sh, which has no heartbeat to identify.
-      execSync(cmd, { cwd: kitDir, stdio: 'inherit', env: { ...process.env, RALPH_VERBOSE: opts.verbose ? '1' : '', RALPH_LOCAL: opts.local ? '1' : '', RALPH_AGENT_ID: identity.agentId ?? '', RALPH_AGENT_NAME: identity.agentName ?? '' } });
+      execSync(cmd, { cwd: kitDir, stdio: 'inherit', env: { ...process.env, RALPH_VERBOSE: opts.verbose ? '1' : '', RALPH_LOCAL: opts.local ? '1' : '', RALPH_AGENT_ID: identity.agentId ?? '', RALPH_AGENT_NAME: identity.agentName ?? '', ...(typeof localAiTarget === 'string' ? { LOCAL_AI_TARGET: localAiTarget } : {}) } });
     } catch (err) {
       process.exit(err.status || 1);
     }
@@ -3179,8 +3203,8 @@ credentialFlags(program
 
 program
   .command('bridge')
-  .description('Start the bridge agent loop from the installed .bridge-kit/ — translates board slice changes into another spec framework instead of building code. A deterministic adapter runs with no LLM call if one exists for the configured target (e.g. spec-kitty); otherwise Claude is the default executor. --ollama, --hook, or --claude override the pick.')
-  .option('--ollama', 'Use ralph-ollama.js instead of the default runner')
+  .description('Start the bridge agent loop from the installed .bridge-kit/ — translates board slice changes into another spec framework instead of building code. A deterministic adapter runs with no LLM call if one exists for the configured target (e.g. spec-kitty); otherwise Claude is the default executor. --local-ai, --hook, or --claude override the pick.')
+  .option('--local-ai [target]', `Use ralph-local-ai.js instead of the default runner — a local or self-hosted model. Optional target preset: ${LOCAL_AI_TARGETS.join(', ')} (bare flag means ollama).`)
   .option('--hook <command>', 'Run this shell command instead of an AI agent for each batch of slice changes (e.g. commit + push .slices/ for a CI pipeline to pick up) — overrides any hook persisted via `init --bridge --hook` for this run only')
   .option('--claude', 'Force the Claude runner even if a static adapter exists for this target')
   .action((opts) => {
@@ -3191,8 +3215,9 @@ program
       process.exit(1);
     }
 
-    if ([opts.ollama, opts.hook, opts.claude].filter(Boolean).length > 1) {
-      console.error('❌ --ollama, --hook, and --claude are mutually exclusive — pick one executor.');
+    const localAiTarget = resolveLocalAiTarget(opts);
+    if ([localAiTarget !== null, opts.hook, opts.claude].filter(Boolean).length > 1) {
+      console.error('❌ --local-ai, --hook, and --claude are mutually exclusive — pick one executor.');
       process.exit(1);
     }
 
@@ -3212,8 +3237,8 @@ program
 
     const runner = hookCmd
       ? 'ralph-hook.js'
-      : opts.ollama
-        ? 'ralph-ollama.js'
+      : localAiTarget !== null
+        ? 'ralph-local-ai.js'
         : !opts.claude && hasStaticAdapter
           ? 'ralph-static.js'
           : 'ralph-claude.js';

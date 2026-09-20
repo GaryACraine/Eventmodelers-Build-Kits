@@ -510,7 +510,7 @@ Create a SCREEN node from a sketch description.
 **File**: `src/slices/change/api-.slices/routes.ts`
 
 ### POST `/api/org/:orgId/boards/:boardId/timelines/:timelineId/slices`
-Create a complete slice (1 column + 3 nodes automatically placed).
+Create a complete slice (1 column + its nodes automatically placed).
 
 **Request body**:
 ```typescript
@@ -527,8 +527,10 @@ Create a complete slice (1 column + 3 nodes automatically placed).
 
 **Slice node mapping**:
 - `state-change` → HTML_SCREEN (actor) + COMMAND (interaction) + EVENT (swimlane)
-- `state-view` → HTML_SCREEN (actor) + READMODEL (interaction) + EVENT (swimlane)
+- `state-view` → HTML_SCREEN (actor) + READMODEL (interaction) + EVENT (swimlane, **only when `nodes.swimlane` is passed**)
 - `automation` → AUTOMATION (actor) + COMMAND (interaction) + EVENT (swimlane)
+
+A `state-view`'s read model is normally fed by an event that already exists in an earlier column, so its event is opt-in: pass `nodes.swimlane` (an empty object is enough) to have one created, omit it to mean "an existing event feeds this". When omitted, the response has no `nodes.swimlane` and auto-connect wires the read model to the type-compatible event in the previous column — previously an untitled EVENT was placed in the slice's swimlane slot, which then had to be removed with `delete_node`. A `state-change`/`automation` event is the slice's own output and is always placed. The endpoint never creates a lane: a chapter with no swimlane lane yields a slice without an event rather than an error.
 
 Each chapter has exactly one actor/interaction/swimlane lane by default, but a chapter can have several lanes of the same type (e.g. multiple actor lanes). Without a `rowId`, the node is always placed in the **first** lane of the matching type — pass `nodes.<actor|interaction|swimlane>.rowId` (a row id from the chapter's `timelineData.rows`) to target a specific lane instead. An invalid `rowId` (not found, or found but the wrong lane type) is a `400 ROW_NOT_FOUND`/`ROW_TYPE_MISMATCH` error.
 

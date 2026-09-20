@@ -38,7 +38,7 @@ timestamp       unix ms when the change was emitted
 
 ## Executors
 
-- Claude (`ralph-claude.js`, this prompt) is the default. `bridge --ollama`
+- Claude (`ralph-claude.js`, this prompt) is the default. `bridge --local-ai`
   swaps in a local model instead — same prompt, different executor.
 - `bridge --hook "<command>"` (or a `hookCommand` persisted in
   `bridge.json`) bypasses this prompt entirely: `ralph-hook.js` runs an

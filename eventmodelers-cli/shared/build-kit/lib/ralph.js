@@ -1,5 +1,5 @@
 // Common runtime for the ralph loop + realtime agent.
-// Not meant to be run directly — use ralph-claude.js or ralph-ollama.js.
+// Not meant to be run directly — use ralph-claude.js or ralph-local-ai.js.
 //
 // startRalph({ kitDir, projectDir, onTask, onPlannedSlice })
 //   onTask(prompt) — called when tasks.json has entries

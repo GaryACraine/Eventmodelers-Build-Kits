@@ -1,5 +1,5 @@
 // Common runtime for the ralph loop + board poller.
-// Not meant to be run directly — use ralph-claude.js or ralph-ollama.js.
+// Not meant to be run directly — use ralph-claude.js or ralph-local-ai.js.
 //
 // This kit has no Supabase/PocketBase realtime integration and never touches a
 // database table directly — board changes are picked up purely through the plain

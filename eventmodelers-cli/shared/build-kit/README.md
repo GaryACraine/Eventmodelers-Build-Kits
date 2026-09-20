@@ -8,8 +8,11 @@ Ralph's runtime directory. Contains the agent loop, realtime subscription, promp
 # Claude (default)
 node .build-kit/ralph-claude.js
 
-# Local Ollama model — run `ollama serve` first
-OLLAMA_MODEL=qwen3.5:9b node .build-kit/ralph-ollama.js
+# Local or self-hosted model — Ollama (run `ollama serve` first)
+LOCAL_AI_TARGET=ollama node .build-kit/ralph-local-ai.js
+
+# …or any OpenAI-compatible server (vLLM, LM Studio, llama.cpp, TGI)
+LOCAL_AI_TARGET=vllm LOCAL_AI_MODEL=Qwen/Qwen3-8B node .build-kit/ralph-local-ai.js
 
 # Custom project directory (defaults to the parent of .build-kit)
 node .build-kit/ralph-claude.js /path/to/project
@@ -22,7 +25,7 @@ node .build-kit/ralph-claude.js /path/to/project
 | File | Purpose |
 |------|---------|
 | `ralph-claude.js` | Runs the full loop using Claude Code as the executor |
-| `ralph-ollama.js` | Runs the full loop using a local Ollama model |
+| `ralph-local-ai.js` | Runs the full loop using a local/self-hosted model (Ollama, vLLM, LM Studio, llama.cpp) |
 | `ralph.sh` | Shell-based loop — alternative to the JS entry points |
 | `realtime-agent.js` | Standalone realtime agent — only needed to run it in a separate terminal |
 
@@ -31,7 +34,7 @@ node .build-kit/ralph-claude.js /path/to/project
 | File | Purpose |
 |------|---------|
 | `lib/ralph.js` | Shared library — realtime agent + loop logic; imported by the entry points |
-| `lib/ollama-agent.js` | Ollama executor — called by `ralph-ollama.js`, can also run manually |
+| `lib/local-ai-agent.js` | Local-AI executor — called by `ralph-local-ai.js`, can also run manually |
 | `lib/agent.sh` | Thin shell wrapper around `claude` — called by `ralph.sh` |
 | `lib/prompt.md` | Phase 1 prompt: tells Claude how to load a slice from the board |
 | `lib/backend-prompt.md` | Phase 2 prompt: tells Claude how to build a planned slice |
@@ -41,13 +44,13 @@ node .build-kit/ralph-claude.js /path/to/project
 
 **Phase 1** — triggered when `tasks.json` has entries:
 - The realtime agent writes a task to `tasks.json` each time a `slice:changed` event arrives from the board
-- The loop picks it up and runs Claude (or Ollama) with `prompt.md`
+- The loop picks it up and runs Claude (or a local model) with `prompt.md`
 - Claude loads the slice data and updates `.slices/`
 
 **Phase 2** — triggered when any file in `.slices/` contains `"status": "Planned"`:
 - The loop runs Claude with `backend-prompt.md`
 - Claude implements the slice in the project
-- Phase 2 is Claude-only; Ollama mode skips it (ollama-agent handles its own queue)
+- Phase 2 is Claude-only; local-AI mode skips it (local-ai-agent handles its own queue)
 
 Both phases run in a continuous loop with a 3-second idle sleep. The realtime agent runs concurrently in the same process.
 
@@ -63,12 +66,26 @@ node .build-kit/realtime-agent.js
 .build-kit/ralph.sh
 ```
 
-## Ollama configuration
+## Local-AI configuration
+
+`ralph-local-ai.js` drives any local or self-hosted model that can do tool calling.
+Claude (`ralph-claude.js`) stays the default runner — this is opt-in.
 
 ```bash
-OLLAMA_MODEL=qwen3.5:9b         # model to use (default: qwen3.5:9b)
-OLLAMA_URL=http://host:11434   # Ollama server URL (default: http://localhost:11434)
+LOCAL_AI_TARGET=ollama          # preset: ollama | vllm | lmstudio | llamacpp
+LOCAL_AI_URL=http://host:8000/v1  # any OpenAI-compatible server (overrides the preset URL)
+LOCAL_AI_MODEL=qwen3.5:9b       # model name as the server knows it
+LOCAL_AI_API=openai             # force the wire dialect: ollama | openai (normally inferred)
+LOCAL_AI_API_KEY=local          # sent as `Authorization: Bearer` on the openai dialect
+LOCAL_AI_NUM_CTX=32768          # ollama only — context window (default 32768)
 ```
+
+**Do not lower `LOCAL_AI_NUM_CTX`.** The MCP tool schemas are ~16k tokens on their own.
+Ollama's own default is 4096, which silently truncates them — the model then sees a
+fragment of the tool list and invents tool names instead of failing, which is why the
+default here is raised rather than left to the server. On the `openai` dialect the
+equivalent is set when you launch the server (vLLM `--max-model-len 32768`,
+llama.cpp `-c 32768`); an overflow there surfaces as an HTTP 400.
 
 ## Config
 

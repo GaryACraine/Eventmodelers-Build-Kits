@@ -78,7 +78,7 @@ your-project/
 │   └── config.json                ← your token + org/board (gitignored) — shared by every kit in this project
 ├── .build-kit/                    ← agent runner (name is .agent-modeling-kit/ for the modeling-kit stack)
 │   ├── ralph-claude.js            ← realtime agent + task loop
-│   ├── ralph-ollama.js            ← same, via local Ollama
+│   ├── ralph-local-ai.js          ← same, via a local/self-hosted model
 │   ├── ralph.sh                   ← bash-only loop (no realtime)
 │   ├── lib/                       ← stack-specific agent prompts + helpers
 │   └── .slices/                   ← board slices, written by `fetch`/`listen` (or pre-seeded by `init --demo`)
@@ -92,7 +92,7 @@ The six backend stacks (`node`, `supabase`, `axon`, `opencqrs`, `umadb`, `kurren
 
 `react` and `supabase-react` are two more registered stacks (installable the same way). `supabase-react` is real, filled-in content — a Vite + React 19 + TypeScript scaffold that authenticates and issues command POSTs via a Supabase session (`src/lib/api.ts`/`src/lib/supabase.ts`), plus `init-style-guide`/`learn-styleguide` skills so generated UI stays on-brand. It's UI-only: `.build-kit/CLAUDE.md` only routes `STATE_CHANGE`/`STATE_VIEW` slices to `build-state-change`/`build-state-view` — an `AUTOMATION` slice has no UI counterpart and gets flagged via `request-feedback` instead, since it belongs to whichever backend stack is installed alongside this one. It needs no overrides at all and uses `shared/build-kit`'s realtime agent as-is.
 
-`react` (the plain-REST/board-polling variant, no Supabase) is still in the same state as a fresh `init --build-kit` scaffold — CLAUDE.md, the `build-*` skills, and `templates/root/` are all TODO-marked placeholders, not real content, pending an equivalent reference implementation. It overrides `lib/ralph.js` (+ `ralph-claude.js`/`ralph-ollama.js`/`package.json`/`README.md`) for board-polling sync. Fill in the TODOs (and add a real `templates/root/` scaffold) against an actual project before relying on it.
+`react` (the plain-REST/board-polling variant, no Supabase) is still in the same state as a fresh `init --build-kit` scaffold — CLAUDE.md, the `build-*` skills, and `templates/root/` are all TODO-marked placeholders, not real content, pending an equivalent reference implementation. It overrides `lib/ralph.js` (+ `ralph-claude.js`/`ralph-local-ai.js`/`package.json`/`README.md`) for board-polling sync. Fill in the TODOs (and add a real `templates/root/` scaffold) against an actual project before relying on it.
 
 ## Skills
 
@@ -124,7 +124,7 @@ npx @eventmodelers/cli init --stack <name>          # scaffold a stack + install
 npx @eventmodelers/cli init --stack <name> --demo   # same, plus a ready-made demo model in the kit's .slices/ to build against
 npx @eventmodelers/cli re-init                      # refresh an already-installed kit's scripts/skills only — never touches the root scaffold
 npx @eventmodelers/cli run                          # start the agent loop (ralph-claude.js) from the installed kit dir
-npx @eventmodelers/cli run --ollama                 # same, via local Ollama (ralph-ollama.js)
+npx @eventmodelers/cli run --local-ai [target]      # same, via a local/self-hosted model (ralph-local-ai.js)
 npx @eventmodelers/cli run --bash                   # bash-only loop, no realtime (ralph.sh)
 npx @eventmodelers/cli run --local                  # skip platform config/credential lookup entirely — local-only, no board sync
 npx @eventmodelers/cli run --modeling               # modeling-kit: warm Claude process driven by the board's prompt queue
@@ -335,7 +335,7 @@ npx @eventmodelers/cli bridge
 
 `init --bridge` installs a `.bridge-kit/` (mirrors `.build-kit/`'s realtime + task-queue loop) plus only the skills for the chosen `--target` (`shared/bridge/<target>/`) — a `spec-kitty` bridge never installs Kiro's skills, and vice versa. `bridge` starts the loop: on every board slice change (not just "Planned", unlike build-kit), it regenerates that framework's spec artifacts from the current board state. It doesn't build code and doesn't claim slices.
 
-For `spec-kitty`, that sync is deterministic and stops well short of writing Spec Kitty's own artifacts — `lib/adapters/spec-kitty-adapter.js` fetches full slice detail and restates it as a plain markdown mission brief (one section per slice, its scenarios verbatim, nothing invented), then calls `spec-kitty intake --force` to install it at `.kittify/mission-brief.md`. It deliberately doesn't create the mission, write `spec.md`, or author work packages — Spec Kitty's own `/spec-kitty.specify` → `/spec-kitty.plan` → `/spec-kitty.tasks` pipeline does that, because those steps need real judgment (work package boundaries, which files a WP owns, which agent profile fits) that only makes sense with actual codebase context, which this adapter doesn't have. What it replaces is Spec Kitty's *interactive discovery interview*: `/spec-kitty.specify`'s own "Brief Context Detection" step reads `.kittify/mission-brief.md` when present and extracts requirements from it instead of asking the user, so the event model — not a live Q&A — becomes the input. No LLM call happens in this adapter's own path, and `bridge` picks it automatically whenever a target has one (`--claude` forces the Claude runner instead). Targets without a static adapter yet fall back to Claude re-running `bridge-<target>-specify`; pass `--ollama` for the local-Ollama runner instead (same caveat as build-kit's `--ollama`: `lib/ollama-agent.js` is shared as-is).
+For `spec-kitty`, that sync is deterministic and stops well short of writing Spec Kitty's own artifacts — `lib/adapters/spec-kitty-adapter.js` fetches full slice detail and restates it as a plain markdown mission brief (one section per slice, its scenarios verbatim, nothing invented), then calls `spec-kitty intake --force` to install it at `.kittify/mission-brief.md`. It deliberately doesn't create the mission, write `spec.md`, or author work packages — Spec Kitty's own `/spec-kitty.specify` → `/spec-kitty.plan` → `/spec-kitty.tasks` pipeline does that, because those steps need real judgment (work package boundaries, which files a WP owns, which agent profile fits) that only makes sense with actual codebase context, which this adapter doesn't have. What it replaces is Spec Kitty's *interactive discovery interview*: `/spec-kitty.specify`'s own "Brief Context Detection" step reads `.kittify/mission-brief.md` when present and extracts requirements from it instead of asking the user, so the event model — not a live Q&A — becomes the input. No LLM call happens in this adapter's own path, and `bridge` picks it automatically whenever a target has one (`--claude` forces the Claude runner instead). Targets without a static adapter yet fall back to Claude re-running `bridge-<target>-specify`; pass `--local-ai` for the local-model runner instead (same caveat as build-kit's `--local-ai`: `lib/local-ai-agent.js` is shared as-is).
 
 Don't want the standing loop at all? `fetch` can call the same adapter for a single one-shot sync, no `.bridge-kit/` install required:
 
@@ -354,7 +354,7 @@ npx @eventmodelers/cli init --bridge --target spec-kitty --hook "git add .slices
 npx @eventmodelers/cli bridge
 ```
 
-`init --bridge --hook` persists the command to `.bridge-kit/bridge.json` — a plain, **committed** file (unlike `.eventmodelers/config.json`, which is gitignored for credentials) since the hook is project policy meant to be shared by every teammate and CI runner, not per-machine state. `bridge --hook "<command>"` overrides it for a single run without touching that file. Only one executor runs per invocation — `--ollama`, `--hook`, and `--claude` are mutually exclusive.
+`init --bridge --hook` persists the command to `.bridge-kit/bridge.json` — a plain, **committed** file (unlike `.eventmodelers/config.json`, which is gitignored for credentials) since the hook is project policy meant to be shared by every teammate and CI runner, not per-machine state. `bridge --hook "<command>"` overrides it for a single run without touching that file. Only one executor runs per invocation — `--local-ai`, `--hook`, and `--claude` are mutually exclusive.
 
 The hook command runs with `BRIDGE_TASK_COUNT`, `BRIDGE_SLICE_ID`/`_TITLE`/`_STATUS` (the most recent change in the batch), and `BRIDGE_BATCH_FILE` (path to the full batch as JSON) in its environment. It's invoked once per batch, not once per slice — any change that arrives while the hook is still running is left queued for the next batch rather than dropped.
 
