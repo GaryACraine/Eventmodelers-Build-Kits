@@ -48,7 +48,17 @@ mcp__eventmodelers__add_comment { "boardId": "$BOARD_ID", "nodeId": "$NODE_ID", 
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Action: place".
 
-**Batching (when called in bulk, e.g. from `wdyt`):** send one request per comment — there is no batch endpoint for comments. Fire them sequentially, not in a single payload.
+**Batching (when called in bulk, e.g. from `wdyt`):** send them all in one request instead of one per comment — each entry names its own node:
+
+```bash
+curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/comments" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '[{"nodeId":"<id>","text":"<text>","type":"QUESTION","author":"wdyt"},
+       {"nodeId":"<id2>","text":"<text2>","type":"QUESTION","author":"wdyt"}]'
+```
+
+Response: `201 {"results":[{"nodeId":"<id>","id":"<commentId>"}, …]}` in request order — an entry whose node doesn't exist reports `error` there without dropping the rest. Over MCP this is the `add_comments` tool.
 
 **Report:**
 ```

@@ -71,6 +71,14 @@ Prefer the MCP tool — it does the same `node:changed`/`sliceStatus` update in 
 mcp__eventmodelers__update_slice_status { "boardId": "<BOARD_ID>", "sliceId": "<SLICE_NODE_ID>", "newStatus": "<newStatus>" }
 ```
 
+The tool also resolves the slice itself — pass `sliceTitle` (or `columnId`) instead of `sliceId` and the listing step above can be skipped entirely; an ambiguous title comes back with its candidates instead of a guess:
+
+```
+mcp__eventmodelers__update_slice_status { "boardId": "<BOARD_ID>", "sliceTitle": "Place Order", "newStatus": "<newStatus>" }
+```
+
+A slice that is being *created* takes its status straight from `create_slice`/`create_slice_definition` (`status`) — don't create it and then call this.
+
 **Fallback (no MCP)** — send a `node:changed` event to update the `sliceStatus` field in the SLICE_BORDER node's meta directly:
 
 ```bash

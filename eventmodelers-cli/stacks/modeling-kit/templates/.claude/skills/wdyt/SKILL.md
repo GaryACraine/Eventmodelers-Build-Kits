@@ -138,7 +138,7 @@ Use the `handle-comment` skill with `action=place` to post each comment. Pass:
 - `type` — `COMMENT` (there is no separate question type — the text itself carries the question)
 - `author` — `wdyt`
 
-The comment API has no batch endpoint — `handle-comment` sends one request per comment. Fire them sequentially.
+Post them together, not one at a time: `handle-comment` sends every comment of a run in a single batch request (`add_comments` over MCP, `POST .../boards/:boardId/comments` over REST).
 
 Only post questions that are **genuinely unclear or missing** — don't post observations that are clearly intentional design decisions.
 

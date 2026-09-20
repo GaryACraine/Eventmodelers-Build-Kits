@@ -46,9 +46,12 @@ mcp__eventmodelers__place_element {
   "timelineId": "<TIMELINE_ID>",
   "elementType": "<COMMAND|READMODEL|EVENT>",
   "title": "<title>",
-  "columnIndex": <position, if given>
+  "columnIndex": <position, if given>,
+  "fields": [{ "name": "orderId", "type": "String", "example": "ord-1" }]
 }
 ```
+
+Pass `fields` whenever the element's attributes are already known — they are written by this same call, so don't follow a placement with a `submit_node_events` just to set them. Placing **more than one** element is `place_elements` with an `elements` array (same per-entry options), applied in order so each entry sees the columns the previous one added — one call for a whole slice's or column run's worth instead of one per element.
 
 This tool finds or creates an empty cell in the correct lane and places the node in one call — it collapses the "resolve timeline → fetch columns → determine lane → check occupancy → create node" sequence (Steps 2–3, 4, 6, 7b below) into a single round trip. A `columnIndex` past the timeline's current column count is handled automatically (columns are added to reach it) — no need to pre-check the column count or catch an out-of-range error yourself. If `timelineId` is unknown, resolve it first via Step 2's MCP call. Pass `compact: true` for a smaller `{nodeId, cellName, columnIndex}` response (plus `connectedCount` if auto-connect wired an edge) when you don't need the full `lane`/`elementType`/`title`/`autoConnected` detail back. Go straight to Step 8 once it returns.
 
@@ -246,11 +249,13 @@ If no matching row is found, stop and report the error — the timeline may be m
 
 **Connections only ever pair nodes on the same timeline** — a node in Chapter A can never be wired directly to a node in Chapter B, even for an otherwise-valid type pair (e.g. `EVENT → READMODEL`). If the element you're placing needs to connect to something that lives on a *different* timeline, do not place it and then attempt `set_connection`/auto-connect across timelines — it will fail.
 
-Instead, create a **linked copy**: place the new node normally (Step 7, same title/type as the origin), then call `link_element` to mark it as a copy of the origin node:
+Instead, create a **linked copy**. `link_element` places it for you — pass the timeline (and optionally the column/lane) instead of an already-placed `targetNodeId`, and it creates the copy with the origin's type and title and links it in the same call:
 
 ```
-mcp__eventmodelers__link_element { "boardId": "<BOARD_ID>", "nodeId": "<origin-node-id>", "targetNodeId": "<newly-placed-node-id>" }
+mcp__eventmodelers__link_element { "boardId": "<BOARD_ID>", "nodeId": "<origin-node-id>", "timelineId": "<TIMELINE_ID>", "columnIndex": 4 }
 ```
+
+(If the copy already exists — e.g. it was placed by an earlier step — pass `targetNodeId: "<existing-node-id>"` instead.)
 
 (REST fallback: see `references/api-fallback.md` — "Step 6a — Link a node to an origin on a different timeline".) This replaces the new node's meta with a full copy of the origin's, sets `meta.linkedTo`, and only works for COMMAND/EVENT/READMODEL. Once linked, wire the local copy to its neighbors with normal same-timeline `set_connection`/auto-connect calls. `eventmodeling-checking-completeness` treats any `linkedTo`-marked node it finds as this intentional pattern, never a duplicate to flag.
 

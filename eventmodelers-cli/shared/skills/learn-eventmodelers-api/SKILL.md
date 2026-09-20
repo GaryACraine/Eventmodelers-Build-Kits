@@ -27,35 +27,35 @@ Server name: `eventmodelers`. Every tool takes `boardId` explicitly; none need `
 | `search_board_events` | `boardId`, `name` | Search events by node name | §1 `GET .../events/search` |
 | `submit_node_events` | `boardId`, `events[]`, `autoConnect?`, `compact?` | Create/update nodes (raw `NodeChangeEvent`/edge events). `autoConnect: false` places freshly-created nodes without wiring them to their own/previous-column neighbors (avoids a stray nearest-left edge); `compact: true` returns `{persisted: <count>}` instead of the per-node hash map | §3 `POST .../nodes/events` |
 | `delete_node` | `boardId`, `nodeId` | Delete a node. Deleting a chapter (timeline) cascades — every node placed in one of its cells, plus any node parented to it (e.g. SLICE_BORDER), is deleted too, along with all their edges | (via `node:deleted` event, §3) |
-| `create_drawing` | `boardId`, `kind`, `x`, `y`, `width`, `height`, ... | Freehand canvas annotation (path/rect/text) — never placed in a cell | — (no REST equivalent; MCP-only) |
+| `create_drawing` / `create_drawings` | `boardId`, `kind`, `x`, `y`, `width`, `height`, ... (plural: `drawings[]`) | Freehand canvas annotation (path/rect/text/sticky) — never placed in a cell. Use the plural form whenever an annotation is more than one stroke (a loop plus its arrows and label is one annotation, not three calls) | — (REST `POST .../drawing/draw` accepts a single drawing or an array) |
 | `find_nodes_in_drawing` | `boardId`, `drawingId` | Nodes fully contained inside a drawing's bounding box | — (no REST equivalent; MCP-only) |
-| `create_chapter` | `boardId`, `x?`, `y?` | Create a timeline. Omitting `x`/`y` auto-stacks it below the lowest existing chapter (by its *actual current* row-height total, not the height it was created with — safe even after `add_lane` growth), plus a fixed margin | §2 `POST .../chapters` |
+| `create_chapter` | `boardId`, `x?`, `y?`, `title?`, `columns?`, `lanes?: [{type, label?, height?}]` | Create a timeline. Omitting `x`/`y` auto-stacks it below the lowest existing chapter (by its *actual current* row-height total, not the height it was created with — safe even after `add_lane` growth), plus a fixed margin. Pass `title` to name it, `columns` for a known column count, and `lanes` to create named lanes (or several of one type, e.g. one swimlane per context) — none of the three needs a follow-up call, and the lanes are sorted into the required order automatically. The response carries every `columnId` and lane id, so the chapter needn't be read back before placing into it | §2 `POST .../chapters` |
 | `get_chapter_bounds` | `boardId` | Absolute canvas bounding box `{id, title, x, y, width, height}` of every chapter on the board — width/height derived from each chapter's current row/column layout, not a guessed default. Use before picking explicit `x`/`y` for `create_chapter` (e.g. placing below the chapter with the largest `y + height`) to avoid overlapping one that grew since it was created | §2 `GET .../chapters/bounds` |
 | `add_column` | `boardId`, `timelineId`, `index?`, `beforeNodeId?`, `afterNodeId?`, `count?` | Add one or more columns in one call. `count` inserts that many contiguously starting at the insertion point (default 1). Position with at most one of `index` (0-based), `beforeNodeId`, or `afterNodeId` (resolves the index from where that already-placed node currently sits) — omit all three to append | §2 `POST .../timelines/:id/columns` |
 | `delete_column` | `boardId`, `timelineId`, `columnId` | Delete a column | §2 `DELETE .../columns/:columnId` |
-| `add_lane` | `boardId`, `timelineId`, `type`, `label?`, `index?` | Add a lane/row | §2 `POST .../timelines/:id/lanes` |
+| `add_lane` / `add_lanes` | `boardId`, `timelineId`, `type`, `label?`, `index?`, `height?` (plural: `lanes[]`) | Add a lane/row. Use the plural form for more than one; for a chapter that doesn't exist yet, pass `lanes` to `create_chapter` instead — that needs no lane call at all | §2 `POST .../timelines/:id/lanes` (accepts an array too) |
 | `remove_lane` | `boardId`, `timelineId`, `rowId` | Remove a lane | — (extends §2; no direct REST route) |
 | `move_node_in_timeline` | `boardId`, `timelineId`, `movedNodeId`, `toCellId` | Move a placed node to another cell — its previous cell is automatically cleared | — (MCP-only convenience) |
 | `move_timeline_structure` | `boardId`, `timelineId`, `kind` (`'column'\|'lane'`), `id`, `toIndex` | Reorder a column or lane (row) — `kind` picks which `id` refers to | — (MCP-only convenience) |
 | `move_timeline_position` | `boardId`, `timelineId`, `x`, `y` | Move a chapter node on canvas | — (MCP-only convenience) |
 | `drop_node_to_cell` | `boardId`, `timelineId`, `cellId`, `nodeId`, `nodeType` | Place an existing node into a cell — if it was already placed elsewhere on this timeline, that cell is automatically cleared | §2 `POST .../cells/:cellId/drop` |
 | `clear_cell` | `boardId`, `timelineId`, `cellId` | Unassign the node from a cell without deleting it — the cell becomes empty and the node survives (unplaced); no-op if already empty. Use `delete_node` to remove the node entirely | — (MCP-only convenience) |
-| `create_slice` | `boardId`, `timelineId`, `type`, `index?`, `nodes?: {actor?, interaction?, swimlane?}` (each `{rowId?, title?}`) | Create a full slice (column + nodes + SLICE_BORDER). `rowId` targets a specific lane when the chapter has more than one lane of that type (e.g. several actor lanes); omit to use the first matching lane | §5 `POST .../slices` |
-| `create_slice_definition` | `boardId`, `timelineId`, `columnId`, `title`, `data?`, `meta?` | Create a SLICE_BORDER over an existing column | §5 `POST .../slice-definitions` |
-| `place_element` | `boardId`, `timelineId`, `elementType`, `title`, `columnIndex?`, `compact?`, `autoConnect?` | Find/create an empty cell in the right lane and place a COMMAND/READMODEL/EVENT. `autoConnect: false` places without wiring to timeline neighbors — wire the edges yourself | — (MCP-only convenience; composes §2+§3) |
+| `create_slice` | `boardId`, `timelineId`, `type`, `index?`, `nodes?: {actor?, interaction?, swimlane?}` (each `{rowId?, title?, fields?}`), `status?` | Create a full slice (column + nodes + SLICE_BORDER). `rowId` targets a specific lane when the chapter has more than one lane of that type (e.g. several actor lanes); omit to use the first matching lane. `fields` writes that node's attributes in the same call, and `status` gives the SLICE_BORDER its `sliceStatus` on creation — neither needs a follow-up write | §5 `POST .../slices` |
+| `create_slice_definition` | `boardId`, `timelineId`, `columnId`, `title`, `status?`, `data?`, `meta?` | Create a SLICE_BORDER over an existing column. `status` sets its `sliceStatus` straight away instead of a follow-up `update_slice_status` | §5 `POST .../slice-definitions` |
+| `place_element` / `place_elements` | `boardId`, `timelineId`, `elementType`, `title`, `fields?`, `lane?`, `columnIndex?`, `compact?`, `autoConnect?` (plural: `elements[]`) | Find/create an empty cell in the right lane and place a COMMAND/READMODEL/EVENT. `fields` writes the element's attributes in the same call — don't follow a placement with a `submit_node_events` just to set them. The plural form places a whole slice's or column run's worth in one call, applied in order so each entry sees the columns the previous one added. `autoConnect: false` places without wiring to timeline neighbors — wire the edges yourself | — (MCP-only convenience; composes §2+§3) |
 | `list_slices` | `boardId` | List slices (id, title, status) | §8 `GET .../slicedata/slices` |
-| `update_slice_status` | `boardId`, `sliceId`, `newStatus` | Change a SLICE_BORDER's `sliceStatus` | — (via `node:changed` event, §3) |
+| `update_slice_status` | `boardId`, `newStatus`, plus exactly one of `sliceId` / `sliceTitle` / `columnId` | Change a SLICE_BORDER's `sliceStatus`. With a title or column id there is no need to call `list_slices` first; an ambiguous title comes back with its candidates. A slice being created takes its status from `create_slice`/`create_slice_definition` instead | — (via `node:changed` event, §3) |
 | `get_slice_data` | `boardId`, `contextName?`, `contextId?`, `sliceId?` | Full element graph for slices in a context | §8 `GET /slicedata` |
 | `get_spec_info` | `boardId`, `timelineId`, `elementTypes?` | EVENT/COMMAND/READMODEL nodes valid in GWT steps. Pass `elementTypes` (subset of `EVENT`/`COMMAND`/`READMODEL`) to avoid pulling the full element list when only one or two types are needed — filtered server-side, not just after a full fetch | §6 `GET .../spec-info` |
 | `get_board_outline` | `boardId`, `chapterId` | One chapter's structure, compact: per-column node lists (`{id, type, title, lane}`) + a flat edge list, no HTML pages / field bodies / meta. The cheap "what is where and how is it wired" read — prefer over `get_nodes` (no projection) for orientation checks | — (MCP-only convenience) |
 | `get_connected_nodes` | `boardId`, `nodeId`, `chapterId?`, `direction?` (`inbound`/`outbound`/`both`), `depth?`, `types?`, `includeFields?` | Neighbours of **one** node — what feeds it and what it feeds. Answers from a single anchor, unlike `get_attribute_chain` (which needs both ends of the chain as cell names up front). `depth` follows a whole chain; `types` filters the result only, never the traversal. Each neighbour carries `via`: `"edge"` for a real connection, `"layout"` when the node has none in that direction and the neighbour was inferred from the grid using auto-connect's own window (own column + adjacent one, forward-only pairs). Real edges always win. The `layout` fallback is what makes hand-built/imported chapters — which routinely carry **zero** edges — readable instead of falsely empty | — (MCP-only convenience) |
 | `validate_model` | `boardId`, `chapterId`, `checks?[]` | Server-side Event Modeling structural checklist over one chapter — compact `findings` only. Checks: unplaced nodes, backward arrows (with the todo-list `EVENT→READMODEL` exception), zero/multi-issuer commands, sourceless read models, two-screens-in-a-column, missing scenarios. Replaces the manual per-type `get_nodes` + `get_node projection=edges` validation pass | — (MCP-only convenience) |
-| `add_scenario` | `boardId`, `timelineId`, `columnId`, `scenarios[]`, `compact?` | Append GWT scenario(s) to a column's spec node. `compact: true` returns `{specNodeId, added, scenarioCount, isNewNode}` instead of echoing every scenario back | §6 `POST .../scenarios` |
+| `add_scenario` | `boardId`, `timelineId`, `columnId`, `scenarios[]`, `compact?` | Append GWT scenario(s) to a column's spec node — created automatically, and a scenario `id` is generated when omitted. A given/when/then step may be addressed by `{title, type}` instead of a node id, resolved against that timeline, so no `get_spec_info` call is needed first (an ambiguous title is reported with its candidates). `compact: true` returns `{specNodeId, added, scenarioCount, isNewNode}` instead of echoing every scenario back | §6 `POST .../scenarios` |
 | `add_storyline` | `boardId`, `timelineId`, `columnId`, `storylines[]`, `compact?` | Append storyline(s) (ordered, branchable beats over existing elements) to a column's spec node. Use whenever `eventmodeling-elaborating-scenarios`'s GWT-vs-storyline decision rule calls for one (e.g. a todo list's open→close lifecycle) — not only when a user explicitly names "storyline"; that skill's own per-read-model judgment is the trigger, this catalog entry isn't a stricter gate on top of it. `compact: true` suppresses the full storyline echo | §6 `POST .../storylines` |
 | `set_connection` | `boardId`, `source`, `target`, `action` (`'connect'\|'remove'`) | Add or remove a type-checked directed edge. Batch form `set_connections` takes `connections[]` (applied in order) plus `compact?` — `compact: true` returns a `{connected, existed, removed, notFound, failed, errors}` tally instead of one row per edge | — (via `edges` on §3 events) |
 | `auto_connect_node` | `boardId`, `nodeId` | Re-run auto-connect for a node | §3 `POST .../nodes/:nodeId/auto-connect` |
-| `link_element` | `boardId`, `nodeId`, `targetNodeId` | Link two existing same-type nodes: `targetNodeId` is replaced with a full copy of `nodeId`'s meta plus `meta.linkedTo`. Linking means first create, then link | §3 `POST .../nodes/:nodeId/link` |
-| `add_comment` | `boardId`, `nodeId`, `text`, `type?` (`'COMMENT'\|'TASK'`), `author?` | Add a comment — word the `text` as a question to flag gaps/edge cases during review; there is no separate `QUESTION` type | — (via comment events) |
+| `link_element` | `boardId`, `nodeId`, plus either `targetNodeId` or `timelineId` (+ `columnIndex?`, `lane?`) | Turn a node into a linked copy of `nodeId` — it receives a full copy of that node's meta plus `meta.linkedTo`. Name an existing `targetNodeId`, or pass `timelineId` to have the copy placed and linked in this one call (inheriting the original's type and title), which is what a translation or automation chain wants | §3 `POST .../nodes/:nodeId/link` |
+| `add_comment` / `add_comments` | `boardId`, `nodeId`, `text`, `type?` (`'COMMENT'\|'TASK'\|'QUESTION'`), `author?` (plural: `comments[]`, each with its own `nodeId`) | Add a comment — `QUESTION` is the type for a gap/edge case raised during review. Use the plural form for a review that has a question per element: all of them go in one call | §1 `POST .../boards/:boardId/comments` (batch) |
 | `update_comment` | `boardId`, `nodeId`, `commentId`, `action` (`'resolve'\|'delete'`) | Resolve or delete a comment | — (via comment events) |
 | `create_screen` | `boardId`, `contentType` (`'image'\|'sketch'\|'html'`), `nodeId?`, `chapterId`, `cellId?`/`cellName?`, plus content fields (`imageBase64`/`mimeType`, `elements[]`, or `pages[]`/`backgroundColor`), `description?`, `fields?`, `autoConnect?` | Create + place a new screen node (SCREEN or HTML_SCREEN) atomically, in one call. Batch form `create_screens` takes `screens[]` (HTML only) + `autoConnect?`. `autoConnect: false` places without wiring to timeline neighbors | §4 `POST .../images/:id/sketch` + `image-nodes` |
 | `render_screen` | `boardId`, `nodeId`, `elements[]?` (SCREEN) or `pages[]?`+`backgroundColor?` (HTML_SCREEN), `description?` | Update an existing screen's content — exactly one of `elements`/`pages` | §4 `POST .../images/:id/sketch` + `image-nodes` |
@@ -209,6 +209,24 @@ Get all comments for a node.
 
 ---
 
+### POST `/api/org/:orgId/boards/:boardId/nodes/:nodeId/comments`
+Add one comment to one node.
+
+**Request body**: `{ text: string, type?: 'COMMENT' | 'TASK' | 'QUESTION', author?: string }`
+**Response**: `201` — `{ id }`
+
+---
+
+### POST `/api/org/:orgId/boards/:boardId/comments`
+Post several comments, on any nodes of one board, in a single request — the batch form. Use it for a review that raises a question per element (`/wdyt`) instead of one request per comment.
+
+**Request body**: `Array<{ nodeId: string, text: string, type?: 'COMMENT' | 'TASK' | 'QUESTION', author?: string }>`
+**Response**: `201` — `{ results: Array<{ nodeId, id } | { nodeId, error }> }`, in request order
+
+Entries are independent: one naming a node that doesn't exist is reported in `results` while the rest are still posted.
+
+---
+
 ### POST `/api/org/:orgId/boards/:boardId/bucket`
 Create a Supabase storage bucket for the board.
 
@@ -225,8 +243,19 @@ A "chapter" is a timeline — the same entity, referenced as `chapterId` in node
 ### POST `/api/org/:orgId/boards/:boardId/chapters`
 Create a chapter node.
 
-**Request body**: `{ position?: { x: number, y: number } }`  
-**Response**: `200` — chapter data
+**Request body**:
+```typescript
+{
+  position?: { x: number, y: number }
+  title?: string      // names the chapter on creation — no follow-up rename
+  columns?: number    // initial column count, default 3
+  lanes?: Array<{ type: 'actor'|'interaction'|'swimlane'|'spec'|'feedback'|'table', label?: string, height?: number }>
+}
+```
+
+**Response**: `200` — `{ id, eventId, columnIds: string[], lanes: Array<{id, type, label}> }`
+
+`lanes` replaces the default Actor/Interaction/Swimlane/Spec set — this is how a chapter gets lanes named after what they hold, or several lanes of one type (one swimlane per context), without an `add_lane` call per lane. They are sorted into the required order (actor → interaction → swimlane → spec → feedback/table) automatically, keeping the given order within a type, so no ordering error is possible. Every column id and lane id comes back in the response — don't re-read the chapter just to place something into it.
 
 Omitting `position` auto-stacks the new chapter below the lowest existing chapter on the board, using each existing chapter's *actual current* row-height total (not the height it was created with) plus a fixed margin — so a chapter that grew via `add_lane`/`add_column` after another was stacked below it won't get overlapped by yet another auto-stacked chapter.
 
@@ -258,18 +287,22 @@ Delete a column from a timeline. Removes the column and all its cells. Cannot de
 ---
 
 ### POST `/api/org/:orgId/boards/:boardId/timelines/:timelineId/lanes`
-Add a lane (row) to a timeline.
+Add one or more lanes (rows) to a timeline.
 
 **Request body**:
 ```typescript
 {
-  type: 'actor' | 'interaction' | 'swimlane' | 'spec' | 'feedback'
+  type: 'actor' | 'interaction' | 'swimlane' | 'spec' | 'feedback' | 'table'
   label?: string
   index?: number
   height?: number
 }
+// or, batch form — every lane added in one request, applied in order:
+[ { type: 'interaction', label: 'Interaction' }, { type: 'swimlane', label: 'Ordering' } ]
 ```
-**Response**: `200` — lane data
+**Response**: `200` — lane data, or `{ lanes: [...] }` for the batch form
+
+For a chapter that doesn't exist yet, pass `lanes` to `POST .../chapters` instead — that needs no lane call at all.
 
 ---
 
@@ -434,16 +467,27 @@ Create a single type-checked directed edge between two existing nodes — the RE
 ---
 
 ### POST `/api/org/:orgId/boards/:boardId/nodes/:nodeId/link`
-Link two existing same-type nodes — the REST fallback for `link_element`. Linking means first create, then link: `targetNodeId` must already exist. It's replaced with a full copy of `:nodeId`'s meta (not a merge) plus `meta.linkedTo`. COMMAND/EVENT/READMODEL only; `:nodeId` must not itself already be a linked copy.
+Turn a node into a linked copy of `:nodeId` — the REST fallback for `link_element`. The copy receives a full copy of `:nodeId`'s meta (a replacement, not a merge) plus `meta.linkedTo`. COMMAND/EVENT/READMODEL only; `:nodeId` must not itself already be a linked copy.
 
-**Request body**:
+**Request body** — exactly one of the two:
 ```typescript
 {
   targetNodeId: string  // existing same-type node to convert into a linked copy
 }
+// or: create the copy in this same request
+{
+  place: {
+    timelineId: string     // chapter to place the copy on
+    columnIndex?: number   // columns are added to reach it
+    lane?: string          // row id or label, when the chapter has several lanes of that type
+    autoConnect?: boolean  // default true
+  }
+}
 ```
 
-**Response**: `200` — `{ nodeId, linkedTo, type }` · `400` — missing `targetNodeId`, type mismatch, self-link, unsupported element type, or the original is itself a linked copy · `404` — the original or `targetNodeId` doesn't exist
+With `place` the copy inherits the original's element type and title, so a translation or automation chain no longer needs a `node:created` call before this one.
+
+**Response**: `200` — `{ nodeId, linkedTo, type }`, plus `placed: { nodeId, cellName, columnIndex }` when `place` was used · `400` — neither or both of `targetNodeId`/`place`, type mismatch, self-link, unsupported element type, or the original is itself a linked copy · `404` — the original or `targetNodeId` doesn't exist
 
 ---
 
@@ -518,12 +562,15 @@ Create a complete slice (1 column + its nodes automatically placed).
   type: 'state-change' | 'state-view' | 'automation'
   index?: number
   nodes?: {
-    actor?: Partial<NodeData> & { rowId?: string }
-    interaction?: Partial<NodeData> & { rowId?: string }
-    swimlane?: Partial<NodeData> & { rowId?: string }
+    actor?: Partial<NodeData> & { rowId?: string, fields?: FieldDef[] }
+    interaction?: Partial<NodeData> & { rowId?: string, fields?: FieldDef[] }
+    swimlane?: Partial<NodeData> & { rowId?: string, fields?: FieldDef[] }
   }
+  status?: 'Created' | 'Planned' | 'InProgress' | 'Review' | 'Done' | 'Blocked' | 'Assigned' | 'Informational'
 }
 ```
+
+`fields` writes that node's attributes in the same call, and `status` gives the SLICE_BORDER its `sliceStatus` on creation — neither needs a follow-up write.
 
 **Slice node mapping**:
 - `state-change` → HTML_SCREEN (actor) + COMMAND (interaction) + EVENT (swimlane)
@@ -546,12 +593,13 @@ Create a standalone SLICE_BORDER node spanning an **existing** column. Unlike th
 {
   columnId: string   // id of an existing column on this timeline
   title: string      // slice title — always taken from this field, never derived
+  status?: 'Created' | 'Planned' | 'InProgress' | 'Review' | 'Done' | 'Blocked' | 'Assigned' | 'Informational'
   data?: Record<string, unknown>   // optional node.data payload
   meta?: Record<string, unknown>   // optional extra meta fields (type, colId, title are always set explicitly and cannot be overridden here)
 }
 ```
 
-**Response**: `200` — `{ nodeId, timelineId, columnId, title }`
+**Response**: `200` — `{ nodeId, timelineId, columnId, title, status? }` — `status` sets `sliceStatus` straight away, instead of a follow-up `update_slice_status`
 **Errors**: `400` missing `columnId`/`title` or column not found · `404` timeline not found
 
 ---
@@ -560,47 +608,47 @@ Create a standalone SLICE_BORDER node spanning an **existing** column. Unlike th
 
 **File**: `src/slices/change/api-specs/routes.ts`
 
-### POST `/api/org/:orgId/boards/:boardId/contexts/:contextName/slices/:sliceName/scenarios`
-Append a Given-When-Then scenario to a spec node.
+### POST `/api/org/:orgId/boards/:boardId/timelines/:timelineId/columns/:columnId/scenarios`
+Append Given-When-Then scenario(s) to a column's spec node — the node is created automatically if the spec cell is empty. Accepts a single scenario object or an array.
 
 **Request body**:
 ```typescript
 {
-  id: string
+  id?: string       // generated when omitted
   title: string
   vertical?: boolean
   examples?: unknown[]
-  given: string[]   // nodeIds — must be EVENTs from same timeline
-  when: string[]    // nodeIds — at most one COMMAND; empty if then has READMODEL
-  then: string[]    // nodeIds — EVENTs only OR exactly one READMODEL (not mixed)
+  given?: SpecStep[]  // EVENTs from this timeline
+  when?: SpecStep[]   // at most one COMMAND, or one inline QUERY object; empty if then has a READMODEL
+  then?: SpecStep[]   // EVENTs only OR exactly one READMODEL (not mixed)
+  expectError?: boolean, errorDescription?: string   // error case: leave `then` empty
 }
+
+// A step is addressed either way:
+{ id: 'node-uuid' }                          // a board node
+{ title: 'OrderPlaced', type: 'EVENT' }      // resolved against this timeline's own elements
 ```
+
+A step given as `{title, type}` is resolved server-side, so the names you already know need **no `get_spec_info`/`get_nodes` call first**. A title matching more than one element is rejected (`SCENARIO_ITEM_AMBIGUOUS`) with the candidates rather than guessed at, and resolution runs before anything is written — a bad name leaves no empty spec node behind.
 
 **Validation rules**:
 - `given`: only EVENTs from same timeline
-- `when`: max one COMMAND; must be empty when `then` contains a READMODEL
+- `when`: max one COMMAND; must be empty when `then` contains a READMODEL (use an inline QUERY item for a state-view)
 - `then`: all EVENTs OR exactly one READMODEL — never mixed
 - All referenced nodes must belong to the same chapter/timeline
 
 **Response**:
-- `201` — `{ scenario, scenarios, specNodeId, isNewNode: boolean }`
+- `201` — `{ specNodeId, scenarios, added, isNewNode: boolean }`
 - `400` — validation error
-- `404` — context or slice not found
+- `404` — timeline, column, or a referenced node not found
 - `409` — duplicate scenario title
 
 ---
 
-### GET `/api/org/:orgId/boards/:boardId/contexts/:contextName/spec-info`
-Get valid elements for a context (by name lookup).
+### GET `/api/org/:orgId/boards/:boardId/timelines/:timelineId/spec-info`
+Get the elements a scenario's given/when/then steps may legally reference (EVENT, COMMAND, READMODEL of that timeline). Only needed when you want the ids themselves — a scenario step can name its element by title instead.
 
-**Response**: `200` — `{ chapterId: string, elements: ElementRecord[] }`
-
----
-
-### GET `/api/org/:orgId/boards/:boardId/contexts/:contextName/slices/:sliceName/spec-info`
-Get valid elements for a specific slice.
-
-**Response**: `200` — `{ chapterId: string, elements: ElementRecord[] }`
+**Response**: `200` — `{ timelineId: string, elements: ElementRecord[] }`
 
 ---
 
