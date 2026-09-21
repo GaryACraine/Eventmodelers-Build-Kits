@@ -39,6 +39,7 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screen-nodes/$S
   -d '{
     "chapterId": "<CHAPTER_ID>",
     "cellId": "<actorCellId>",
+    "title": "<screenTitle>",
     "pages": ["<div>...</div>"]
   }'
 ```
@@ -54,6 +55,7 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/image-nodes/$SCREEN_
   -d '{
     "chapterId": "<CHAPTER_ID>",
     "cellId": "<actorCellId>",
+    "title": "<screenTitle>",
     "description": {"elements": [...]},
     "semanticDescription": "<screenTitle — what this screen shows>"
   }'

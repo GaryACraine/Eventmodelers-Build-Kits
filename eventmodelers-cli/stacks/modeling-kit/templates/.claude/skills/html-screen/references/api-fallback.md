@@ -31,7 +31,7 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screen-nodes/$N
   -H "x-board-id: $BOARD_ID" \
   -H "x-user-id: agent" \
   -H "Content-Type: application/json" \
-  -d '{"chapterId": "'"$CHAPTER_ID"'", "cellName": "'"$CELL_NAME"'", "pages": ["<div>...</div>"]}'
+  -d '{"chapterId": "'"$CHAPTER_ID"'", "cellName": "'"$CELL_NAME"'", "title": "<Screen Title>", "pages": ["<div>...</div>"]}'
 ```
 
 ## Step 5 — Define field data lineage

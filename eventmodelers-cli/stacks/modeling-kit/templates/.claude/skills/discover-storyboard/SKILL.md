@@ -309,6 +309,7 @@ mcp__eventmodelers__create_screen {
   "nodeId": "<SCREEN_NODE_ID>",
   "chapterId": "<CHAPTER_ID>",
   "cellId": "<CELL_ID>",
+  "title": "<screen.title>",
   "pages": ["<reconstructed HTML fragment for this screen>"],
   "description": "<screen.description — 'Shows X. Arrived via: Y. Actions: user can do A, user can do B.'>"
 }
@@ -325,6 +326,7 @@ mcp__eventmodelers__create_screen {
   "nodeId": "<SCREEN_NODE_ID>",
   "chapterId": "<CHAPTER_ID>",
   "cellName": "<CELL_NAME>",
+  "title": "<screen.title>",
   "imageBase64": "<base64-encoded contents of screen.filepath, no data: URI prefix>",
   "mimeType": "image/png",
   "description": "<screen.description — 'Shows X. Arrived via: Y. Actions: user can do A, user can do B.'>"

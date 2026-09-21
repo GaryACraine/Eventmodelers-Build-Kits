@@ -95,6 +95,7 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screen-nodes/<n
   -d '{
     "chapterId": "<TIMELINE_ID>",
     "cellId": "<CELL_ID>",
+    "title": "<title>",
     "pages": ["<div>...</div>"]
   }'
 ```
@@ -110,6 +111,7 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/image-nodes/<node-uu
   -d '{
     "chapterId": "<TIMELINE_ID>",
     "cellId": "<CELL_ID>",
+    "title": "<title>",
     "description": {"elements": [...]},
     "semanticDescription": "<title — what this screen shows>"
   }'

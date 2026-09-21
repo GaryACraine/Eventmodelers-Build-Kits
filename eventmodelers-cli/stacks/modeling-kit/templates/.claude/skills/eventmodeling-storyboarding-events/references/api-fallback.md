@@ -36,6 +36,7 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screen-nodes/<n
   -d '{
     "chapterId": "<CHAPTER_ID>",
     "cellId": "<actorRowId>-<columnId>",
+    "title": "<Screen Title>",
     "pages": ["<div>...</div>"]
   }'
 ```

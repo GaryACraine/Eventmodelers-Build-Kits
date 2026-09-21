@@ -25,7 +25,7 @@ Server name: `eventmodelers`. Every tool takes `boardId` explicitly; none need `
 | `get_node_comments` | `boardId`, `nodeId` | List comments on a node | §1 `GET .../nodes/:nodeId/comments` |
 | `get_board_events` | `boardId` | All board events, in sequence | §1 `GET .../events` |
 | `search_board_events` | `boardId`, `name` | Search events by node name | §1 `GET .../events/search` |
-| `submit_node_events` | `boardId`, `events[]`, `autoConnect?`, `compact?` | Create/update nodes (raw `NodeChangeEvent`/edge events). `autoConnect: false` places freshly-created nodes without wiring them to their own/previous-column neighbors (avoids a stray nearest-left edge); `compact: true` returns `{persisted: <count>}` instead of the per-node hash map | §3 `POST .../nodes/events` |
+| `submit_node_events` | `boardId`, `events[]`, `autoConnect?`, `compact?` | Create/update nodes (raw `NodeChangeEvent`/edge events). Every event property is described on the tool's own `events[]` schema — read that rather than this skill when all you need is the event shape. `autoConnect: false` places freshly-created nodes without wiring them to their own/previous-column neighbors (avoids a stray nearest-left edge); `compact: true` returns `{persisted: <count>}` instead of the per-node hash map | §3 `POST .../nodes/events` |
 | `delete_node` | `boardId`, `nodeId` | Delete a node. Deleting a chapter (timeline) cascades — every node placed in one of its cells, plus any node parented to it (e.g. SLICE_BORDER), is deleted too, along with all their edges | (via `node:deleted` event, §3) |
 | `create_drawing` / `create_drawings` | `boardId`, `kind`, `x`, `y`, `width`, `height`, ... (plural: `drawings[]`) | Freehand canvas annotation (path/rect/text/sticky) — never placed in a cell. Use the plural form whenever an annotation is more than one stroke (a loop plus its arrows and label is one annotation, not three calls) | — (REST `POST .../drawing/draw` accepts a single drawing or an array) |
 | `find_nodes_in_drawing` | `boardId`, `drawingId` | Nodes fully contained inside a drawing's bounding box | — (no REST equivalent; MCP-only) |
@@ -44,6 +44,7 @@ Server name: `eventmodelers`. Every tool takes `boardId` explicitly; none need `
 | `create_slice_definition` | `boardId`, `timelineId`, `columnId`, `title`, `status?`, `data?`, `meta?` | Create a SLICE_BORDER over an existing column. `status` sets its `sliceStatus` straight away instead of a follow-up `update_slice_status` | §5 `POST .../slice-definitions` |
 | `place_element` / `place_elements` | `boardId`, `timelineId`, `elementType`, `title`, `fields?`, `lane?`, `columnIndex?`, `compact?`, `autoConnect?` (plural: `elements[]`) | Find/create an empty cell in the right lane and place a COMMAND/READMODEL/EVENT. `fields` writes the element's attributes in the same call — don't follow a placement with a `submit_node_events` just to set them. The plural form places a whole slice's or column run's worth in one call, applied in order so each entry sees the columns the previous one added. `autoConnect: false` places without wiring to timeline neighbors — wire the edges yourself | — (MCP-only convenience; composes §2+§3) |
 | `list_slices` | `boardId` | List slices (id, title, status) | §8 `GET .../slicedata/slices` |
+| `get_slice_rework` | `boardId`, `contextId` | How much each slice of one context has been reworked: changes, steps backwards, and reopens after Done, most reworked first, plus planning metrics over them. `contextId` is a MODEL_CONTEXT or a timeline (a timeline resolves to the context it belongs to). Always per context — there is no board-wide form | §8 `GET .../reporting/rework/contexts/:contextId` |
 | `update_slice_status` | `boardId`, `newStatus`, plus exactly one of `sliceId` / `sliceTitle` / `columnId` | Change a SLICE_BORDER's `sliceStatus`. With a title or column id there is no need to call `list_slices` first; an ambiguous title comes back with its candidates. A slice being created takes its status from `create_slice`/`create_slice_definition` instead | — (via `node:changed` event, §3) |
 | `get_slice_data` | `boardId`, `contextName?`, `contextId?`, `sliceId?` | Full element graph for slices in a context | §8 `GET /slicedata` |
 | `get_spec_info` | `boardId`, `timelineId`, `elementTypes?` | EVENT/COMMAND/READMODEL nodes valid in GWT steps. Pass `elementTypes` (subset of `EVENT`/`COMMAND`/`READMODEL`) to avoid pulling the full element list when only one or two types are needed — filtered server-side, not just after a full fetch | §6 `GET .../spec-info` |
@@ -57,7 +58,7 @@ Server name: `eventmodelers`. Every tool takes `boardId` explicitly; none need `
 | `link_element` | `boardId`, `nodeId`, plus either `targetNodeId` or `timelineId` (+ `columnIndex?`, `lane?`) | Turn a node into a linked copy of `nodeId` — it receives a full copy of that node's meta plus `meta.linkedTo`. Name an existing `targetNodeId`, or pass `timelineId` to have the copy placed and linked in this one call (inheriting the original's type and title), which is what a translation or automation chain wants | §3 `POST .../nodes/:nodeId/link` |
 | `add_comment` / `add_comments` | `boardId`, `nodeId`, `text`, `type?` (`'COMMENT'\|'TASK'\|'QUESTION'`), `author?` (plural: `comments[]`, each with its own `nodeId`) | Add a comment — `QUESTION` is the type for a gap/edge case raised during review. Use the plural form for a review that has a question per element: all of them go in one call | §1 `POST .../boards/:boardId/comments` (batch) |
 | `update_comment` | `boardId`, `nodeId`, `commentId`, `action` (`'resolve'\|'delete'`) | Resolve or delete a comment | — (via comment events) |
-| `create_screen` | `boardId`, `contentType` (`'image'\|'sketch'\|'html'`), `nodeId?`, `chapterId`, `cellId?`/`cellName?`, plus content fields (`imageBase64`/`mimeType`, `elements[]`, or `pages[]`/`backgroundColor`), `description?`, `fields?`, `autoConnect?` | Create + place a new screen node (SCREEN or HTML_SCREEN) atomically, in one call. Batch form `create_screens` takes `screens[]` (HTML only) + `autoConnect?`. `autoConnect: false` places without wiring to timeline neighbors | §4 `POST .../images/:id/sketch` + `image-nodes` |
+| `create_screen` | `boardId`, `contentType` (`'image'\|'sketch'\|'html'`), `nodeId?`, `chapterId`, `cellId?`/`cellName?`, plus content fields (`imageBase64`/`mimeType`, `elements[]`, or `pages[]`/`backgroundColor`), `title?`, `description?`, `fields?`, `autoConnect?` | Create + place a new screen node (SCREEN or HTML_SCREEN) atomically, in one call. `title` names the node (`meta.title`) in the same call — no follow-up `node:changed` just to label the screen; `create_screens` takes it per entry. Batch form `create_screens` takes `screens[]` (HTML only) + `autoConnect?`. `autoConnect: false` places without wiring to timeline neighbors | §4 `POST .../images/:id/sketch` + `image-nodes` |
 | `render_screen` | `boardId`, `nodeId`, `elements[]?` (SCREEN) or `pages[]?`+`backgroundColor?` (HTML_SCREEN), `description?` | Update an existing screen's content — exactly one of `elements`/`pages` | §4 `POST .../images/:id/sketch` + `image-nodes` |
 | `add_field_examples` | `boardId`, `nodeId?`, `name?`, `cellName?`, `timelineId?` | Fill empty field examples using linked-node context | — (MCP-only convenience) |
 | `get_attribute_chain` | `boardId`, `timelineId`, `targetCellName`, `sourceCellName` | Resolve every node between two cells, ordered target→source | — (MCP-only convenience) |
@@ -514,7 +515,7 @@ Update an image snapshot.
 ### POST `/api/org/:orgId/boards/:boardId/image-nodes/:nodeId`
 Create an image node.
 
-**Request**: `multipart/form-data` — fields: `file`, `chapterId`, `cellName`  
+**Request**: `multipart/form-data` — fields: `file`, `chapterId`, `cellName`, `title?` (label shown on the node, `meta.title`)  
 **Response**: `204`
 
 ---
@@ -543,6 +544,7 @@ Create a SCREEN node from a sketch description.
   cellName: string
   description: { elements: object[] }
   semanticDescription?: string
+  title?: string               // label shown on the node (meta.title)
 }
 ```
 **Response**: `204` OR `400` (validation error)
@@ -727,6 +729,30 @@ Build structured slice data from board state.
 List all slices on a board.
 
 **Response**: `200` — `{ slices: Array<{ id: string, title: string, status: string }> }`
+
+---
+
+### GET `/api/org/:orgId/boards/:boardId/reporting/rework/contexts/:contextId`
+**File**: `src/slices/change/reporting/rework/routes.ts`
+
+How much each slice of one context has been reworked — read-only, derived from the board event log; nothing is stored
+for it.
+
+A slice's rework is read from its own SLICE_BORDER history. Going backwards means a step down the progress order
+(Created → Planned → Assigned → InProgress → Review → Done), or reaching `Blocked` from `Review`/`Done`;
+`Informational` is never scored. `reopens` counts transitions leading away from `Done`, `changes` counts writes to the
+slice itself. This says nothing about edits to the elements inside a slice.
+
+`contextId` is a MODEL_CONTEXT node id, or a timeline id — a timeline resolves through the board's own effective
+context (the same rule `slicedata` uses), so one that inherits a context is reported under that context and one with
+none is its own. Any other node type is rejected. Always scoped to one context; there is no board-wide form.
+
+**Response**: `200` — `{ contextId, contextName, metrics, slices[] }`, slices most reworked first.
+`slices[]` = `{ sliceId, title, status, changes, reopens, regressions, everReachedDone }`.
+`metrics` = `{ slices, everReachedDone, reopenedAfterDone, firstTimeRightRate, currentlyReopened, avgReopensPerSlice,
+avgChangesPerSlice }` — `firstTimeRightRate` is the share of the slices that reached Done and never came back, or
+`null` when none got there yet.
+`400` `CONTEXT_ID_REQUIRED` / `CONTEXT_NODE_INVALID` · `404` `CONTEXT_NOT_FOUND`
 
 ---
 

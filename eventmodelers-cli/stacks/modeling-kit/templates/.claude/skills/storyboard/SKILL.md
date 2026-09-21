@@ -183,6 +183,7 @@ mcp__eventmodelers__create_screen {
   "nodeId": "<SCREEN_NODE_ID>",
   "chapterId": "<CHAPTER_ID>",
   "cellId": "<actorCellId>",
+  "title": "<screenTitle>",
   "pages": ["<div>...</div>"],
   "description": "<screenTitle — what this screen shows>"
 }
@@ -201,6 +202,7 @@ mcp__eventmodelers__create_screen {
   "nodeId": "<SCREEN_NODE_ID>",
   "chapterId": "<CHAPTER_ID>",
   "cellId": "<actorCellId>",
+  "title": "<screenTitle>",
   "elements": [...],
   "description": "<screenTitle — what this screen shows>"
 }

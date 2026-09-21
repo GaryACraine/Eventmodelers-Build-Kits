@@ -278,6 +278,7 @@ mcp__eventmodelers__create_screen {
   "nodeId": "<node-uuid>",
   "chapterId": "<TIMELINE_ID>",
   "cellId": "<CELL_ID>",
+  "title": "<title>",
   "pages": ["<div>...</div>"],
   "description": "<title — what this screen shows>"
 }
@@ -296,6 +297,7 @@ mcp__eventmodelers__create_screen {
   "nodeId": "<node-uuid>",
   "chapterId": "<TIMELINE_ID>",
   "cellId": "<CELL_ID>",
+  "title": "<title>",
   "elements": [...],
   "description": "<title — what this screen shows>"
 }

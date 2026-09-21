@@ -58,6 +58,7 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/image-nodes/$SCREEN_
   -H "x-token: $TOKEN" \
   -F "file=@<screen.filepath>" \
   -F "chapterId=$CHAPTER_ID" \
-  -F "cellName=$CELL_NAME"
+  -F "cellName=$CELL_NAME" \
+  -F "title=<screen.title>"
 ```
 For the HTML path with no MCP, use the `html-screen-nodes` endpoint per the `html-screen` skill's fallback mechanics instead.
