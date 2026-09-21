@@ -1,0 +1,102 @@
+{
+  "id": "student-subscribed-notification",
+  "title": "Student Subscribed Notification",
+  "index": 7,
+  "context": "enrollment",
+  "contextPackage": null,
+  "sliceType": "AUTOMATION",
+  "status": "planned",
+  "commands": [],
+  "events": [
+    {
+      "id": "studentWasSubscribed-notif-ref",
+      "title": "studentWasSubscribed",
+      "type": "EVENT",
+      "fields": [
+        { "name": "courseId", "type": "String", "idAttribute": true, "example": "c1" },
+        { "name": "studentId", "type": "String", "idAttribute": true, "example": "s1" }
+      ],
+      "dependencies": [],
+      "tags": [],
+      "aggregateDependencies": [],
+      "createsAggregate": false,
+      "context": "INTERNAL",
+      "modelContext": "enrollment",
+      "domain": "Enrollment",
+      "slice": "Student Subscribed Notification",
+      "description": "Trigger event for this automation.",
+      "triggers": [],
+      "sketched": false,
+      "prototype": { "activeByDefault": false },
+      "service": null
+    }
+  ],
+  "readmodels": [],
+  "screens": [],
+  "processors": [
+    {
+      "id": "WhenStudentSubscribedThenSendNotification",
+      "title": "WhenStudentSubscribedThenSendNotification",
+      "type": "AUTOMATION",
+      "fields": [],
+      "dependencies": [],
+      "tags": [],
+      "aggregateDependencies": [],
+      "createsAggregate": false,
+      "context": "INTERNAL",
+      "modelContext": "enrollment",
+      "domain": "Enrollment",
+      "slice": "Student Subscribed Notification",
+      "description": "Triggered by studentWasSubscribed. Sends a notification to the student. For proof purposes, the notification is logged to the console.",
+      "triggers": ["studentWasSubscribed"],
+      "processorType": "event-driven",
+      "sketched": false,
+      "prototype": { "activeByDefault": false },
+      "service": null
+    }
+  ],
+  "tables": [],
+  "specifications": [
+    {
+      "id": "spec-notification-sent",
+      "title": "sends notification when studentWasSubscribed received",
+      "given": [],
+      "when": [
+        {
+          "id": "when-subscribed-notif",
+          "title": "studentWasSubscribed",
+          "type": "SPEC_EVENT",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "c1" },
+            { "name": "studentId", "type": "String", "example": "s1" }
+          ],
+          "linkedId": "studentWasSubscribed-notif-ref",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "then": [
+        {
+          "id": "then-notification-logged",
+          "title": "WhenStudentSubscribedThenSendNotification",
+          "type": "SPEC_READMODEL",
+          "fields": [
+            { "name": "notificationSent", "type": "Boolean", "example": "true" }
+          ],
+          "linkedId": "WhenStudentSubscribedThenSendNotification",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "linkedId": "WhenStudentSubscribedThenSendNotification"
+    }
+  ],
+  "actors": [],
+  "aggregates": [],
+  "screenImages": [],
+  "implementationNotes": null
+}

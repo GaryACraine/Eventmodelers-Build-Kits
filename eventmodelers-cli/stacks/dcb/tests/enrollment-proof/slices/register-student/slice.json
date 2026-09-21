@@ -1,0 +1,191 @@
+{
+  "id": "register-student",
+  "title": "Register Student",
+  "index": 1,
+  "context": "enrollment",
+  "contextPackage": null,
+  "sliceType": "STATE_CHANGE",
+  "status": "planned",
+  "commands": [
+    {
+      "id": "registerStudent",
+      "title": "registerStudent",
+      "type": "COMMAND",
+      "fields": [
+        { "name": "id", "type": "String", "idAttribute": true, "example": "s1" },
+        { "name": "name", "type": "String", "example": "Alice" }
+      ],
+      "dependencies": [],
+      "tags": [],
+      "aggregateDependencies": [],
+      "createsAggregate": true,
+      "apiEndpoint": "POST /students",
+      "context": "INTERNAL",
+      "modelContext": "enrollment",
+      "domain": "Enrollment",
+      "slice": "Register Student",
+      "description": "Register a new student. id must be unique. studentNumber is auto-generated (global sequence, starts at 1).",
+      "triggers": [],
+      "sketched": false,
+      "prototype": { "activeByDefault": false },
+      "service": null
+    }
+  ],
+  "events": [
+    {
+      "id": "studentWasRegistered",
+      "title": "studentWasRegistered",
+      "type": "EVENT",
+      "fields": [
+        { "name": "studentId", "type": "String", "idAttribute": true, "example": "s1" },
+        { "name": "name", "type": "String", "example": "Alice" },
+        { "name": "studentNumber", "type": "Int", "generated": true, "example": "1" }
+      ],
+      "dependencies": [],
+      "tags": [],
+      "aggregateDependencies": [],
+      "createsAggregate": false,
+      "context": "INTERNAL",
+      "modelContext": "enrollment",
+      "domain": "Enrollment",
+      "slice": "Register Student",
+      "description": "studentNumber is auto-generated: tracks registration order globally (1-based, increments per registered student).",
+      "triggers": [],
+      "sketched": false,
+      "prototype": { "activeByDefault": false },
+      "service": null
+    }
+  ],
+  "readmodels": [],
+  "screens": [],
+  "processors": [],
+  "tables": [],
+  "specifications": [
+    {
+      "id": "spec-register-student-happy",
+      "title": "registers a new student and returns 201",
+      "given": [],
+      "when": [
+        {
+          "id": "when-register-student",
+          "title": "registerStudent",
+          "type": "SPEC_COMMAND",
+          "fields": [
+            { "name": "id", "type": "String", "example": "s1" },
+            { "name": "name", "type": "String", "example": "Alice" }
+          ],
+          "linkedId": "registerStudent",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "then": [
+        {
+          "id": "then-student-registered",
+          "title": "studentWasRegistered",
+          "type": "SPEC_EVENT",
+          "fields": [
+            { "name": "studentId", "type": "String", "example": "s1" },
+            { "name": "name", "type": "String", "example": "Alice" },
+            { "name": "studentNumber", "type": "Int", "example": "1" }
+          ],
+          "linkedId": "studentWasRegistered",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "linkedId": "registerStudent"
+    },
+    {
+      "id": "spec-register-student-duplicate",
+      "title": "returns 422 when student already exists",
+      "given": [
+        {
+          "id": "given-student-exists",
+          "title": "studentWasRegistered",
+          "type": "SPEC_EVENT",
+          "fields": [
+            { "name": "studentId", "type": "String", "example": "s1" },
+            { "name": "name", "type": "String", "example": "Alice" },
+            { "name": "studentNumber", "type": "Int", "example": "1" }
+          ],
+          "linkedId": "studentWasRegistered",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "when": [
+        {
+          "id": "when-register-duplicate-student",
+          "title": "registerStudent",
+          "type": "SPEC_COMMAND",
+          "fields": [
+            { "name": "id", "type": "String", "example": "s1" },
+            { "name": "name", "type": "String", "example": "Alice" }
+          ],
+          "linkedId": "registerStudent",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "then": [
+        {
+          "id": "then-422-student",
+          "title": "422 Unprocessable Entity",
+          "type": "SPEC_ERROR",
+          "fields": [],
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "linkedId": "registerStudent"
+    },
+    {
+      "id": "spec-register-student-missing-name",
+      "title": "returns 400 when name is missing",
+      "given": [],
+      "when": [
+        {
+          "id": "when-missing-name",
+          "title": "registerStudent",
+          "type": "SPEC_COMMAND",
+          "fields": [
+            { "name": "id", "type": "String", "example": "s1" }
+          ],
+          "linkedId": "registerStudent",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "then": [
+        {
+          "id": "then-400-name",
+          "title": "400 Bad Request",
+          "type": "SPEC_ERROR",
+          "fields": [],
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "linkedId": "registerStudent"
+    }
+  ],
+  "actors": [],
+  "aggregates": [],
+  "screenImages": [],
+  "implementationNotes": null
+}

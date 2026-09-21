@@ -1,0 +1,230 @@
+{
+  "id": "register-course",
+  "title": "Register Course",
+  "index": 0,
+  "context": "enrollment",
+  "contextPackage": null,
+  "sliceType": "STATE_CHANGE",
+  "status": "planned",
+  "commands": [
+    {
+      "id": "registerCourse",
+      "title": "registerCourse",
+      "type": "COMMAND",
+      "fields": [
+        { "name": "id", "type": "String", "idAttribute": true, "example": "c1" },
+        { "name": "title", "type": "String", "example": "Math" },
+        { "name": "capacity", "type": "Int", "example": "30" }
+      ],
+      "dependencies": [],
+      "tags": [],
+      "aggregateDependencies": [],
+      "createsAggregate": true,
+      "apiEndpoint": "POST /courses",
+      "context": "INTERNAL",
+      "modelContext": "enrollment",
+      "domain": "Enrollment",
+      "slice": "Register Course",
+      "description": "Register a new course. id is unique; capacity must be > 0.",
+      "triggers": [],
+      "sketched": false,
+      "prototype": { "activeByDefault": false },
+      "service": null
+    }
+  ],
+  "events": [
+    {
+      "id": "courseWasRegistered",
+      "title": "courseWasRegistered",
+      "type": "EVENT",
+      "fields": [
+        { "name": "courseId", "type": "String", "idAttribute": true, "example": "c1" },
+        { "name": "title", "type": "String", "example": "Math" },
+        { "name": "capacity", "type": "Int", "example": "30" }
+      ],
+      "dependencies": [],
+      "tags": [],
+      "aggregateDependencies": [],
+      "createsAggregate": false,
+      "context": "INTERNAL",
+      "modelContext": "enrollment",
+      "domain": "Enrollment",
+      "slice": "Register Course",
+      "description": "",
+      "triggers": [],
+      "sketched": false,
+      "prototype": { "activeByDefault": false },
+      "service": null
+    }
+  ],
+  "readmodels": [],
+  "screens": [],
+  "processors": [],
+  "tables": [],
+  "specifications": [
+    {
+      "id": "spec-register-course-happy",
+      "title": "registers a new course and returns 201",
+      "given": [],
+      "when": [
+        {
+          "id": "when-register-course",
+          "title": "registerCourse",
+          "type": "SPEC_COMMAND",
+          "fields": [
+            { "name": "id", "type": "String", "example": "c1" },
+            { "name": "title", "type": "String", "example": "Math" },
+            { "name": "capacity", "type": "Int", "example": "30" }
+          ],
+          "linkedId": "registerCourse",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "then": [
+        {
+          "id": "then-course-registered",
+          "title": "courseWasRegistered",
+          "type": "SPEC_EVENT",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "c1" },
+            { "name": "title", "type": "String", "example": "Math" },
+            { "name": "capacity", "type": "Int", "example": "30" }
+          ],
+          "linkedId": "courseWasRegistered",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "linkedId": "registerCourse"
+    },
+    {
+      "id": "spec-register-course-duplicate",
+      "title": "returns 422 when course already exists",
+      "given": [
+        {
+          "id": "given-course-exists",
+          "title": "courseWasRegistered",
+          "type": "SPEC_EVENT",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "c1" },
+            { "name": "title", "type": "String", "example": "Math" },
+            { "name": "capacity", "type": "Int", "example": "30" }
+          ],
+          "linkedId": "courseWasRegistered",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "when": [
+        {
+          "id": "when-register-duplicate",
+          "title": "registerCourse",
+          "type": "SPEC_COMMAND",
+          "fields": [
+            { "name": "id", "type": "String", "example": "c1" },
+            { "name": "title", "type": "String", "example": "Math" },
+            { "name": "capacity", "type": "Int", "example": "30" }
+          ],
+          "linkedId": "registerCourse",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "then": [
+        {
+          "id": "then-422",
+          "title": "422 Unprocessable Entity",
+          "type": "SPEC_ERROR",
+          "fields": [],
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "linkedId": "registerCourse"
+    },
+    {
+      "id": "spec-register-course-missing-capacity",
+      "title": "returns 400 when capacity is missing",
+      "given": [],
+      "when": [
+        {
+          "id": "when-missing-capacity",
+          "title": "registerCourse",
+          "type": "SPEC_COMMAND",
+          "fields": [
+            { "name": "id", "type": "String", "example": "c1" },
+            { "name": "title", "type": "String", "example": "Math" }
+          ],
+          "linkedId": "registerCourse",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "then": [
+        {
+          "id": "then-400-missing-cap",
+          "title": "400 Bad Request",
+          "type": "SPEC_ERROR",
+          "fields": [],
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "linkedId": "registerCourse"
+    },
+    {
+      "id": "spec-register-course-zero-capacity",
+      "title": "returns 400 when capacity is zero",
+      "given": [],
+      "when": [
+        {
+          "id": "when-zero-capacity",
+          "title": "registerCourse",
+          "type": "SPEC_COMMAND",
+          "fields": [
+            { "name": "id", "type": "String", "example": "c1" },
+            { "name": "title", "type": "String", "example": "Math" },
+            { "name": "capacity", "type": "Int", "example": "0" }
+          ],
+          "linkedId": "registerCourse",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "then": [
+        {
+          "id": "then-400-zero",
+          "title": "400 Bad Request",
+          "type": "SPEC_ERROR",
+          "fields": [],
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "linkedId": "registerCourse"
+    }
+  ],
+  "actors": [],
+  "aggregates": [],
+  "screenImages": [],
+  "implementationNotes": null
+}

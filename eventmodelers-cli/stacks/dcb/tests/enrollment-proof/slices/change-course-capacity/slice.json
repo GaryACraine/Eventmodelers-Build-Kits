@@ -1,0 +1,239 @@
+{
+  "id": "change-course-capacity",
+  "title": "Change Course Capacity",
+  "index": 4,
+  "context": "enrollment",
+  "contextPackage": null,
+  "sliceType": "STATE_CHANGE",
+  "status": "planned",
+  "commands": [
+    {
+      "id": "changeCourseCapacity",
+      "title": "changeCourseCapacity",
+      "type": "COMMAND",
+      "fields": [
+        { "name": "courseId", "type": "String", "idAttribute": true, "example": "c1" },
+        { "name": "newCapacity", "type": "Int", "example": "50" }
+      ],
+      "dependencies": [],
+      "tags": [],
+      "aggregateDependencies": [],
+      "createsAggregate": false,
+      "apiEndpoint": "PUT /courses/:courseId/capacity",
+      "context": "INTERNAL",
+      "modelContext": "enrollment",
+      "domain": "Enrollment",
+      "slice": "Change Course Capacity",
+      "description": "courseId comes from path parameter. newCapacity must be > 0. Fails with 404 if course does not exist. Fails with 422 if newCapacity equals the current capacity.",
+      "triggers": [],
+      "sketched": false,
+      "prototype": { "activeByDefault": false },
+      "service": null
+    }
+  ],
+  "events": [
+    {
+      "id": "courseCapacityWasChanged",
+      "title": "courseCapacityWasChanged",
+      "type": "EVENT",
+      "fields": [
+        { "name": "courseId", "type": "String", "idAttribute": true, "example": "c1" },
+        { "name": "newCapacity", "type": "Int", "example": "50" }
+      ],
+      "dependencies": [],
+      "tags": [],
+      "aggregateDependencies": [],
+      "createsAggregate": false,
+      "context": "INTERNAL",
+      "modelContext": "enrollment",
+      "domain": "Enrollment",
+      "slice": "Change Course Capacity",
+      "description": "",
+      "triggers": [],
+      "sketched": false,
+      "prototype": { "activeByDefault": false },
+      "service": null
+    }
+  ],
+  "readmodels": [],
+  "screens": [],
+  "processors": [],
+  "tables": [],
+  "specifications": [
+    {
+      "id": "spec-change-capacity-happy",
+      "title": "changes capacity and returns 204",
+      "given": [
+        {
+          "id": "given-course-for-cap",
+          "title": "courseWasRegistered",
+          "type": "SPEC_EVENT",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "c1" },
+            { "name": "title", "type": "String", "example": "Math" },
+            { "name": "capacity", "type": "Int", "example": "30" }
+          ],
+          "linkedId": "courseWasRegistered",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "when": [
+        {
+          "id": "when-change-cap",
+          "title": "changeCourseCapacity",
+          "type": "SPEC_COMMAND",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "c1" },
+            { "name": "newCapacity", "type": "Int", "example": "50" }
+          ],
+          "linkedId": "changeCourseCapacity",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "then": [
+        {
+          "id": "then-capacity-changed",
+          "title": "courseCapacityWasChanged",
+          "type": "SPEC_EVENT",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "c1" },
+            { "name": "newCapacity", "type": "Int", "example": "50" }
+          ],
+          "linkedId": "courseCapacityWasChanged",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "linkedId": "changeCourseCapacity"
+    },
+    {
+      "id": "spec-change-capacity-no-course",
+      "title": "returns 404 when course does not exist",
+      "given": [],
+      "when": [
+        {
+          "id": "when-cap-no-course",
+          "title": "changeCourseCapacity",
+          "type": "SPEC_COMMAND",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "nonexistent" },
+            { "name": "newCapacity", "type": "Int", "example": "50" }
+          ],
+          "linkedId": "changeCourseCapacity",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "then": [
+        {
+          "id": "then-404-cap",
+          "title": "404 Not Found",
+          "type": "SPEC_ERROR",
+          "fields": [],
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "linkedId": "changeCourseCapacity"
+    },
+    {
+      "id": "spec-change-capacity-same",
+      "title": "returns 422 when new capacity is the same as current",
+      "given": [
+        {
+          "id": "given-course-30-cap",
+          "title": "courseWasRegistered",
+          "type": "SPEC_EVENT",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "c1" },
+            { "name": "title", "type": "String", "example": "Math" },
+            { "name": "capacity", "type": "Int", "example": "30" }
+          ],
+          "linkedId": "courseWasRegistered",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "when": [
+        {
+          "id": "when-same-cap",
+          "title": "changeCourseCapacity",
+          "type": "SPEC_COMMAND",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "c1" },
+            { "name": "newCapacity", "type": "Int", "example": "30" }
+          ],
+          "linkedId": "changeCourseCapacity",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "then": [
+        {
+          "id": "then-422-same-cap",
+          "title": "422 Unprocessable Entity",
+          "type": "SPEC_ERROR",
+          "fields": [],
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "linkedId": "changeCourseCapacity"
+    },
+    {
+      "id": "spec-change-capacity-missing",
+      "title": "returns 400 when newCapacity is missing",
+      "given": [],
+      "when": [
+        {
+          "id": "when-missing-cap",
+          "title": "changeCourseCapacity",
+          "type": "SPEC_COMMAND",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "c1" }
+          ],
+          "linkedId": "changeCourseCapacity",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "then": [
+        {
+          "id": "then-400-missing-newcap",
+          "title": "400 Bad Request",
+          "type": "SPEC_ERROR",
+          "fields": [],
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "linkedId": "changeCourseCapacity"
+    }
+  ],
+  "actors": [],
+  "aggregates": [],
+  "screenImages": [],
+  "implementationNotes": null
+}

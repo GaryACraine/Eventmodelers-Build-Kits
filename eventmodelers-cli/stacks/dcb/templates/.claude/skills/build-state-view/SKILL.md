@@ -131,8 +131,11 @@ if (doc) {
 ```
 
 **Cross-collection lookup (for denormalisation):**
+
+> **Lookup collection naming**: When a readmodel field has `cardinality: "List"` with `subfields` sourced from a different entity's events, create a separate lookup collection. Name it `_{projectionCollectionName}_{entityPlural}` — e.g., for a `students` collection needing course data: `_student_projection_courses`. This mirrors the reference project pattern.
+
 ```typescript
-const lookup = context.pongo.db().collection<LookupDoc>("_lookup_collection")
+const lookup = context.pongo.db().collection<LookupDoc>("_{projectionName}_{entityPlural}")
 const related = await lookup.findOne({ _id: data.relatedId as string })
 if (related) {
     await collection.updateOne(
