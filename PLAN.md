@@ -150,6 +150,37 @@ Includes Pongo operation patterns (`insertOne`, `updateOne`, `$push`, `filter`, 
 
 ---
 
+### Phase 5.5: Prove DCB Build Kit Skills ✅
+
+**Goal:** Verify all three skill templates generate correct code from slice.json input before Ralph loop integration.
+
+#### What was done
+
+**5.5a — Test Input Creation**
+- Created 8 slice.json files in `eventmodelers-cli/stacks/dcb/tests/enrollment-proof/slices/` matching the enrollment reference domain (register-course, register-student, subscribe-student, unsubscribe-student, change-course-capacity, course-details, student-details, student-subscribed-notification)
+
+**5.5b — State Change Skill Proof**
+- Setup: restored subscribe-student, created git baseline (29/29 tests)
+- Test 1: register-student deleted and regenerated from skill → 29/29 pass
+- Test 2: subscribe-student deleted and regenerated from skill → 29/29 pass
+
+**5.5c — State View Skill Proof**
+- student-details deleted and regenerated from skill → 29/29 pass
+
+**5.5d — Automation Skill Proof**
+- student-subscribed-notification created from skill → 30/30 pass (1 new test)
+
+**5.5e — Skill Fixes from Proof Findings**
+- **build-automation/SKILL.md** — critical rewrite: replaced broken `canHandle/handle` pattern with correct `ConsumerProcessorConfig` + `handlerFactory`; fixed tests to use `handlerFactory` directly instead of non-existent `store.readAll()`; fixed index.ts wiring to direct factory call instead of spread
+- **build-state-change/SKILL.md** — added `generated: true` field handling (GUID default, exclusion from command type and Zod schema)
+- **build-state-view/SKILL.md** — added lookup collection naming convention (`_{projectionName}_{entityPlural}`)
+
+#### Proof project
+- Location: `~/Projects/enrollment-proof-project/` (30/30 tests, git baseline + proof commits)
+- All generated code compiles and passes tests without manual intervention
+
+---
+
 ### Phase 6: Ralph Loop Integration 🔲 (Lower Priority)
 
 **Goal:** The Ralph Loop can automatically build DCB slices when slice statuses change on the board.
@@ -195,5 +226,6 @@ Includes Pongo operation patterns (`insertOne`, `updateOne`, `$push`, `filter`, 
 | 3 — State View Skill | ✅ Complete | 5-step SKILL.md with Pongo + preferWait patterns |
 | 4 — Automation Skill | ✅ Complete | 5-step SKILL.md for event-triggered processors |
 | 5 — Build Kit Config | ✅ Complete | CLAUDE.md, AGENT.md, prompts, 6 commit checks |
+| 5.5 — Prove Skills | ✅ Complete | 8 slice.json inputs, 3 skills proven, 30/30 tests, automation skill rewritten |
 | 6 — Ralph Loop | 🔲 Not started | Lower priority — needs investigation |
 | 7 — Board Re-pointing | 🔲 Not started | Lower priority — waiting on credentials |
