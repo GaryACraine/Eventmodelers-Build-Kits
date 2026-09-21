@@ -80,7 +80,7 @@ describe("Student details — Postgres integration", () => {
 
         const postRes = await agent
             .post("/students")
-            .send({ id: "s1", name: "Alice", studentNumber: 1001 })
+            .send({ id: "s1", name: "Alice" })
         expect(postRes.status).toBe(201)
 
         const getRes = await agent.get("/students/s1").set("Prefer", "wait=5").set("If-None-Match", '"1"')
@@ -89,7 +89,7 @@ describe("Student details — Postgres integration", () => {
         expect(getRes.body).toMatchObject({
             id: "s1",
             name: "Alice",
-            studentNumber: 1001,
+            studentNumber: 1, // auto-generated: 1st registered student
             subscribedCourses: []
         })
         expect(getRes.headers["etag"]).toBe('"1"')
@@ -112,7 +112,7 @@ describe("Student details — Postgres integration", () => {
         const agent = supertest(app)
 
         await agent.post("/courses").send({ id: "c1", title: "Math", capacity: 30 })
-        await agent.post("/students").send({ id: "s1", name: "Alice", studentNumber: 1001 })
+        await agent.post("/students").send({ id: "s1", name: "Alice" })
 
         const subRes = await agent.post("/courses/c1/subscriptions").send({ studentId: "s1" })
         expect(subRes.status).toBe(201)
@@ -143,7 +143,7 @@ describe("Student details — Postgres integration", () => {
         const agent = supertest(app)
 
         await agent.post("/courses").send({ id: "c1", title: "Math", capacity: 30 })
-        await agent.post("/students").send({ id: "s1", name: "Alice", studentNumber: 1001 })
+        await agent.post("/students").send({ id: "s1", name: "Alice" })
         await agent.post("/courses/c1/subscriptions").send({ studentId: "s1" })
 
         const delRes = await agent.delete("/courses/c1/subscriptions/s1")
