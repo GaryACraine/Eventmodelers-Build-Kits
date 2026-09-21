@@ -65,6 +65,8 @@ Tag key selection:
 - When global uniqueness matters (e.g. auto-increment), add an index tag: `Tags.fromObj({ studentId, studentNumberIndex: "global" })`
 - When events concern two entities, tag both: `Tags.fromObj({ courseId, studentId })`
 
+**Generated fields**: If an event field has `generated: true` in slice.json, it means the field is NOT supplied by the upstream command — the component emitting the event produces it. Default to generating a GUID (`crypto.randomUUID()`) for these fields unless the event model explicitly shows a specific generation pattern (e.g., via a dependency to an information model or an explicit slice comment describing the sequence). Do NOT add auto-increment patterns unless they are explicitly modeled.
+
 Add each new event type and factory. Do NOT remove existing ones.
 
 ---
@@ -94,6 +96,8 @@ Field types from slice.json → TypeScript:
 | `Custom` | `Record<string, unknown>` |
 
 Optional fields (`optional: true`): append `?` to the field name.
+
+> **Generated fields**: Fields marked `generated: true` in events[] must NOT appear in the command type — they are produced by the decider, not supplied by the caller.
 
 ---
 
@@ -222,6 +226,8 @@ export const {CommandName}Schema = z
 ```
 
 Only include body fields here. Path parameters (`:id` in the route) come from `req.params`, not the body.
+
+> **Generated fields**: Fields marked `generated: true` in events[] must NOT appear in the Zod schema — they are not user-supplied input.
 
 ---
 

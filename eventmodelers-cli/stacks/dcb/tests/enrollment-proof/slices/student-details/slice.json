@@ -1,0 +1,362 @@
+{
+  "id": "student-details",
+  "title": "Student Details",
+  "index": 6,
+  "context": "enrollment",
+  "contextPackage": null,
+  "sliceType": "STATE_VIEW",
+  "status": "planned",
+  "commands": [],
+  "events": [
+    {
+      "id": "studentWasRegistered-ref",
+      "title": "studentWasRegistered",
+      "type": "EVENT",
+      "fields": [
+        { "name": "studentId", "type": "String", "idAttribute": true, "example": "s1" },
+        { "name": "name", "type": "String", "example": "Alice" },
+        { "name": "studentNumber", "type": "Int", "generated": true, "example": "1" }
+      ],
+      "dependencies": [],
+      "tags": [],
+      "aggregateDependencies": [],
+      "createsAggregate": false,
+      "context": "INTERNAL",
+      "modelContext": "enrollment",
+      "domain": "Enrollment",
+      "slice": "Student Details",
+      "description": "",
+      "triggers": [],
+      "sketched": false,
+      "prototype": { "activeByDefault": false },
+      "service": null
+    },
+    {
+      "id": "courseWasRegistered-sd-ref",
+      "title": "courseWasRegistered",
+      "type": "EVENT",
+      "fields": [
+        { "name": "courseId", "type": "String", "idAttribute": true, "example": "c1" },
+        { "name": "title", "type": "String", "example": "Math" },
+        { "name": "capacity", "type": "Int", "example": "30" }
+      ],
+      "dependencies": [],
+      "tags": [],
+      "aggregateDependencies": [],
+      "createsAggregate": false,
+      "context": "INTERNAL",
+      "modelContext": "enrollment",
+      "domain": "Enrollment",
+      "slice": "Student Details",
+      "description": "Used to build a course lookup so subscribedCourses can be denormalized with title and capacity.",
+      "triggers": [],
+      "sketched": false,
+      "prototype": { "activeByDefault": false },
+      "service": null
+    },
+    {
+      "id": "courseTitleWasChanged-sd-ref",
+      "title": "courseTitleWasChanged",
+      "type": "EVENT",
+      "fields": [
+        { "name": "courseId", "type": "String", "idAttribute": true, "example": "c1" },
+        { "name": "newTitle", "type": "String", "example": "Advanced Math" }
+      ],
+      "dependencies": [],
+      "tags": [],
+      "aggregateDependencies": [],
+      "createsAggregate": false,
+      "context": "INTERNAL",
+      "modelContext": "enrollment",
+      "domain": "Enrollment",
+      "slice": "Student Details",
+      "description": "",
+      "triggers": [],
+      "sketched": false,
+      "prototype": { "activeByDefault": false },
+      "service": null
+    },
+    {
+      "id": "courseCapacityWasChanged-sd-ref",
+      "title": "courseCapacityWasChanged",
+      "type": "EVENT",
+      "fields": [
+        { "name": "courseId", "type": "String", "idAttribute": true, "example": "c1" },
+        { "name": "newCapacity", "type": "Int", "example": "50" }
+      ],
+      "dependencies": [],
+      "tags": [],
+      "aggregateDependencies": [],
+      "createsAggregate": false,
+      "context": "INTERNAL",
+      "modelContext": "enrollment",
+      "domain": "Enrollment",
+      "slice": "Student Details",
+      "description": "",
+      "triggers": [],
+      "sketched": false,
+      "prototype": { "activeByDefault": false },
+      "service": null
+    },
+    {
+      "id": "studentWasSubscribed-sd-ref",
+      "title": "studentWasSubscribed",
+      "type": "EVENT",
+      "fields": [
+        { "name": "courseId", "type": "String", "idAttribute": true, "example": "c1" },
+        { "name": "studentId", "type": "String", "idAttribute": true, "example": "s1" }
+      ],
+      "dependencies": [],
+      "tags": [],
+      "aggregateDependencies": [],
+      "createsAggregate": false,
+      "context": "INTERNAL",
+      "modelContext": "enrollment",
+      "domain": "Enrollment",
+      "slice": "Student Details",
+      "description": "",
+      "triggers": [],
+      "sketched": false,
+      "prototype": { "activeByDefault": false },
+      "service": null
+    },
+    {
+      "id": "studentWasUnsubscribed-sd-ref",
+      "title": "studentWasUnsubscribed",
+      "type": "EVENT",
+      "fields": [
+        { "name": "courseId", "type": "String", "idAttribute": true, "example": "c1" },
+        { "name": "studentId", "type": "String", "idAttribute": true, "example": "s1" }
+      ],
+      "dependencies": [],
+      "tags": [],
+      "aggregateDependencies": [],
+      "createsAggregate": false,
+      "context": "INTERNAL",
+      "modelContext": "enrollment",
+      "domain": "Enrollment",
+      "slice": "Student Details",
+      "description": "",
+      "triggers": [],
+      "sketched": false,
+      "prototype": { "activeByDefault": false },
+      "service": null
+    }
+  ],
+  "readmodels": [
+    {
+      "id": "StudentDetails",
+      "title": "StudentDetails",
+      "type": "READMODEL",
+      "fields": [
+        { "name": "studentId", "type": "String", "idAttribute": true, "example": "s1" },
+        { "name": "name", "type": "String", "example": "Alice" },
+        { "name": "studentNumber", "type": "Int", "example": "1" },
+        {
+          "name": "subscribedCourses",
+          "type": "Custom",
+          "cardinality": "List",
+          "example": "[]",
+          "subfields": [
+            { "name": "courseId", "type": "String", "example": "c1" },
+            { "name": "title", "type": "String", "example": "Math" },
+            { "name": "capacity", "type": "Int", "example": "30" }
+          ]
+        }
+      ],
+      "dependencies": [],
+      "tags": [],
+      "aggregateDependencies": [],
+      "createsAggregate": false,
+      "apiEndpoint": "GET /students/:studentId",
+      "context": "INTERNAL",
+      "modelContext": "enrollment",
+      "domain": "Enrollment",
+      "slice": "Student Details",
+      "description": "Returns student details with denormalized course list. Uses a separate _student_projection_courses lookup collection for course data. 404 if student not found.",
+      "triggers": [],
+      "sketched": false,
+      "prototype": { "activeByDefault": false },
+      "service": null
+    }
+  ],
+  "screens": [],
+  "processors": [],
+  "tables": [],
+  "specifications": [
+    {
+      "id": "spec-student-details-not-found",
+      "title": "returns 404 for unknown student",
+      "given": [],
+      "when": [
+        {
+          "id": "when-get-unknown-student",
+          "title": "StudentDetails",
+          "type": "SPEC_READMODEL",
+          "fields": [
+            { "name": "studentId", "type": "String", "example": "unknown" }
+          ],
+          "linkedId": "StudentDetails",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "then": [
+        {
+          "id": "then-404-student-details",
+          "title": "404 Not Found",
+          "type": "SPEC_ERROR",
+          "fields": [],
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "linkedId": "StudentDetails"
+    },
+    {
+      "id": "spec-student-details-registered",
+      "title": "returns student with empty subscribedCourses after studentWasRegistered",
+      "given": [
+        {
+          "id": "given-student-reg-details",
+          "title": "studentWasRegistered",
+          "type": "SPEC_EVENT",
+          "fields": [
+            { "name": "studentId", "type": "String", "example": "s1" },
+            { "name": "name", "type": "String", "example": "Alice" },
+            { "name": "studentNumber", "type": "Int", "example": "1" }
+          ],
+          "linkedId": "studentWasRegistered-ref",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "when": [
+        {
+          "id": "when-get-student-details",
+          "title": "StudentDetails",
+          "type": "SPEC_READMODEL",
+          "fields": [
+            { "name": "studentId", "type": "String", "example": "s1" }
+          ],
+          "linkedId": "StudentDetails",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "then": [
+        {
+          "id": "then-student-details-result",
+          "title": "StudentDetails",
+          "type": "SPEC_READMODEL",
+          "fields": [
+            { "name": "studentId", "type": "String", "example": "s1" },
+            { "name": "name", "type": "String", "example": "Alice" },
+            { "name": "studentNumber", "type": "Int", "example": "1" },
+            { "name": "subscribedCourses", "type": "Custom", "cardinality": "List", "example": "[]" }
+          ],
+          "linkedId": "StudentDetails",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "linkedId": "StudentDetails"
+    },
+    {
+      "id": "spec-student-details-subscribed",
+      "title": "subscribed course appears in subscribedCourses after studentWasSubscribed",
+      "given": [
+        {
+          "id": "given-course-sd",
+          "title": "courseWasRegistered",
+          "type": "SPEC_EVENT",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "c1" },
+            { "name": "title", "type": "String", "example": "Math" },
+            { "name": "capacity", "type": "Int", "example": "30" }
+          ],
+          "linkedId": "courseWasRegistered-sd-ref",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        },
+        {
+          "id": "given-student-sd",
+          "title": "studentWasRegistered",
+          "type": "SPEC_EVENT",
+          "fields": [
+            { "name": "studentId", "type": "String", "example": "s1" },
+            { "name": "name", "type": "String", "example": "Alice" },
+            { "name": "studentNumber", "type": "Int", "example": "1" }
+          ],
+          "linkedId": "studentWasRegistered-ref",
+          "tags": [],
+          "examples": [],
+          "index": 1,
+          "specRow": 0
+        },
+        {
+          "id": "given-subscribed-sd",
+          "title": "studentWasSubscribed",
+          "type": "SPEC_EVENT",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "c1" },
+            { "name": "studentId", "type": "String", "example": "s1" }
+          ],
+          "linkedId": "studentWasSubscribed-sd-ref",
+          "tags": [],
+          "examples": [],
+          "index": 2,
+          "specRow": 0
+        }
+      ],
+      "when": [
+        {
+          "id": "when-get-student-subscribed",
+          "title": "StudentDetails",
+          "type": "SPEC_READMODEL",
+          "fields": [
+            { "name": "studentId", "type": "String", "example": "s1" }
+          ],
+          "linkedId": "StudentDetails",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "then": [
+        {
+          "id": "then-student-has-course",
+          "title": "StudentDetails",
+          "type": "SPEC_READMODEL",
+          "fields": [
+            { "name": "studentId", "type": "String", "example": "s1" },
+            { "name": "subscribedCourses", "type": "Custom", "cardinality": "List", "example": "[{courseId:c1,title:Math,capacity:30}]" }
+          ],
+          "linkedId": "StudentDetails",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "linkedId": "StudentDetails"
+    }
+  ],
+  "actors": [],
+  "aggregates": [],
+  "screenImages": [],
+  "implementationNotes": null
+}

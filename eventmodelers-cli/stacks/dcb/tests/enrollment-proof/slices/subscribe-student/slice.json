@@ -1,0 +1,377 @@
+{
+  "id": "subscribe-student",
+  "title": "Subscribe Student",
+  "index": 2,
+  "context": "enrollment",
+  "contextPackage": null,
+  "sliceType": "STATE_CHANGE",
+  "status": "planned",
+  "commands": [
+    {
+      "id": "subscribeStudentToCourse",
+      "title": "subscribeStudentToCourse",
+      "type": "COMMAND",
+      "fields": [
+        { "name": "courseId", "type": "String", "idAttribute": true, "example": "c1" },
+        { "name": "studentId", "type": "String", "idAttribute": true, "example": "s1" }
+      ],
+      "dependencies": [],
+      "tags": [],
+      "aggregateDependencies": [],
+      "createsAggregate": false,
+      "apiEndpoint": "POST /courses/:courseId/subscriptions",
+      "context": "INTERNAL",
+      "modelContext": "enrollment",
+      "domain": "Enrollment",
+      "slice": "Subscribe Student",
+      "description": "courseId comes from the path parameter. studentId comes from the request body. Fails if course does not exist (404), course is full (422), or student already subscribed (422). Also enforces a per-student subscription limit of 5 courses (422).",
+      "triggers": [],
+      "sketched": false,
+      "prototype": { "activeByDefault": false },
+      "service": null
+    }
+  ],
+  "events": [
+    {
+      "id": "studentWasSubscribed",
+      "title": "studentWasSubscribed",
+      "type": "EVENT",
+      "fields": [
+        { "name": "courseId", "type": "String", "idAttribute": true, "example": "c1" },
+        { "name": "studentId", "type": "String", "idAttribute": true, "example": "s1" }
+      ],
+      "dependencies": [],
+      "tags": [],
+      "aggregateDependencies": [],
+      "createsAggregate": false,
+      "context": "INTERNAL",
+      "modelContext": "enrollment",
+      "domain": "Enrollment",
+      "slice": "Subscribe Student",
+      "description": "",
+      "triggers": [],
+      "sketched": false,
+      "prototype": { "activeByDefault": false },
+      "service": null
+    }
+  ],
+  "readmodels": [],
+  "screens": [],
+  "processors": [],
+  "tables": [],
+  "specifications": [
+    {
+      "id": "spec-subscribe-happy",
+      "title": "subscribes student and returns 201",
+      "given": [
+        {
+          "id": "given-course-registered",
+          "title": "courseWasRegistered",
+          "type": "SPEC_EVENT",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "c1" },
+            { "name": "title", "type": "String", "example": "Math" },
+            { "name": "capacity", "type": "Int", "example": "30" }
+          ],
+          "linkedId": "courseWasRegistered",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        },
+        {
+          "id": "given-student-registered",
+          "title": "studentWasRegistered",
+          "type": "SPEC_EVENT",
+          "fields": [
+            { "name": "studentId", "type": "String", "example": "s1" },
+            { "name": "name", "type": "String", "example": "Alice" },
+            { "name": "studentNumber", "type": "Int", "example": "1" }
+          ],
+          "linkedId": "studentWasRegistered",
+          "tags": [],
+          "examples": [],
+          "index": 1,
+          "specRow": 0
+        }
+      ],
+      "when": [
+        {
+          "id": "when-subscribe",
+          "title": "subscribeStudentToCourse",
+          "type": "SPEC_COMMAND",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "c1" },
+            { "name": "studentId", "type": "String", "example": "s1" }
+          ],
+          "linkedId": "subscribeStudentToCourse",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "then": [
+        {
+          "id": "then-subscribed",
+          "title": "studentWasSubscribed",
+          "type": "SPEC_EVENT",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "c1" },
+            { "name": "studentId", "type": "String", "example": "s1" }
+          ],
+          "linkedId": "studentWasSubscribed",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "linkedId": "subscribeStudentToCourse"
+    },
+    {
+      "id": "spec-subscribe-no-course",
+      "title": "returns 404 when course does not exist",
+      "given": [],
+      "when": [
+        {
+          "id": "when-subscribe-no-course",
+          "title": "subscribeStudentToCourse",
+          "type": "SPEC_COMMAND",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "nonexistent" },
+            { "name": "studentId", "type": "String", "example": "s1" }
+          ],
+          "linkedId": "subscribeStudentToCourse",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "then": [
+        {
+          "id": "then-404-course",
+          "title": "404 Not Found",
+          "type": "SPEC_ERROR",
+          "fields": [],
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "linkedId": "subscribeStudentToCourse"
+    },
+    {
+      "id": "spec-subscribe-full",
+      "title": "returns 422 when course is full",
+      "given": [
+        {
+          "id": "given-course-full",
+          "title": "courseWasRegistered",
+          "type": "SPEC_EVENT",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "c1" },
+            { "name": "title", "type": "String", "example": "Math" },
+            { "name": "capacity", "type": "Int", "example": "1" }
+          ],
+          "linkedId": "courseWasRegistered",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        },
+        {
+          "id": "given-s1-registered",
+          "title": "studentWasRegistered",
+          "type": "SPEC_EVENT",
+          "fields": [
+            { "name": "studentId", "type": "String", "example": "s1" },
+            { "name": "name", "type": "String", "example": "Alice" },
+            { "name": "studentNumber", "type": "Int", "example": "1" }
+          ],
+          "linkedId": "studentWasRegistered",
+          "tags": [],
+          "examples": [],
+          "index": 1,
+          "specRow": 0
+        },
+        {
+          "id": "given-s2-registered",
+          "title": "studentWasRegistered",
+          "type": "SPEC_EVENT",
+          "fields": [
+            { "name": "studentId", "type": "String", "example": "s2" },
+            { "name": "name", "type": "String", "example": "Bob" },
+            { "name": "studentNumber", "type": "Int", "example": "2" }
+          ],
+          "linkedId": "studentWasRegistered",
+          "tags": [],
+          "examples": [],
+          "index": 2,
+          "specRow": 0
+        },
+        {
+          "id": "given-s1-subscribed",
+          "title": "studentWasSubscribed",
+          "type": "SPEC_EVENT",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "c1" },
+            { "name": "studentId", "type": "String", "example": "s1" }
+          ],
+          "linkedId": "studentWasSubscribed",
+          "tags": [],
+          "examples": [],
+          "index": 3,
+          "specRow": 0
+        }
+      ],
+      "when": [
+        {
+          "id": "when-subscribe-full",
+          "title": "subscribeStudentToCourse",
+          "type": "SPEC_COMMAND",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "c1" },
+            { "name": "studentId", "type": "String", "example": "s2" }
+          ],
+          "linkedId": "subscribeStudentToCourse",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "then": [
+        {
+          "id": "then-422-full",
+          "title": "422 Unprocessable Entity",
+          "type": "SPEC_ERROR",
+          "fields": [],
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "linkedId": "subscribeStudentToCourse"
+    },
+    {
+      "id": "spec-subscribe-already",
+      "title": "returns 422 when student already subscribed",
+      "given": [
+        {
+          "id": "given-course-30",
+          "title": "courseWasRegistered",
+          "type": "SPEC_EVENT",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "c1" },
+            { "name": "title", "type": "String", "example": "Math" },
+            { "name": "capacity", "type": "Int", "example": "30" }
+          ],
+          "linkedId": "courseWasRegistered",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        },
+        {
+          "id": "given-student-for-dup",
+          "title": "studentWasRegistered",
+          "type": "SPEC_EVENT",
+          "fields": [
+            { "name": "studentId", "type": "String", "example": "s1" },
+            { "name": "name", "type": "String", "example": "Alice" },
+            { "name": "studentNumber", "type": "Int", "example": "1" }
+          ],
+          "linkedId": "studentWasRegistered",
+          "tags": [],
+          "examples": [],
+          "index": 1,
+          "specRow": 0
+        },
+        {
+          "id": "given-already-subscribed",
+          "title": "studentWasSubscribed",
+          "type": "SPEC_EVENT",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "c1" },
+            { "name": "studentId", "type": "String", "example": "s1" }
+          ],
+          "linkedId": "studentWasSubscribed",
+          "tags": [],
+          "examples": [],
+          "index": 2,
+          "specRow": 0
+        }
+      ],
+      "when": [
+        {
+          "id": "when-subscribe-again",
+          "title": "subscribeStudentToCourse",
+          "type": "SPEC_COMMAND",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "c1" },
+            { "name": "studentId", "type": "String", "example": "s1" }
+          ],
+          "linkedId": "subscribeStudentToCourse",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "then": [
+        {
+          "id": "then-422-already",
+          "title": "422 Unprocessable Entity",
+          "type": "SPEC_ERROR",
+          "fields": [],
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "linkedId": "subscribeStudentToCourse"
+    },
+    {
+      "id": "spec-subscribe-missing-studentid",
+      "title": "returns 400 when studentId is missing",
+      "given": [],
+      "when": [
+        {
+          "id": "when-missing-student-id",
+          "title": "subscribeStudentToCourse",
+          "type": "SPEC_COMMAND",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "c1" }
+          ],
+          "linkedId": "subscribeStudentToCourse",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "then": [
+        {
+          "id": "then-400-studentid",
+          "title": "400 Bad Request",
+          "type": "SPEC_ERROR",
+          "fields": [],
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "linkedId": "subscribeStudentToCourse"
+    }
+  ],
+  "actors": [],
+  "aggregates": [],
+  "screenImages": [],
+  "implementationNotes": null
+}

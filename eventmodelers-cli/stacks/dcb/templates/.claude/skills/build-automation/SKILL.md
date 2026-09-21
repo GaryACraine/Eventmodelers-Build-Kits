@@ -37,40 +37,66 @@ The automation issues a command that must already exist as a state-change slice.
 
 File: `src/contexts/{context}/slices/{slicename}/processor.ts`
 
+The processor must return a `ConsumerProcessorConfig` with a `handlerFactory` — not a `canHandle/handle` object.
+
+**Side-effect processor** (notification, logging — no command issued):
 ```typescript
+import type { ConsumerProcessorConfig } from "@dcb-es/event-store-postgres"
+import type { PoolClient } from "pg"
+
+export function create{SliceName}Processor(): ConsumerProcessorConfig {
+    return {
+        processorName: "{ProcessorName}",
+        handlerFactory: (_client: PoolClient) => ({
+            when: {
+                {triggerEventType}: async ({ event }) => {
+                    const data = event.data as { /* fields from trigger event */ }
+                    console.log(`[{SliceName}] processing ${data.{someId}}`)
+                }
+            }
+        }),
+        batchSize: 1,
+        startFrom: "BEGINNING"
+    }
+}
+```
+
+**Command-issuing processor** (reacts to event by issuing a command):
+```typescript
+import type { ConsumerProcessorConfig } from "@dcb-es/event-store-postgres"
+import type { PoolClient } from "pg"
 import { handle } from "@dcb-es/event-store"
 import type { EventStore } from "@dcb-es/event-store"
-import type { Pool } from "pg"
 import { {targetDecider} } from "../{target-slice}/decider.js"
 
-export function create{SliceName}Processor(store: EventStore, pool: Pool) {
+export function create{SliceName}Processor(store: EventStore): ConsumerProcessorConfig {
     return {
-        // Events that trigger this processor
-        canHandle: ["{triggerEventType}"],
-
-        handle: async (event: { type: string; data: Record<string, unknown> }) => {
-            if (event.type !== "{triggerEventType}") return
-
-            const data = event.data
-
-            try {
-                await handle(
-                    store,
-                    {targetDecider},
-                    {
-                        type: "{commandType}",
-                        data: {
-                            // Map from trigger event data per slice.json
-                            id: data.{sourceId} as string,
-                            // ... other fields
-                        }
+        processorName: "{ProcessorName}",
+        handlerFactory: (_client: PoolClient) => ({
+            when: {
+                {triggerEventType}: async ({ event }) => {
+                    const data = event.data as { /* fields from trigger event */ }
+                    try {
+                        await handle(
+                            store,
+                            {targetDecider},
+                            {
+                                type: "{commandType}",
+                                data: {
+                                    // Map from trigger event data per slice.json
+                                    id: data.{sourceId} as string,
+                                    // ... other fields
+                                }
+                            }
+                        )
+                    } catch (err) {
+                        console.error(`[{SliceName}Processor] failed:`, err)
                     }
-                )
-            } catch (err) {
-                // Log but do not rethrow — processor errors should not crash the consumer
-                console.error(`[{SliceName}Processor] failed:`, err)
+                }
             }
-        }
+        }),
+        batchSize: 1,
+        startFrom: "BEGINNING"
     }
 }
 ```
@@ -83,13 +109,12 @@ export function create{SliceName}Processor(store: EventStore, pool: Pool) {
 import { create{SliceName}Processor } from "./contexts/{context}/slices/{slicename}/processor.js"
 
 // Add to consumer processors array:
-{
-    // Inline event handler for automation — no projection needed
-    ...create{SliceName}Processor(eventStore, pool),
-    batchSize: 1,
-    startFrom: "BEGINNING"
-}
+create{SliceName}Processor()  // side-effect processor (no store needed)
+// OR:
+create{SliceName}Processor(eventStore)  // command-issuing processor (needs store)
 ```
+
+The factory returns a complete `ConsumerProcessorConfig` (including `batchSize` and `startFrom`), so do not spread or wrap it — call it directly.
 
 Note: unlike projections, automations do not use `pongoProjection` or `ensureHandlersInstalled`.
 
@@ -99,29 +124,56 @@ Note: unlike projections, automations do not use `pongoProjection` or `ensureHan
 
 File: `src/contexts/{context}/slices/{slicename}/processor.tests.ts`
 
+Test the processor by calling its `handlerFactory` directly — do not try to use `store.readAll()` (it does not exist on the public API).
+
+**Side-effect processor test:**
 ```typescript
-import { describe, test } from "vitest"
+import { describe, test, expect, vi } from "vitest"
+import type { PoolClient } from "pg"
+import { create{SliceName}Processor } from "./processor.js"
+
+describe("{SliceName} processor", () => {
+    test("handles {triggerEvent}", async () => {
+        const config = create{SliceName}Processor()
+        const handler = config.handlerFactory({} as PoolClient)
+
+        const spy = vi.spyOn(console, "log").mockImplementation(() => {})
+
+        await handler.when.{triggerEventType}!({
+            event: { type: "{triggerEventType}", data: { /* trigger event fields */ } },
+            metadata: {}
+        } as any)
+
+        expect(spy).toHaveBeenCalledWith(expect.stringContaining("{expected substring}"))
+        spy.mockRestore()
+    })
+})
+```
+
+**Command-issuing processor test:**
+```typescript
+import { describe, test, expect, vi } from "vitest"
+import type { PoolClient } from "pg"
 import { MemoryEventStore } from "@dcb-es/event-store"
 import { create{SliceName}Processor } from "./processor.js"
-import type { Pool } from "pg"
+import { {existingEventFactory} } from "../../Events.js"
 
 describe("{SliceName} processor", () => {
     test("issues {targetCommand} when {triggerEvent} received", async () => {
         const store = new MemoryEventStore()
-        const processor = create{SliceName}Processor(store, {} as Pool)
 
-        await processor.handle({
-            type: "{triggerEventType}",
-            data: { {sourceId}: "test-id", /* trigger event fields */ }
-        })
+        // Seed any prerequisite events the target decider needs
+        await store.append({existingEventFactory}({ /* fields */ }))
 
-        // Verify the command was handled — check the event store for emitted events
-        const events = store.readAll()
-        expect(events).toContainEqual(
-            expect.objectContaining({
-                event: expect.objectContaining({ type: "{emittedEventType}" })
-            })
-        )
+        const config = create{SliceName}Processor(store)
+        const handler = config.handlerFactory({} as PoolClient)
+
+        await handler.when.{triggerEventType}!({
+            event: { type: "{triggerEventType}", data: { /* trigger event fields */ } },
+            metadata: {}
+        } as any)
+
+        // Verify via the store's appendSpy or by reading state
     })
 })
 ```
@@ -143,9 +195,11 @@ src/
 
 ## Checklist
 
-- [ ] `canHandle` lists all trigger event types
-- [ ] Processor maps trigger event data → command data exactly per slice.json
+- [ ] Processor returns a `ConsumerProcessorConfig` with `processorName` and `handlerFactory`
+- [ ] `handlerFactory` returns `{ when: { ... } }` — handler keys match trigger event type strings
+- [ ] Processor maps trigger event data → command data (or side-effect) exactly per slice.json
 - [ ] Errors are caught and logged — processor never crashes the consumer
-- [ ] Processor registered in `src/index.ts` consumer
+- [ ] Processor registered in `src/index.ts` consumer via direct factory call (no spread)
+- [ ] Tests invoke `handlerFactory` directly and call `handler.when.{eventType}!(...)` — not `store.readAll()`
 - [ ] One `test(...)` block per specification in slice.json
 - [ ] No invented fields — if it's not in slice.json it's not in the code

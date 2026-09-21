@@ -1,0 +1,235 @@
+{
+  "id": "unsubscribe-student",
+  "title": "Unsubscribe Student",
+  "index": 3,
+  "context": "enrollment",
+  "contextPackage": null,
+  "sliceType": "STATE_CHANGE",
+  "status": "planned",
+  "commands": [
+    {
+      "id": "unsubscribeStudentFromCourse",
+      "title": "unsubscribeStudentFromCourse",
+      "type": "COMMAND",
+      "fields": [
+        { "name": "courseId", "type": "String", "idAttribute": true, "example": "c1" },
+        { "name": "studentId", "type": "String", "idAttribute": true, "example": "s1" }
+      ],
+      "dependencies": [],
+      "tags": [],
+      "aggregateDependencies": [],
+      "createsAggregate": false,
+      "apiEndpoint": "DELETE /courses/:courseId/subscriptions/:studentId",
+      "context": "INTERNAL",
+      "modelContext": "enrollment",
+      "domain": "Enrollment",
+      "slice": "Unsubscribe Student",
+      "description": "Both courseId and studentId come from path parameters. Fails with 404 if the course does not exist, or if the student is not currently subscribed to the course.",
+      "triggers": [],
+      "sketched": false,
+      "prototype": { "activeByDefault": false },
+      "service": null
+    }
+  ],
+  "events": [
+    {
+      "id": "studentWasUnsubscribed",
+      "title": "studentWasUnsubscribed",
+      "type": "EVENT",
+      "fields": [
+        { "name": "courseId", "type": "String", "idAttribute": true, "example": "c1" },
+        { "name": "studentId", "type": "String", "idAttribute": true, "example": "s1" }
+      ],
+      "dependencies": [],
+      "tags": [],
+      "aggregateDependencies": [],
+      "createsAggregate": false,
+      "context": "INTERNAL",
+      "modelContext": "enrollment",
+      "domain": "Enrollment",
+      "slice": "Unsubscribe Student",
+      "description": "",
+      "triggers": [],
+      "sketched": false,
+      "prototype": { "activeByDefault": false },
+      "service": null
+    }
+  ],
+  "readmodels": [],
+  "screens": [],
+  "processors": [],
+  "tables": [],
+  "specifications": [
+    {
+      "id": "spec-unsubscribe-happy",
+      "title": "unsubscribes student and returns 204",
+      "given": [
+        {
+          "id": "given-course-for-unsub",
+          "title": "courseWasRegistered",
+          "type": "SPEC_EVENT",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "c1" },
+            { "name": "title", "type": "String", "example": "Math" },
+            { "name": "capacity", "type": "Int", "example": "30" }
+          ],
+          "linkedId": "courseWasRegistered",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        },
+        {
+          "id": "given-student-for-unsub",
+          "title": "studentWasRegistered",
+          "type": "SPEC_EVENT",
+          "fields": [
+            { "name": "studentId", "type": "String", "example": "s1" },
+            { "name": "name", "type": "String", "example": "Alice" },
+            { "name": "studentNumber", "type": "Int", "example": "1" }
+          ],
+          "linkedId": "studentWasRegistered",
+          "tags": [],
+          "examples": [],
+          "index": 1,
+          "specRow": 0
+        },
+        {
+          "id": "given-subscribed-for-unsub",
+          "title": "studentWasSubscribed",
+          "type": "SPEC_EVENT",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "c1" },
+            { "name": "studentId", "type": "String", "example": "s1" }
+          ],
+          "linkedId": "studentWasSubscribed",
+          "tags": [],
+          "examples": [],
+          "index": 2,
+          "specRow": 0
+        }
+      ],
+      "when": [
+        {
+          "id": "when-unsubscribe",
+          "title": "unsubscribeStudentFromCourse",
+          "type": "SPEC_COMMAND",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "c1" },
+            { "name": "studentId", "type": "String", "example": "s1" }
+          ],
+          "linkedId": "unsubscribeStudentFromCourse",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "then": [
+        {
+          "id": "then-unsubscribed",
+          "title": "studentWasUnsubscribed",
+          "type": "SPEC_EVENT",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "c1" },
+            { "name": "studentId", "type": "String", "example": "s1" }
+          ],
+          "linkedId": "studentWasUnsubscribed",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "linkedId": "unsubscribeStudentFromCourse"
+    },
+    {
+      "id": "spec-unsubscribe-no-course",
+      "title": "returns 404 when course does not exist",
+      "given": [],
+      "when": [
+        {
+          "id": "when-unsub-no-course",
+          "title": "unsubscribeStudentFromCourse",
+          "type": "SPEC_COMMAND",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "nonexistent" },
+            { "name": "studentId", "type": "String", "example": "s1" }
+          ],
+          "linkedId": "unsubscribeStudentFromCourse",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "then": [
+        {
+          "id": "then-404-unsub-course",
+          "title": "404 Not Found",
+          "type": "SPEC_ERROR",
+          "fields": [],
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "linkedId": "unsubscribeStudentFromCourse"
+    },
+    {
+      "id": "spec-unsubscribe-not-subscribed",
+      "title": "returns 404 when student is not subscribed",
+      "given": [
+        {
+          "id": "given-course-only",
+          "title": "courseWasRegistered",
+          "type": "SPEC_EVENT",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "c1" },
+            { "name": "title", "type": "String", "example": "Math" },
+            { "name": "capacity", "type": "Int", "example": "30" }
+          ],
+          "linkedId": "courseWasRegistered",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "when": [
+        {
+          "id": "when-unsub-not-subscribed",
+          "title": "unsubscribeStudentFromCourse",
+          "type": "SPEC_COMMAND",
+          "fields": [
+            { "name": "courseId", "type": "String", "example": "c1" },
+            { "name": "studentId", "type": "String", "example": "s1" }
+          ],
+          "linkedId": "unsubscribeStudentFromCourse",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "then": [
+        {
+          "id": "then-404-not-subscribed",
+          "title": "404 Not Found",
+          "type": "SPEC_ERROR",
+          "fields": [],
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "linkedId": "unsubscribeStudentFromCourse"
+    }
+  ],
+  "actors": [],
+  "aggregates": [],
+  "screenImages": [],
+  "implementationNotes": null
+}
