@@ -26,7 +26,7 @@ From the slice definition, extract:
 - **sliceName** — the slice title (used for directory name and type aliases)
 - **context** — the bounded context (used to find `Events.ts`)
 - **commands[]** — list of commands with their data fields
-- **events[]** — list of events emitted with their fields
+- **events[]** — list of events this slice interacts with. Entries whose `id` ends with `-ref` are cross-slice references (events defined by another slice); the slice consumes them in decision models but does not emit them. Only non-ref events are emitted by this slice.
 - **specifications[]** — test scenarios (given/when/then)
 - **storylines[]** (optional) — board walkthroughs; see "Storyline-derived tests" under Step 5
 
@@ -61,9 +61,21 @@ export const {eventName} = ({
 ```
 
 Tag key selection:
-- Use the primary entity ID as the tag key (e.g. `courseId`, `studentId`)
-- When global uniqueness matters (e.g. auto-increment), add an index tag: `Tags.fromObj({ studentId, studentNumberIndex: "global" })`
-- When events concern two entities, tag both: `Tags.fromObj({ courseId, studentId })`
+
+Tags are free-form `Record<string, string>` key-value pairs — not a type system. The convention
+for choosing tag keys:
+
+- **`idAttribute` fields are tag keys.** In slice.json, fields marked `idAttribute: true` on an
+  event are the entity identity fields. Use these as tag keys. Example: `courseId`, `studentId`.
+- **Single-entity events** tag with the entity's ID:
+  `Tags.fromObj({ courseId })` — all course events are scoped to one course.
+- **Multi-entity events** tag with ALL participating entity IDs:
+  `Tags.fromObj({ courseId, studentId })` — subscription events correlate a student and a course.
+- **Global index tags** use a fixed sentinel value when you need a global counter across all
+  entities: `Tags.fromObj({ studentNumberIndex: "global" })`.
+
+If the project has a `src/shared/Tags.ts` with tag key constants (e.g. `TAG_COURSE_ID = "courseId"`),
+prefer importing and using those constants over inline strings for consistency across slices.
 
 **Generated fields**: If an event field has `generated: true` in slice.json, it means the field is NOT supplied by the upstream command — the component emitting the event produces it. Default to generating a GUID (`crypto.randomUUID()`) for these fields unless the event model explicitly shows a specific generation pattern (e.g., via a dependency to an information model or an explicit slice comment describing the sequence). Do NOT add auto-increment patterns unless they are explicitly modeled.
 
@@ -163,6 +175,27 @@ export const NextNumber = (): EventHandlerWithState<{CreatedEvent}, number> => (
     }
 })
 ```
+
+### Cross-slice event consumption
+
+In DCB, tags are globally scoped — every event with a matching tag is replayed regardless of which
+slice originally emitted it. Decision models therefore commonly reference event types produced by
+**other** write slices within the same context:
+
+- `subscribe-student`'s capacity model handles `courseWasRegistered` (from register-course) and
+  `courseCapacityWasChanged` (from change-course-capacity)
+- `change-course-capacity` handles `studentWasSubscribed`/`studentWasUnsubscribed`
+  (from subscribe/unsubscribe slices)
+
+When building decision models:
+
+1. **Import from `../../Events.js`** — all event types for the context live there, regardless of
+   which slice produced them.
+2. **`-ref` events in slice.json** are cross-slice references. Use their type and fields in
+   decision models but do NOT add a new factory to Events.ts — the factory already exists from the
+   producing slice.
+3. **The commit scope guard already allows this** — `Events.ts` and `src/index.ts` are documented
+   exceptions in `10-slice-scope.cjs`.
 
 ---
 
@@ -298,6 +331,10 @@ import { ApiSpecification, ApiE2ESpecification, expectResponse, expectError } fr
 import type { EventStore } from "@dcb-es/event-store"
 import { configure{SliceName}Route } from "./route.js"
 import { {existingEventFactory}, {emittedEventFactory} } from "../../Events.js"
+
+> **Cross-slice events in tests**: `existingEvents(...)` often requires event factories from other
+> slices (e.g. `courseWasRegistered` in a subscribe-student test). All factories live in the shared
+> `Events.ts` — import them from `../../Events.js`.
 
 const spec = ApiSpecification.for({
     configureApi: (store: EventStore) => configure{SliceName}Route({ store, pool: {} as Pool })

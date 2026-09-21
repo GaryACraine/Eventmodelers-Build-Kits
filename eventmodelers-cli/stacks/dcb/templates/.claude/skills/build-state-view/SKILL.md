@@ -20,6 +20,12 @@ Key DCB differences from SQL-based projection stacks:
 - Read-your-writes via per-projection `waitFn` + `preferWait` middleware
 - Bookmark positions from `_handler_bookmarks` table for ETags
 
+> **Cross-slice events**: A projection typically consumes events from multiple write slices (e.g. a
+> student-details view handles `studentWasRegistered`, `studentWasSubscribed`, and course events —
+> each produced by a different write slice). This works because the DCB event store is a single
+> ordered log; projections see all events regardless of origin. The `events[]` array in slice.json
+> already lists every event the projection needs, including cross-slice references.
+
 ---
 
 ## Step 1 — Read the slice.json
