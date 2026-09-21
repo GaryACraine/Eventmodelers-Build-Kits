@@ -1,0 +1,44 @@
+{
+    "name": "course-manager",
+    "version": "0.0.1",
+    "type": "module",
+    "private": true,
+    "scripts": {
+        "db:start": "docker compose up -d postgres",
+        "db:stop": "docker compose down",
+        "start": "node dist/index.js",
+        "seed": "node dist/seed.js",
+        "test": "vitest run",
+        "test:scenario": "vitest run --reporter=verbose src/scenario.tests.ts",
+        "test:watch": "vitest",
+        "test:coverage": "vitest run --coverage",
+        "build": "tsc -p tsconfig.build.json",
+        "watch": "tsc -w -p tsconfig.build.json"
+    },
+    "dependencies": {
+        "@asteasolutions/zod-to-openapi": "^7.0.0",
+        "@dcb-es/event-store": "file:../dcb-event-store/packages/event-store",
+        "@dcb-es/event-store-express": "file:../dcb-event-store/packages/event-store-express",
+        "@dcb-es/event-store-postgres": "file:../dcb-event-store/packages/event-store-postgres",
+        "@dcb-es/event-store-web": "file:../dcb-event-store/packages/event-store-web",
+        "@event-driven-io/dumbo": ">=0.13.0-beta.52",
+        "@event-driven-io/pongo": ">=0.17.0-beta.52",
+        "express": "^5.1.0",
+        "pg": "^8.20.0",
+        "zod": "^3.0.0"
+    },
+    "devDependencies": {
+        "@testcontainers/postgresql": "^10.9.0",
+        "@types/node": "^25.0.0",
+        "@types/pg": "8.20.0",
+        "@types/supertest": "^6.0.2",
+        "supertest": "^7.1.0",
+        "testcontainers": "^10.9.0",
+        "typescript": "^5.0.0",
+        "uuid": "^9.0.1",
+        "vitest": "^3.0.0"
+    },
+    "overrides": {
+        "@types/pg": "8.20.0"
+    }
+}

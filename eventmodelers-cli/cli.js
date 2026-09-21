@@ -72,6 +72,13 @@ const STACKS = {
     useShared: true,
     needsBoardId: true,
   },
+  dcb: {
+    label: 'DCB Event Store (Node.js / TypeScript)',
+    kitSubdir: 'build-kit',
+    kitDirName: '.build-kit',
+    useShared: true,
+    needsBoardId: true,
+  },
   supabase: {
     label: 'Supabase',
     kitSubdir: 'build-kit',
