@@ -28,7 +28,7 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
    - No migration files — Pongo handles schema
    - OpenAPI via `document.ts`, not JSDoc
 8. Run quality checks: `npm run build`, then the slice tests only.
-9. Stage the slice's changes and run the commit checks: `node .build-kit/lib/check-commit-scope.cjs --staged` (the pre-commit hook runs the same). **Never commit over a failing check.** Don't call a violation a false positive and don't use `--no-verify`. Fix the code, or if the check itself is wrong, set the slice to Blocked with the check output as the reason and stop. Then commit: `feat: [Slice Name]`. Commit `src/index.ts` wiring separately (blocked-paths).
+9. Stage the slice's changes and run the commit checks: `npm run run:checks -- --staged`. The pre-commit hook runs the same checks, including the slice's tests. **Never commit over a failing check.** Don't call a violation a false positive and don't use `--no-verify`. Fix the code, or if the check itself is wrong, set the slice to Blocked with the check output as the reason and stop. Then commit: `feat: [Slice Name]`. Commit `src/index.ts` wiring separately (blocked-paths).
 10. Update the PRD: set `status: Done` in `index.json` **and** update via `update-slice-status` skill.
 11. Append progress to `progress.txt`.
 12. Append new learnings to `.build-kit/AGENTS.md`.

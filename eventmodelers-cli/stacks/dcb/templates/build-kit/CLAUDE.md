@@ -72,6 +72,19 @@ It loads every check under `.build-kit/lib/checks/` and rejects the commit if an
 - **spec-coverage** — heuristic: each `*.tests.ts` file needs at least as many `test(...)` blocks as
   slice.json has `specifications[]` entries (applies to both `route.tests.ts` and `route.integration.tests.ts`)
 - **tsc-build** — `npx tsc --noEmit` must still pass
+- **slice-tests** — the tests of every slice folder the commit touches must pass (for an extension, that is
+  the origin's full test file, earlier scenarios included)
+
+The hook is installed by `npm install` (`prepare` sets `core.hooksPath .githooks`). It only acts on commits
+that touch a slice folder, so model, docs and `index.ts` wiring commits pass straight through.
+
+## Branching
+
+The loop never creates, switches or merges branches. It builds on whatever branch is checked out.
+Branching belongs to the developer. The recommended flow is one branch per model increment:
+`git switch -c increment/<name>` before exporting the increment, let the loop build its slices there, then
+open a PR into the main branch and merge it before starting the next increment. Extension slices need their
+origin's code, which the previous merged increment provides.
 
 Run `npm run run:checks` any time you want to check your current work. Pass `-- --staged` to match the pre-commit hook.
 
