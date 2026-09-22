@@ -260,6 +260,17 @@ The `build-state-view` skill already proves the Postgres+testcontainers pattern 
 - 4 integration tests pass: `npx vitest run .../register-course/route.integration.tests.ts` ✅
 - Full suite: 31/31 tests (10 files) ✅
 
+#### Proof Run — Full delete-and-rebuild of register-course
+
+Validated that the updated SKILL.md (with Step 8b) produces both test files when rebuilding a slice from scratch. Following the RALPH-TESTING-GUIDE §4 methodology:
+
+1. Baseline: 31/31 tests, 10 files
+2. Deleted all 7 files in `register-course/` (command, decider, decisionModels, schema, route, route.tests, route.integration.tests)
+3. Followed SKILL.md Steps 1–9 (including 8b) sequentially
+4. Result: all 7 files regenerated, `npm run build` clean, 31/31 tests (4 unit + 4 integration for register-course)
+
+**Key finding:** Step 8b's placement between Steps 8 and 9 ensures an agent following the skill sequentially will always generate integration tests. The numbered sequence is sufficient — no separate "outstanding work" detection is needed.
+
 ---
 
 ### Phase 7: Board Re-pointing 🔲 (Lower Priority)
@@ -274,7 +285,30 @@ The `build-state-view` skill already proves the Postgres+testcontainers pattern 
 
 ---
 
+## Test Coverage by Slice Type
+
+What each `build-*` skill generates and what it verifies:
+
+| Slice Type | Skill | Test File(s) | Store | Docker | What's Verified |
+|------------|-------|-------------|-------|--------|-----------------|
+| **STATE_CHANGE** | `build-state-change` | `route.tests.ts` | `MemoryEventStore` | No | Business rules, emitted `TaggedEvent` shape, HTTP status codes, Zod validation |
+| | | `route.integration.tests.ts` | `PostgresEventStore` | Yes (testcontainers) | All of the above **plus** JSON round-trip, tags as TEXT[], UUID `id`, sequential `position`, `recordedAt` timestamp, `schemaVersion`, error scenarios persist nothing |
+| **STATE_VIEW** | `build-state-view` | `route.tests.ts` | `PostgresEventStore` | Yes (testcontainers) | Projection init/handle, Pongo JSONB persistence, consumer + `waitUntilProcessed`, HTTP GET with ETag |
+| **AUTOMATION** | `build-automation` | `processor.tests.ts` | `MemoryEventStore` | No | Event triggers correct command, `handlerFactory` wiring, emitted event assertions |
+
+### Coverage gaps
+
+| Gap | Affected Slice Type | Notes |
+|-----|---------------------|-------|
+| No Postgres integration tests | AUTOMATION | Processor tests use in-memory store only; no verification that the triggered command's event persists correctly through Postgres |
+| No idempotency verification | STATE_CHANGE (integration) | Integration tests don't exercise the `findExistingPosition` → `message_id` path with a real Pool |
+| No consumer/projection integration | STATE_VIEW | Tests verify projection logic but don't test the full `createConsumer` polling loop end-to-end |
+
+---
+
 ## Decisions Log
+
+> **Architectural decisions with full rationale and alternatives:** see [`eventmodelers-cli/stacks/dcb/ADR.md`](eventmodelers-cli/stacks/dcb/ADR.md) — 18 ADRs covering projections, identity, consistency, testing, error handling, idempotency, versioning, and more.
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
