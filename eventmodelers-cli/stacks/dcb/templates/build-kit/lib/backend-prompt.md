@@ -15,7 +15,7 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
 0. Do not read the entire codebase. Focus on the tasks in this description.
 1. Read `.build-kit/.slices/current_context.json` to find the active context name, then read `.build-kit/.slices/<contextName>/index.json`. Every item in status "planned" is a task.
 2. Read the progress log at `progress.txt` if it exists.
-3. Make sure you are on the right branch `feature/<slicename>`.
+3. Stay on the branch you are on — do not create or switch branches. Slices build sequentially on one branch: an extension slice edits its origin's projection, so the origin's code must already be on this branch. Branching and PRs are the developer's call, not the loop's.
 4. Pick the **highest priority** slice where status is **exactly** "Planned". Set status "InProgress" in `index.json` **and** update via `update-slice-status` skill.
    **If no slice has status "Planned"**, reply `<promise>NO_TASKS</promise>` and stop.
    **Claim conflict**: the board rejects the update if the slice is already `InProgress` — another agent claimed it. Pick the next "Planned" slice instead.
@@ -28,7 +28,7 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
    - No migration files — Pongo handles schema
    - OpenAPI via `document.ts`, not JSDoc
 8. Run quality checks: `npm run build`, then the slice tests only.
-9. If checks pass, commit ALL changes: `feat: [Slice Name]`.
+9. Stage the slice's changes and run the commit checks: `node .build-kit/lib/check-commit-scope.cjs --staged` (the pre-commit hook runs the same). **Never commit over a failing check.** Don't call a violation a false positive and don't use `--no-verify`. Fix the code, or if the check itself is wrong, set the slice to Blocked with the check output as the reason and stop. Then commit: `feat: [Slice Name]`. Commit `src/index.ts` wiring separately (blocked-paths).
 10. Update the PRD: set `status: Done` in `index.json` **and** update via `update-slice-status` skill.
 11. Append progress to `progress.txt`.
 12. Append new learnings to `.build-kit/AGENTS.md`.

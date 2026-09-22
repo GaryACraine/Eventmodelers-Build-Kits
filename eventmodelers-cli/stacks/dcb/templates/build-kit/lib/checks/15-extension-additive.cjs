@@ -85,8 +85,21 @@ function removedLines(repoRoot, file) {
   }
   const lines = diff.split('\n');
   const removed = lines.filter((l) => l.startsWith('-') && !l.startsWith('---')).map((l) => l.slice(1).trim());
-  const added = new Set(lines.filter((l) => l.startsWith('+') && !l.startsWith('+++')).map((l) => l.slice(1).trim()));
-  return removed.filter((line) => line !== '' && !added.has(`${line},`));
+  const addedLines = lines.filter((l) => l.startsWith('+') && !l.startsWith('+++')).map((l) => l.slice(1).trim());
+  const added = new Set(addedLines);
+  const addedNames = new Set(addedLines.flatMap(quotedNames));
+  return removed.filter((line) => {
+    if (line === '' || added.has(`${line},`)) return false;
+    // A canHandle array reformatted to append (e.g. one-line → one-per-line) is still additive
+    // as long as every event name the removed line held is re-added.
+    const names = quotedNames(line);
+    const arrayLine = /canHandle\s*:|^["'`][^"'`]+["'`]\s*,?\s*\]?\s*,?$/.test(line);
+    return !(arrayLine && names.length > 0 && names.every((n) => addedNames.has(n)));
+  });
+}
+
+function quotedNames(line) {
+  return [...line.matchAll(/["'`]([A-Za-z0-9_]+)["'`]/g)].map((m) => m[1]);
 }
 
 module.exports = {
