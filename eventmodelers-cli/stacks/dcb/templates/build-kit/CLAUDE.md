@@ -63,8 +63,8 @@ It loads every check under `.build-kit/lib/checks/` and rejects the commit if an
 - **test-file-present** — a changed `decider.ts`, `projection.ts`, or `processor.ts` needs a sibling `*.tests.ts`
 - **no-invented-fields** — heuristic: flags a field used in code that isn't declared anywhere in
   `.build-kit/.slices/{context}/{slice}/slice.json`
-- **spec-coverage** — heuristic: the test file needs at least as many `test(...)` blocks as slice.json
-  has `specifications[]` entries
+- **spec-coverage** — heuristic: each `*.tests.ts` file needs at least as many `test(...)` blocks as
+  slice.json has `specifications[]` entries (applies to both `route.tests.ts` and `route.integration.tests.ts`)
 - **tsc-build** — `npx tsc --noEmit` must still pass
 
 Run `npm run run:checks` any time you want to check your current work. Pass `-- --staged` to match the pre-commit hook.
@@ -82,5 +82,6 @@ src/contexts/
             ├── decider.ts
             ├── schema.ts
             ├── route.ts
-            └── route.tests.ts
+            ├── route.tests.ts
+            └── route.integration.tests.ts
 ```
