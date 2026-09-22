@@ -62,7 +62,7 @@ Inspect `sliceStatus`:
 
 5. Run quality checks (`npm run build`, then the slice tests only).
 
-6. If checks pass, commit all changes: `feat: [Slice Name]`.
+6. Stage the slice's changes and run `npm run run:checks -- --staged`. The pre-commit hook runs the same checks, including the slice's tests. **Never commit over a failing check**, and never use `--no-verify`. Fix the code, or if a check itself is wrong, set the slice to Blocked with the check output as the reason and stop. Then commit: `feat: [Slice Name]`. Commit `src/index.ts` wiring separately (blocked-paths). Stay on the current branch.
 
 7. Call `/update-slice-status` to set the slice to `Done`.
 
