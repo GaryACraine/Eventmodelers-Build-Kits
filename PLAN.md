@@ -273,6 +273,114 @@ Validated that the updated SKILL.md (with Step 8b) produces both test files when
 
 ---
 
+### Phase 9: Progressive Read Model Evolution ✅ (core done — see Remaining)
+
+**Goal:** Let a read model grow one event at a time as the timeline is discovered, without breaking vertical-slice ownership and without regenerating the projection from a full-board snapshot.
+
+#### The scenario
+
+`course-manager-web-api-sliced/src/contexts/enrollment/slices/course-details/projection.ts` handles six events (`courseWasRegistered`, `courseTitleWasChanged`, `courseCapacityWasChanged`, `studentWasRegistered`, `studentWasSubscribed`, `studentWasUnsubscribed`). That was built from a **snapshot** of a finished model. A real project doesn't grow that way:
+
+1. **t0:** only `courseWasRegistered` exists. `course-details` projects `{courseId, title, capacity}`.
+2. **t1:** a new state-change slice adds `courseCapacityWasChanged`. The read model now also has to react to it.
+3. **t2:** `studentWasSubscribed` shows up. The read model gets a new field (`subscribedStudents[]`) **and** needs a private lookup of student data (`studentWasRegistered`).
+
+The state-view slice owns the projection, its table/collection, and its route. Every later event that affects that read model comes from a *different* slice. So the question is where the code for "handle the new event" lives, and who changes the storage shape.
+
+#### What each kit does today
+
+| Concern | DCB kit (Pongo, `stacks/dcb`) | Node kit (Emmett, `stacks/node`) |
+|---|---|---|
+| Projection style | `pongoProjection` running **async** in a consumer with its own `_handler_bookmarks` row (ADR-014) | `postgreSQLRawSQLProjection` running **inline**, registered in `loadPostgresEventstore.ts` `projections.inline([...])`, and its SQL runs in the append transaction |
+| Storage shape | Schemaless JSONB. `init()` does `createCollection()`, so no migrations | Typed table from `migrations/V{N}__{table}.sql` (Flyway) |
+| Adding a field | No DDL. Old docs just don't have the field | Needs a **new** `ALTER TABLE ... ADD COLUMN` migration. The `20-append-only-migrations` check forbids editing the original one |
+| Who may change storage | Only the owning slice (`init()` sits in its `projection.ts`) | **Any** slice commit. `10-slice-scope` lets `migrations/V*.sql` through from every slice, so the schema history is global and owned by no slice |
+| Who may change projection code | Only the owning slice folder. `src/index.ts` is the only shared exception | Only the owning slice folder. `loadPostgresEventstore.ts` is the only shared exception |
+| Skill guidance for *extending* an existing projection | **None.** Step 2 says "Create `projection.ts`", which is greenfield only | **None.** Step 2 always emits `CREATE TABLE IF NOT EXISTS`, and Step 3 says "Create `{SliceName}Projection.ts`" |
+| Replay / backfill | None generated (ADR-016). `rebuildProjection()` exists in the library but isn't wired up | `src/common/replay.ts` → `rebuildPostgreSQLProjections()` per projection |
+
+#### Findings
+
+1. **The node kit does not handle progressive development better. It has a latent bug here.** If the agent rebuilds a state-view slice after a new event adds a field, the skill as written produces another `CREATE TABLE IF NOT EXISTS`. That migration is a **no-op** because the original `V{n}` has already created the table, and that is true in a fresh test DB as well as in production. So the new column never appears. The agent's only way out is to edit the original migration, which `20-append-only-migrations` blocks, so the kit has no working path from t0 to t1. The `IF NOT EXISTS` learning in `backend-prompt.md` turns what would be a loud failure (`relation already exists`) into a silent one (a missing column).
+2. **The node kit does bend ownership, but for the schema, not the projection.** Migrations sit outside every slice folder, are exempt from `slice-scope`, and form one global, append-only timeline. Any slice can `ALTER` another slice's table. Projection *code* stays strictly owned: a later slice still can't edit `course-details/…Projection.ts` in its own commit (`10-slice-scope` rejects cross-slice commits). So the node kit hasn't solved the tension. It has separated schema history from code ownership, and the skill doesn't take advantage of that.
+3. **For additive evolution, Pongo helps more than it hurts.** New fields and new events need no DDL. Old docs lacking the field is the only gap, and replay closes it. Where Pongo is weaker is types, indexes, and joins (ADR-001), not iteration. Moving to raw SQL + Flyway only for this scenario would add a second artifact (the migration) that has to evolve in step with the projection. That is more coordination, not less.
+4. **The real gap is the same in both kits: `build-state-view` is greenfield-only.** Neither skill has an "extend" path: read the existing projection, diff `slice.json.events[]` against the current `canHandle`, and add only the new cases, fields, lookups, and tests.
+5. **In event modeling terms the tension mostly goes away.** A state-view slice is *the READMODEL plus its inbound events*. Connecting a new event to an existing READMODEL on the board **changes that state-view slice**, not the new state-change slice. The state-change slice that introduces `courseCapacityWasChanged` owns the command and the event. The `course-details` slice owns the reaction to that event. So the change belongs to the read model's slice, re-opened (status back to `planned`) and rebuilt *incrementally*. It doesn't need to be pushed from the producing slice.
+
+#### Decision (supersedes "Option A" above)
+
+The read model's growth is modeled as **copies**. prooph board encourages copying a read model forward
+after each new event rather than drawing a backward arrow. Each copy is its own **extension slice**. Its
+code goes into the **origin's** `projection.ts` as additive edits. Option A's "reopen the origin slice"
+leaves the growth step with no slice to track. Option C (fragments) spreads one read model across N
+folders that still depend on each other. Option B stays rejected for async projections.
+Full rationale: `stacks/dcb/ADR.md` ADR-019 (extension slices) and ADR-020 (automatic rebuild).
+Storage stays Pongo: an extension then needs no schema change.
+
+#### What was built
+
+**emcli** (`~/Projects/emcli`, branch `feat/read-model-copies`, 108 tests):
+- `element.copyOf`: local-only, preserved on pull, root-origin only, same type, later on the timeline. Commands: `element copy`, `element update --copy-of/--clear-copy-of`. Removing an origin that still has copies, or moving a copy out of timeline order, is rejected (`cli/model/domain/copy.ts`).
+- Export: `linkedTo` on elements, and an `extends { origin…, previousInstanceId, addedEvents, addedFields }` block on the copy's slice. The delta is measured against the nearest earlier instance, and an event that is itself a copy counts as its origin. A STATE_VIEW slice's `events[]` is now filled from its read model's inbound events (it was empty before, which also affected the axon5 prompt). An extension lists only `addedEvents`.
+- `workspace export --build-kit <dir>`: writes the Ralph `.slices/` layout. Loop-owned statuses (InProgress/Blocked/Done) are kept on re-export.
+- `element field add --subfields name:Type,…` for Custom fields.
+- Fixed `ISSUES.md` (copies share `details`): a copy group's dependency tables are rendered into the per-element `description`.
+- Test suite made runnable: vitest and ajv added, and a vendored `eventmodeling.schema.json` extended with the fields emcli actually emits.
+
+**DCB build kit** (branch `feat/extension-slices`):
+- `build-state-view` SKILL.md: Step 0 mode switch, plus "Extending an existing projection" E1–E6 (guard, additive projection edits, route defaults, test block, automatic replay, no new wiring) and matching checklist items.
+- Test template: setup at module level, reset through `projection.truncate()`, scenarios asserted with `toMatchObject`.
+- `templates/root/src/shared/ensureProjectionsCurrent.ts`: fingerprint (`version` + sorted `canHandle`) triggers `rebuildProjection()` at startup. Wired in the template `index.ts`.
+- Check `15-extension-additive.cjs`: while an extension slice is InProgress, changes stay in its origin's folder, the projection only gains lines, and there's a `describe("{title}")` with a test per spec.
+- Kit `CLAUDE.md`: extension dispatch, `sliceType === "STATE_VIEW"` dispatch, the check list, and an explicit exception to the "don't touch test files" rule.
+- Template `tsconfig.json`: `paths` `@test/*` → `./src/test/*.ts`. Without it the Phase 8 integration tests fail the tsc commit check (NodeNext does no extension probing).
+- Modeling-kit rules (`eventmodeling-core-rules`, `eventmodeling-slicing-event-models`): a READMODEL copy with new inbound events now implies an extension slice.
+
+#### Proof run (`~/Projects/enrollment-progressive`, tags `t-empty` → `t0` … `t4`)
+
+DCB scaffold stripped to an empty enrollment context. Modeled one increment at a time with emcli
+(`model/t0.sh` … `t4.sh`, re-runnable), exported with `--build-kit`, and built slice by slice following
+the skills (simulated dispatch; nested `claude -p` is still blocked, Phase 6 finding 1). A long-lived
+docker-compose Postgres was kept across every step.
+
+| Step | Built | course-details handles | Live DB after deploy |
+|---|---|---|---|
+| t0 | register course, course details | courseWasRegistered | c1, c2 readable; duplicate → 422 |
+| t1 | change course capacity, **ext** capacity | + courseCapacityWasChanged | c1 capacity 45: a change made *before* the extension, picked up by the rebuild |
+| t2 | register/subscribe student, **ext** subscriptions | + studentWasRegistered, studentWasSubscribed | c1 [Ada, Grace], c2 [Grace]. All recorded before the extension, at positions 5–9, **behind the bookmark (10)** |
+| t3 | unsubscribe student, **ext** unsubscriptions | + studentWasUnsubscribed | Grace's pre-extension unsubscribe from c1 applied; c2 kept her |
+| t4 | change course title, **ext** title | + courseTitleWasChanged | c3 renamed "Quantum Physics" (pre-extension) |
+
+**Pass criteria:**
+- Every `t{n-1}..t{n}` diff of `course-details/projection.ts` only adds lines. The single removed line per step is the previous last `canHandle` entry gaining a comma. ✅
+- Final `canHandle` is identical to the reference projection's six events. ✅
+- 32/32 tests, 13 files. ✅
+- Commit checks passed on every slice commit. Negative tests confirmed the check blocks an edited existing case, and a missing extension `describe` block. ✅
+
+**Not verified:**
+- The reference projection's own tests weren't ported. The progressive model deliberately differs (`courseId` not `id`, no generated `studentNumber`), so equivalence means the same events and per-event behaviour, checked by our specs and the live DB.
+- The real Ralph loop (`eventmodelers run --local`) wasn't run: run it from a plain terminal outside Claude Code.
+
+#### Findings from the proof run
+
+1. **Replay is necessary, not optional.** The consumer's bookmark advances to every handled event, so a newly handled type's history is skipped whenever a handled event came after it. At t2 the student events sat at positions 5–9 behind bookmark 10. The build agent can't see the live log, so ADR-020 makes the rebuild automatic.
+2. **Exact-shape assertions break growing read models.** The t0/t1 tests used `toEqual`, and t2 (a new field) failed them although their scenarios still held. That was fixed in a separate labelled commit (`test: assert read-model scenarios with toMatchObject`), and the template now requires `toMatchObject`. This was the only edit to an earlier test in the whole run.
+3. **Test setup must sit outside the scenario `describe`.** Otherwise an appended extension block has no setup. Resetting through `truncate()` keeps new lookup collections out of the setup.
+4. **Kit bug:** the Phase 8 integration-test template failed the tsc commit check (`@test` alias unresolved). Fixed in the template `tsconfig.json`.
+5. **Scaffold friction:**
+   - `eventmodelers init` crashes on a closed stdin at the credentials prompt (`ERR_USE_AFTER_CLOSE`).
+   - The DCB scaffold wires no git hook, so checks must be run by hand (`node .build-kit/lib/check-commit-scope.cjs --staged`).
+
+#### Remaining
+
+- [ ] **9.6** Run the real Ralph loop over the proof project (`eventmodelers run --local`) from a plain terminal, starting at `t-empty` with the t0–t4 exports.
+- [ ] **9.7** Node kit: port the extend mode, and replace re-emitted `CREATE TABLE IF NOT EXISTS` with an `ALTER TABLE ... ADD COLUMN` migration path (finding 1 above).
+- [ ] **9.9** Does the eventmodelers `slicedata` export carry `linkedTo`? If it does, derive `extends` kit-side so board-sourced slices get extension mode too (emcli is the only source of `extends` today).
+- [ ] **9.10** Does prooph REST expose element copy, and does pull mark copies? If it does, `copyOf` can be pulled instead of kept local.
+- [ ] **9.11** Fix `eventmodelers init` on a closed stdin; install a pre-commit hook in the DCB scaffold.
+
+---
+
 ### Phase 7: Board Re-pointing 🔲 (Lower Priority)
 
 **Goal:** Point the CLI to a different board ("Proof Board") with separate credentials/API.
@@ -320,6 +428,8 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-21 | Omit `60-openapi-annotation` check | DCB uses programmatic OpenAPI via `document.ts` + zod-to-openapi, not JSDoc `@openapi` blocks |
 | 2026-09-21 | Pin `@types/pg` to `8.20.0` exact | DCB monorepo uses pnpm with `@types/pg@8.20.0`; `8.23.1` (npm default) has incompatible `on()` overloads. Pinned with `overrides` to prevent transitive drift. |
 | 2026-09-22 | Simulate Ralph dispatch (no nested sessions) | `CLAUDECODE` env var blocks nested `claude -p`. Validated skill templates by manually following the dispatch pattern instead. |
+| 2026-09-22 | Read-model copies are extension slices editing the origin projection (ADR-019) | Each growth step gets its own planned, tracked slice; one read model stays one projection file |
+| 2026-09-22 | Automatic rebuild on changed `canHandle`/`version` (ADR-020, supersedes ADR-016) | Bookmarks skip a newly handled type's history; proven necessary in the t2 proof step |
 | 2026-09-22 | Include `idAttribute` fields in Zod body schema | When a command field has `idAttribute: true` and no `generated: true`, include it in the body schema. Client sends it for deterministic tests and idempotent creation. |
 
 ## Progress
@@ -334,4 +444,5 @@ What each `build-*` skill generates and what it verifies:
 | 5.5 — Prove Skills | ✅ Complete | 8 slice.json inputs, 3 skills proven, 30/30 tests, automation skill rewritten |
 | 6 — Ralph Loop | ✅ Complete | 4 slices rebuilt from skills (STATE_CHANGE, STATE_VIEW, AUTOMATION), all tests pass |
 | 8 — Integration Tests | ✅ Complete | Postgres integration tests for state-change slices; prototype proven, skill template updated |
+| 9 — Progressive Read Model Evolution | ✅ Core complete | emcli copies + extension slices, `build-state-view` extend mode, automatic rebuild; proven t0→t4 on a live DB (32/32). Node kit port + real Ralph run remain |
 | 7 — Board Re-pointing | 🔲 Not started | Lower priority — waiting on credentials |
