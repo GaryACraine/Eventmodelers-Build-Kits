@@ -18,6 +18,8 @@ import {
     STUDENT_PROJECTION_NAME
 } from "./contexts/enrollment/slices/student-details/projection.js"
 
+import { ensureProjectionsCurrent } from "./shared/ensureProjectionsCurrent.js"
+
 import { configureRegisterCourseRoute } from "./contexts/enrollment/slices/register-course/route.js"
 import { configureRegisterStudentRoute } from "./contexts/enrollment/slices/register-student/route.js"
 import { configureSubscribeStudentRoute } from "./contexts/enrollment/slices/subscribe-student/route.js"
@@ -51,6 +53,10 @@ try {
 }
 
 await ensureHandlersInstalled(pool, [COURSE_PROJECTION_NAME, STUDENT_PROJECTION_NAME], "_handler_bookmarks")
+
+// Rebuild any projection whose handled events (or version) changed since the last start —
+// events of a newly handled type recorded before this deploy would otherwise be skipped.
+await ensureProjectionsCurrent(pool, eventStore, [courseDetailsProjection, studentDetailsProjection])
 
 const consumer = createConsumer({
     pool,

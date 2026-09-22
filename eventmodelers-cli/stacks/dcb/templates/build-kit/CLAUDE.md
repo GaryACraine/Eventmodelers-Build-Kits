@@ -24,7 +24,7 @@ Only check `src/contexts/{context}/slices/{slicename}/*.ts`, do not check subfol
 
 Ignore case for contexts and slices in prompts.
 
-Do not change files with tests unless explicitly instructed, or the change brings the test in line with slice.json: `*.tests.ts`
+Do not change files with tests unless explicitly instructed, or the change brings the test in line with slice.json: `*.tests.ts`. An extension slice appending its own `describe` block to its origin's `route.tests.ts` is explicitly instructed (build-state-view, E4); existing tests there stay untouched.
 
 At the start of every session, read `.build-kit/AGENTS.md` if it exists to load accumulated project learnings.
 
@@ -43,8 +43,11 @@ When asked to build a slice, always follow this flow:
 2. Determine the slice type:
    - **Translation** — `sliceType === "TRANSLATION"` → default to `/build-automation`
    - **Automation** — `processors` array is non-empty → invoke `/build-automation`
-   - **State-view** — `projections` or `queries` array is non-empty → invoke `/build-state-view`
+   - **State-view** — `sliceType === "STATE_VIEW"`, or `projections`/`queries` array is non-empty → invoke `/build-state-view`
    - **State-change** — default (has `commands` / `events`) → invoke `/build-state-change`
+   - **Extension** — a state-view slice whose slice.json has an `extends` block. It grows a read model an
+     earlier slice built (its read model is a board copy, `linkedTo` the origin) → `/build-state-view`,
+     which edits the **origin** slice's projection, route and tests in place (its Step 0 decides this).
 3. Invoke the matching skill and follow its instructions completely. Do not deviate.
 4. **Verify against slice.json**: After the skill completes, diff slice.json against the code field by field. No invented fields — if it is not in slice.json, it must not be in the code.
 5. Run quality checks (`npm run build`, then the slice tests only).
@@ -60,6 +63,9 @@ It loads every check under `.build-kit/lib/checks/` and rejects the commit if an
 - **blocked-paths** — `package.json`/lockfiles and `index.ts` are never touched by slice work
 - **slice-scope** — everything staged must be inside the slice folder or a documented exception:
   `src/contexts/{context}/Events.ts`
+- **extension-additive** — while an extension slice (`extends` in slice.json) is InProgress: changes stay in
+  its origin's folder, the origin's `projection.ts` only gains lines, and the origin's `route.tests.ts` has a
+  top-level `describe("{extension title}")` block with a test per specification
 - **test-file-present** — a changed `decider.ts`, `projection.ts`, or `processor.ts` needs a sibling `*.tests.ts`
 - **no-invented-fields** — heuristic: flags a field used in code that isn't declared anywhere in
   `.build-kit/.slices/{context}/{slice}/slice.json`

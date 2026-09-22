@@ -28,6 +28,22 @@ Key DCB differences from SQL-based projection stacks:
 
 ---
 
+## Step 0 — Greenfield or extension?
+
+Read the slice.json first and look for a top-level `extends` block.
+
+- **No `extends`** → a new read model. Follow Steps 1–5 below as written.
+- **`extends` present** → an **extension slice**. Its read model is a copy (`readmodels[0].linkedTo`)
+  of a read model an earlier slice already built. Do **not** create a new projection, collection,
+  route or test file. Follow **"Extending an existing projection"** below instead, then return here
+  for the Checklist.
+
+Read models grow one event at a time as the timeline is discovered. Each copy of a read model on the
+board is its own slice, so each growth step is its own unit of delivery. The code stays in one place,
+the origin's `projection.ts`, so one read model stays one file you can read top to bottom.
+
+---
+
 ## Step 1 — Read the slice.json
 
 From the slice definition, extract:
@@ -168,6 +184,9 @@ await {sliceName}Projection.init!(initClient)
 
 // In ensureHandlersInstalled():
 await ensureHandlersInstalled(pool, [..., {PROJECTION_NAME_CONST}], "_handler_bookmarks")
+
+// In ensureProjectionsCurrent() — rebuilds a projection whose canHandle/version changed since last start:
+await ensureProjectionsCurrent(pool, eventStore, [..., {sliceName}Projection])
 ```
 
 **2. Add to consumer processors:**
@@ -285,10 +304,20 @@ router.get(
 
 File: `src/contexts/{context}/slices/{slicename}/route.tests.ts`
 
-Integration tests using real Postgres (testcontainers via `getTestPgDatabasePool`):
+Integration tests using real Postgres (testcontainers via `getTestPgDatabasePool`).
+
+The setup (pool, projection init, consumer, reset) lives at **module level**, and the scenarios sit in a
+`describe` named after the slice title. That layout is what lets a later extension slice append its own
+`describe("{extension title}")` block that reuses the same setup without touching it (see "Extending an
+existing projection", E4). The reset calls the projection's own `truncate()` instead of deleting from
+named collections, so lookup collections an extension adds later are cleared without editing this file.
+
+Assert the response with **`toMatchObject`**, never an exact-shape `toEqual`. The read model grows as later
+extension slices add fields. An exact-shape assertion would then fail even though its scenario still holds,
+and fixing it would mean editing an earlier slice's test.
 
 ```typescript
-import { describe, test, beforeAll, afterAll, afterEach } from "vitest"
+import { describe, test, expect, beforeAll, afterAll, afterEach } from "vitest"
 import supertest from "supertest"
 import type { Pool } from "pg"
 import { getApplication } from "@dcb-es/event-store-express"
@@ -306,73 +335,77 @@ import { configure{WriteSlice}Route } from "../{write-slice}/route.js"
 import { configure{SliceName}Route } from "./route.js"
 import { {sliceName}Projection, {PROJECTION_NAME_CONST} } from "./projection.js"
 
-describe("{SliceName} — Postgres integration", () => {
-    let pool: Pool
-    let eventStore: PostgresEventStore
-    let consumer: RunningConsumer
+let pool: Pool
+let eventStore: PostgresEventStore
+let consumer: RunningConsumer
 
-    function startConsumer(store: PostgresEventStore): RunningConsumer {
-        return createConsumer({
-            pool,
-            eventStore: store,
-            processors: [projectionToProcessor({sliceName}Projection, { batchSize: 100, startFrom: "BEGINNING" })]
-        })
+function startConsumer(store: PostgresEventStore): RunningConsumer {
+    return createConsumer({
+        pool,
+        eventStore: store,
+        processors: [projectionToProcessor({sliceName}Projection, { batchSize: 100, startFrom: "BEGINNING" })]
+    })
+}
+
+const waitFn = (position: SequencePosition, timeoutMs: number) =>
+    waitUntilProcessed(pool, {PROJECTION_NAME_CONST}, position, { timeoutMs })
+
+beforeAll(async () => {
+    pool = await getTestPgDatabasePool({ max: 20 })
+    eventStore = new PostgresEventStore({ pool })
+    await eventStore.ensureInstalled()
+
+    const initClient = await pool.connect()
+    try {
+        await {sliceName}Projection.init!(initClient)
+    } finally {
+        initClient.release()
     }
 
-    beforeAll(async () => {
-        pool = await getTestPgDatabasePool({ max: 20 })
-        eventStore = new PostgresEventStore({ pool })
-        await eventStore.ensureInstalled()
+    await ensureHandlersInstalled(pool, [{PROJECTION_NAME_CONST}], "_handler_bookmarks")
+    consumer = startConsumer(eventStore)
+})
 
-        const initClient = await pool.connect()
-        try {
-            await {sliceName}Projection.init!(initClient)
-        } finally {
-            initClient.release()
-        }
+afterEach(async () => {
+    await consumer.stop()
+    await pool.query("TRUNCATE TABLE events")
+    await pool.query("ALTER SEQUENCE events_sequence_position_seq RESTART WITH 1")
+    // The projection's own truncate() clears every collection it owns — including lookup
+    // collections later extension slices add — so this reset never needs editing.
+    const client = await pool.connect()
+    try {
+        await {sliceName}Projection.truncate!(client)
+    } finally {
+        client.release()
+    }
+    await pool.query("UPDATE _handler_bookmarks SET last_sequence_position = 0, version = 1, instance_id = NULL")
+    eventStore = new PostgresEventStore({ pool })
+    consumer = startConsumer(eventStore)
+})
 
-        await ensureHandlersInstalled(pool, [{PROJECTION_NAME_CONST}], "_handler_bookmarks")
-        consumer = startConsumer(eventStore)
-    })
+afterAll(async () => {
+    await consumer.stop()
+    if (pool) await pool.end()
+})
 
-    afterEach(async () => {
-        await consumer.stop()
-        await pool.query("TRUNCATE TABLE events")
-        await pool.query("ALTER SEQUENCE events_sequence_position_seq RESTART WITH 1")
-        await pool.query("DELETE FROM {collectionName}")
-        await pool.query("UPDATE _handler_bookmarks SET last_sequence_position = 0, version = 1, instance_id = NULL")
-        eventStore = new PostgresEventStore({ pool })
-        consumer = startConsumer(eventStore)
-    })
-
-    afterAll(async () => {
-        await consumer.stop()
-        if (pool) await pool.end()
-    })
-
-    test("GET /{resource}/:id returns document after Prefer: wait", async () => {
-        const waitFn = (position: SequencePosition, timeoutMs: number) =>
-            waitUntilProcessed(pool, {PROJECTION_NAME_CONST}, position, { timeoutMs })
-
+describe("{slice title}", () => {
+    test("{specification title}", async () => {
         const deps = { store: eventStore, pool }
-        const app = getApplication({
-            apis: [
-                configure{WriteSlice}Route(deps),
-                configure{SliceName}Route({ ...deps, waitFn })
-            ]
-        })
-
-        const agent = supertest(app)
+        const agent = supertest(
+            getApplication({ apis: [configure{WriteSlice}Route(deps), configure{SliceName}Route({ ...deps, waitFn })] })
+        )
 
         // Perform write
         const postRes = await agent.post("/{resource}").send({ /* command body */ })
         expect(postRes.status).toBe(201)
-        const etag = postRes.headers["etag"] as string
 
         // Read with Prefer: wait
-        const getRes = await agent.get("/{resource}/test-id").set("Prefer", "wait=5").set("If-None-Match", etag)
+        const getRes = await agent
+            .get("/{resource}/test-id")
+            .set("Prefer", "wait=5")
+            .set("If-None-Match", postRes.headers["etag"] as string)
         expect(getRes.status).toBe(200)
-        expect(getRes.body).toMatchObject({ id: "test-id" /* expected fields */ })
+        expect(getRes.body).toMatchObject({ /* the read model fields this specification asserts */ })
     })
 })
 ```
@@ -386,6 +419,97 @@ If `storylines[]` is present, scan for adjacent READMODEL beats with only EVENT 
 - `then` — assert the read model matches the later READMODEL beat's fields
 
 Put these in a separate `describe` block named after the storyline.
+
+---
+
+## Extending an existing projection (extension slices)
+
+Use this section only when slice.json has an `extends` block (see Step 0).
+
+```jsonc
+"extends": {
+  "originElementId":    "…",                 // the origin read model
+  "originSliceId":      "…",
+  "originSliceTitle":   "course details",    // → origin folder: src/contexts/{originContext}/slices/course-details/
+  "originContext":      "enrollment",
+  "previousInstanceId": "…",                 // origin, or the previous copy in the chain
+  "addedEvents":        ["courseCapacityWasChanged"],
+  "addedFields":        []                   // fields the read model gains in this step
+}
+```
+
+`events[]` lists **only** the added events, with their fields. `readmodels[0].fields` is the
+read model's full, cumulative shape. `specifications[]` covers the behaviour this step adds.
+
+**Origin folder:** `src/contexts/{originContext}/slices/{origin slice folder}/`. The folder name is
+the origin slice title, kebab-cased the same way the origin was built. Confirm it exists and holds
+`projection.ts`. If it doesn't, stop and report: the origin slice hasn't been built yet.
+
+### E1 — Guard against double-building
+
+Open the origin's `projection.ts`. If **any** event in `extends.addedEvents` is already in
+`canHandle`, stop and report that this extension is already built. Do not edit anything.
+
+### E2 — Extend `projection.ts` (additive only)
+
+- Append each added event to the end of `canHandle`.
+- Add each field in `extends.addedFields` to the Doc interface. A field added after the read
+  model's first version is **optional** in the interface (`subscribedStudents?: …`): documents
+  written before this step don't have it.
+- Add one `case` per added event at the end of the `switch`, using the Pongo operation patterns from
+  Step 2. A case that updates a document must tolerate one written before this step. Use
+  `$push`/`$set` on the field, or `?? []` when reading an array that may be absent.
+- If an added event needs data from another entity (denormalisation, e.g. a student's name on
+  `studentWasSubscribed`), feed a lookup collection from that entity's event. Add a
+  `createCollection()` line to `init()` and a `deleteMany()` line to `truncate()`, following the lookup
+  naming in Step 2. The feeding event must itself be in `extends.addedEvents` (the modeler wires it
+  into the copy). If it isn't, don't invent it: stop and report the missing inbound event.
+- If this step derives a **new field from an event the projection already handled**, increment the
+  projection's `version` (add `version: 2` if absent). That forces a rebuild on the next start.
+- **Never** edit, reorder or delete an existing `case`, field or `canHandle` entry. The commit
+  check rejects any removed line in the origin's `projection.ts` other than the line a `canHandle`
+  entry was appended after.
+
+### E3 — Extend `route.ts`
+
+Map each added field into the response body. Default it for documents written before this step
+(`subscribedStudents: doc.subscribedStudents ?? []`), so the endpoint returns the full read model
+shape without waiting for the rebuild.
+
+### E4 — Extend `route.tests.ts`
+
+Append a new top-level `describe("{extension slice title}", () => { … })` block to the origin's
+`route.tests.ts`. It holds one `test(...)` per specification in this extension slice and reuses the
+module-level setup (`pool`, `eventStore`, `waitFn`, reset). Assert with `toMatchObject`, as in Step 5.
+If the origin's file predates the module-level layout (setup inside one `describe`), stop and report it:
+the origin needs its test setup lifted first, as a separate commit. Existing tests stay untouched and must still pass: they are proof the
+extension is additive. Add any write-slice route the new tests need to that block's `getApplication`
+call.
+
+### E5 — Replay is automatic
+
+Do nothing by hand. `ensureProjectionsCurrent()` in `src/index.ts` fingerprints each projection's
+`version` + `canHandle`. On the next start it rebuilds any projection whose fingerprint changed
+(truncate → replay from the beginning) before consumers start. So events of a newly handled type
+recorded before this deploy are projected rather than skipped behind the bookmark. Confirm the
+origin projection is already in that call's array; add it if missing.
+
+### E6 — No new wiring
+
+The origin's projection, consumer, `waitFn` and route are already registered in `src/index.ts`.
+Change `index.ts` only if E4's tests revealed a missing route registration.
+
+### Files touched by an extension slice
+
+```
+src/contexts/{originContext}/slices/{originFolder}/
+├── projection.ts       ← appended: canHandle entries, Doc fields, cases, lookup init/truncate lines
+├── route.ts            ← added fields mapped (with defaults)
+└── route.tests.ts      ← appended: describe("{extension slice title}")
+```
+
+These are the only files outside the slice's own folder that a commit may touch, and only
+when slice.json has `extends`.
 
 ---
 
@@ -415,7 +539,18 @@ src/
 - [ ] `withETag(bookmarkPosition)` called on every response
 - [ ] `preferWait({ waitFn })` registered before the actual GET handler when `waitFn` is present
 - [ ] Integration tests use `getTestPgDatabasePool`, `ensureInstalled`, `projection.init!`, `ensureHandlersInstalled`
-- [ ] `afterEach` resets events table, projection collection, and bookmark
+- [ ] Test setup is at module level, scenarios in `describe("{slice title}")`, and `afterEach` resets via `projection.truncate!()` (not per-collection deletes)
 - [ ] One `test(...)` block per specification in slice.json
 - [ ] Every field in `readModel.fields` appears in the doc interface and the route response body
 - [ ] No invented fields — if it's not in slice.json it's not in the code
+- [ ] Projection passed to `ensureProjectionsCurrent(...)` in `src/index.ts`
+
+**Extension slices (`extends` present) — instead of the create items above:**
+
+- [ ] No new projection, collection, route or test file created. All edits are in the origin folder.
+- [ ] None of `extends.addedEvents` was in the origin's `canHandle` before this change (E1)
+- [ ] Every event in `extends.addedEvents` appended to `canHandle` with its own `case`, and every field in `extends.addedFields` in the Doc interface (optional) and the route body (defaulted)
+- [ ] No existing `case`, field or `canHandle` entry edited, reordered or removed
+- [ ] New lookup collections are in both `init()` and `truncate()`
+- [ ] `version` incremented if a new field is derived from an already-handled event
+- [ ] A `describe("{extension slice title}")` block with one `test(...)` per specification appended to the origin's `route.tests.ts`, and every pre-existing test still passes unchanged

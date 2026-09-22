@@ -41,6 +41,8 @@ Walk the timeline column by column:
 
 **Skip any column whose only COMMAND/READMODEL node has `meta.linkedTo` set** — it's a linked copy of a node elsewhere on the board (see `eventmodeling-core-rules`'s Linked Copies and Slices sections), not a second independently-deployable thing. Only the origin node's own column gets a slice.
 
+**Exception: a READMODEL linked copy with new inbound events gets an extension slice.** If the copy has an inbound EVENT connection that the previous instance of the same read model lacks, create a `state-view` slice for its column. The previous instance is the origin, or the nearest earlier copy. Name the slice after the read model plus what it adds (e.g. "course details capacity"). It's how the growth of an existing read model gets planned, tracked and built. The builder extends the origin's projection with just those events rather than creating a new one. A READMODEL copy with no new inbound events (a pure re-display) is still skipped.
+
 ---
 
 ## Step 1: Resolve the Timeline

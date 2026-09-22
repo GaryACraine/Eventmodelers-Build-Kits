@@ -12,7 +12,10 @@
         "strict": true,
         "skipLibCheck": true,
         "outDir": "./dist",
-        "noEmit": true
+        "noEmit": true,
+        "paths": {
+            "@test/*": ["./src/test/*.ts"]
+        }
     },
     "include": ["./src/**/*"],
     "exclude": ["node_modules", "dist"]
