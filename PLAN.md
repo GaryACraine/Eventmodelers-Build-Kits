@@ -394,19 +394,23 @@ extension was installed mid-session.
 
 #### Step 1: write and verify the manual (this session, no browser)
 
-- [ ] **10.1 Draft `docs/USER-MANUAL.md`.** Concepts, then setup, then increments t0–t4, the client round trip,
+- [x] **10.1 Draft `docs/USER-MANUAL.md`.** Concepts, then setup, then increments t0–t4, the client round trip,
   how the loop works, rebuilds, troubleshooting, command reference and known limits. Sample data throughout
   (courses c1–c6, students s1–s2).
-- [ ] **10.2 Board diagrams.** `docs/tools/board-diagram.mjs` renders a chapter of `workspace.json` as SVG: lanes
+- [x] **10.2 Board diagrams.** `docs/tools/board-diagram.mjs` renders a chapter of `workspace.json` as SVG: lanes
   as rows, slices as columns, stickies colored by type, copies with a dashed outline, and status badges. The
   diagrams are generated at each checkpoint into `docs/images/diagram-*.svg`.
-- [ ] **10.3 Verification walkthrough.** Follow the manual literally in `~/Projects/enrollment-manual` against a
-  new board chapter, **`Course Enrollment`**. Gary starts `eventmodelers run --local` in his terminal when asked.
+- [x] **10.3 Verification walkthrough.** Follow the manual literally in `~/Projects/enrollment-manual` against a
+  new board chapter, **`Course Enrollment`**. *(Done: t0–t4 built unattended, 11 slices, 14.4 min, $7.83, 42/42 tests; project at `~/Projects/course-enrollment`, tags via `Merge increment tN` commits on `main`.)* Gary starts `eventmodelers run --local` in his terminal when asked.
   Fix every command or expected output that doesn't match what happens.
-- [ ] **10.4 Screenshot slots.** Each checkpoint below gets a marked slot in the manual
+- [x] **10.4 Screenshot slots.** Each checkpoint below gets a marked slot in the manual
   (`<!-- SCREENSHOT:SSn -->` plus a placeholder image `docs/images/SSn.png` referenced by name) next to the
   generated diagram.
 - [ ] **10.5 PR + merge** of the manual, the diagram tool and the images; link the manual from README.md.
+- [ ] **10.8 (kit) Recover stale InProgress on loop start.** If the agent is interrupted (usage limit, crash),
+  the slice stays InProgress. The loop retries every 60 s, but the retried agent only builds Planned slices, so
+  the loop idles. On startup/idle, the loop should detect an InProgress slice with no running agent and reset it
+  to Planned (after stashing partial work). For now, the manual's Troubleshooting documents the manual recovery.
 
 #### Step 2: screenshot pass (next session, Chrome connected)
 
@@ -490,5 +494,5 @@ What each `build-*` skill generates and what it verifies:
 | 6 — Ralph Loop | ✅ Complete | 4 slices rebuilt from skills (STATE_CHANGE, STATE_VIEW, AUTOMATION), all tests pass |
 | 8 — Integration Tests | ✅ Complete | Postgres integration tests for state-change slices; prototype proven, skill template updated |
 | 9 — Progressive Read Model Evolution | ✅ Core complete | emcli copies + extension slices, `build-state-view` extend mode, automatic rebuild; proven t0→t4 on a live DB (32/32). Node kit port + real Ralph run remain |
-| 10 — User Manual | 🟡 In progress | Step 1 (write + verify, no browser) this session; Step 2 (board screenshots SS1–SS7) needs a new session with Chrome connected |
+| 10 — User Manual | 🟡 In progress | Step 1 (write + verify, no browser) done; Step 2 (board screenshots SS1–SS7) needs a new session with Chrome connected |
 | 7 — Board Re-pointing | 🔲 Not started | Lower priority — waiting on credentials |

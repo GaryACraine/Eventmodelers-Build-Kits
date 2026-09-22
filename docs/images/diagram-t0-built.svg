@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="503" height="397" viewBox="0 0 503 397" font-family="Helvetica, Arial, sans-serif">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="12" y="28" font-size="17" font-weight="bold" fill="#212529">Course Enrollment — t0 built</text>
+<rect x="150" y="44" width="176" height="58" fill="#f8f9fa" stroke="#dee2e6"/>
+<text x="158" y="63" font-size="12" font-weight="bold" fill="#343a40">register course</text>
+<rect x="158" y="83" width="46" height="14" rx="7" fill="#40c057"/>
+<text x="165" y="93.5" font-size="9.5" fill="#fff" font-weight="bold">ready</text>
+<rect x="326" y="44" width="176" height="58" fill="#f8f9fa" stroke="#dee2e6"/>
+<text x="334" y="63" font-size="12" font-weight="bold" fill="#343a40">course details</text>
+<rect x="334" y="83" width="46" height="14" rx="7" fill="#40c057"/>
+<text x="341" y="93.5" font-size="9.5" fill="#fff" font-weight="bold">ready</text>
+<rect x="0" y="102" width="150" height="98" fill="#f1f3f5" stroke="#dee2e6"/>
+<text x="10" y="124" font-size="12" font-weight="bold" fill="#495057">Student</text>
+<text x="10" y="190" font-size="9.5" fill="#868e96">user-lane</text>
+<rect x="150" y="102" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="326" y="102" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="0" y="200" width="150" height="98" fill="#f1f3f5" stroke="#dee2e6"/>
+<text x="10" y="222" font-size="12" font-weight="bold" fill="#495057">Enrollment</text>
+<text x="10" y="288" font-size="9.5" fill="#868e96">information-flow</text>
+<rect x="150" y="200" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="162" y="212" width="152" height="74" rx="4" fill="#cfe2ff" stroke="#3d7bd9" stroke-width="1.6"/>
+<text x="169" y="226" font-size="9" fill="#3d7bd9" font-weight="bold">COMMAND</text>
+<text x="169" y="244" font-size="12" fill="#212529">registerCourse</text>
+<text x="169" y="279" font-size="9" fill="#495057">3 fields</text>
+<rect x="326" y="200" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="338" y="212" width="152" height="74" rx="4" fill="#c3f0c8" stroke="#2f9e44" stroke-width="1.6"/>
+<text x="345" y="226" font-size="9" fill="#2f9e44" font-weight="bold">READ MODEL</text>
+<text x="345" y="244" font-size="12" fill="#212529">CourseDetails</text>
+<text x="345" y="279" font-size="9" fill="#495057">3 fields · 1 event in</text>
+<rect x="0" y="298" width="150" height="98" fill="#f1f3f5" stroke="#dee2e6"/>
+<text x="10" y="320" font-size="12" font-weight="bold" fill="#495057">Enrollment Events</text>
+<text x="10" y="386" font-size="9.5" fill="#868e96">system</text>
+<rect x="150" y="298" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="162" y="310" width="152" height="74" rx="4" fill="#ffd8a8" stroke="#e8590c" stroke-width="1.6"/>
+<text x="169" y="324" font-size="9" fill="#e8590c" font-weight="bold">EVENT</text>
+<text x="169" y="342" font-size="12" fill="#212529">courseWasRegistered</text>
+<text x="169" y="377" font-size="9" fill="#495057">3 fields</text>
+<rect x="326" y="298" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+</svg>
