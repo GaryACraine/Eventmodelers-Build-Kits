@@ -425,14 +425,15 @@ Push complete. Baseline updated.
 emcli reuses the lanes and removes the empty slices.
 
 ![Board after the first push](images/diagram-t0-pushed.svg)
-<!-- SCREENSHOT:SS1 — Board: chapter "Course Enrollment" after the first push (lanes, two planned slices) -->
 
-On the board, open `CourseDetails`. Its description lists the fields, and its details hold a
-**Dependencies** table showing which events feed it. Open the `register course` slice to see the scenarios
-rendered as Given/When/Then.
+On the board, switch to the detailed view (the expand button next to the zoom controls, or Ctrl/Cmd+M). The
+`CourseDetails` sticky now shows its fields and a **Dependencies** table listing the events that feed it.
 
-<!-- SCREENSHOT:SS2 — Board: CourseDetails sticky opened (field list + "Dependencies (CLI-managed)" table) -->
-<!-- SCREENSHOT:SS3 — Board: register course slice details ("Specifications (CLI-managed)" block) -->
+![CourseDetails in the detailed view: fields and the Dependencies (CLI-managed) table](images/SS2.png)
+
+Click the `register course` slice header and open **Details** to see its scenarios rendered as Given/When/Then.
+
+![The register course slice details: the Specifications (CLI-managed) block](images/SS3.png)
 
 The push replaced every local ID with the board's, which is why the helpers look everything up by name.
 **Commit before exporting.** The loop shares your working tree, and you don't want your model files swept
@@ -520,7 +521,7 @@ git add -A && git commit -m "model(t0): built"
 ```
 
 ![Board after t0 is built](images/diagram-t0-built.svg)
-<!-- SCREENSHOT:SS4 — Board: both t0 slices with status "ready" -->
+![Both t0 slices with status Ready on the board](images/SS4.png)
 
 ### 5.7 Verify it yourself
 
@@ -647,8 +648,6 @@ emcli workspace export --build-kit .build-kit --chapter "$(chapter_id)"
 ```
 
 ![Board with t1 staged](images/diagram-t1-staged.svg)
-<!-- SCREENSHOT:SS5 — Board: "course details capacity" slice (draft) with the dashed CourseDetails copy; its Dependencies table lists both events -->
-
 The loop picks up `change course capacity` by itself (it's still running in terminal 2). When it says
 *waiting*, show progress and use the new feature:
 
@@ -940,7 +939,10 @@ course details subscriptions: "Client: we sometimes rename courses; this page mu
 
 The pull changed `workspace.json`. You'll commit it at the start of the next increment (§9).
 
-<!-- SCREENSHOT:SS6 — Board: the client's note on the "course details subscriptions" slice -->
+![A note in the course details subscriptions slice details, above the CLI-managed specifications](images/SS6.png)
+
+On the board, the note sits at the top of the slice's documentation, above the CLI-managed block. In this screenshot
+it reads *"my note"* instead of the sample text.
 
 3. You respond by modeling the change, which is increment t4 in the next section.
 
@@ -1047,7 +1049,7 @@ After the extension is built and the app restarted, `curl -s localhost:3000/cour
 After t4 the model is complete:
 
 ![Final board](images/diagram-t4-final.svg)
-<!-- SCREENSHOT:SS7 — Board: all 11 slices "ready", four dashed CourseDetails copies along the timeline -->
+![The final board: all 11 slices Ready, with the CourseDetails copies along the timeline](images/SS7.png)
 
 `CourseDetails` now handles six events, added in four reviewed steps, and each step is visible on the board.
 

@@ -381,7 +381,7 @@ docker-compose Postgres was kept across every step.
 
 ---
 
-### Phase 10: User Manual 🟡 (Step 1 in progress; Step 2 pending, needs Chrome)
+### Phase 10: User Manual ✅ (Steps 1 and 2 done; kit follow-up 10.8 open)
 
 **Goal:** A user manual (`docs/USER-MANUAL.md`) for a developer new to event sourcing. It walks from an empty
 directory to a working, progressively grown app using emcli, prooph board, the DCB build kit and the Ralph loop.
@@ -406,7 +406,7 @@ extension was installed mid-session.
 - [x] **10.4 Screenshot slots.** Each checkpoint below gets a marked slot in the manual
   (`<!-- SCREENSHOT:SSn -->` plus a placeholder image `docs/images/SSn.png` referenced by name) next to the
   generated diagram.
-- [ ] **10.5 PR + merge** of the manual, the diagram tool and the images; link the manual from README.md.
+- [x] **10.5 PR + merge** of the manual, the diagram tool and the images; link the manual from README.md.
 - [ ] **10.8 (kit) Recover stale InProgress on loop start.** If the agent is interrupted (usage limit, crash),
   the slice stays InProgress. The loop retries every 60 s, but the retried agent only builds Planned slices, so
   the loop idles. On startup/idle, the loop should detect an InProgress slice with no running agent and reset it
@@ -414,9 +414,11 @@ extension was installed mid-session.
 
 #### Step 2: screenshot pass (next session, Chrome connected)
 
-- [ ] **10.6 Capture** each checkpoint from the live board chapter `Course Enrollment` (prooph board, same
+- [x] **10.6 Capture** each checkpoint from the live board chapter `Course Enrollment` (prooph board, same
   workspace as `Faculty` / `Enrollment`). Save to `docs/images/SSn.png`, replace the matching
-  `<!-- SCREENSHOT:SSn -->` slot, then PR + merge.
+  `<!-- SCREENSHOT:SSn -->` slot, then PR + merge. *(Done: SS2, SS3, SS4, SS6, SS7 captured from the final t4 board.
+  SS1 and SS5 show pre-t4 states, so those slots were dropped and the generated diagrams `diagram-t0-pushed.svg` /
+  `diagram-t1-staged.svg` stand in for them.)*
 
 | ID | Checkpoint | What must be visible |
 |---|---|---|
@@ -494,5 +496,5 @@ What each `build-*` skill generates and what it verifies:
 | 6 — Ralph Loop | ✅ Complete | 4 slices rebuilt from skills (STATE_CHANGE, STATE_VIEW, AUTOMATION), all tests pass |
 | 8 — Integration Tests | ✅ Complete | Postgres integration tests for state-change slices; prototype proven, skill template updated |
 | 9 — Progressive Read Model Evolution | ✅ Core complete | emcli copies + extension slices, `build-state-view` extend mode, automatic rebuild; proven t0→t4 on a live DB (32/32). Node kit port + real Ralph run remain |
-| 10 — User Manual | 🟡 In progress | Step 1 (write + verify, no browser) done; Step 2 (board screenshots SS1–SS7) needs a new session with Chrome connected |
+| 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 open |
 | 7 — Board Re-pointing | 🔲 Not started | Lower priority — waiting on credentials |
