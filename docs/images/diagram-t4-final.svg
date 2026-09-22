@@ -1,0 +1,165 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2087" height="397" viewBox="0 0 2087 397" font-family="Helvetica, Arial, sans-serif">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="12" y="28" font-size="17" font-weight="bold" fill="#212529">Course Enrollment — final (t4)</text>
+<rect x="150" y="44" width="176" height="58" fill="#f8f9fa" stroke="#dee2e6"/>
+<text x="158" y="63" font-size="12" font-weight="bold" fill="#343a40">register course</text>
+<rect x="158" y="83" width="46" height="14" rx="7" fill="#40c057"/>
+<text x="165" y="93.5" font-size="9.5" fill="#fff" font-weight="bold">ready</text>
+<rect x="326" y="44" width="176" height="58" fill="#f8f9fa" stroke="#dee2e6"/>
+<text x="334" y="63" font-size="12" font-weight="bold" fill="#343a40">course details</text>
+<rect x="334" y="83" width="46" height="14" rx="7" fill="#40c057"/>
+<text x="341" y="93.5" font-size="9.5" fill="#fff" font-weight="bold">ready</text>
+<rect x="502" y="44" width="176" height="58" fill="#f8f9fa" stroke="#dee2e6"/>
+<text x="510" y="63" font-size="12" font-weight="bold" fill="#343a40">change course</text>
+<text x="510" y="78" font-size="12" font-weight="bold" fill="#343a40">capacity</text>
+<rect x="510" y="83" width="46" height="14" rx="7" fill="#40c057"/>
+<text x="517" y="93.5" font-size="9.5" fill="#fff" font-weight="bold">ready</text>
+<rect x="678" y="44" width="176" height="58" fill="#f8f9fa" stroke="#dee2e6"/>
+<text x="686" y="63" font-size="12" font-weight="bold" fill="#343a40">course details</text>
+<text x="686" y="78" font-size="12" font-weight="bold" fill="#343a40">capacity</text>
+<rect x="686" y="83" width="46" height="14" rx="7" fill="#40c057"/>
+<text x="693" y="93.5" font-size="9.5" fill="#fff" font-weight="bold">ready</text>
+<rect x="854" y="44" width="176" height="58" fill="#f8f9fa" stroke="#dee2e6"/>
+<text x="862" y="63" font-size="12" font-weight="bold" fill="#343a40">register student</text>
+<rect x="862" y="83" width="46" height="14" rx="7" fill="#40c057"/>
+<text x="869" y="93.5" font-size="9.5" fill="#fff" font-weight="bold">ready</text>
+<rect x="1030" y="44" width="176" height="58" fill="#f8f9fa" stroke="#dee2e6"/>
+<text x="1038" y="63" font-size="12" font-weight="bold" fill="#343a40">subscribe student</text>
+<rect x="1038" y="83" width="46" height="14" rx="7" fill="#40c057"/>
+<text x="1045" y="93.5" font-size="9.5" fill="#fff" font-weight="bold">ready</text>
+<rect x="1206" y="44" width="176" height="58" fill="#f8f9fa" stroke="#dee2e6"/>
+<text x="1214" y="63" font-size="12" font-weight="bold" fill="#343a40">course details</text>
+<text x="1214" y="78" font-size="12" font-weight="bold" fill="#343a40">subscriptions</text>
+<rect x="1214" y="83" width="46" height="14" rx="7" fill="#40c057"/>
+<text x="1221" y="93.5" font-size="9.5" fill="#fff" font-weight="bold">ready</text>
+<rect x="1382" y="44" width="176" height="58" fill="#f8f9fa" stroke="#dee2e6"/>
+<text x="1390" y="63" font-size="12" font-weight="bold" fill="#343a40">unsubscribe student</text>
+<rect x="1390" y="83" width="46" height="14" rx="7" fill="#40c057"/>
+<text x="1397" y="93.5" font-size="9.5" fill="#fff" font-weight="bold">ready</text>
+<rect x="1558" y="44" width="176" height="58" fill="#f8f9fa" stroke="#dee2e6"/>
+<text x="1566" y="63" font-size="12" font-weight="bold" fill="#343a40">course details</text>
+<text x="1566" y="78" font-size="12" font-weight="bold" fill="#343a40">unsubscriptions</text>
+<rect x="1566" y="83" width="46" height="14" rx="7" fill="#40c057"/>
+<text x="1573" y="93.5" font-size="9.5" fill="#fff" font-weight="bold">ready</text>
+<rect x="1734" y="44" width="176" height="58" fill="#f8f9fa" stroke="#dee2e6"/>
+<text x="1742" y="63" font-size="12" font-weight="bold" fill="#343a40">change course title</text>
+<rect x="1742" y="83" width="46" height="14" rx="7" fill="#40c057"/>
+<text x="1749" y="93.5" font-size="9.5" fill="#fff" font-weight="bold">ready</text>
+<rect x="1910" y="44" width="176" height="58" fill="#f8f9fa" stroke="#dee2e6"/>
+<text x="1918" y="63" font-size="12" font-weight="bold" fill="#343a40">course details title</text>
+<rect x="1918" y="83" width="46" height="14" rx="7" fill="#40c057"/>
+<text x="1925" y="93.5" font-size="9.5" fill="#fff" font-weight="bold">ready</text>
+<rect x="0" y="102" width="150" height="98" fill="#f1f3f5" stroke="#dee2e6"/>
+<text x="10" y="124" font-size="12" font-weight="bold" fill="#495057">Student</text>
+<text x="10" y="190" font-size="9.5" fill="#868e96">user-lane</text>
+<rect x="150" y="102" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="326" y="102" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="502" y="102" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="678" y="102" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="854" y="102" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="1030" y="102" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="1206" y="102" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="1382" y="102" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="1558" y="102" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="1734" y="102" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="1910" y="102" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="0" y="200" width="150" height="98" fill="#f1f3f5" stroke="#dee2e6"/>
+<text x="10" y="222" font-size="12" font-weight="bold" fill="#495057">Enrollment</text>
+<text x="10" y="288" font-size="9.5" fill="#868e96">information-flow</text>
+<rect x="150" y="200" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="162" y="212" width="152" height="74" rx="4" fill="#cfe2ff" stroke="#3d7bd9" stroke-width="1.6"/>
+<text x="169" y="226" font-size="9" fill="#3d7bd9" font-weight="bold">COMMAND</text>
+<text x="169" y="244" font-size="12" fill="#212529">registerCourse</text>
+<text x="169" y="279" font-size="9" fill="#495057">3 fields</text>
+<rect x="326" y="200" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="338" y="212" width="152" height="74" rx="4" fill="#c3f0c8" stroke="#2f9e44" stroke-width="1.6"/>
+<text x="345" y="226" font-size="9" fill="#2f9e44" font-weight="bold">READ MODEL</text>
+<text x="345" y="244" font-size="12" fill="#212529">CourseDetails</text>
+<text x="345" y="279" font-size="9" fill="#495057">3 fields · 1 event in</text>
+<rect x="502" y="200" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="514" y="212" width="152" height="74" rx="4" fill="#cfe2ff" stroke="#3d7bd9" stroke-width="1.6"/>
+<text x="521" y="226" font-size="9" fill="#3d7bd9" font-weight="bold">COMMAND</text>
+<text x="521" y="244" font-size="12" fill="#212529">changeCourseCapacity</text>
+<text x="521" y="279" font-size="9" fill="#495057">2 fields</text>
+<rect x="678" y="200" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="690" y="212" width="152" height="74" rx="4" fill="#c3f0c8" stroke="#2f9e44" stroke-width="1.6" stroke-dasharray="5 3"/>
+<text x="697" y="226" font-size="9" fill="#2f9e44" font-weight="bold">READ MODEL · COPY</text>
+<text x="697" y="244" font-size="12" fill="#212529">CourseDetails</text>
+<text x="697" y="279" font-size="9" fill="#495057">3 fields · 2 events in</text>
+<rect x="854" y="200" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="866" y="212" width="152" height="74" rx="4" fill="#cfe2ff" stroke="#3d7bd9" stroke-width="1.6"/>
+<text x="873" y="226" font-size="9" fill="#3d7bd9" font-weight="bold">COMMAND</text>
+<text x="873" y="244" font-size="12" fill="#212529">registerStudent</text>
+<text x="873" y="279" font-size="9" fill="#495057">2 fields</text>
+<rect x="1030" y="200" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="1042" y="212" width="152" height="74" rx="4" fill="#cfe2ff" stroke="#3d7bd9" stroke-width="1.6"/>
+<text x="1049" y="226" font-size="9" fill="#3d7bd9" font-weight="bold">COMMAND</text>
+<text x="1049" y="244" font-size="12" fill="#212529">subscribeStudent</text>
+<text x="1049" y="279" font-size="9" fill="#495057">2 fields</text>
+<rect x="1206" y="200" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="1218" y="212" width="152" height="74" rx="4" fill="#c3f0c8" stroke="#2f9e44" stroke-width="1.6" stroke-dasharray="5 3"/>
+<text x="1225" y="226" font-size="9" fill="#2f9e44" font-weight="bold">READ MODEL · COPY</text>
+<text x="1225" y="244" font-size="12" fill="#212529">CourseDetails</text>
+<text x="1225" y="279" font-size="9" fill="#495057">4 fields · 4 events in</text>
+<rect x="1382" y="200" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="1394" y="212" width="152" height="74" rx="4" fill="#cfe2ff" stroke="#3d7bd9" stroke-width="1.6"/>
+<text x="1401" y="226" font-size="9" fill="#3d7bd9" font-weight="bold">COMMAND</text>
+<text x="1401" y="244" font-size="12" fill="#212529">unsubscribeStudent</text>
+<text x="1401" y="279" font-size="9" fill="#495057">2 fields</text>
+<rect x="1558" y="200" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="1570" y="212" width="152" height="74" rx="4" fill="#c3f0c8" stroke="#2f9e44" stroke-width="1.6" stroke-dasharray="5 3"/>
+<text x="1577" y="226" font-size="9" fill="#2f9e44" font-weight="bold">READ MODEL · COPY</text>
+<text x="1577" y="244" font-size="12" fill="#212529">CourseDetails</text>
+<text x="1577" y="279" font-size="9" fill="#495057">4 fields · 5 events in</text>
+<rect x="1734" y="200" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="1746" y="212" width="152" height="74" rx="4" fill="#cfe2ff" stroke="#3d7bd9" stroke-width="1.6"/>
+<text x="1753" y="226" font-size="9" fill="#3d7bd9" font-weight="bold">COMMAND</text>
+<text x="1753" y="244" font-size="12" fill="#212529">changeCourseTitle</text>
+<text x="1753" y="279" font-size="9" fill="#495057">2 fields</text>
+<rect x="1910" y="200" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="1922" y="212" width="152" height="74" rx="4" fill="#c3f0c8" stroke="#2f9e44" stroke-width="1.6" stroke-dasharray="5 3"/>
+<text x="1929" y="226" font-size="9" fill="#2f9e44" font-weight="bold">READ MODEL · COPY</text>
+<text x="1929" y="244" font-size="12" fill="#212529">CourseDetails</text>
+<text x="1929" y="279" font-size="9" fill="#495057">4 fields · 6 events in</text>
+<rect x="0" y="298" width="150" height="98" fill="#f1f3f5" stroke="#dee2e6"/>
+<text x="10" y="320" font-size="12" font-weight="bold" fill="#495057">Enrollment Events</text>
+<text x="10" y="386" font-size="9.5" fill="#868e96">system</text>
+<rect x="150" y="298" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="162" y="310" width="152" height="74" rx="4" fill="#ffd8a8" stroke="#e8590c" stroke-width="1.6"/>
+<text x="169" y="324" font-size="9" fill="#e8590c" font-weight="bold">EVENT</text>
+<text x="169" y="342" font-size="12" fill="#212529">courseWasRegistered</text>
+<text x="169" y="377" font-size="9" fill="#495057">3 fields</text>
+<rect x="326" y="298" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="502" y="298" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="514" y="310" width="152" height="74" rx="4" fill="#ffd8a8" stroke="#e8590c" stroke-width="1.6"/>
+<text x="521" y="324" font-size="9" fill="#e8590c" font-weight="bold">EVENT</text>
+<text x="521" y="342" font-size="12" fill="#212529">courseCapacityWas</text>
+<text x="521" y="356" font-size="12" fill="#212529">Changed</text>
+<text x="521" y="377" font-size="9" fill="#495057">2 fields</text>
+<rect x="678" y="298" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="854" y="298" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="866" y="310" width="152" height="74" rx="4" fill="#ffd8a8" stroke="#e8590c" stroke-width="1.6"/>
+<text x="873" y="324" font-size="9" fill="#e8590c" font-weight="bold">EVENT</text>
+<text x="873" y="342" font-size="12" fill="#212529">studentWasRegistered</text>
+<text x="873" y="377" font-size="9" fill="#495057">2 fields</text>
+<rect x="1030" y="298" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="1042" y="310" width="152" height="74" rx="4" fill="#ffd8a8" stroke="#e8590c" stroke-width="1.6"/>
+<text x="1049" y="324" font-size="9" fill="#e8590c" font-weight="bold">EVENT</text>
+<text x="1049" y="342" font-size="12" fill="#212529">studentWasSubscribed</text>
+<text x="1049" y="377" font-size="9" fill="#495057">2 fields</text>
+<rect x="1206" y="298" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="1382" y="298" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="1394" y="310" width="152" height="74" rx="4" fill="#ffd8a8" stroke="#e8590c" stroke-width="1.6"/>
+<text x="1401" y="324" font-size="9" fill="#e8590c" font-weight="bold">EVENT</text>
+<text x="1401" y="342" font-size="12" fill="#212529">studentWas</text>
+<text x="1401" y="356" font-size="12" fill="#212529">Unsubscribed</text>
+<text x="1401" y="377" font-size="9" fill="#495057">2 fields</text>
+<rect x="1558" y="298" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="1734" y="298" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+<rect x="1746" y="310" width="152" height="74" rx="4" fill="#ffd8a8" stroke="#e8590c" stroke-width="1.6"/>
+<text x="1753" y="324" font-size="9" fill="#e8590c" font-weight="bold">EVENT</text>
+<text x="1753" y="342" font-size="12" fill="#212529">courseTitleWas</text>
+<text x="1753" y="356" font-size="12" fill="#212529">Changed</text>
+<text x="1753" y="377" font-size="9" fill="#495057">2 fields</text>
+<rect x="1910" y="298" width="176" height="98" fill="#ffffff" stroke="#e9ecef"/>
+</svg>

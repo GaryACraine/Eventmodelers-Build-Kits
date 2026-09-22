@@ -381,6 +381,55 @@ docker-compose Postgres was kept across every step.
 
 ---
 
+### Phase 10: User Manual 🟡 (Step 1 in progress; Step 2 pending, needs Chrome)
+
+**Goal:** A user manual (`docs/USER-MANUAL.md`) for a developer new to event sourcing. It walks from an empty
+directory to a working, progressively grown app using emcli, prooph board, the DCB build kit and the Ralph loop.
+Concepts are explained as they come up, every command is given in full, and sample data is used throughout.
+The source of truth is the unattended user-journey run (`~/Projects/enrollment-journey/journey/log.md`, tags
+`t-empty` → `t4`; kit fixes merged in PR #7 and #8).
+
+The work is split in two because browser tools only load when a Claude Code session starts, and the Chrome
+extension was installed mid-session.
+
+#### Step 1: write and verify the manual (this session, no browser)
+
+- [x] **10.1 Draft `docs/USER-MANUAL.md`.** Concepts, then setup, then increments t0–t4, the client round trip,
+  how the loop works, rebuilds, troubleshooting, command reference and known limits. Sample data throughout
+  (courses c1–c6, students s1–s2).
+- [x] **10.2 Board diagrams.** `docs/tools/board-diagram.mjs` renders a chapter of `workspace.json` as SVG: lanes
+  as rows, slices as columns, stickies colored by type, copies with a dashed outline, and status badges. The
+  diagrams are generated at each checkpoint into `docs/images/diagram-*.svg`.
+- [x] **10.3 Verification walkthrough.** Follow the manual literally in `~/Projects/enrollment-manual` against a
+  new board chapter, **`Course Enrollment`**. *(Done: t0–t4 built unattended, 11 slices, 14.4 min, $7.83, 42/42 tests; project at `~/Projects/course-enrollment`, tags via `Merge increment tN` commits on `main`.)* Gary starts `eventmodelers run --local` in his terminal when asked.
+  Fix every command or expected output that doesn't match what happens.
+- [x] **10.4 Screenshot slots.** Each checkpoint below gets a marked slot in the manual
+  (`<!-- SCREENSHOT:SSn -->` plus a placeholder image `docs/images/SSn.png` referenced by name) next to the
+  generated diagram.
+- [ ] **10.5 PR + merge** of the manual, the diagram tool and the images; link the manual from README.md.
+- [ ] **10.8 (kit) Recover stale InProgress on loop start.** If the agent is interrupted (usage limit, crash),
+  the slice stays InProgress. The loop retries every 60 s, but the retried agent only builds Planned slices, so
+  the loop idles. On startup/idle, the loop should detect an InProgress slice with no running agent and reset it
+  to Planned (after stashing partial work). For now, the manual's Troubleshooting documents the manual recovery.
+
+#### Step 2: screenshot pass (next session, Chrome connected)
+
+- [ ] **10.6 Capture** each checkpoint from the live board chapter `Course Enrollment` (prooph board, same
+  workspace as `Faculty` / `Enrollment`). Save to `docs/images/SSn.png`, replace the matching
+  `<!-- SCREENSHOT:SSn -->` slot, then PR + merge.
+
+| ID | Checkpoint | What must be visible |
+|---|---|---|
+| SS1 | After the first push (t0 modeled) | Chapter `Course Enrollment`: lanes Student / Enrollment / Enrollment Events; slices `register course`, `course details` (status planned) |
+| SS2 | An element's generated content | `CourseDetails` sticky opened: field list in the description, dependency table ("Dependencies (CLI-managed)") |
+| SS3 | A slice's specs | `register course` slice details: the "Specifications (CLI-managed)" GWT block |
+| SS4 | After t0 is built | Both t0 slices show status **ready** (mirrored via `import-status` + `sync push`) |
+| SS5 | t1 modeled, extension staged | `course details capacity` slice with the `CourseDetails` copy, status **draft**; the copy's dependency table lists both events (cumulative) |
+| SS6 | The client note | A note on the `course details subscriptions` slice |
+| SS7 | Final board (t4) | All 11 slices **ready**; four `CourseDetails` copies along the timeline |
+
+---
+
 ### Phase 7: Board Re-pointing 🔲 (Lower Priority)
 
 **Goal:** Point the CLI to a different board ("Proof Board") with separate credentials/API.
@@ -445,4 +494,5 @@ What each `build-*` skill generates and what it verifies:
 | 6 — Ralph Loop | ✅ Complete | 4 slices rebuilt from skills (STATE_CHANGE, STATE_VIEW, AUTOMATION), all tests pass |
 | 8 — Integration Tests | ✅ Complete | Postgres integration tests for state-change slices; prototype proven, skill template updated |
 | 9 — Progressive Read Model Evolution | ✅ Core complete | emcli copies + extension slices, `build-state-view` extend mode, automatic rebuild; proven t0→t4 on a live DB (32/32). Node kit port + real Ralph run remain |
+| 10 — User Manual | 🟡 In progress | Step 1 (write + verify, no browser) done; Step 2 (board screenshots SS1–SS7) needs a new session with Chrome connected |
 | 7 — Board Re-pointing | 🔲 Not started | Lower priority — waiting on credentials |

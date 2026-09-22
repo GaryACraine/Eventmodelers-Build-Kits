@@ -8,6 +8,10 @@ npx @eventmodelers/cli init --stack node
 
 Add `--demo` to install a ready-made 16-slice example model alongside the scaffold, so the agent has something to build before you connect a board of your own.
 
+> **New to event sourcing?** [`docs/USER-MANUAL.md`](docs/USER-MANUAL.md) walks you from an empty directory to a
+> working DCB service, built one slice at a time by the Ralph loop. It uses emcli and prooph board, and shows
+> how read models grow as new events are discovered.
+
 ## Official stacks
 
 | Stack key | Stack |
