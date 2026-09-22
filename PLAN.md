@@ -373,7 +373,7 @@ docker-compose Postgres was kept across every step.
 
 #### Remaining
 
-- [ ] **9.6** Run the real Ralph loop over the proof project (`eventmodelers run --local`) from a plain terminal, starting at `t-empty` with the t0–t4 exports.
+- [x] **9.6** Run the real Ralph loop over the proof project (`eventmodelers run --local`) from a plain terminal, starting at `t-empty` with the t0–t4 exports. *(Done: the unattended journey run `t-empty` → `t4`, then again in 10.3 against chapter `Course Enrollment`: 11 slices, 42/42 tests.)*
 - [ ] **9.7** Node kit: port the extend mode, and replace re-emitted `CREATE TABLE IF NOT EXISTS` with an `ALTER TABLE ... ADD COLUMN` migration path (finding 1 above).
 - [ ] **9.9** Does the eventmodelers `slicedata` export carry `linkedTo`? If it does, derive `extends` kit-side so board-sourced slices get extension mode too (emcli is the only source of `extends` today).
 - [ ] **9.10** Does prooph REST expose element copy, and does pull mark copies? If it does, `copyOf` can be pulled instead of kept local.
@@ -381,7 +381,7 @@ docker-compose Postgres was kept across every step.
 
 ---
 
-### Phase 10: User Manual ✅ (Steps 1 and 2 done; kit follow-up 10.8 open)
+### Phase 10: User Manual ✅
 
 **Goal:** A user manual (`docs/USER-MANUAL.md`) for a developer new to event sourcing. It walks from an empty
 directory to a working, progressively grown app using emcli, prooph board, the DCB build kit and the Ralph loop.
@@ -407,10 +407,14 @@ extension was installed mid-session.
   (`<!-- SCREENSHOT:SSn -->` plus a placeholder image `docs/images/SSn.png` referenced by name) next to the
   generated diagram.
 - [x] **10.5 PR + merge** of the manual, the diagram tool and the images; link the manual from README.md.
-- [ ] **10.8 (kit) Recover stale InProgress on loop start.** If the agent is interrupted (usage limit, crash),
+- [x] **10.8 (kit) Recover stale InProgress on loop start.** If the agent is interrupted (usage limit, crash),
   the slice stays InProgress. The loop retries every 60 s, but the retried agent only builds Planned slices, so
   the loop idles. On startup/idle, the loop should detect an InProgress slice with no running agent and reset it
-  to Planned (after stashing partial work). For now, the manual's Troubleshooting documents the manual recovery.
+  to Planned (after stashing partial work). *(Done in `shared/build-kit/lib/ralph.js`, `--local` mode: each agent run
+  records the InProgress set and a worktree snapshot (plus a run marker for a killed loop). When the run ends, or the
+  loop next starts, the slices it left InProgress go back to Planned and only the paths the run dirtied are stashed.
+  If HEAD moved, the slice is marked Blocked instead of being rebuilt. With board sync, the loop can't tell its own
+  claim from another agent's, so it only warns. Not ported to the react stack's own `lib/ralph.js` or to `ralph.sh`.)*
 
 #### Step 2: screenshot pass (next session, Chrome connected)
 
@@ -495,6 +499,6 @@ What each `build-*` skill generates and what it verifies:
 | 5.5 — Prove Skills | ✅ Complete | 8 slice.json inputs, 3 skills proven, 30/30 tests, automation skill rewritten |
 | 6 — Ralph Loop | ✅ Complete | 4 slices rebuilt from skills (STATE_CHANGE, STATE_VIEW, AUTOMATION), all tests pass |
 | 8 — Integration Tests | ✅ Complete | Postgres integration tests for state-change slices; prototype proven, skill template updated |
-| 9 — Progressive Read Model Evolution | ✅ Core complete | emcli copies + extension slices, `build-state-view` extend mode, automatic rebuild; proven t0→t4 on a live DB (32/32). Node kit port + real Ralph run remain |
-| 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 open |
+| 9 — Progressive Read Model Evolution | ✅ Core complete | emcli copies + extension slices, `build-state-view` extend mode, automatic rebuild; proven t0→t4 on a live DB (32/32). Real Ralph run done (9.6). Node kit port remains |
+| 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 done (stale InProgress recovery in `--local` mode) |
 | 7 — Board Re-pointing | 🔲 Not started | Lower priority — waiting on credentials |
