@@ -114,6 +114,10 @@ export const {sliceName}Projection = pongoProjection({
 })
 ```
 
+Write `canHandle` **one event per line, each followed by a comma except the last**, even when there is
+only one event. Extension slices append to this array. A one-line array (`canHandle: ["a"]`) can only be
+extended by rewriting the line.
+
 ### Pongo operation patterns
 
 **Insert (on create event):**

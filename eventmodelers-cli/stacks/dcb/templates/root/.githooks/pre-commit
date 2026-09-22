@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# Slice commit-scope guard — see .build-kit/lib/checks/. Only acts on commits that touch
+# src/contexts/{context}/slices/{slice}/; model, docs and wiring commits pass straight through.
+exec node .build-kit/lib/check-commit-scope.cjs --staged
