@@ -308,6 +308,8 @@ What each `build-*` skill generates and what it verifies:
 
 ## Decisions Log
 
+> **Architectural decisions with full rationale and alternatives:** see [`eventmodelers-cli/stacks/dcb/ADR.md`](eventmodelers-cli/stacks/dcb/ADR.md) — 18 ADRs covering projections, identity, consistency, testing, error handling, idempotency, versioning, and more.
+
 | Date | Decision | Rationale |
 |------|----------|-----------|
 | 2026-09-21 | Base on `course-manager-web-api-sliced` example | Most complete DCB example with commands, events, projections, routes, tests, and OpenAPI — vertical-slice architecture mirrors how build kit skills generate code |
