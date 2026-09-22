@@ -374,6 +374,144 @@ describe("{HTTP method} /{route} — {slice title}", () => {
 
 Add one `test(...)` block per specification in slice.json.
 
+---
+
+## Step 8b — Create `route.integration.tests.ts`
+
+File: `src/contexts/{context}/slices/{slicename}/route.integration.tests.ts`
+
+This file mirrors every unit test scenario from Step 8 but executes against a real Postgres database via testcontainers. It verifies that events are actually persisted correctly — fields that unit tests never see (id, position, recordedAt, schemaVersion, tags round-tripped through TEXT[]).
+
+```typescript
+import { describe, test, expect, beforeAll, afterAll, afterEach } from "vitest"
+import supertest from "supertest"
+import type { Pool } from "pg"
+import { getApplication } from "@dcb-es/event-store-express"
+import { PostgresEventStore } from "@dcb-es/event-store-postgres"
+import { Query, SequencePosition, streamAllEventsToArray } from "@dcb-es/event-store"
+import { getTestPgDatabasePool } from "@test/testPgDbPool"
+import { configure{SliceName}Route } from "./route.js"
+import { {existingEventFactory}, {emittedEventFactory} } from "../../Events.js"
+
+describe("{HTTP method} /{route} — {slice title} (Postgres integration)", () => {
+    let pool: Pool
+    let eventStore: PostgresEventStore
+
+    beforeAll(async () => {
+        pool = await getTestPgDatabasePool({ max: 20 })
+        eventStore = new PostgresEventStore({ pool })
+        await eventStore.ensureInstalled()
+    })
+
+    afterEach(async () => {
+        await pool.query("TRUNCATE TABLE events")
+        await pool.query("ALTER SEQUENCE events_sequence_position_seq RESTART WITH 1")
+        eventStore = new PostgresEventStore({ pool })
+    })
+
+    afterAll(async () => {
+        if (pool) await pool.end()
+    })
+
+    function createApp() {
+        return getApplication({
+            apis: [configure{SliceName}Route({ store: eventStore, pool })]
+        })
+    }
+
+    // --- Happy path: verify event persisted with all SequencedEvent fields ---
+    test("happy path persists event with correct SequencedEvent fields", async () => {
+        // Seed prerequisite events if needed:
+        // const seedPosition = await eventStore.append({
+        //     events: [{existingEventFactory}({ /* ... */ })]
+        // })
+
+        const app = createApp()
+        const agent = supertest(app)
+
+        const res = await agent.post("/{route}").send({ /* command body */ })
+        expect(res.status).toBe({expectedStatus})
+
+        const newEvents = await streamAllEventsToArray(eventStore.read(Query.all()))
+        // If prerequisite events were seeded, use { after: seedPosition } to skip them
+
+        expect(newEvents).toHaveLength(1)
+        const persisted = newEvents[0]
+
+        // Event envelope
+        expect(persisted.event.type).toBe("{eventType}")
+        expect(persisted.event.data).toEqual({ /* expected event data */ })
+
+        // Tags — round-tripped through TEXT[] in Postgres
+        expect(persisted.tags.values).toEqual(["{tagKey}={tagValue}"])
+
+        // Persistence metadata (unit tests never verify these)
+        expect(persisted.id).toMatch(/^[0-9a-f-]{36}$/)
+        expect(persisted.position.isAfter(SequencePosition.initial())).toBe(true)
+        expect(persisted.recordedAt).toBeInstanceOf(Date)
+        expect(persisted.recordedAt.getTime()).toBeLessThanOrEqual(Date.now())
+        expect(persisted.schemaVersion).toBe("1")
+    })
+
+    // --- Error scenarios: verify NO events persisted ---
+    test("returns {errorCode} when {condition}, persists no new events", async () => {
+        // Seed events that trigger the error:
+        const positionAfterSeed = await eventStore.append({
+            events: [{existingEventFactory}({ /* ... */ })]
+        })
+
+        const app = createApp()
+        const agent = supertest(app)
+
+        const res = await agent.post("/{route}").send({ /* command body */ })
+        expect(res.status).toBe({errorCode})
+
+        const newEvents = await streamAllEventsToArray(
+            eventStore.read(Query.all(), { after: positionAfterSeed })
+        )
+        expect(newEvents).toHaveLength(0)
+    })
+
+    // --- Validation errors (400): no seed needed, just verify no events ---
+    test("returns 400 when {validation fails}, persists no new events", async () => {
+        const app = createApp()
+        const agent = supertest(app)
+
+        const res = await agent.post("/{route}").send({ /* invalid body */ })
+        expect(res.status).toBe(400)
+
+        const newEvents = await streamAllEventsToArray(eventStore.read(Query.all()))
+        expect(newEvents).toHaveLength(0)
+    })
+})
+```
+
+### Key differences from unit tests (Step 8)
+
+| Concern | Unit test (`route.tests.ts`) | Integration test (`route.integration.tests.ts`) |
+|---------|------------------------------|------------------------------------------------|
+| Store | In-memory `MemoryEventStore` | Real `PostgresEventStore` with testcontainers |
+| Pool | `{} as Pool` (never used) | Real `Pool` from `getTestPgDatabasePool` |
+| Docker | Not required | Required (testcontainers starts Postgres) |
+| Seed events | `spec.existingEvents(...)` | `eventStore.append({ events: [...] })` |
+| HTTP execution | `spec.when(agent => ...)` | `supertest(createApp())` |
+| Event assertion | `then(emittedEventFactory(...))` matches TaggedEvent | Read back from Postgres, verify all `SequencedEvent` fields |
+| Fields verified | `event.type`, `event.data`, `tags` | Plus `id`, `position`, `recordedAt`, `schemaVersion` |
+| Error scenarios | `expectError(code)` | Assert status code AND no new events persisted |
+
+### What integration tests catch that unit tests miss
+
+- JSON serialization round-trip (data → TEXT payload → parse)
+- Tags persisted as TEXT[] and correctly reconstructed
+- UUID `id` (message_id) generated and persisted
+- `position` is sequential and non-zero
+- `recordedAt` timestamp is reasonable
+- `schemaVersion` defaults to "1"
+- Error scenarios truly persist nothing (not just an in-memory check)
+- Idempotency key → `message_id` mapping through real `findExistingPosition`
+
+Add one integration `test(...)` block per specification in slice.json — the same count as the unit test file.
+
 ### Storyline-derived tests (optional)
 
 If `storylines[]` is present in slice.json, add tests derived from command beats:
@@ -400,15 +538,16 @@ configure{SliceName}Route(deps),
 
 ```
 src/contexts/{context}/slices/{slicename}/
-├── command.ts          ← command type
-├── decisionModels.ts   ← EventHandlerWithState factories
-├── decider.ts          ← decider() combining models + logic
-├── schema.ts           ← Zod schema + openapi extensions
-├── route.ts            ← Express route
-└── route.tests.ts      ← ApiSpecification unit tests
+├── command.ts                   ← command type
+├── decisionModels.ts            ← EventHandlerWithState factories
+├── decider.ts                   ← decider() combining models + logic
+├── schema.ts                    ← Zod schema + openapi extensions
+├── route.ts                     ← Express route
+├── route.tests.ts               ← ApiSpecification unit tests (no Docker)
+└── route.integration.tests.ts   ← Postgres integration tests (testcontainers)
 
 src/contexts/{context}/
-└── Events.ts           ← add new tagged event types here
+└── Events.ts                    ← add new tagged event types here
 ```
 
 ---
@@ -418,7 +557,7 @@ src/contexts/{context}/
 - [ ] Every field in `commands[].fields` has a corresponding field in `command.ts` — no invented fields, none missing
 - [ ] Every event in `events[]` has a type + factory in `Events.ts` — names match exactly
 - [ ] Every `EventHandlerWithState` uses `Tags.fromObj(...)` matching the entity's tag key, not a stream name
-- [ ] Every entry in `specifications[]` maps to a `test(...)` block in `route.tests.ts`
+- [ ] Every entry in `specifications[]` maps to a `test(...)` block in `route.tests.ts` AND in `route.integration.tests.ts`
 - [ ] `decider()` handlers object keys match the state properties used in `decide()`
 - [ ] No business rules, defaults, or constraints were added that do not appear in slice.json `description` or `comments`
 - [ ] Route is wired in `src/index.ts`

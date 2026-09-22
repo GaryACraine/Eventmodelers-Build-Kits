@@ -217,6 +217,51 @@ Nested Claude sessions are blocked (`CLAUDECODE` env var prevents `claude -p` in
 
 ---
 
+### Phase 8: Postgres Integration Tests for State-Change Slices ✅
+
+**Goal:** Generate per-slice Postgres integration tests for every state-change slice, verifying that events are actually persisted with all `SequencedEvent` fields correct.
+
+#### Motivation
+
+Unit tests (`route.tests.ts`) use an in-memory `MemoryEventStore` with `pool: {} as Pool` — they verify business rules and emitted `TaggedEvent` shapes but never touch Postgres. This leaves zero confidence that events are persisted correctly: payload JSON round-trip, tags as TEXT[], UUID generation, sequential position, timestamp, schema version.
+
+The `build-state-view` skill already proves the Postgres+testcontainers pattern works. This phase extends `build-state-change` to generate a matching integration test file.
+
+#### What was built
+
+**Phase A — Prototype:**
+- Created `route.integration.tests.ts` for `register-course` in the enrollment-proof project
+- 4 integration tests mirroring the 4 unit test scenarios, all passing against real Postgres
+- Validates all `SequencedEvent` fields: `event.type`, `event.data`, `tags.values`, `id` (UUID), `position`, `recordedAt`, `schemaVersion`
+- Error scenarios verify no events persisted after the seed position
+
+**Phase B — Skill template updates:**
+
+| File | Change |
+|------|--------|
+| `build-state-change/SKILL.md` | Added Step 8b with full integration test template, comparison table, and what-it-catches documentation |
+| `build-kit/CLAUDE.md` | Updated example slice structure and spec-coverage description to include `route.integration.tests.ts` |
+| `build-kit/lib/checks/50-spec-coverage.cjs` | Updated comment to document that the check applies independently to each `*.tests.ts` file |
+| `RALPH-TESTING-GUIDE.md` | Updated test coverage table, generated file inventory, and infrastructure gaps section |
+| `PLAN.md` | This phase entry |
+
+#### Key API details discovered during prototype
+
+- `SequencePosition.initial()` (not `.zero()`) returns position 0
+- `SequencePosition.value` is private — use `.isAfter(SequencePosition.initial())` for assertions
+- `Tags` exposes `.values` (string array), not `.toArray()`
+- `SequencedEvent.schemaVersion` is optional in the type but defaults to `"1"` from Postgres
+- `streamAllEventsToArray(store.read(Query.all()))` reads all events; use `{ after: position }` to skip seeded events
+- No consumer/projection setup needed — integration tests only verify event persistence
+
+#### Verification
+
+- `route.integration.tests.ts` compiles: `npm run build` ✅
+- 4 integration tests pass: `npx vitest run .../register-course/route.integration.tests.ts` ✅
+- Full suite: 31/31 tests (10 files) ✅
+
+---
+
 ### Phase 7: Board Re-pointing 🔲 (Lower Priority)
 
 **Goal:** Point the CLI to a different board ("Proof Board") with separate credentials/API.
@@ -254,4 +299,5 @@ Nested Claude sessions are blocked (`CLAUDECODE` env var prevents `claude -p` in
 | 5 — Build Kit Config | ✅ Complete | CLAUDE.md, AGENT.md, prompts, 6 commit checks |
 | 5.5 — Prove Skills | ✅ Complete | 8 slice.json inputs, 3 skills proven, 30/30 tests, automation skill rewritten |
 | 6 — Ralph Loop | ✅ Complete | 4 slices rebuilt from skills (STATE_CHANGE, STATE_VIEW, AUTOMATION), all tests pass |
+| 8 — Integration Tests | ✅ Complete | Postgres integration tests for state-change slices; prototype proven, skill template updated |
 | 7 — Board Re-pointing | 🔲 Not started | Lower priority — waiting on credentials |

@@ -1,7 +1,8 @@
 'use strict';
 
-// Heuristic: a DCB slice's *.tests.ts must have at least as many `test(...)` blocks as
+// Heuristic: each DCB slice *.tests.ts must have at least as many `test(...)` blocks as
 // slice.json has `specifications[]` entries. Also counts `it(...)` blocks (alias).
+// Applies independently to every test file (route.tests.ts, route.integration.tests.ts, etc.).
 // Skipped when slice.json can't be found or has no specifications[] array.
 
 const fs = require('fs');
