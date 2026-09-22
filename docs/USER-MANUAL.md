@@ -1191,7 +1191,7 @@ Then start the next increment from the updated `main`: `git switch -c increment/
 | The loop committed on the wrong branch | Stop the loop. `git switch <right branch> && git merge --ff-only <wrong branch>` (or cherry-pick), then restart the loop |
 | You forgot to create the increment branch | `git switch -c increment/tN` now. The commits already made on `main` move along with the new branch; reset `main` afterwards if needed: `git branch -f main origin/main` or to the last merge commit |
 | A commit was rejected by the hook | Nothing was committed. Read the message, fix, commit again. Never use `--no-verify` |
-| An interrupted slice left uncommitted files | `git stash push -u -m "interrupted slice"` and reset the slice to Planned (see Troubleshooting) |
+| An interrupted slice left uncommitted files | The loop stashes them itself and rebuilds the slice. Look for `ralph: interrupted slice …` in `git stash list`, and drop it once the rebuilt slice is committed |
 
 ---
 
@@ -1208,6 +1208,14 @@ Claude agent with the kit's build prompt. The agent:
 5. Stages and runs `npm run run:checks -- --staged`, then commits `feat: <slice>`, with the `src/index.ts`
    wiring as a separate commit.
 6. Sets the slice to **Done**, and appends to `progress.txt` and `.build-kit/AGENTS.md`.
+
+**If the agent is interrupted** (Claude usage ran out, a crash, the terminal closed), the slice is left
+InProgress. With `--local`, the loop cleans up after its own agent: when the agent's run ends, or when the loop
+next starts if the loop itself was killed, it stashes the files the run created or changed as
+`ralph: interrupted slice "<slice>"`, sets the slice back to **Planned**, and builds it again from scratch. Files
+you had already changed before the run started stay in place. If the agent had already committed part of the
+slice, the loop marks it **Blocked** instead, because a rebuild would collide with those commits. Each recovery
+is noted in `progress.txt`.
 
 **The pre-commit hook** (installed by `npm install`) runs the same checks on every commit that touches a slice
 folder, so nothing can skip them:
@@ -1278,7 +1286,9 @@ instantaneous in this example, and it grows with your event store.
 | a read model is missing older data after an extension | the app wasn't restarted, so no rebuild | restart the app and look for `Rebuilding …` |
 | slices from other chapters appear in `.build-kit/.slices` | exported without `--chapter` after a `sync pull` | re-export with `--chapter "$(chapter_id)"` |
 | `eventmodelers init` crashes with `ERR_USE_AFTER_CLOSE` | no terminal input was available | run it in an interactive terminal and answer the prompts |
-| a slice stays **InProgress** and the loop says *waiting* | the agent was interrupted mid-slice (Claude usage ran out, the terminal closed). The loop retries a failed agent every 60 s, but the retried agent only builds `Planned` slices | once Claude is available again: `git stash push -u -m "interrupted slice"`, then set the slice back to Planned: `jq '(.slices[] \| select(.status == "InProgress")) \|= (.status = "Planned" \| .definition.status = "Planned")' .build-kit/.slices/enrollment/index.json > /tmp/i.json && mv /tmp/i.json .build-kit/.slices/enrollment/index.json`. Within 10 s the loop rebuilds it from scratch (restart the loop if you closed it) |
+| a slice went back to Planned and `git stash list` shows `ralph: interrupted slice …` | the agent was interrupted mid-slice (Claude usage ran out, a crash, the terminal closed). The loop stashed the partial work and rebuilds the slice (§11). If Claude is still unavailable, the loop retries every 60 s | nothing, once Claude is available again (restart the loop if you closed it). Drop the stash after the rebuilt slice is committed: `git stash drop stash@{N}` |
+| a slice is **Blocked** after an interruption | the agent committed part of the slice but was interrupted before marking it Done. `progress.txt` names the commits | check them with `git log`. If the slice is complete, set it to Done. Otherwise `git revert` them and set it back to Planned |
+| a slice stays **InProgress** and the loop says *waiting* | an interrupted agent, with the loop running with board sync (without `--local`). There the loop can't tell an interrupted claim from another agent's, so it only logs a warning | once no agent is building it: `git stash push -u -m "interrupted slice"`, then set the slice back to Planned on the board |
 
 ---
 

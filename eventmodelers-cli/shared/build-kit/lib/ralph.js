@@ -5,10 +5,11 @@
 //   onTask(prompt) — called when tasks.json has entries
 //   onPlannedSlice(prompt) — called when .slices/ has a "Planned" entry (omit to skip)
 
-import { readFileSync, mkdirSync, writeFileSync, existsSync, readdirSync } from 'fs';
-import { join, dirname } from 'path';
+import { readFileSync, mkdirSync, writeFileSync, existsSync, readdirSync, unlinkSync } from 'fs';
+import { join, dirname, relative } from 'path';
 import { homedir } from 'os';
 import { randomUUID } from 'crypto';
+import { execFileSync } from 'child_process';
 import { createRealtimeAdapter } from './adapters/realtime-adapter.js';
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
@@ -443,78 +444,273 @@ function getFirstPlannedSlice(kitDir) {
 // a stall. Configurable for teams that want more slack.
 const MAX_PLANNED_ATTEMPTS = Number(process.env.RALPH_MAX_PLANNED_ATTEMPTS) || 2;
 
-// Marks a stuck slice Blocked (locally, and on the board if credentialed) and
-// records why, so the loop can move on instead of looping or exiting.
-async function blockStuckSlice(kitDir, cfg, credentialed, planned, attempts) {
-  const now = new Date().toISOString();
-  const reason = `Ralph loop picked up this slice ${attempts} times in a row without its status ever leaving ` +
-    `"Planned" — the build agent kept declining to build it, or kept building it but its own status change kept ` +
-    `getting reverted (e.g. a failed check). Auto-blocked to stop the loop from retrying it forever.`;
-
-  const indexPath = join(kitDir, '.slices', planned.ctx, 'index.json');
+// Writes a slice's status into its context's index.json (entry + definition) and its
+// slice.json, merging `extra` fields alongside. Returns false if the slice isn't found.
+function setLocalSliceStatus(kitDir, ctx, id, status, extra = {}) {
+  const indexPath = join(kitDir, '.slices', ctx, 'index.json');
   let folder;
   try {
     const indexData = JSON.parse(readFileSync(indexPath, 'utf-8'));
-    const entry = (indexData.slices ?? []).find((s) => s.id === planned.id);
-    if (entry) {
-      entry.status = 'Blocked';
-      entry.blockedReason = reason;
-      entry.blockedAt = now;
-      folder = entry.folder;
-      writeFileSync(indexPath, JSON.stringify(indexData, null, 2), 'utf-8');
-    }
+    const entry = (indexData.slices ?? []).find((s) => s.id === id);
+    if (!entry) return false;
+    Object.assign(entry, { status, ...extra });
+    if (entry.definition) entry.definition.status = status;
+    folder = entry.folder;
+    writeFileSync(indexPath, JSON.stringify(indexData, null, 2), 'utf-8');
   } catch (err) {
-    console.error(`[ralph] Failed to write Blocked status to ${indexPath}:`, err.message);
+    console.error(`[ralph] Failed to write ${status} status to ${indexPath}:`, err.message);
+    return false;
   }
 
   if (folder) {
-    const sliceJsonPath = join(kitDir, '.slices', planned.ctx, folder, 'slice.json');
+    const sliceJsonPath = join(kitDir, '.slices', ctx, folder, 'slice.json');
     try {
       if (existsSync(sliceJsonPath)) {
         const sliceData = JSON.parse(readFileSync(sliceJsonPath, 'utf-8'));
-        sliceData.status = 'Blocked';
-        sliceData.blockedReason = reason;
-        sliceData.blockedAt = now;
+        Object.assign(sliceData, { status, ...extra });
         writeFileSync(sliceJsonPath, JSON.stringify(sliceData, null, 2), 'utf-8');
       }
     } catch (err) {
-      console.error(`[ralph] Failed to write Blocked status to ${sliceJsonPath}:`, err.message);
+      console.error(`[ralph] Failed to write ${status} status to ${sliceJsonPath}:`, err.message);
     }
   }
+  return true;
+}
 
+function appendProgressNote(kitDir, heading, lines) {
   try {
     const progressPath = join(dirname(kitDir), 'progress.txt');
     const existing = existsSync(progressPath) ? readFileSync(progressPath, 'utf-8') : '';
-    const note = `\n## ${now} — Slice auto-blocked\n\nSlice: ${planned.title} (id=${planned.id}, context=${planned.ctx})\n\n- ${reason}\n---\n`;
+    const note = `\n## ${new Date().toISOString()} — ${heading}\n\n${lines.join('\n')}\n---\n`;
     writeFileSync(progressPath, existing + note, 'utf-8');
   } catch (err) {
     console.error('[ralph] Failed to append progress.txt note:', err.message);
   }
+}
 
-  // Best-effort: also reflect Blocked on the board itself so a synced fetch
-  // doesn't just pull "Planned" back down over our local fix. Never fatal —
-  // this loop must keep going locally even if the board call fails.
-  if (credentialed) {
-    try {
-      await fetchJSON(`${cfg.baseUrl}/api/org/${cfg.organizationId}/boards/${cfg.boardId}/nodes/events`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-token': cfg.token, 'x-board-id': cfg.boardId, 'x-user-id': 'ralph-loop', ...agentHeaders(cfg) },
-        body: JSON.stringify([{
-          id: randomUUID(),
-          eventType: 'node:changed',
-          nodeId: planned.id,
-          boardId: cfg.boardId,
-          timestamp: Date.now(),
-          changedAttributes: ['sliceStatus'],
-          meta: { sliceStatus: 'Blocked' },
-        }]),
-      });
-    } catch (err) {
-      console.error(`[ralph] Failed to sync Blocked status to the board:`, err.message);
-    }
+// Best-effort: also reflect a status on the board itself so a synced fetch
+// doesn't just pull the old status back down over our local fix. Never fatal —
+// this loop must keep going locally even if the board call fails.
+async function syncSliceStatusToBoard(cfg, id, status) {
+  try {
+    await fetchJSON(`${cfg.baseUrl}/api/org/${cfg.organizationId}/boards/${cfg.boardId}/nodes/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-token': cfg.token, 'x-board-id': cfg.boardId, 'x-user-id': 'ralph-loop', ...agentHeaders(cfg) },
+      body: JSON.stringify([{
+        id: randomUUID(),
+        eventType: 'node:changed',
+        nodeId: id,
+        boardId: cfg.boardId,
+        timestamp: Date.now(),
+        changedAttributes: ['sliceStatus'],
+        meta: { sliceStatus: status },
+      }]),
+    });
+  } catch (err) {
+    console.error(`[ralph] Failed to sync ${status} status to the board:`, err.message);
   }
+}
+
+// Marks a stuck slice Blocked (locally, and on the board if credentialed) and
+// records why, so the loop can move on instead of looping or exiting.
+async function blockStuckSlice(kitDir, cfg, credentialed, planned, attempts) {
+  const reason = `Ralph loop picked up this slice ${attempts} times in a row without its status ever leaving ` +
+    `"Planned" — the build agent kept declining to build it, or kept building it but its own status change kept ` +
+    `getting reverted (e.g. a failed check). Auto-blocked to stop the loop from retrying it forever.`;
+
+  setLocalSliceStatus(kitDir, planned.ctx, planned.id, 'Blocked', { blockedReason: reason, blockedAt: new Date().toISOString() });
+  appendProgressNote(kitDir, 'Slice auto-blocked', [`Slice: ${planned.title} (id=${planned.id}, context=${planned.ctx})`, '', `- ${reason}`]);
+  if (credentialed) await syncSliceStatusToBoard(cfg, planned.id, 'Blocked');
 
   console.error(`[ralph] ${reason} Marked "${planned.title}" (id=${planned.id}) as Blocked — moving on.`);
+}
+
+// ── Interrupted-run recovery ──────────────────────────────────────────────────
+//
+// The build agent claims a slice by setting it InProgress, and only it moves the slice on
+// to Done or Blocked. If the agent dies mid-slice (Claude usage limit, crash, the terminal
+// closed), the slice stays InProgress, and a retried agent only picks up Planned slices, so
+// the loop idles forever. The loop runs one agent at a time, so once an agent run has ended,
+// any slice that run claimed and left InProgress is stale: its partial work is stashed and
+// the slice goes back to Planned, to be rebuilt from scratch.
+//
+// Only in local-only mode: there, index.json is written by this loop's agent alone, so a
+// slice that became InProgress during a run is provably its claim. With board sync, another
+// agent's claim reaches index.json through the realtime channel mid-run, and resetting it
+// would steal that agent's slice — so a credentialed loop only reports the stale slice.
+//
+// A marker file records each run while it is in flight, so a loop that was killed outright
+// (terminal closed, Ctrl+C) recovers its run the next time it starts.
+
+const RUN_MARKER = '.ralph-run.json';
+
+function isInProgress(status) {
+  return (status || '').toLowerCase().replace(/[\s_-]/g, '') === 'inprogress';
+}
+
+function inProgressSlices(kitDir, ctx) {
+  const indexPath = join(kitDir, '.slices', ctx, 'index.json');
+  if (!existsSync(indexPath)) return [];
+  try {
+    const { slices } = JSON.parse(readFileSync(indexPath, 'utf-8'));
+    return (slices ?? []).filter((s) => isInProgress(s.status)).map((s) => ({ id: s.id, title: s.slice || s.id }));
+  } catch {
+    return [];
+  }
+}
+
+function git(cwd, args) {
+  return execFileSync('git', args, { cwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] });
+}
+
+// HEAD plus every dirty path (tracked or untracked, relative to the repo root) with the
+// hash of its current content, so a later snapshot can tell which paths a run touched.
+// Null outside a git work tree.
+function snapshotWorktree(projectDir) {
+  let root;
+  try {
+    root = git(projectDir, ['rev-parse', '--show-toplevel']).trim();
+  } catch {
+    return null;
+  }
+  let head = null;
+  try { head = git(root, ['rev-parse', 'HEAD']).trim(); } catch {}
+  try {
+    const paths = git(root, ['status', '--porcelain', '-z', '--no-renames', '--untracked-files=all'])
+      .split('\0')
+      .filter(Boolean)
+      .map((entry) => entry.slice(3));
+    const dirty = {};
+    const present = paths.filter((p) => existsSync(join(root, p)));
+    for (const p of paths) dirty[p] = null;
+    if (present.length) {
+      const hashes = git(root, ['hash-object', '--', ...present]).trim().split('\n');
+      present.forEach((p, i) => { dirty[p] = hashes[i]; });
+    }
+    return { root, head, dirty };
+  } catch (err) {
+    console.error(`[ralph] Couldn't snapshot the working tree (${err.message.trim()}) — an interrupted slice will be reset without stashing.`);
+    return null;
+  }
+}
+
+function beginRun(kitDir, projectDir, ctx) {
+  const run = {
+    pid: process.pid,
+    startedAt: new Date().toISOString(),
+    ctx,
+    inProgress: inProgressSlices(kitDir, ctx).map((s) => s.id),
+    worktree: snapshotWorktree(projectDir),
+  };
+  try {
+    writeFileSync(join(kitDir, '.slices', RUN_MARKER), JSON.stringify(run, null, 2), 'utf-8');
+  } catch (err) {
+    console.error(`[ralph] Failed to write run marker:`, err.message);
+  }
+  return run;
+}
+
+function endRun(kitDir) {
+  try { unlinkSync(join(kitDir, '.slices', RUN_MARKER)); } catch {}
+}
+
+function isAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code === 'EPERM';
+  }
+}
+
+// Recovers the slices `run` claimed and left InProgress. Returns true if it recovered any.
+function recoverInterruptedRun(kitDir, projectDir, run) {
+  const stale = inProgressSlices(kitDir, run.ctx).filter((s) => !run.inProgress.includes(s.id));
+  if (!stale.length) return false;
+  const names = stale.map((s) => `"${s.title}"`).join(', ');
+  const before = run.worktree;
+  const now = before && snapshotWorktree(projectDir);
+  if (before && !now) {
+    console.error(`[ralph] ${names} left InProgress by an interrupted agent — leaving it InProgress, since its partial work can't be stashed.`);
+    return false;
+  }
+
+  // The agent commits a slice only once its checks pass, and marks it Done right after.
+  // A commit made during the run means the slice is partly (or fully) in history, which a
+  // from-scratch rebuild would collide with — leave it for a human instead.
+  if (now && now.head !== before.head) {
+    const reason = `The build agent was interrupted after committing (HEAD moved from ${before.head?.slice(0, 7) ?? 'none'} ` +
+      `to ${now.head?.slice(0, 7) ?? 'none'}) but before marking the slice Done. Check those commits and the working tree, ` +
+      `then set the slice to Done, or revert them and set it to Planned.`;
+    for (const s of stale) setLocalSliceStatus(kitDir, run.ctx, s.id, 'Blocked', { blockedReason: reason, blockedAt: new Date().toISOString() });
+    appendProgressNote(kitDir, 'Interrupted slice blocked', [`Slice(s): ${names} (context=${run.ctx})`, '', `- ${reason}`]);
+    console.error(`[ralph] ${names} left InProgress by an interrupted agent. ${reason} Marked Blocked.`);
+    return true;
+  }
+
+  const lines = [`Slice(s): ${names} (context=${run.ctx})`, '', `- The build agent was interrupted before finishing. Reset to Planned to be rebuilt from scratch.`];
+  if (now) {
+    // Stash only what the run itself touched: paths that became dirty during it. Paths that
+    // were already dirty when it started are the developer's work in progress and stay put.
+    // The slice-status files are the loop's own bookkeeping, never partial work.
+    const slicesDir = relative(now.root, join(kitDir, '.slices'));
+    const own = (p) => p !== slicesDir && !p.startsWith(`${slicesDir}/`);
+    const touched = Object.keys(now.dirty).filter((p) => own(p) && !(p in before.dirty));
+    const overlapping = Object.keys(before.dirty).filter((p) => own(p) && before.dirty[p] !== (now.dirty[p] ?? null));
+    if (touched.length) {
+      const message = `ralph: interrupted slice ${names} (${run.startedAt})`;
+      try {
+        git(now.root, ['stash', 'push', '--include-untracked', '-m', message, '--', ...touched]);
+        lines.push(`- Stashed its partial work (${touched.length} path(s)) as "${message}". Review with \`git stash list\`.`);
+        console.log(`[ralph] Stashed ${touched.length} path(s) left by the interrupted agent: ${touched.join(', ')}`);
+      } catch (err) {
+        // Without the stash the rebuild would start on top of half-written files — don't reset.
+        console.error(`[ralph] ${names} left InProgress by an interrupted agent, but stashing its partial work failed: ${err.message.trim()}. ` +
+          `Leaving it InProgress — stash or remove those files, then set it back to Planned.`);
+        return false;
+      }
+    }
+    if (overlapping.length) {
+      lines.push(`- Left in place, changed during the run but already modified before it: ${overlapping.join(', ')}`);
+      console.warn(`[ralph] Left in place (already modified before the agent started, changed since): ${overlapping.join(', ')}`);
+    }
+  }
+  for (const s of stale) setLocalSliceStatus(kitDir, run.ctx, s.id, 'Planned');
+  appendProgressNote(kitDir, 'Interrupted slice reset to Planned', lines);
+  console.log(`[ralph] ${names} left InProgress by an interrupted agent — reset to Planned.`);
+  return true;
+}
+
+// On startup: a marker whose loop is gone means the previous loop died mid-run.
+function recoverPreviousRun(kitDir, projectDir) {
+  const markerPath = join(kitDir, '.slices', RUN_MARKER);
+  if (!existsSync(markerPath)) return;
+  let run;
+  try {
+    run = JSON.parse(readFileSync(markerPath, 'utf-8'));
+  } catch {
+    endRun(kitDir);
+    return;
+  }
+  if (run.pid !== process.pid && isAlive(run.pid)) {
+    console.warn(`[ralph] Another loop (pid ${run.pid}) is building in this project — leaving its run alone.`);
+    return;
+  }
+  console.log(`[ralph] The previous loop stopped mid-run (started ${run.startedAt}) — checking for an interrupted slice...`);
+  recoverInterruptedRun(kitDir, projectDir, run);
+  endRun(kitDir);
+}
+
+// Credentialed loops can't tell their own stale claim from another agent's live one — say so.
+const reportedStale = new Set();
+function reportStaleClaims(kitDir, ctx) {
+  for (const s of inProgressSlices(kitDir, ctx)) {
+    if (reportedStale.has(s.id)) continue;
+    reportedStale.add(s.id);
+    console.warn(`[ralph] "${s.title}" is InProgress. If no agent is building it (an interrupted run), stash its partial ` +
+      `work and set it back to Planned on the board — with board sync on, the loop can't tell an interrupted claim ` +
+      `from another agent's.`);
+  }
 }
 
 async function runWithRetry(label, fn) {
@@ -530,7 +726,7 @@ async function runWithRetry(label, fn) {
   }
 }
 
-async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false) {
+async function ralphLoop(kitDir, projectDir, cfg, onTask, onPlannedSlice, localOnly = false) {
   const promptFile = join(kitDir, 'lib', 'prompt.md');
   const backendPromptFile = join(kitDir, 'lib', 'backend-prompt.md');
   // --local must mean zero board contact even when .eventmodelers/config.json
@@ -541,6 +737,8 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
   // Tracks consecutive sightings of the same Planned slice id — see
   // MAX_PLANNED_ATTEMPTS above.
   let stuckSlice = { id: null, count: 0 };
+
+  if (!credentialed) recoverPreviousRun(kitDir, projectDir);
 
   while (true) {
     let didWork = false;
@@ -566,7 +764,21 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
       }
 
       const prompt = readFileSync(backendPromptFile, 'utf-8');
-      await runWithRetry(`onPlannedSlice: building slice "${planned.title}"...`, () => onPlannedSlice(prompt));
+      await runWithRetry(`onPlannedSlice: building slice "${planned.title}"...`, async () => {
+        if (credentialed) return onPlannedSlice(prompt);
+        // Recovered before a retry, too: a retried agent only builds Planned slices.
+        const run = beginRun(kitDir, projectDir, planned.ctx);
+        try {
+          await onPlannedSlice(prompt);
+        } finally {
+          try {
+            recoverInterruptedRun(kitDir, projectDir, run);
+          } catch (err) {
+            console.error(`[ralph] Interrupted-slice recovery failed:`, err.message);
+          }
+          endRun(kitDir);
+        }
+      });
       console.log(`[ralph] Slice build complete — waiting for next slice`);
       if (credentialed) await fetchAndPersistSlices(cfg, kitDir).catch(() => {});
       didWork = true;
@@ -575,6 +787,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
     if (!didWork) {
       // No planned work in the current context — wait, do NOT switch contexts.
       const ctx = readCurrentContext(kitDir);
+      if (credentialed && ctx) reportStaleClaims(kitDir, ctx);
       if (ctx !== lastIdleCtx) {
         console.log(`[ralph] No planned slices in current context "${ctx}" — waiting. Switch context on the board to continue.`);
         lastIdleCtx = ctx;
@@ -610,7 +823,7 @@ export async function startRalph({ kitDir, projectDir, onTask, onPlannedSlice, a
   // reaches out to the platform at all.
   if (localOnly || !hasCredentials(local)) {
     console.log(`         mode: local-only (no platform sync)${localOnly ? ' — forced by --local' : ''}\n`);
-    await ralphLoop(kitDir, local, onTask, onPlannedSlice, localOnly);
+    await ralphLoop(kitDir, projectDir, local, onTask, onPlannedSlice, localOnly);
     return;
   }
 
@@ -619,6 +832,6 @@ export async function startRalph({ kitDir, projectDir, onTask, onPlannedSlice, a
 
   await Promise.all([
     startRealtimeAgent(cfg, kitDir, { agentType, queueAllStatuses }),
-    ralphLoop(kitDir, cfg, onTask, onPlannedSlice),
+    ralphLoop(kitDir, projectDir, cfg, onTask, onPlannedSlice),
   ]);
 }
