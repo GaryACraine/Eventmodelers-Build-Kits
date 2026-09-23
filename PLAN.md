@@ -103,34 +103,47 @@ Spoken input is just dictation into the same prompt, so it needs no speech-speci
 
 **Tasks:**
 
-- [ ] **13.1 emcli: refer to things by name.**
-  - Wherever a command takes an ID today, accept a name: lane by label, slice by label, element by name (in
-    `element add`, `dependency add`, `spec step add --link` and `element copy`). IDs still work.
-  - Give a clear error when a name is ambiguous.
-  - Tests and USAGE.md.
-- [ ] **13.2 emcli: link skills one by one.**
-  - A new `emcli skills link` links each skill folder into `.claude/skills/`, git-ignores the links, and reports
-    anything it skipped. `workspace init` runs it.
-  - Remove `--no-skills` from manual §4.
-- [ ] **13.3 The entry skill.** Rename `board-model` to `model`, or keep the name (settle it here).
-  - Add frontmatter with a description that triggers it.
-  - **storm mode:** taken from `timeline`'s conversation loop. Events come first and are pushed each round.
-  - **slice mode:** commands, read models and screens, following the core rules.
-  - **detail mode:** fields, examples, GWT specs and queries.
-  - **hand-off mode:** completeness → `slice status planned` → push → commit → `export --build-kit`, in that order.
-    It applies only when `.build-kit/` exists, and it never commits while the loop is building.
-  - A cookbook reference file pairing phrases with the commands they become.
-- [ ] **13.4 Port the method.**
-  - Move the `eventmodeling-*` rules into `emcli/skills/model/references/`, replacing API calls with emcli
-    commands.
-  - Fold schema, example-data and slice-scenarios into those references, because emcli commands supersede their
-    board-MCP writes.
-  - Rework ascii-mockups and wireframe-sketch to use `element update --description`.
-  - Drop navigation, or keep it read-only.
-- [ ] **13.5 Retire the old kit.**
-  - Mark `stacks/modeling-kit` and the eventmodelers `shared/skills` (`connect`, `learn-eventmodelers-api`,
-    `update-slice-status`, …) deprecated in their READMEs. Don't delete them yet.
-  - Replace this repo's `CLAUDE.md` (the `tasks.json` loop) with instructions for working on this repo.
+- [x] **13.1 emcli: refer to things by name.** *Done 2026-09-23, emcli `ab1a8d8` (+ `00e9006`).*
+  - Every chapter, lane, slice, element, spec and table argument or option takes an ID or a name, through one
+    resolver (`cli/refs.ts`): ID, then name ignoring case and punctuation, then a unique "contains" match. An
+    ambiguous name exits 1 listing the candidates (ID, type, slice) and how to qualify it.
+  - Elements take `"<slice>/<type>:<name>"` qualifiers (copies share their origin's name; a screen often shares
+    its command's). Commands narrow with what they know: `dependency add` by its connection type and the other
+    end's slice; `spec step add --link` by step type and the spec's slice; element commands, `element copy`,
+    `--copy-of`, queries, `use element` and `dependency list` read a bare name shared by a copy chain as the
+    origin. A bare `--link` links the step title; `--seed-examples` seeds a step with the fields' examples;
+    `element add` takes `readmodel`/`screen`/`processor`.
+  - Leading refs left off are taken from context (`withContext`), so a context chapter is enough for
+    `element field add "command:Borrow Book" bookId String`.
+  - 26 resolver tests; an end-to-end model built by names only; USAGE.md "Names instead of IDs".
+- [x] **13.2 emcli: link skills one by one.** *Done 2026-09-23, emcli `59f2765` (+ `00e9006`).*
+  - `emcli skills link [--only …]` / `emcli skills list`; `workspace init` runs it. One link per skill beside the
+    project's own skills; never replaces a real folder or a foreign link; repoints old emcli links; splits the old
+    whole-folder link; prunes links to retired skills; git-ignores the links under a marker block. 11 tests.
+  - Found and fixed: `workspace init --no-skills` never took effect (Commander stores `skills: false`).
+  - The manual's §4 change (`--no-skills` → linked skills) is part of 13.7.
+- [x] **13.3 The entry skill.** *Done 2026-09-23, emcli `00e9006`.* Named `model` (`skills/model/SKILL.md`):
+  frontmatter that triggers on modeling talk; storm, slice, detail, review and hand-off modes; ground rules (emcli
+  only, names only, build then summarise, one question per turn, hotspots for open questions, push only once
+  agreed, `--safe`); hand-off checks the loop is idle (`ralph.log` *waiting*, no `InProgress` slice) and follows
+  plan → push → commit → export. `references/cookbook.md` pairs phrases with commands; every cookbook command was
+  run verbatim in a scratch project (storm, slice, copy, detail, hotspot, automation, plan, export).
+- [x] **13.4 Port the method.** *Done 2026-09-23, emcli `00e9006`.* `references/method.md`, `storming.md`,
+  `slicing.md`, `detail.md`, `review.md`, `handoff.md`, `screens.md`, restated for prooph board lanes and emcli;
+  15 API-free worked examples copied to `references/examples/`. emcli's old board-MCP skills moved to
+  `skills-retired/` (README maps each to its new home); `wireframe-sketch` and `navigation` dropped.
+  - The automation recipe exports the same shape as the kit's proven `enrollment-proof` automation fixture
+    (trigger event + processor, command in its own slice); not yet through the loop, flagged in `slicing.md`.
+- [x] **13.5 Retire the old kit.** *Done 2026-09-23.*
+  - `stacks/modeling-kit/README.md` marks it deprecated here and maps each skill to its new home; the old root
+    `CLAUDE.md` (the `tasks.json` loop) is kept beside it as `REPO-CLAUDE-LOOP.md`. The root `CLAUDE.md` now
+    describes working on this repo.
+  - **`shared/skills` is not deprecated:** the build kit's agent instructions still invoke `update-slice-status`,
+    `request-feedback`, `connect` and `load-slice`, even with `--local`. Recorded in `shared/SKILLS-STATUS.md`.
+- [ ] **13.5b Local-mode loop skills.** Give the loop local equivalents of `update-slice-status` and
+  `request-feedback` (status and the question written to `.build-kit/.slices`, surfaced by
+  `emcli workspace import-status`), and drop `connect`/`load-slice` from `lib/AGENT.md` in `--local` mode. Then
+  deprecate the eventmodelers `shared/skills`.
 - [ ] **13.6 Experiment.**
   - In a fresh project, model a small new context by conversation only: events, then slices, then specs, then
     planned. Gary runs the loop.
