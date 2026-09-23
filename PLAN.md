@@ -30,7 +30,7 @@
 
 ## Phases
 
-### Phase 11: Read Model Types 🔴 Top priority
+### Phase 11: Read Model Types 🔴 Top priority (inline ✅, live next)
 
 > **Supersedes every other open item** (9.7, 9.11b, and porting 10.8 to the react stack and `ralph.sh`). Those
 > stay parked until Phase 11 is done.
@@ -95,7 +95,7 @@ inline projections (`projections.inline([...])`), so this phase is about the DCB
   - `rebuildProjection()` needs a `_handler_bookmarks` row, so `ensureProjectionsCurrent` installs one for each
     inline projection.
   - An inline `pongoProjection` is registered as type `'a'`, which is cosmetic.)*
-- [ ] **11.6 (experiment)** On `~/Projects/course-enrollment`, build a **CourseSeats** read model (inline).
+- [x] **11.6 (experiment)** On `~/Projects/course-enrollment`, build a **CourseSeats** read model (inline).
   - **t5:** the origin, handling `courseWasRegistered`, `studentWasSubscribed` and `studentWasUnsubscribed`.
     Check that it is backfilled from existing history, that a read immediately after a write shows the change,
     and what the registry records as its type.
@@ -104,6 +104,30 @@ inline projections (`projections.inline([...])`), so this phase is about the DCB
   - Record whether the rebuild strategy and the copy/extension flow are the same as for async read models. Then
     update the manual (read model types in §1, a t5/t6 walkthrough, rebuild differences in §12, and a
     troubleshooting row).
+  *(Done 2026-09-23 on `~/Projects/course-enrollment`, increments t5 and t6 (merged). The loop built both slices
+  unattended from the updated skill:
+  - `0d8275d` feat and `926c2af` wire, a one-line `inlineProjections` change.
+  - `462c2c4`, the extension: additive, with no wiring change.
+  - 53/53 tests pass.
+
+  Measured on the live DB, which holds the t0–t4 history:
+  - **Backfill:** on first start the log shows `Rebuilding CourseSeatsProjection: (new inline projection)`, and
+    c1 = 30/1/29 and c2 = 20/1/19 are correct from history.
+  - **Consistency:** 200 reads, each straight after a subscribe or unsubscribe, found 0 stale for CourseSeats,
+    against 199 stale for the async CourseDetails read without `Prefer: wait`.
+  - **Extension:** the restart logs `Rebuilding …` with the new fingerprint, and it picks up both earlier capacity
+    changes: the historic c1 change to 45 and a c2 change to 25 made during t5.
+  - **Registry:** `_projections` shows type `'a'` (the quirk). The inline projection's bookmark stays at the
+    rebuild position, which is harmless.
+
+  **Answers:**
+  - The copy/extension flow is identical for inline and async read models.
+  - The rebuild strategy is the same for changes, but differs on first start: inline needs a replay, which
+    `ensureProjectionsCurrent` now does.
+
+  Manual: §1 read model types, a new §10 walkthrough (old §10–15 are now §11–16), §13 inline rebuilds, and two
+  troubleshooting rows. Not measured: the write-latency cost per inline projection. The library has a
+  `contention` benchmark for that.)*
 - [ ] **11.7 (deferred, separate task)** Live read models (`live-report`).
   - No stored state and no rebuild. The route folds events per request, using `eventStore.read(query)`, or
     `buildDecisionModel` with tag-scoped handlers. dcb-event-store has no "live projection" abstraction, and
@@ -600,5 +624,5 @@ What each `build-*` skill generates and what it verifies:
 | 8 — Integration Tests | ✅ Complete | Postgres integration tests for state-change slices; prototype proven, skill template updated |
 | 9 — Progressive Read Model Evolution | ✅ Core complete | emcli copies + extension slices, `build-state-view` extend mode, automatic rebuild; proven t0→t4 on a live DB (32/32). Real Ralph run done (9.6). Node kit port remains |
 | 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 done (stale InProgress recovery in `--local` mode) |
-| 11 — Read Model Types | 🔴 Top priority | Inline-projected read models in the DCB kit (11.1–11.6), then live read models (11.7). Supersedes all other open items |
+| 11 — Read Model Types | 🟡 Inline done | Inline-projected read models built and proven on course-enrollment t5/t6 (11.1–11.6). Live read models (11.7) remain, still ahead of all other open items |
 | 7 — Board Re-pointing | ⛔ Dropped | eventmodelers board retired; prooph board via emcli is the only board |
