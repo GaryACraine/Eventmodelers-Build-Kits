@@ -170,10 +170,16 @@ inline projections (`projections.inline([...])`), so this phase is about the DCB
         knows `readModel.ts`.
       - Dry run: a fold-form CourseSeats written exactly from the templates passes tsc and 6/6 contract tests
         (2 scenarios × 3 types) in a copy of course-enrollment.)*
-    - [ ] **11.7d** emcli: retype re-queue on export (`retype: { from, to }`, with the built type recorded in
+    - [x] **11.7d** emcli: retype re-queue on export (`retype: { from, to }`, with the built type recorded in
       `index.json`), and a warning for a live list read model.
-    - [ ] **11.7e** Commit check `retype-scope`: a retype commit may change only the `type:` line, with tests
+      *(Done in emcli `ef3b232`, 129 tests. The index entry records the `readModelType` the loop was asked to build.
+      A Done origin whose type changed is re-queued with `retype`. A pending retype survives re-exports, follows
+      further changes, and is cancelled by switching back. Extension slices are never retyped. Checked end to end
+      on a copy of course-enrollment: CourseSeats inline → live re-queued, and switching back cancelled it.)*
+    - [x] **11.7e** Commit check `retype-scope`: a retype commit may change only the `type:` line, with tests
       unchanged.
+      *(Done: `checks/17-retype-scope.cjs`, with 5 `node:test` cases in `stacks/dcb/tests/checks/retype-scope.test.cjs`
+      that run in a throwaway git repo.)*
     - [ ] **11.7f** Experiment on course-enrollment:
       - migrate CourseSeats and CourseDetails to fold form (existing scenarios unchanged);
       - retype CourseDetails async → live, with the body identical before and after (the lookup union on the live
