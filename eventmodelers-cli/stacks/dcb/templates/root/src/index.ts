@@ -1,12 +1,5 @@
 import { Pool } from "pg"
-import {
-    PostgresEventStore,
-    createConsumer,
-    projectionToProcessor,
-    ensureHandlersInstalled,
-    waitUntilProcessed,
-    type Projection
-} from "@dcb-es/event-store-postgres"
+import { waitUntilProcessed } from "@dcb-es/event-store-postgres"
 import { getApplication, startAPI } from "@dcb-es/event-store-express"
 import type { SequencePosition } from "@dcb-es/event-store"
 
@@ -19,7 +12,7 @@ import {
     STUDENT_PROJECTION_NAME
 } from "./contexts/enrollment/slices/student-details/projection.js"
 
-import { ensureProjectionsCurrent } from "./shared/ensureProjectionsCurrent.js"
+import { startReadModels, type ReadModel, type StoredProjectionRegistration } from "./shared/readModels.js"
 
 import { configureRegisterCourseRoute } from "./contexts/enrollment/slices/register-course/route.js"
 import { configureRegisterStudentRoute } from "./contexts/enrollment/slices/register-student/route.js"
@@ -42,39 +35,19 @@ const port = parseInt(process.env["PORT"] ?? "3000", 10)
 
 const pool = new Pool({ connectionString, max: 20 })
 
-// Inline projections run inside the append transaction: their read models are current the moment a
-// command returns. Every append of one of their events waits for them — keep this list short.
-// `ensureInstalled()` registers and inits them; they need no consumer and no waitFn.
-const inlineProjections: Projection[] = []
+// Every read model, in one place. Keyed-fold read models (`defineReadModel`) go in `readModels`, and
+// each one's `type` decides how it runs (ADR-022). Imperative projections that can't be keyed folds are
+// stored only: async or inline. Inline read models slow every append of their events — keep them few.
+const readModels: ReadModel[] = []
+const imperative: StoredProjectionRegistration[] = [
+    { projection: courseDetailsProjection, type: "database-projected" },
+    { projection: studentDetailsProjection, type: "database-projected" }
+]
 
-const eventStore = new PostgresEventStore({ pool, inlineProjections })
-
-await eventStore.ensureInstalled()
-
-const initClient = await pool.connect()
-try {
-    await courseDetailsProjection.init!(initClient)
-    await studentDetailsProjection.init!(initClient)
-} finally {
-    initClient.release()
-}
-
-await ensureHandlersInstalled(pool, [COURSE_PROJECTION_NAME, STUDENT_PROJECTION_NAME], "_handler_bookmarks")
-
-// Rebuild any projection whose handled events (or version) changed since the last start —
-// events of a newly handled type recorded before this deploy would otherwise be skipped.
-await ensureProjectionsCurrent(pool, eventStore, [courseDetailsProjection, studentDetailsProjection], {
-    inline: inlineProjections
-})
-
-const consumer = createConsumer({
-    pool,
-    eventStore,
-    processors: [
-        projectionToProcessor(courseDetailsProjection, { batchSize: 100, startFrom: "BEGINNING" }),
-        projectionToProcessor(studentDetailsProjection, { batchSize: 100, startFrom: "BEGINNING" })
-    ]
-})
+// Creates the event store with the inline projections, brings stored projections up to date
+// (rebuilds on a changed fingerprint, backfills new inline ones) and starts the async consumer.
+const readModelRuntime = await startReadModels(pool, readModels, imperative)
+const eventStore = readModelRuntime.eventStore
 
 const courseWaitFn = (position: SequencePosition, timeoutMs: number) =>
     waitUntilProcessed(pool, COURSE_PROJECTION_NAME, position, { timeoutMs })
@@ -82,7 +55,7 @@ const courseWaitFn = (position: SequencePosition, timeoutMs: number) =>
 const studentWaitFn = (position: SequencePosition, timeoutMs: number) =>
     waitUntilProcessed(pool, STUDENT_PROJECTION_NAME, position, { timeoutMs })
 
-const deps = { store: eventStore, pool }
+const deps = { store: eventStore, pool, readModels: readModelRuntime }
 
 const app = getApplication({
     apis: [
@@ -112,7 +85,7 @@ server.on("listening", () => {
 
 const shutdown = async () => {
     console.log("Shutting down…")
-    await consumer.stop()
+    await readModelRuntime.stop()
     await pool.end()
 }
 

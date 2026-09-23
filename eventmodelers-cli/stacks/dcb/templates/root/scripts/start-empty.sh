@@ -4,7 +4,7 @@
 # The scaffold ships a complete worked example (10 slices, seed data, scenario tests).
 # Building your own model from scratch starts from nothing: this removes the example
 # slices, keeps the generic event feed, and resets Events.ts and src/index.ts to empty
-# wiring (`projections` and `inlineProjections` arrays, ensureProjectionsCurrent, no routes but the event feed).
+# wiring (`readModels` and `imperative` arrays started by startReadModels, no routes but the event feed).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
