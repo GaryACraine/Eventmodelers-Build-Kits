@@ -257,11 +257,54 @@ routes and queries, the examples, and the scenarios. Use it to:
 
 **Tasks**
 
-- [ ] **14.0 Board HTML: format and access.**
+- [ ] **14.0 Board HTML: format and access.** *Format found 2026-09-23; API access still open.*
   - Gary opens an Animal Shelter UI card that has a wireframe, plus a snippet, in the board editor, and records
     their shape: full document or fragment, and how CSS and snippets are imported.
   - Ask prooph board whether and when wireframes and snippets reach the REST API / MCP.
   - The outcome decides whether 14.3 pushes native wireframes, images, or both.
+  - **Findings.** Read-only in the board app (Chrome), chapter *01 - Arrivals / Animal Intake*
+    (`0cf9e701-…`); nothing was edited.
+    - **A wireframe is a full HTML document** (`<!DOCTYPE html>`, `<head>` with `<title>` and `<style>`, `<body>`),
+      rendered on the UI card in an iframe:
+      - `srcdoc`, `sandbox="allow-same-origin"`, so **scripts don't run** in the preview;
+      - drawn 1024px wide and scaled down; click opens a fullscreen preview.
+      - It sits in the card's description area; the card's `details` (Documentation tab) is empty.
+    - **Design system = an HTML snippet.**
+      - Snippets are rows in the workspace's `html_snippets` table, keyed by slug.
+      - The stored HTML says `<!-- @import design-system -->`. The app expands it to
+        `<!-- @import-start design-system -->…snippet…<!-- @import-end design-system -->` for display and collapses
+        it back on save.
+      - Here the snippet is ~26 KB of namespaced CSS (`asa-*` utility and component classes: `asa-card`,
+        `asa-btn-primary`, `asa-grid-3`, …) with a "sketchy but usable" wireframe look.
+    - **Bindings exist already:** `data-pb-element-id="<board element id>"` + `data-pb-element-type="command" |
+      "information"` on the region that shows it:
+      - a `<section>` for the *Intake Checklist* read model;
+      - the `<button>` for the *Register Animal* command.
+      - The app draws hover and persistent badges on those regions.
+      - Other `data-*` attributes (`data-placement`) pass through untouched.
+    - **Shared screens:** the same *Shelter Desk / Intake* page is on two UI cards (slices *View Shelter Desk /
+      Intake* and *View Intake Checklist*), each a full copy of the page, with the card linked to that slice's
+      element. There are no eventmodelers-style marks.
+    - **The app doesn't use the public API.**
+      - It reads Supabase directly (`/rest/v1/chapters`, `elements`, `html_snippets`).
+      - The public API/MCP sees a **different chapter set** for this workspace:
+        - the API has *Medical Assessment* and *J01 — Fleet Onboarding*;
+        - the app has *Coffee Machine*, *Story Plot* and *Medical Intake Assessment*.
+      - `get_chapter 0cf9e701-…` returns nothing, and a search for "Shelter Desk" finds nothing.
+      - So neither emcli nor MCP can read or write these wireframes or snippets today. Calling the app's Supabase
+        directly isn't a supported integration, so we won't.
+    - **Consequences for 14.2–14.6:**
+      - adopt this format as ours: full document, `<!-- @import <slug> -->` for the design system, `data-pb-element-*`
+        on regions;
+      - add our field-level bindings (`data-field`, `data-list`), which the board ignores;
+      - keep bindings by element name locally and write board IDs in on push (emcli IDs change on the first push);
+      - mockups stay static (no scripts);
+      - the design-system CSS must be precompiled (a Tailwind CDN script wouldn't run in the sandbox), and the same
+        CSS ships in `web/`, so classes carry over 1:1 into JSX.
+    - **Still open:** ask prooph board (Alexander Miertsch):
+      1. API/MCP access to wireframe HTML and `html_snippets`;
+      2. which field holds the HTML;
+      3. why the API and the app list different chapters for the reference workspace.
 - [ ] **14.1 Backend contract for a frontend (DCB kit).**
   - `start-empty.sh` keeps a minimal `openapi` slice.
   - Each slice's `schema.ts` registers its paths (build skills updated), so `/openapi.json` is complete.
