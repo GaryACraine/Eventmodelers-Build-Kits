@@ -14,7 +14,7 @@ board/platform is retired in this fork: don't call its API or MCP tools.
 | `eventmodelers-cli/stacks/dcb/` | the DCB kit: scaffold (`templates/root`), build skills (`templates/.claude/skills/build-*`), loop config (`templates/build-kit`) |
 | `eventmodelers-cli/shared/` | files every kit installs (see `shared/SKILLS-STATUS.md`) |
 | `eventmodelers-cli/stacks/modeling-kit/` | deprecated here (see its README) |
-| `~/Projects/emcli` | the model editor and its `model` skill; its own repo, merged locally with `--no-ff` |
+| `~/Projects/emcli` | the model editor and its `event-model` skill; its own repo, merged locally with `--no-ff` |
 | `~/Projects/dcb-event-store` | the DCB event store library the scaffold links with `file:` |
 
 ## Rules
@@ -25,6 +25,6 @@ board/platform is retired in this fork: don't call its API or MCP tools.
   spawn `claude -p`.
 - **Never commit, export or edit files in a project while its loop is building** (the loop shares the working
   tree). Wait for its log to say *waiting*.
-- **Model through emcli only** (the `model` skill in emcli), never through board MCP tools.
+- **Model through emcli only** (the `event-model` skill in emcli), never through board MCP tools.
 - Kit changes are proven in a real project before they're called done; record results in `PLAN.md`.
 - Record decisions in `PLAN.md`'s Decisions Log with the reason, and tick tasks as they land.
