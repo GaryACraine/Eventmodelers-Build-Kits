@@ -24,7 +24,7 @@ Only check `src/contexts/{context}/slices/{slicename}/*.ts`, do not check subfol
 
 Ignore case for contexts and slices in prompts.
 
-Do not change files with tests unless explicitly instructed, or the change brings the test in line with slice.json: `*.tests.ts`. An extension slice appending its own `describe` block to its origin's `route.tests.ts` is explicitly instructed (build-state-view, E4); existing tests there stay untouched.
+Do not change files with tests unless explicitly instructed, or the change brings the test in line with slice.json: `*.tests.ts`. An extension slice appending its own `describe` block to its origin's `route.tests.ts` is explicitly instructed (build-state-view, E4), and so is a slice with `addQueries` appending one query block per added query (A5); existing tests there stay untouched.
 
 At the start of every session, read `.build-kit/AGENTS.md` if it exists to load accumulated project learnings.
 
@@ -50,6 +50,9 @@ When asked to build a slice, always follow this flow:
        Never build a different type than slice.json names.
    - **Retype** — a state-view slice whose slice.json has a `retype` block: the model switched a built read model's
      type → `/build-state-view` ("Changing a read model's type"). It changes the `type:` line only.
+   - **Queries** — a state-view slice whose slice.json has `addQueries`: its specs now run queries the built read
+     model doesn't serve yet → `/build-state-view` ("Adding queries"). It adds to `queries` and appends query
+     tests only (ADR-023). With a `retype` block too, the retype is its own commit first.
    - **State-change** — default (has `commands` / `events`) → invoke `/build-state-change`
    - **Extension** — a state-view slice whose slice.json has an `extends` block. It grows a read model an
      earlier slice built (its read model is a board copy, `linkedTo` the origin) → `/build-state-view`,
