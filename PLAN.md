@@ -293,7 +293,7 @@ routes and queries, the examples, and the scenarios. Use it to:
     `/openapi.json`.
   - MSW handlers; an app shell (router, layout from the screen titles); `vite build` output for S3.
   - `init-style-guide` / `learn-styleguide` ported from supabase-react.
-  - The kit's `CLAUDE.md` names the stack, overriding the global Bulma instruction.
+  - The kit's `CLAUDE.md` names the stack.
 - [ ] **14.6 Build skills for screens.**
   - `build-screen` runs after `build-state-change` / `build-state-view` when the slice has a screen.
   - One component per command: a form, props = fields, React Hook Form + Zod from the generated types, rejections
@@ -309,7 +309,7 @@ routes and queries, the examples, and the scenarios. Use it to:
   per environment. A script first; CDK later if wanted.
 - [ ] **14.9 Prove and document.** One increment end to end on a real project: mockup → board image → the loop
   builds backend and UI → the app works against the live backend. New manual section; results here.
-- **Open:** `~/Projects/CLAUDE.md` (Bulma). Gary decides whether to delete or narrow it.
+- **Resolved 2026-09-23:** `~/Projects/CLAUDE.md` (Bulma, inherited from eventmodelers) deleted at Gary's request.
 
 ### Phase 12: Query Read Models (the spec's *when* is the read operation) ✅
 
