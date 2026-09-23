@@ -353,3 +353,50 @@ The eventmodelers modeling-kit rules (`eventmodeling-core-rules`, `eventmodeling
 - **Always rebuild on startup.** Simple, but the cost grows with the log for no benefit when nothing changed.
 
 **Consequences:** Replay is never a manual step. Every extension deploy in the proof run rebuilt automatically, and history recorded before each extension (capacity changes, subscriptions, an unsubscribe, a rename) appeared correctly. Startup blocks while a rebuild runs, which is proportional to the log size for the rebuilt projection only. A shape change that isn't visible in `canHandle` needs the `version` bump, which the skill's E2 step and checklist cover.
+
+---
+
+### ADR-021: Inline projections for read models that must be immediately consistent
+
+**Status:** Accepted
+**Date:** 2026-09-23
+
+**Context:** Every DCB read model so far is an async projection (ADR-014): a consumer follows the event store,
+and a reader who needs their own write waits for it (`Prefer: wait`). Some business users won't accept a stale
+read in particular places, for example seeing a free seat that was just taken. dcb-event-store can run a
+projection **inline**, inside the append transaction (`new PostgresEventStore({ inlineProjections })`), so its
+read model commits atomically with the events. The model says which read models need this:
+emcli's `readModelType: "inline-projected"`, exported into slice.json and inherited by every copy.
+
+**Decision:** `build-state-view` builds both types from the same `projection.ts`, and Step 0 picks the variant
+from `readModelType`. An inline read model:
+- is listed in `src/index.ts`'s `inlineProjections`, with no consumer, bookmark or `waitFn`;
+- is served by a route without `preferWait` or a bookmark ETag;
+- is tested by reading straight after the write.
+
+`ensureProjectionsCurrent` takes the inline projections too. It keeps ADR-020's fingerprint rebuild for them,
+prefixing their fingerprint with `inline:`, and it also **rebuilds an inline projection the first time it sees
+it**, because nothing else would project the history recorded before it was deployed. It installs their
+bookmark rows first, since `rebuildProjection()` replays through a temporary consumer. `live-report` read
+models are blocked with a question until the kit supports them (PLAN 11.7).
+
+**Alternatives considered:**
+- **A separate `build-state-view-inline` skill.** Rejected: the projection code and the extension steps (E1–E6)
+  are identical, and two copies would drift. Only the wiring, route and tests differ.
+- **Make every read model inline.** Rejected: every append of a handled event waits for every inline projection
+  on it, holding its consistency locks (dcb-event-store Invariant 6), so write throughput falls with each one.
+- **Keep async and make readers wait longer.** That doesn't give a guarantee. `Prefer: wait` only helps a client
+  that holds the ETag of its own write, and another client's read can still be stale.
+
+**Consequences:**
+- Inline read models are consistent the moment a command returns, with no read-your-writes plumbing.
+- They cost write latency, so the model should use them sparingly. emcli's export warns when one event feeds
+  three or more of them.
+- **A bug in an inline projection fails the command.** A throw rolls back the append. The skill therefore
+  forbids external calls and throwing for a missing document or a business rule.
+- Switching a read model between async and inline changes its fingerprint, which rebuilds it.
+- Verified in `src/shared/ensureProjectionsCurrent.tests.ts`: backfill, an immediate read, extension rebuild,
+  rollback, and an async → inline switch.
+- Library quirk: an inline `pongoProjection` is recorded as type `'a'` in `_projections`, because its `init`
+  re-registers it after `ensureInstalled()` registered it as `'i'`. Behaviour is unaffected: inline dispatch only
+  checks `status`.

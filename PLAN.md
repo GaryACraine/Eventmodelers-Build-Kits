@@ -65,24 +65,36 @@ inline projections (`projections.inline([...])`), so this phase is about the DCB
 
 #### Tasks
 
-- [ ] **11.1 (emcli)** Add `inline-projected` to `readModelType`: the schema, the domain type, export, and the
+- [x] **11.1 (emcli)** Add `inline-projected` to `readModelType`: the schema, the domain type, export, and the
   `element update` validation and help. `--copy-of` inherits the origin's type, and a copy whose type differs from
   its origin's is rejected. `workspace export --build-kit` warns when one event type feeds three or more inline
   read models. Add tests, and update `USAGE.md` and `CLAUDE.md`.
-- [ ] **11.2 (kit)** `build-kit/CLAUDE.md` switchboard: both projected types go to `/build-state-view`.
+- [x] **11.2 (kit)** `build-kit/CLAUDE.md` switchboard: both projected types go to `/build-state-view`.
   `live-report` → `request-feedback` (Blocked: not supported yet), instead of silently building an async
   projection.
-- [ ] **11.3 (kit)** `build-state-view` gets an inline variant, chosen in Step 0 from `readmodels[0].readModelType`:
+- [x] **11.3 (kit)** `build-state-view` gets an inline variant, chosen in Step 0 from `readmodels[0].readModelType`:
   - `projection.ts` is unchanged, plus rules for inline code: keep it fast, make no external calls, and remember
     that a throw fails the command.
   - Wiring: the projection goes in `inlineProjections`. It gets no consumer and no `waitFn`.
   - The route has no `preferWait` or bookmark ETag.
   - Tests do a GET immediately after the POST, with no wait.
   - The extension steps (E1–E6) apply unchanged.
-- [ ] **11.4 (kit)** `ensureProjectionsCurrent` takes the inline projections and replays one the first time it
+- [x] **11.4 (kit)** `ensureProjectionsCurrent` takes the inline projections and replays one the first time it
   sees it.
-- [ ] **11.5 (kit)** Add ADR-021 "Inline projections for immediate consistency": when to choose inline, the lock
+- [x] **11.5 (kit)** Add ADR-021 "Inline projections for immediate consistency": when to choose inline, the lock
   cost, sparing use, and the fact that failures surface as write failures.
+  *(11.1 done in emcli `2674065`: `READ_MODEL_TYPES`, `effectiveReadModelType`, `findInlineFanOut`; 121 tests.
+  11.2–11.5 done: the inline variant is I1–I4 in the skill.
+  `src/shared/ensureProjectionsCurrent.tests.ts` (7 tests, real Postgres) confirms the rebuild hypothesis:
+  - a new inline projection is backfilled;
+  - reads are current straight after the append;
+  - an extension rebuild projects earlier events of the new type;
+  - a throw rolls back the append;
+  - switching async → inline rebuilds.
+  Two library findings:
+  - `rebuildProjection()` needs a `_handler_bookmarks` row, so `ensureProjectionsCurrent` installs one for each
+    inline projection.
+  - An inline `pongoProjection` is registered as type `'a'`, which is cosmetic.)*
 - [ ] **11.6 (experiment)** On `~/Projects/course-enrollment`, build a **CourseSeats** read model (inline).
   - **t5:** the origin, handling `courseWasRegistered`, `studentWasSubscribed` and `studentWasUnsubscribed`.
     Check that it is backfilled from existing history, that a read immediately after a write shows the change,
@@ -557,7 +569,7 @@ What each `build-*` skill generates and what it verifies:
 
 ## Decisions Log
 
-> **Architectural decisions with full rationale and alternatives:** see [`eventmodelers-cli/stacks/dcb/ADR.md`](eventmodelers-cli/stacks/dcb/ADR.md) — 18 ADRs covering projections, identity, consistency, testing, error handling, idempotency, versioning, and more.
+> **Architectural decisions with full rationale and alternatives:** see [`eventmodelers-cli/stacks/dcb/ADR.md`](eventmodelers-cli/stacks/dcb/ADR.md) — 21 ADRs covering projections, identity, consistency, testing, error handling, idempotency, versioning, and more.
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
@@ -572,6 +584,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-22 | Read-model copies are extension slices editing the origin projection (ADR-019) | Each growth step gets its own planned, tracked slice; one read model stays one projection file |
 | 2026-09-22 | Automatic rebuild on changed `canHandle`/`version` (ADR-020, supersedes ADR-016) | Bookmarks skip a newly handled type's history; proven necessary in the t2 proof step |
 | 2026-09-22 | Include `idAttribute` fields in Zod body schema | When a command field has `idAttribute: true` and no `generated: true`, include it in the body schema. Client sends it for deterministic tests and idempotent creation. |
+| 2026-09-23 | Inline read models share `build-state-view`, chosen by `readModelType` (ADR-021) | Same projection code and extension steps as async; only wiring, route and tests differ. First sighting of an inline projection backfills from history |
 
 ## Progress
 
