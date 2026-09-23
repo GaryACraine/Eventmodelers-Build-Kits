@@ -447,7 +447,7 @@ routes and queries, the examples, and the scenarios. Use it to:
       credits?") and a warning that `CreateCourse` can no longer send `credits`;
     - `workspace export --build-kit` warned about both errors and wrote full documents to the three slices'
       `screens[].mockup.html`.
-- [ ] **14.2b The screen contract: dependencies (emcli).** *Added 2026-09-23 at Gary's request.*
+- [x] **14.2b The screen contract: dependencies (emcli).** *Added and done 2026-09-23 at Gary's request (emcli `35192b5`).*
   - **Why:** a screen's information flow is a contract, not decoration. The read models it displays and the
     commands it submits decide what the frontend queries and calls, so they must be modelled explicitly, and
     checked, before any mockup is drafted or built. Found while planning it:
@@ -472,6 +472,37 @@ routes and queries, the examples, and the scenarios. Use it to:
     commands, to run or adjust. It never adds dependencies silently.
   - The export already carries a screen's dependencies, so `build-screen` (14.6) knows exactly which queries and
     commands to wire. Tests, USAGE.
+  - **What landed:**
+    - `submits` (SCREEN → COMMAND) is in the rules, the Zod schema, `dependency add` and the export schema.
+    - `screenContract`: direction and element type decide the contract (the connection type only labels it), so
+      older links count too.
+    - **Scope and attribution:**
+      - bindings resolve against the contract;
+      - an input (`input`, `select`, `textarea`) counts toward a submitted command's fields, and a shown value
+        toward a displayed read model, even when both have the field. So a form's `title` input doesn't
+        "display" Courses, and a `<span>` never counts as a command's input;
+      - `data-slice` narrows the contract to its slice.
+    - **Suggestions:** `--draft` without a contract prints `dependency add` lines built from the slice. They use
+      `slice/name` when that is unique in the workspace, and the element ID otherwise (Faculty and Legacy repeat
+      slice names), so each line runs as printed.
+    - **Completeness:**
+      - screens are checked by `checkScreen` only. The legacy `*` "UI entry screen has no inbound dependencies"
+        warning is gone: a form screen legitimately has no inbound read model;
+      - a command submitted from a screen *with a mockup* defers its field check to the screen. From a screen
+        without one, the screen's own fields stay its upstream pool, as before (existing tests unchanged);
+      - two existing tests now expect the contract warning.
+    - Export: dependencies keep `connectionType` (one export test updated). USAGE, cli/CLAUDE.md, and the
+      `event-model` cookbook line for `submits`.
+  - **Tests:** 223/223, 29 in `mockup.test.ts`, including "every draft passes its own checks" and a draft across
+    slices.
+  - **On a copy of course-enrollment's model:**
+    - `--draft` refused *Create Course Screen*, and its printed line ran as is. The draft then passed its checks;
+    - *Subscribe To Course* displays **Courses from another slice** and submits `SubscribeStudentToCourse`. Its
+      draft had both the list and the form;
+    - deleting the `studentId` input was an error in `element mockup`, in `completeness` and in the export
+      warning;
+    - slice.json carries `[INBOUND READMODEL Courses displays]` and `[OUTBOUND COMMAND SubscribeStudentToCourse
+      submits]`.
 - [ ] **14.3 Show mockups on the board (emcli).** *Native wireframes (14.0 experiment); no PNG.*
   - `sync push` appends the mockup to the ui element's description as a fenced ` ```html ` block, after the prose.
   - `sync pull` takes it back out into `mockup`, so the round trip is lossless. It also adopts a mockup that
@@ -1491,5 +1522,5 @@ What each `build-*` skill generates and what it verifies:
 | 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 done (stale InProgress recovery in `--local` mode) |
 | 11 — Read Model Types | ✅ Complete | Async, inline and live read models from one fold definition, with an identical data shape across types (ADR-021/022). Proven on course-enrollment t5–t10: inline, a retype to live and back, a new live read model with a lookup |
 | 12 — Query Read Models | 🚧 In progress (top priority) | 12.1–12.3 done: ADR-023 query contract; emcli queries + `SPEC_QUERY` + `addQueries` re-queue; kit runtime (stored SQL + live, one semantics). Named queries on the read model element, the spec *when* references them, `{ data, cursor? }` pages; live needs a tag parameter |
-| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 done: `element mockup` (draft, bindings checked, exported). 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
+| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
 | 7 — Board Re-pointing | ⛔ Dropped | eventmodelers board retired; prooph board via emcli is the only board |
