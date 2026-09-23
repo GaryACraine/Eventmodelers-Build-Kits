@@ -181,7 +181,7 @@ Spoken input is just dictation into the same prompt, so it needs no speech-speci
 
 ### Phase 14: UI from the model (screens → board → React)
 
-> Recorded 2026-09-23, after Phase 13 (13.6 comes first). Planned, not started; expected to grow.
+> Recorded 2026-09-23, after Phase 13 (13.6 comes first). In progress: 14.1 done 2026-09-23; expected to grow.
 
 **Goal:** the model already knows most of a frontend: screens, the fields of every command and read model, their
 routes and queries, the examples, and the scenarios. Use it to:
@@ -305,11 +305,59 @@ routes and queries, the examples, and the scenarios. Use it to:
       1. API/MCP access to wireframe HTML and `html_snippets`;
       2. which field holds the HTML;
       3. why the API and the app list different chapters for the reference workspace.
-- [ ] **14.1 Backend contract for a frontend (DCB kit).**
+- [x] **14.1 Backend contract for a frontend (DCB kit).** *(Done 2026-09-23.)*
   - `start-empty.sh` keeps a minimal `openapi` slice.
   - Each slice's `schema.ts` registers its paths (build skills updated), so `/openapi.json` is complete.
   - CORS for the frontend origin (`CORS_ORIGIN`).
   - Proven on course-enrollment while its loop is idle.
+  - **What landed (kit):**
+    - `src/shared/openapi.ts`: one registry keyed by method + path (registering again replaces, so a route
+      configured once per test is harmless), shared shapes (ProblemDetails, Idempotency-Key, ETag, If-None-Match,
+      Prefer), and three helpers:
+      - `registerCommand({ method, path, summary, body?, success: "createdId" | "createdUrl" | "noContent", errors })`
+        in a state-change slice's `schema.ts`. Path parameters come from the Express path; 400 is added when there
+        is a body.
+      - `registerRead({ path, summary, response, query?, notFound?, wait?, contentType? })` for hand-written GETs
+        (imperative read models, the event feed).
+      - `registerReadModel`, called by `readModelRoute` itself: the keyed GET plus **every query**, with typed
+        query parameters (`in` → comma-separated string), `limit`/`cursor`, and `{ data, cursor? }` pages. So
+        `addQueries` slices need no OpenAPI work, and query-additive is unchanged.
+    - `readModelRoute(…, { schema })`: the document's Zod schema, from the slice's new `schema.ts`, typed
+      `ZodType<TDoc>`, so tsc fails on a Doc field that's missing or has another type (checked). It's optional in
+      the type so projects built before 14.1 still compile (their paths are listed with an untyped body), and
+      required by the check.
+    - The `openapi` slice builds the document on the first request, from the registry, titled from
+      `package.json`. `start-empty.sh` keeps it (and `event-feed`, which now documents `/events`).
+    - `src/shared/cors.ts`: `configureCors()` is the first entry in `apis`. It reads `CORS_ORIGIN` (comma-separated
+      origins, or `*`; unset = no headers), echoes an allowed origin with `Vary: Origin`, exposes `ETag` and
+      `Location` (read-your-writes needs `ETag`), and answers preflights with 204 for `Content-Type`,
+      `Idempotency-Key`, `If-None-Match`, `Prefer`, `Last-Event-ID`. No `cors` dependency.
+    - Check `60-openapi-registered`: in each slice the commit touches, every `router.<method>("<path>")` in
+      `route.ts` has a `registerCommand`/`registerRead` with the same method and path in `schema.ts`, `route.ts`
+      imports `./schema.js`, and every `readModelRoute(…)` passes `schema:`. 8 `node:test` cases (31 with the
+      existing ones, all pass).
+    - Skills: `build-state-change` Step 6 (registration; no-body commands), `build-state-view` Step 4 (`schema.ts`
+      + `schema:`), P3 and inline (`registerRead`), extensions (E2: an `.optional()` schema field per added
+      field, in the origin's `schema.ts`). The kit's CLAUDE.md, AGENT.md, backend-prompt, README and the manual's
+      check table.
+    - The reference app's slices register their routes too: its document lists all 9 routes it serves (the old
+      central `document.ts` had them hard-coded).
+  - **Template:** tsc clean, 71/71 tests (7 new: registry and CORS). After `start-empty.sh`: tsc clean, 42/42.
+  - **course-enrollment** (merged to its `main` as `d360f4d`; the loop idle throughout):
+    - The kit update (`f3508d6`) and the `openapi` slice, event feed and `index.ts` wiring as separate commits.
+    - The check flagged all 9 existing slices before the backfill. Each got its own commit through the pre-commit
+      hook: 6 `registerCommand` (the unsubscribe DELETE had no `schema.ts`), 3 read model schemas, all accepted
+      by tsc against their Doc interfaces. 127/127 tests.
+    - Live, on a throwaway database: `/openapi.json` lists all 12 routes, including both queries
+      (`/available-courses`, `/students/{studentId}/courses`). From `Origin: http://localhost:5173`: the
+      preflight gets 204 with the right headers, `POST /courses` → 201 with `ETag: "1"` exposed, and
+      `GET /courses/c1/seats` with `If-None-Match: "1"` + `Prefer: wait=5` (async) → 200 with the new document.
+      Another origin gets no CORS headers.
+    - `openapi-typescript` 7.13 generated types from the live document (14.5's generator), and a strict tsc
+      check of client code against them passed: typed bodies, `minRemainingSeats: number` required, optional
+      `limit`/`cursor`, and a response missing a field is an error.
+  - **Not yet proven:** the loop hasn't built a new slice with the updated skills. The next slice with a route
+    (13.6's, or 14.9's increment) is that proof.
 - [ ] **14.2 Mockups in the model (emcli).**
   - `element mockup <screen> --html <file> | --draft | --clear`, stored on the ui element (`mockup: { html }`).
   - `--draft` builds a form (a write slice: the command's fields) or a view or list (a read slice: the read
@@ -1283,6 +1331,10 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-23 | The modeling skill is `event-model`, not `model` | `/model` is Claude Code's built-in model switcher, so `/model` could never force the skill; the new name matches what it does and matches the description's trigger words |
 | 2026-09-23 | Screens are HTML mockups in the model, shown on the board as rendered images until its API exposes wireframes (Phase 14) | prooph board uses HTML for screens but its API can't read or write them yet; HTML is both picture and code blueprint; push regenerates descriptions, so rendering belongs in push |
 | 2026-09-23 | The frontend is `web/` in the backend repo: Vite + React + Tailwind/shadcn + TanStack Query, client generated from `/openapi.json` (Phase 14) | One slice drives both halves from one model; a static build suits S3; Tailwind mockups map 1:1 to JSX |
+| 2026-09-23 | Each slice registers its own routes in a shared OpenAPI registry; `readModelRoute` documents read models and their queries itself (14.1, ADR-007 update) | A central `document.ts` would be a cross-slice edit the loop can't make; deriving queries from the definition keeps `addQueries` additive, and a `ZodType<TDoc>` schema lets tsc catch drift |
+| 2026-09-23 | DCB gets an `openapi-registered` check after all (supersedes "omit `60-openapi-annotation`") | The client is generated from `/openapi.json`, so a missing route is a frontend bug. The check reads `registerCommand`/`registerRead` and `readModelRoute`'s `schema:`, not JSDoc |
+| 2026-09-23 | `readModelRoute`'s `schema` is optional in the type and required by the check | Required in the type, the kit update breaks tsc in existing projects, and no single per-slice backfill commit can pass tsc-build. The check still covers every slice a commit touches |
+| 2026-09-23 | CORS is a kit middleware reading `CORS_ORIGIN`, not the `cors` package | ~25 lines, no new dependency; it must expose `ETag` for read-your-writes, which a default `cors()` doesn't |
 
 ## Progress
 
@@ -1300,5 +1352,5 @@ What each `build-*` skill generates and what it verifies:
 | 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 done (stale InProgress recovery in `--local` mode) |
 | 11 — Read Model Types | ✅ Complete | Async, inline and live read models from one fold definition, with an identical data shape across types (ADR-021/022). Proven on course-enrollment t5–t10: inline, a retype to live and back, a new live read model with a lookup |
 | 12 — Query Read Models | 🚧 In progress (top priority) | 12.1–12.3 done: ADR-023 query contract; emcli queries + `SPEC_QUERY` + `addQueries` re-queue; kit runtime (stored SQL + live, one semantics). Named queries on the read model element, the spec *when* references them, `{ data, cursor? }` pages; live needs a tag parameter |
-| 14 — UI from the model | 📋 Planned | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 first: board HTML format and access |
+| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0: format found, API access open. 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
 | 7 — Board Re-pointing | ⛔ Dropped | eventmodelers board retired; prooph board via emcli is the only board |

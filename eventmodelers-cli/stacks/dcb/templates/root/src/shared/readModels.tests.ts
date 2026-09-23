@@ -3,6 +3,7 @@ import type { Pool } from "pg"
 import { Tags, type EventStore, type Query, type ReadOptions, type SequencedEvent, type TaggedEvent } from "@dcb-es/event-store"
 import { getApplication } from "@dcb-es/event-store-express"
 import supertest from "supertest"
+import { z } from "zod"
 import { getTestPgDatabasePool } from "@test/testPgDbPool"
 import { readModelTestApp } from "@test/readModelHarness"
 import {
@@ -26,6 +27,13 @@ interface CourseDoc {
     capacity: number
     subscribedStudents: { studentId: string; name: string | null }[]
 }
+
+const CourseDocSchema = z.object({
+    courseId: z.string(),
+    title: z.string(),
+    capacity: z.number(),
+    subscribedStudents: z.array(z.object({ studentId: z.string(), name: z.string().nullable() }))
+})
 
 const courseDetails = defineReadModel<CourseDoc, { students: { name: string } }>({
     name: "TestCourseDetails",
@@ -180,7 +188,7 @@ describe("the route serves the same body and status for every type", () => {
         await settle(pool, runtime, readModel)
 
         // The route imports the definition as written; the runtime serves it as the registered type.
-        const agent = supertest(getApplication({ apis: [readModelRoute(courseDetails, runtime, "/courses/:courseId", { pool })] }))
+        const agent = supertest(getApplication({ apis: [readModelRoute(courseDetails, runtime, "/courses/:courseId", { schema: CourseDocSchema, pool })] }))
         const ok = await agent.get("/courses/c1")
         expect(ok.status).toBe(200)
         expect(ok.body).toEqual(expectedC1)
@@ -243,7 +251,7 @@ describe("live reads", () => {
 describe.each(READ_MODEL_TYPES)("readModelTestApp (%s)", type => {
     const app = readModelTestApp({
         readModels: [withType(courseDetails, type)],
-        routes: deps => [readModelRoute(courseDetails, deps.readModels!, "/courses/:courseId", { pool: deps.pool })]
+        routes: deps => [readModelRoute(courseDetails, deps.readModels!, "/courses/:courseId", { schema: CourseDocSchema, pool: deps.pool })]
     })
 
     test("serves the folded document after settle()", async () => {

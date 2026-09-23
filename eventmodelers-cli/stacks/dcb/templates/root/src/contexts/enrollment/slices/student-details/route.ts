@@ -2,6 +2,7 @@ import { on, OK, withETag, preferWait, type WebApiSetup, type WaitFunction } fro
 import type { SliceDependencies } from "../../../../shared/dependencies.js"
 import { STUDENT_PROJECTION_NAME } from "./projection.js"
 import type { StudentDoc } from "./projection.js"
+import "./schema.js"
 
 export function configureStudentDetailsRoute(deps: SliceDependencies & { waitFn?: WaitFunction }): WebApiSetup {
     const { pool, waitFn } = deps

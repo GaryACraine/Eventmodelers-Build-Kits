@@ -1,5 +1,6 @@
 import { sseEventFeed, type WebApiSetup } from "@dcb-es/event-store-express"
 import type { EventStore } from "@dcb-es/event-store"
+import "./schema.js"
 
 export function configureEventFeedRoute(store: EventStore): WebApiSetup {
     return router => {

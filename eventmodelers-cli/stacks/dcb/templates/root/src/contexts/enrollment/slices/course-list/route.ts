@@ -10,6 +10,7 @@ import {
 import type { SliceDependencies } from "../../../../shared/dependencies.js"
 import { COURSE_PROJECTION_NAME } from "../course-details/projection.js"
 import type { CourseDoc } from "../course-details/projection.js"
+import "./schema.js"
 
 export function configureCourseListRoute(deps: SliceDependencies & { waitFn?: WaitFunction }): WebApiSetup {
     const { pool, waitFn } = deps

@@ -243,9 +243,12 @@ Error types:
 
 File: `src/contexts/{context}/slices/{slicename}/schema.ts`
 
+The body schema, and the route's entry in `/openapi.json` (the contract a frontend generates its client from).
+
 ```typescript
 import { z } from "zod"
 import { extendZodWithOpenApi } from "@asteasolutions/zod-to-openapi"
+import { registerCommand } from "../../../../shared/openapi.js"
 
 extendZodWithOpenApi(z)
 
@@ -256,9 +259,30 @@ export const {CommandName}Schema = z
         {field2}: z.number().int().min(1).openapi({ example: 30, description: "{description}" })
     })
     .openapi("{CommandName}Body")
+
+registerCommand({
+    method: "{post|put|patch|delete}",
+    path: "{the route's path, exactly as route.ts writes it, e.g. /courses/:courseId/capacity}",
+    summary: "{the command's title from slice.json}",
+    body: {CommandName}Schema,
+    success: "{createdId|createdUrl|noContent}",
+    errors: { {404|409|422}: "{the error text of the specifications that reject}" }
+})
 ```
 
-Only include body fields here. Path parameters (`:id` in the route) come from `req.params`, not the body.
+Only include body fields here. Path parameters (`:id` in the route) come from `req.params`, not the body;
+`registerCommand` documents them from the path.
+
+- `success` names what the route answers with (Step 7): `Created({ createdId })` → `"createdId"`,
+  `Created({ url })` → `"createdUrl"`, `NoContent()` → `"noContent"`.
+- `errors`: one entry per status the specifications' rejections produce (`NotFoundError` → 404,
+  `IllegalStateError` / `ValidationError` → 422), described by their error text. Leave it out when no
+  specification rejects. 400 for a bad body is added for you.
+- **No body** (a DELETE, or a command whose fields are all path parameters): leave out the Zod object and
+  `body`; `schema.ts` holds only `registerCommand`, and `route.ts` imports it with `import "./schema.js"`.
+
+The `openapi-registered` commit check rejects a route whose method and path aren't registered here, or a
+`route.ts` that doesn't import `./schema.js`.
 
 > **Generated fields**: Fields marked `generated: true` in events[] must NOT appear in the Zod schema — they are not user-supplied input.
 
@@ -308,6 +332,8 @@ export function configure{SliceName}Route(deps: SliceDependencies): WebApiSetup 
 
 ### PUT/DELETE route (update/remove):
 Replace `Created(...)` with `NoContent()` and adjust the HTTP method and path parameters accordingly.
+Without a body there's no `validateBody` and no schema import to use, so import the registration for its
+effect: `import "./schema.js"`.
 
 Import `NoContent` from `@dcb-es/event-store-express` for 204 responses.
 
@@ -541,7 +567,7 @@ src/contexts/{context}/slices/{slicename}/
 ├── command.ts                   ← command type
 ├── decisionModels.ts            ← EventHandlerWithState factories
 ├── decider.ts                   ← decider() combining models + logic
-├── schema.ts                    ← Zod schema + openapi extensions
+├── schema.ts                    ← Zod body schema + registerCommand (its /openapi.json entry)
 ├── route.ts                     ← Express route
 ├── route.tests.ts               ← ApiSpecification unit tests (no Docker)
 └── route.integration.tests.ts   ← Postgres integration tests (testcontainers)
@@ -560,6 +586,7 @@ src/contexts/{context}/
 - [ ] Every entry in `specifications[]` maps to a `test(...)` block in `route.tests.ts` AND in `route.integration.tests.ts`
 - [ ] `decider()` handlers object keys match the state properties used in `decide()`
 - [ ] No business rules, defaults, or constraints were added that do not appear in slice.json `description` or `comments`
+- [ ] `schema.ts` registers the route (`registerCommand`, same method and path as `route.ts`), and `route.ts` imports `./schema.js`
 - [ ] Route is wired in `src/index.ts`
 - [ ] `npm run build` passes (tsc --noEmit)
 - [ ] Slice tests pass
