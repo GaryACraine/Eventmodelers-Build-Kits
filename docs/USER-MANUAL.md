@@ -953,7 +953,7 @@ What comes back on a pull, and what doesn't:
 | Notes in a slice's or sticky's details | ✅ arrives in `workspace.json` |
 | Renamed stickies or slices, new stickies | ✅ arrives |
 | Edited field lists, dependencies, scenarios | ❌ your local model wins; they're re-rendered on the next push |
-| A read model copied on the board | ⚠️ arrives as a new, unlinked sticky. Mark it: `emcli element update "$(chapter_id)" <copy> --copy-of <origin>` |
+| A read model copied on the board | ⚠️ arrives as a new, unlinked sticky. The pull warns about it and prints the `emcli element update … --copy-of <origin>` command that marks it |
 
 Your local model is the source of truth for structure. The board is where people see it and comment on it.
 

@@ -382,8 +382,9 @@ docker-compose Postgres was kept across every step.
   stays per element. But no response carries the link. `GET /chapters/{id}` and `GET .../elements/{id}` return
   identical key sets for origin and copy, with no origin/group field, and neither the OpenAPI spec (`/openapi.json`)
   nor the copy response mentions one. Probed in a scratch chapter, since deleted. The manual now tells readers to mark a
-  board-made copy with `element update --copy-of` after a pull. Possible follow-up: have `sync pull` warn about a
-  new information sticky that has the same name as an existing one and no `copyOf`.)*
+  board-made copy with `element update --copy-of` after a pull. Follow-up done in emcli (`ec6470b`): `sync pull`
+  warns about each new read model that has the same name as an earlier one in its chapter and no `copyOf`, and
+  prints the `element update --copy-of` command that marks it.)*
 - [x] **9.11a** Install a pre-commit hook in the DCB scaffold. *(Done in PR #8: `.githooks/` plus `"prepare": "git config core.hooksPath .githooks"` in the scaffold's `package.json`, so `npm install` enables it.)*
 - [ ] **9.11b** Fix `eventmodelers init` on a closed stdin (`ERR_USE_AFTER_CLOSE` at the credentials prompt). Parked: it only affects unattended setup (scripts, CI, agents), not the manual's interactive path.
 
