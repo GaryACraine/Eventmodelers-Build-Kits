@@ -86,7 +86,7 @@ from ADR-022 still holds: the same URL and body whichever read model type serves
 - **Runtime:**
   - `queries: { name: { params, sort? } }`, declarative, with no predicate function.
   - Stored types use pongo `find`, with indexes created at startup. Adding a query doesn't trigger a rebuild.
-  - **Live serves a query only if the query has a required `eq`/`in` parameter with a `tag`.** That tag finds the
+  - **Live serves a query only if the query has a required `eq`/`in`/`contains` parameter with a `tag`.** That tag finds the
     candidate keys, each candidate is folded, and then every predicate, state ones included, is applied in
     memory.
   - Queries without a tag parameter (including a parameterless list) are stored-only.
@@ -100,15 +100,29 @@ from ADR-022 still holds: the same URL and body whichever read model type serves
     - Queries are declared on the read model element, and specs reference them. That gives the endpoint a home,
       and two specs can't disagree about a query.
     - "State predicates are stored-only" became "live needs a tag parameter; any other predicate rides along".
-- [ ] **12.2 emcli:**
-  - `queries` on read model elements, with the parameter `operator` and `mapping`;
-  - `element query add|update|remove`;
-  - the `SPEC_QUERY` step type (alias `query`), whose *when* step must name a query of the linked read model;
-  - rejection of endpoints that collide;
-  - markdown rendering, export (`readmodels[0].queries`) and schema;
-  - re-queuing a Done read model when a query is added;
-  - a warning for a live read model with a query that has no tag parameter;
-  - tests and USAGE.md.
+- [x] **12.2 emcli** (emcli `c7694ec`, 156 tests, including 27 new ones):
+  - `queries` on read model elements, declared on the origin and inherited by copies. Each parameter has an
+    `operator`, a `mapping` and an optional `tag`, plus an optional `sort`.
+  - New commands: `element query add|update|remove|list` and `element query param add|remove`. A rename carries
+    through to the spec steps that run the query.
+  - Endpoint collisions are rejected: `/courses/available` against `/courses/{courseId}`.
+  - The `SPEC_QUERY` step (alias `query`) must stand alone in *when* and name a query of the linked read model.
+    `--seed` copies the query's parameters.
+  - Export writes resolved `readmodels[].queries` (explicit `operator` and `mapping`, `pathParameter: true`) and
+    the `SPEC_QUERY` step. `eventmodeling.schema.json` is extended.
+  - The build-kit bridge records each read slice's `queries` in `index.json`, and re-queues a Done slice with
+    `addQueries` when its specs run a new query. Additions follow the specs while pending, and combine with a
+    retype.
+  - Export warns about an undefined path parameter, a query no spec uses, a spec naming an unknown query, and a
+    live read model with an untagged query. `--read-model-type live-report` warns about the last one too.
+  - Push renders queries in the element details, and pull preserves them.
+  - Docs: USAGE.md ("Querying a read model") and CLAUDE.md.
+  - **Finding:** the ADR's own example, `/students/{studentId}/courses` matched against
+    `subscribedStudents.studentId`, needs `contains`. So path parameters and tag parameters accept `contains` as
+    well as `eq`/`in`. It is still an equality match, and every matching document still has a tagged event.
+    ADR-023 is updated.
+  - Smoke-tested on a copy of the course-enrollment workspace. Adding a spec that runs `availableCourses` to the
+    Done "course seats capacity" slice re-queued it with `addQueries: ["availableCourses"]`.
 - [ ] **12.3 Kit runtime (`src/shared/readModels.ts`):**
   - `queries` in `defineReadModel`;
   - the stored `find` runner (sort, then key; an opaque cursor) and the live tag-narrowing runner with in-memory
@@ -808,5 +822,5 @@ What each `build-*` skill generates and what it verifies:
 | 9 — Progressive Read Model Evolution | ✅ Core complete | emcli copies + extension slices, `build-state-view` extend mode, automatic rebuild; proven t0→t4 on a live DB (32/32). Real Ralph run done (9.6). Node kit port remains |
 | 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 done (stale InProgress recovery in `--local` mode) |
 | 11 — Read Model Types | ✅ Complete | Async, inline and live read models from one fold definition, with an identical data shape across types (ADR-021/022). Proven on course-enrollment t5–t10: inline, a retype to live and back, a new live read model with a lookup |
-| 12 — Query Read Models | 🚧 In progress (top priority) | 12.1 done: ADR-023, the query contract. Named queries on the read model element, the spec *when* references them, `{ data, cursor? }` pages; live needs a tag parameter |
+| 12 — Query Read Models | 🚧 In progress (top priority) | 12.1–12.2 done: ADR-023 query contract; emcli queries + `SPEC_QUERY` + `addQueries` re-queue. Named queries on the read model element, the spec *when* references them, `{ data, cursor? }` pages; live needs a tag parameter |
 | 7 — Board Re-pointing | ⛔ Dropped | eventmodelers board retired; prooph board via emcli is the only board |
