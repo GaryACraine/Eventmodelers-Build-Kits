@@ -375,9 +375,10 @@ docker-compose Postgres was kept across every step.
 
 - [x] **9.6** Run the real Ralph loop over the proof project (`eventmodelers run --local`) from a plain terminal, starting at `t-empty` with the t0–t4 exports. *(Done: the unattended journey run `t-empty` → `t4`, then again in 10.3 against chapter `Course Enrollment`: 11 slices, 42/42 tests.)*
 - [ ] **9.7** Node kit: port the extend mode, and replace re-emitted `CREATE TABLE IF NOT EXISTS` with an `ALTER TABLE ... ADD COLUMN` migration path (finding 1 above).
-- [ ] **9.9** Does the eventmodelers `slicedata` export carry `linkedTo`? If it does, derive `extends` kit-side so board-sourced slices get extension mode too (emcli is the only source of `extends` today).
+- [x] ~~**9.9** Does the eventmodelers `slicedata` export carry `linkedTo`?~~ *Dropped: the eventmodelers board is no longer used. Its slice schema survives only as the format the kit's skills generate code from, and emcli (prooph board + `workspace.json`) is the only slice source, so emcli computes `extends`.*
 - [ ] **9.10** Does prooph REST expose element copy, and does pull mark copies? If it does, `copyOf` can be pulled instead of kept local.
-- [ ] **9.11** Fix `eventmodelers init` on a closed stdin; install a pre-commit hook in the DCB scaffold.
+- [x] **9.11a** Install a pre-commit hook in the DCB scaffold. *(Done in PR #8: `.githooks/` plus `"prepare": "git config core.hooksPath .githooks"` in the scaffold's `package.json`, so `npm install` enables it.)*
+- [ ] **9.11b** Fix `eventmodelers init` on a closed stdin (`ERR_USE_AFTER_CLOSE` at the credentials prompt). Parked: it only affects unattended setup (scripts, CI, agents), not the manual's interactive path.
 
 ---
 
@@ -436,15 +437,18 @@ extension was installed mid-session.
 
 ---
 
-### Phase 7: Board Re-pointing 🔲 (Lower Priority)
+### Phase 7: Board Re-pointing — dropped
 
 **Goal:** Point the CLI to a different board ("Proof Board") with separate credentials/API.
 
+*Dropped (2026-09-23): the eventmodelers board is retired. prooph board is the only board, reached through emcli
+(`workspace.json`), so there is nothing left to re-point `eventmodelers fetch` at.*
+
 #### Tasks
 
-- [ ] **7.1 Gather Proof Board credentials and API endpoint**
-- [ ] **7.2 Configure `.eventmodelers/config.json`** with new board details
-- [ ] **7.3 Verify connectivity** — `eventmodelers fetch` works against new board
+- [x] ~~**7.1 Gather Proof Board credentials and API endpoint**~~
+- [x] ~~**7.2 Configure `.eventmodelers/config.json`** with new board details~~
+- [x] ~~**7.3 Verify connectivity** — `eventmodelers fetch` works against new board~~
 
 ---
 
@@ -501,4 +505,4 @@ What each `build-*` skill generates and what it verifies:
 | 8 — Integration Tests | ✅ Complete | Postgres integration tests for state-change slices; prototype proven, skill template updated |
 | 9 — Progressive Read Model Evolution | ✅ Core complete | emcli copies + extension slices, `build-state-view` extend mode, automatic rebuild; proven t0→t4 on a live DB (32/32). Real Ralph run done (9.6). Node kit port remains |
 | 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 done (stale InProgress recovery in `--local` mode) |
-| 7 — Board Re-pointing | 🔲 Not started | Lower priority — waiting on credentials |
+| 7 — Board Re-pointing | ⛔ Dropped | eventmodelers board retired; prooph board via emcli is the only board |
