@@ -188,7 +188,7 @@ Projects must sit next to `dcb-event-store` (here, in `~/Projects`), because the
 ```bash
 mkdir ~/Projects/course-enrollment && cd ~/Projects/course-enrollment
 git init -b main
-eventmodelers init --stack dcb
+eventmodelers init --stack dcb --hooks
 ```
 
 When asked *"How do you want to configure credentials?"*, type **4** (*Skip for now*). This project talks to
@@ -205,13 +205,16 @@ bash scripts/start-empty.sh
 Empty enrollment context ready: event-feed
 ```
 
-Install dependencies. This also switches on the **pre-commit hook**, which checks every slice commit (see
-[§12](#12-how-the-ralph-loop-builds-a-slice)):
+Install dependencies. `--hooks` above installed the **pre-commit hook** (`.githooks/pre-commit`), which checks
+every slice commit (see [§12](#12-how-the-ralph-loop-builds-a-slice)). Confirm it's on:
 
 ```bash
 npm install
-git config core.hooksPath            # → .githooks
+ls .githooks && git config core.hooksPath     # → pre-commit, and a path ending in .githooks
 ```
+
+If `.githooks` is missing (the project was created without `--hooks`), run `eventmodelers init-hooks --stack dcb`.
+Without it, commits aren't checked at all.
 
 Create the model workspace and the environment file:
 
@@ -1427,7 +1430,7 @@ you had already changed before the run started stay in place. If the agent had a
 slice, the loop marks it **Blocked** instead, because a rebuild would collide with those commits. Each recovery
 is noted in `progress.txt`.
 
-**The pre-commit hook** (installed by `npm install`) runs the same checks on every commit that touches a slice
+**The pre-commit hook** (installed by `init --hooks`) runs the same checks on every commit that touches a slice
 folder, so nothing can skip them:
 
 | Check | Rejects |

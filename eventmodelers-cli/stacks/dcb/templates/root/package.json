@@ -4,7 +4,7 @@
     "type": "module",
     "private": true,
     "scripts": {
-        "prepare": "git config core.hooksPath .githooks || true",
+        "prepare": "test -d .githooks && git config core.hooksPath .githooks || true",
         "run:checks": "node .build-kit/lib/check-commit-scope.cjs",
         "db:start": "docker compose up -d postgres",
         "db:stop": "docker compose down",
@@ -37,7 +37,6 @@
         "supertest": "^7.1.0",
         "testcontainers": "^10.9.0",
         "typescript": "^5.0.0",
-        "uuid": "^9.0.1",
         "vitest": "^3.0.0"
     },
     "overrides": {
