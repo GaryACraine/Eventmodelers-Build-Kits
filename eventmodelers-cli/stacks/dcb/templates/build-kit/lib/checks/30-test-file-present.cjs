@@ -6,12 +6,13 @@
 // DCB implementation files that require tests:
 //   decider.ts      → needs route.tests.ts (write slices tested via ApiSpecification)
 //   projection.ts   → needs route.tests.ts (read slices tested via integration tests)
+//   readModel.ts    → needs route.tests.ts (fold-form read slices: contract tests across types)
 //   processor.ts    → needs processor.tests.ts
 
 const { execSync } = require('child_process');
 
 // Matches files that need test coverage in DCB slices
-const IMPLEMENTATION_FILE = /^src\/contexts\/([^/]+)\/slices\/([^/]+)\/(decider|projection|processor)\.ts$/;
+const IMPLEMENTATION_FILE = /^src\/contexts\/([^/]+)\/slices\/([^/]+)\/(decider|projection|readModel|processor)\.ts$/;
 
 module.exports = {
   name: 'test-file-present',
@@ -22,7 +23,7 @@ module.exports = {
       const m = IMPLEMENTATION_FILE.exec(p);
       if (m) {
         const dir = `src/contexts/${m[1]}/slices/${m[2]}`;
-        const type = m[3]; // 'decider', 'projection', or 'processor'
+        const type = m[3]; // 'decider', 'projection', 'readModel', or 'processor'
         sliceDirs.set(dir, type);
       }
     }

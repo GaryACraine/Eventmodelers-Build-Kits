@@ -44,11 +44,12 @@ When asked to build a slice, always follow this flow:
    - **Translation** — `sliceType === "TRANSLATION"` → default to `/build-automation`
    - **Automation** — `processors` array is non-empty → invoke `/build-automation`
    - **State-view** — `sliceType === "STATE_VIEW"`, or `projections`/`queries` array is non-empty → invoke `/build-state-view`
-     - Check `readmodels[0].readModelType` first. Absent, `database-projected` (async, eventually consistent) or
-       `inline-projected` (updated inside the append transaction, immediately consistent) → `/build-state-view`,
-       whose Step 0 picks the variant. `live-report` (folded from the event store per query) isn't supported by
-       this kit yet → invoke `request-feedback` with that, and build nothing. Never build a different type than
-       slice.json names.
+     - Every read model type goes to `/build-state-view`: `database-projected` (async, the default), `inline-projected`
+       (updated inside the append transaction) and `live-report` (folded from the event store per read). It writes one
+       definition (`readModel.ts`) whose `type:` line picks how it runs, so every type returns the same data (ADR-022).
+       Never build a different type than slice.json names.
+   - **Retype** — a state-view slice whose slice.json has a `retype` block: the model switched a built read model's
+     type → `/build-state-view` ("Changing a read model's type"). It changes the `type:` line only.
    - **State-change** — default (has `commands` / `events`) → invoke `/build-state-change`
    - **Extension** — a state-view slice whose slice.json has an `extends` block. It grows a read model an
      earlier slice built (its read model is a board copy, `linkedTo` the origin) → `/build-state-view`,
@@ -69,9 +70,10 @@ It loads every check under `.build-kit/lib/checks/` and rejects the commit if an
 - **slice-scope** — everything staged must be inside the slice folder or a documented exception:
   `src/contexts/{context}/Events.ts`
 - **extension-additive** — while an extension slice (`extends` in slice.json) is InProgress: changes stay in
-  its origin's folder, the origin's `projection.ts` only gains lines, and the origin's `route.tests.ts` has a
-  top-level `describe("{extension title}")` block with a test per specification
-- **test-file-present** — a changed `decider.ts`, `projection.ts`, or `processor.ts` needs a sibling `*.tests.ts`
+  its origin's folder, the origin's `readModel.ts` / `projection.ts` only gains lines, and the origin's
+  `route.tests.ts` has a top-level block for the extension (`describe("{extension title}")`, or
+  `describe.each(…)("{extension title} (%s)")`) with a test per specification
+- **test-file-present** — a changed `decider.ts`, `projection.ts`, `readModel.ts`, or `processor.ts` needs a sibling `*.tests.ts`
 - **no-invented-fields** — heuristic: flags a field used in code that isn't declared anywhere in
   `.build-kit/.slices/{context}/{slice}/slice.json`
 - **spec-coverage** — heuristic: each `*.tests.ts` file needs at least as many `test(...)` blocks as
@@ -101,6 +103,7 @@ src/contexts/
     ├── Events.ts
     └── slices/
         └── {slice-name}/
+            ├── readModel.ts        (read slices: one definition, any read model type)
             ├── command.ts
             ├── decisionModels.ts
             ├── decider.ts

@@ -1,6 +1,6 @@
 ---
 name: build-state-view
-description: Implements a DCB state-view slice (Pongo projection — async or inline — route, integration tests) from a slice.json definition
+description: Implements a DCB state-view slice — one read model definition served as async, inline or live, with a generic route and contract tests across all three types — from a slice.json definition
 ---
 
 # Build State View Slice (DCB)
@@ -11,72 +11,256 @@ description: Implements a DCB state-view slice (Pongo projection — async or in
 
 ## What a State View Slice is
 
-A DCB state-view slice is a **read model projection**. It listens to events from the event store and materialises them into a queryable Pongo (JSONB/MongoDB-compatible) collection. It does not emit events or process commands.
+A state-view slice is a **read model**: a document per key (a course, a student), built from events and served
+by a GET route. It doesn't emit events or process commands.
 
-Key DCB differences from SQL-based projection stacks:
-- **No migration files** — Pongo's `init()` creates JSONB collections automatically
-- **No Knex** — Pongo uses `insertOne`/`updateOne`/`findOne`/`deleteMany`
-- **No Flyway** — schema is managed by `eventStore.ensureInstalled()` + `projection.init()`
-- Read-your-writes via per-projection `waitFn` + `preferWait` middleware
-- Bookmark positions from `_handler_bookmarks` table for ETags
+The model picks how the read model is kept current, in `readmodels[0].readModelType`:
 
-The paragraph above describes the default, **async** projection: a consumer follows the event store
-and the read model is eventually consistent. A read model can instead be **inline**: the same
-projection runs inside the append transaction, so the read model is current the moment the command
-returns. Step 0 decides which one this slice builds.
+| Type | How it runs | A read straight after a write |
+|---|---|---|
+| `database-projected` (the default when absent) | stored; an async consumer follows the event store | may be a moment behind |
+| `inline-projected` | stored; updated inside the append transaction | always current |
+| `live-report` | not stored; each read folds the key's events from the event store | always current |
 
-> **Cross-slice events**: A projection typically consumes events from multiple write slices (e.g. a
-> student-details view handles `studentWasRegistered`, `studentWasSubscribed`, and course events —
-> each produced by a different write slice). This works because the DCB event store is a single
-> ordered log; projections see all events regardless of origin. The `events[]` array in slice.json
-> already lists every event the projection needs, including cross-slice references.
+**The contract (ADR-022): the data a client gets is the same whichever type serves the read model.** The same
+URL, the same response body, the same status (200, or 404 for an unknown key). So the model can switch the type
+later without breaking a client. That works because the read model is written **once**, as a keyed fold
+(`defineReadModel` in `readModel.ts`). The scaffold's `src/shared/readModels.ts` runs that one definition as
+any of the three types, and `readModelRoute` serves it. The type is one line.
+
+> **Cross-slice events**: A read model typically consumes events from several write slices. That works because
+> the DCB event store is a single ordered log. The `events[]` array in slice.json already lists every event it
+> needs, including cross-slice references.
 
 ---
 
-## Step 0 — Which read model type, greenfield or extension?
+## Step 0 — What kind of work is this?
 
-Read the slice.json first.
+Read the slice.json first:
 
-**Read model type** — `readmodels[0].readModelType`:
+- **`retype` block present** (`{ "from": …, "to": … }`) → the model changed an already-built read model's
+  type. Follow **"Changing a read model's type"** below. Nothing else changes.
+- **`extends` block present** → an **extension slice**. Its read model is a copy (`readmodels[0].linkedTo`) of
+  one an earlier slice built. Follow **"Extending a read model"** below. Don't create a new read model.
+- **Otherwise** → a new read model: Steps 1–6.
 
-| Value | Build |
-|---|---|
-| absent, or `"database-projected"` | **async** projection: Steps 1–5 as written |
-| `"inline-projected"` | **inline** projection: Steps 1–5, with the changes in **"Inline variant"** below |
-| `"live-report"` | not supported yet. Stop and invoke `request-feedback` ("live read models aren't supported by the DCB kit yet"). Do **not** build an async or inline projection in its place |
-
-The model chose inline because a stale read isn't acceptable here, and chose async everywhere else
-because inline slows every append of the events it handles. Build exactly the type slice.json names;
-never switch one for the other.
-
-**Greenfield or extension** — look for a top-level `extends` block.
-
-- **No `extends`** → a new read model. Follow Steps 1–5 below as written.
-- **`extends` present** → an **extension slice**. Its read model is a copy (`readmodels[0].linkedTo`)
-  of a read model an earlier slice already built. Do **not** create a new projection, collection,
-  route or test file. Follow **"Extending an existing projection"** below instead, then return here
-  for the Checklist.
-
-Read models grow one event at a time as the timeline is discovered. Each copy of a read model on the
-board is its own slice, so each growth step is its own unit of delivery. The code stays in one place,
-the origin's `projection.ts`, so one read model stays one file you can read top to bottom.
+Read models grow one event at a time as the timeline is discovered. Each copy of a read model on the board is
+its own slice, so each growth step is its own unit of delivery. The code stays in one place, the origin's
+folder, so one read model stays one file you can read top to bottom.
 
 ---
 
 ## Step 1 — Read the slice.json
 
 From the slice definition, extract:
-- **sliceName** — the projection name
+- **sliceName** — the read model name (`readmodels[0].title`)
 - **context** — bounded context
-- **events[]** — events this projection handles (`canHandle` list)
-- **readModel.fields** — the shape of the output document
-- **storylines[]** (optional) — board walkthroughs; see "Storyline-derived tests" under Step 5
+- **type** — `readmodels[0].readModelType`, or `"database-projected"` when absent
+- **key** — the readmodel field with `idAttribute: true` (e.g. `courseId`)
+- **path** — `readmodels[0].apiEndpoint` with `{param}` written as `:param` (`/courses/{courseId}` → `/courses/:courseId`)
+- **events[]** — the events this read model handles
+- **readModel.fields** — the shape of the document, which is the response body
+- **storylines[]** (optional) — board walkthroughs; see "Storyline-derived tests" under P4
 
 > **Comments & description**: Use these as implementation hints. Resolve used comments via the board API when done.
 
 ---
 
-## Step 2 — Create `projection.ts`
+## Step 2 — Choose the form
+
+**Fold form** (`readModel.ts`, Steps 3–6) is the default. It needs all of this, which you check in
+`src/contexts/{context}/Events.ts`, where each event's `tags: Tags.fromObj({ … })` is declared:
+
+1. **Keyed GET:** the `path` has the key as its parameter, and the read model is not a list
+   (`listElement` is not true).
+2. **Key tag:** every event in `events[]` that shapes the document carries the key as a tag
+   (`Tags.fromObj({ courseId })`).
+3. **Lookups:** data from another entity (a student's *name* on a course) must be reachable by tags. The event
+   that brings the other entity in (`studentWasSubscribed`) carries that entity's id as a tag (`studentId`),
+   and the events that hold the data (`studentWasRegistered`) carry the same tag. Each such entity becomes a
+   **lookup**.
+
+**Imperative form** (`projection.ts`, the "Imperative form" section below) is only for what fold form can't
+express: list read models, or data reachable only by payload fields, not tags. It can be async or inline, but
+**never live**.
+
+If the type is `live-report` and any requirement above fails, stop and invoke `request-feedback` naming the
+failing requirement (for example, "`studentWasRegistered` has no `courseId` tag and isn't reachable as a
+lookup"). Never build a different type than slice.json names.
+
+---
+
+## Step 3 — Create `readModel.ts` (fold form)
+
+File: `src/contexts/{context}/slices/{slicename}/readModel.ts`
+
+```typescript
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { defineReadModel } from "../../../../shared/readModels.js"
+
+export interface {SliceName}Doc {
+    [key: string]: unknown
+    // ... fields from slice.json readModel, exactly as the response body shows them
+}
+
+// Only when the read model needs data from another entity (Step 2, requirement 3):
+interface {Related}Entry {
+    [key: string]: unknown
+    // ... just the fields of the related entity this read model shows
+}
+
+export const {sliceName} = defineReadModel<{SliceName}Doc, { {relatedPlural}: {Related}Entry }>({
+    name: "{SliceName}",
+    type: "{type}",                     // slice.json readModelType — the only line a type switch changes
+    key: "{key}",
+    collection: "{snake_case_name}",    // where the stored types keep documents
+    canHandle: [
+        "{eventType1}",
+        "{eventType2}"
+    ],
+    lookups: {
+        {relatedPlural}: {
+            key: "{relatedKey}",        // e.g. "studentId"
+            canHandle: [
+                "{relatedEventType}"
+            ],
+            evolve: (entry, { event }) => {
+                const data = event.data as Record<string, any>
+                return { name: data.name }
+            }
+        }
+    },
+    evolve: (doc, { event }, { {relatedPlural} }) => {
+        const data = event.data as Record<string, any>
+        switch (event.type) {
+            case "{eventType1}":
+                return { {key}: data.{key}, {field1}: data.{field1} }
+            case "{eventType2}":
+                return doc && { ...doc, {field1}: data.{newField1} }
+        }
+        return doc
+    }
+})
+```
+
+Leave out `lookups` (and the second type argument) when the read model needs no other entity.
+
+Rules for `evolve`. They are what make the three types produce the same data:
+
+- **Pure.** No I/O, no clock, no randomness. It gets the document so far (or `null`) and one event, and
+  returns the next document, or `null` to delete it.
+- **Return new objects** (`{ ...doc, … }`), never mutate `doc`.
+- **Tolerate a missing document:** `return doc && { … }` for events that update one.
+- **Lookups:** `{relatedPlural}.get(id)` holds entries only for the ids in the **current event's tags**. Read
+  the related data at the event that brings the entity in (`studentWasSubscribed`), and copy what the document
+  shows. A missing entry is `undefined`: store `null`, don't throw.
+- **Ignored events:** end the `switch` with `return doc`.
+- Write `canHandle` (and each lookup's `canHandle`) **one event per line**, each followed by a comma except the
+  last. Extension slices append to these arrays.
+
+---
+
+## Step 4 — Create `route.ts`
+
+File: `src/contexts/{context}/slices/{slicename}/route.ts`
+
+```typescript
+import type { WebApiSetup } from "@dcb-es/event-store-express"
+import type { SliceDependencies } from "../../../../shared/dependencies.js"
+import { readModelRoute } from "../../../../shared/readModels.js"
+import { {sliceName} } from "./readModel.js"
+
+// Serves the {SliceName} document as the body, whichever type the read model runs as (ADR-022).
+export function configure{SliceName}Route(deps: SliceDependencies): WebApiSetup {
+    return readModelRoute({sliceName}, deps.readModels!, "{path}", {
+        pool: deps.pool,
+        notFound: "{Entity} not found"
+    })
+}
+```
+
+Don't write a handler by hand: `readModelRoute` returns the document as the body, 404 for an unknown key, and
+for an async read model the optional `Prefer: wait` / ETag extras.
+
+---
+
+## Step 5 — Register it in `src/index.ts`
+
+Add the definition to the `readModels` array. This goes in a separate `chore: wire …` commit, because
+`index.ts` isn't slice work:
+
+```typescript
+import { {sliceName} } from "./contexts/{context}/slices/{slicename}/readModel.js"
+import { configure{SliceName}Route } from "./contexts/{context}/slices/{slicename}/route.js"
+
+const readModels: ReadModel[] = [..., {sliceName}]
+
+// In the apis array:
+configure{SliceName}Route(deps),
+```
+
+`startReadModels` does the rest: it runs the read model by its `type`, backfills or rebuilds stored ones on
+start, and hands out the reader the route uses.
+
+---
+
+## Step 6 — Create `route.tests.ts`: one contract, all three types
+
+File: `src/contexts/{context}/slices/{slicename}/route.tests.ts`
+
+The tests prove the contract: **the same scenarios, run against every type, get the same bodies.** They talk
+HTTP only. Write through the write slices' routes, call `settle()` (which waits for an async read model to
+catch up, and does nothing for inline and live), then GET.
+
+```typescript
+import { describe, test, expect } from "vitest"
+import { readModelTestApp } from "@test/readModelHarness"
+import { READ_MODEL_TYPES, withType } from "../../../../shared/readModels.js"
+import { configure{WriteSlice}Route } from "../{write-slice}/route.js"
+import { configure{SliceName}Route } from "./route.js"
+import { {sliceName} } from "./readModel.js"
+
+describe.each(READ_MODEL_TYPES)("{slice title} (%s)", type => {
+    const app = readModelTestApp({
+        readModels: [withType({sliceName}, type)],
+        routes: deps => [configure{WriteSlice}Route(deps), configure{SliceName}Route(deps)]
+    })
+
+    test("{specification title}", async () => {
+        // Given — through the write routes
+        const postRes = await app.agent().post("/{resource}").send({ /* command body */ })
+        expect(postRes.status).toBe(201)
+
+        await app.settle()
+
+        // Then
+        const getRes = await app.agent().get("/{resource}/test-id")
+        expect(getRes.status).toBe(200)
+        expect(getRes.body).toMatchObject({ /* the read model fields this specification asserts */ })
+    })
+})
+```
+
+- **One `test(...)` per specification** in slice.json, inside the `describe.each` block.
+- **Assert bodies with `toMatchObject`**, never an exact-shape `toEqual`. The read model grows as extension
+  slices add fields. An exact-shape assertion would then fail although its scenario still holds.
+- **Nothing type-specific in the file.** No consumers, no `Prefer: wait`, no store setup. That is what lets a
+  retype run these tests unchanged.
+- Every test gets a fresh database (the harness does it), so there is no reset code.
+- Storyline-derived tests (see P4) go in their own `describe.each` block in the same layout.
+
+---
+
+## Imperative form (lists, and read models fold form can't express)
+
+Use this only when Step 2 sends you here. It builds a `pongoProjection` by hand, stored as async or inline.
+
+### P0 — Choosing async or inline
+
+- `database-projected` → P1–P4 as written.
+- `inline-projected` → P1–P4 with the **Inline** changes after P4.
+
+### P1 — `projection.ts`
 
 File: `src/contexts/{context}/slices/{slicename}/projection.ts`
 
@@ -137,7 +321,7 @@ Write `canHandle` **one event per line, each followed by a comma except the last
 only one event. Extension slices append to this array. A one-line array (`canHandle: ["a"]`) can only be
 extended by rewriting the line.
 
-### Pongo operation patterns
+#### Pongo operation patterns
 
 **Insert (on create event):**
 ```typescript
@@ -194,43 +378,28 @@ Note: with Pongo there is no need to pin to a transaction client — Pongo manag
 
 ---
 
-## Step 3 — Register projection in `src/index.ts`
+### P2 — Register it in `src/index.ts`
 
-> This step wires an **async** projection. For an inline one, follow **I2** instead.
+Add it to the `imperative` array (a separate `chore: wire …` commit):
 
-Two additions needed:
-
-**1. Import and call `init()`:**
 ```typescript
 import { {sliceName}Projection, {PROJECTION_NAME_CONST} } from "./contexts/{context}/slices/{slicename}/projection.js"
 
-// After eventStore.ensureInstalled():
-await {sliceName}Projection.init!(initClient)
+const imperative: StoredProjectionRegistration[] = [
+    ...,
+    { projection: {sliceName}Projection, type: "{type}" }   // "database-projected" or "inline-projected"
+]
 
-// In ensureHandlersInstalled():
-await ensureHandlersInstalled(pool, [..., {PROJECTION_NAME_CONST}], "_handler_bookmarks")
-
-// In ensureProjectionsCurrent() — rebuilds a projection whose canHandle/version changed since last start:
-await ensureProjectionsCurrent(pool, eventStore, [..., {sliceName}Projection], { inline: inlineProjections })
+// In the apis array — async: the route waits through the index's `waitFor` helper
+configure{SliceName}Route({ ...deps, waitFn: waitFor({PROJECTION_NAME_CONST}) }),
+// inline: no waitFn
+configure{SliceName}Route(deps),
 ```
 
-**2. Add to consumer processors:**
-```typescript
-projectionToProcessor({sliceName}Projection, { batchSize: 100, startFrom: "BEGINNING" })
-```
+`startReadModels` inits it, registers async projections with the consumer and inline ones in the event store,
+and keeps them current (`ensureProjectionsCurrent`).
 
-**3. Create a waitFn and pass it to the route:**
-```typescript
-const {sliceName}WaitFn = (position: SequencePosition, timeoutMs: number) =>
-    waitUntilProcessed(pool, {PROJECTION_NAME_CONST}, position, { timeoutMs })
-
-// In apis array:
-configure{SliceName}Route({ ...deps, waitFn: {sliceName}WaitFn }),
-```
-
----
-
-## Step 4 — Create `route.ts`
+### P3 — `route.ts` (async)
 
 File: `src/contexts/{context}/slices/{slicename}/route.ts`
 
@@ -285,7 +454,7 @@ export function configure{SliceName}Route(deps: SliceDependencies & { waitFn?: W
 }
 ```
 
-### Paginated list variant:
+#### Paginated list variant
 
 ```typescript
 import { on, OK, withETag, preferWait, parsePageParams, type WebApiSetup, type WaitFunction } from "@dcb-es/event-store-express"
@@ -325,7 +494,7 @@ router.get(
 
 ---
 
-## Step 5 — Create `route.tests.ts`
+### P4 — `route.tests.ts` (async)
 
 File: `src/contexts/{context}/slices/{slicename}/route.tests.ts`
 
@@ -333,8 +502,8 @@ Integration tests using real Postgres (testcontainers via `getTestPgDatabasePool
 
 The setup (pool, projection init, consumer, reset) lives at **module level**, and the scenarios sit in a
 `describe` named after the slice title. That layout is what lets a later extension slice append its own
-`describe("{extension title}")` block that reuses the same setup without touching it (see "Extending an
-existing projection", E4). The reset calls the projection's own `truncate()` instead of deleting from
+`describe("{extension title}")` block that reuses the same setup without touching it (see "Extending a
+read model", E4). The reset calls the projection's own `truncate()` instead of deleting from
 named collections, so lookup collections an extension adds later are cleared without editing this file.
 
 Assert the response with **`toMatchObject`**, never an exact-shape `toEqual`. The read model grows as later
@@ -437,7 +606,7 @@ describe("{slice title}", () => {
 
 Add one `test(...)` block per specification in slice.json.
 
-### Storyline-derived tests (optional)
+#### Storyline-derived tests (optional)
 
 If `storylines[]` is present, scan for adjacent READMODEL beats with only EVENT beats between them — no COMMAND beats. Each such pair is one read-model chain test:
 - `given` — cumulative events up to and including the intervening event beats
@@ -445,47 +614,29 @@ If `storylines[]` is present, scan for adjacent READMODEL beats with only EVENT 
 
 Put these in a separate `describe` block named after the storyline.
 
----
 
-## Inline variant (`readModelType: "inline-projected"`)
+### Inline changes (`readModelType: "inline-projected"`)
 
-An inline projection is the same `Projection` object, run by the event store inside the append
-transaction instead of by a consumer. Only these parts differ from Steps 2–5.
+An inline imperative projection is the same `Projection` object, run by the event store inside the append
+transaction instead of by a consumer.
 
-### I1 — `projection.ts`: same code, stricter rules
+#### Inline: `projection.ts` rules
 
-Write it exactly as Step 2. Because `handle()` now runs inside every append of the events in
+Write it exactly as P1. Because `handle()` now runs inside every append of the events in
 `canHandle`, while that append holds its consistency locks:
 
 - Keep `handle()` small and fast: Pongo reads and writes on this projection's own collections only.
 - No external calls (HTTP, queues, other services) and no reads of other projections' collections.
 - **A throw fails the command.** It rolls back the append, so the client gets an error and nothing is
   recorded. Handle a missing document (`findOne` returning null, `updateOne` matching nothing)
-  quietly, as the async patterns in Step 2 already do. Never throw for a business rule; rules belong
+  quietly, as the patterns in P1 already do. Never throw for a business rule; rules belong
   in the command's decider.
 
-### I2 — Register it in `src/index.ts` (replaces Step 3)
 
-Add it to the `inlineProjections` array that is passed to the one `PostgresEventStore`:
-
-```typescript
-import { {sliceName}Projection } from "./contexts/{context}/slices/{slicename}/projection.js"
-
-const inlineProjections: Projection[] = [..., {sliceName}Projection]
-
-const eventStore = new PostgresEventStore({ pool, inlineProjections })
-```
-
-That's all: `eventStore.ensureInstalled()` registers and inits it, and
-`ensureProjectionsCurrent(pool, eventStore, projections, { inline: inlineProjections })` backfills it
-from the existing history on its first start and rebuilds it when its fingerprint changes. Do **not**
-add it to the async `projections` array, `ensureHandlersInstalled`, the consumer, or a `waitFor`.
-The route gets `deps` without a `waitFn`.
-
-### I3 — `route.ts`: no waiting, no bookmark (replaces the Step 4 plumbing)
+#### Inline: `route.ts` has no waiting and no bookmark (replaces P3's plumbing)
 
 The read model is already current when any command returns, so drop `preferWait`, `waitFn`,
-`getBookmarkPosition` and `withETag`. The query and the response mapping stay as in Step 4:
+`getBookmarkPosition` and `withETag`. The query and the response mapping stay as in P3:
 
 ```typescript
 import { on, OK, type WebApiSetup } from "@dcb-es/event-store-express"
@@ -523,12 +674,13 @@ export function configure{SliceName}Route(deps: SliceDependencies): WebApiSetup 
 }
 ```
 
-### I4 — `route.tests.ts`: read straight after the write (replaces the Step 5 setup)
+
+#### Inline: `route.tests.ts` reads straight after the write (replaces P4's setup)
 
 The store is built with the projection inline, and there is no consumer. Each test reads
 **immediately** after the write, with no `Prefer: wait` header; that read is the proof the read
 model is inline. Keep the module-level layout, the `describe("{slice title}")` block, one `test` per
-specification and `toMatchObject`, exactly as Step 5 requires.
+specification and `toMatchObject`, exactly as P4 requires.
 
 ```typescript
 import { describe, test, expect, beforeAll, afterAll, afterEach } from "vitest"
@@ -584,17 +736,10 @@ describe("{slice title}", () => {
 })
 ```
 
-### Extensions of an inline read model
-
-A copy of an inline read model is inline too (emcli exports the origin's type for every copy), so
-an extension slice of it follows "Extending an existing projection" unchanged. The origin's
-`route.tests.ts` already has the inline setup, so the appended `describe` block reads straight after
-writing, like the origin's tests. E5 holds for inline projections too: `ensureProjectionsCurrent`
-rebuilds an inline projection whose fingerprint changed, before the app takes requests.
 
 ---
 
-## Extending an existing projection (extension slices)
+## Extending a read model (extension slices)
 
 Use this section only when slice.json has an `extends` block (see Step 0).
 
@@ -610,79 +755,128 @@ Use this section only when slice.json has an `extends` block (see Step 0).
 }
 ```
 
-`events[]` lists **only** the added events, with their fields. `readmodels[0].fields` is the
-read model's full, cumulative shape. `specifications[]` covers the behaviour this step adds.
+`events[]` lists **only** the added events, with their fields. `readmodels[0].fields` is the read model's full,
+cumulative shape. `specifications[]` covers the behaviour this step adds. A copy has its origin's type (emcli
+exports the origin's type for every copy), so the type never changes in an extension.
 
-**Origin folder:** `src/contexts/{originContext}/slices/{origin slice folder}/`. The folder name is
-the origin slice title, kebab-cased the same way the origin was built. Confirm it exists and holds
-`projection.ts`. If it doesn't, stop and report: the origin slice hasn't been built yet.
+**Origin folder:** `src/contexts/{originContext}/slices/{origin slice folder}/`. The folder name is the origin
+slice title, kebab-cased the same way the origin was built. It holds `readModel.ts` (fold form) or
+`projection.ts` (imperative form). If neither exists, stop and report that the origin slice hasn't been built yet.
 
 ### E1 — Guard against double-building
 
-Open the origin's `projection.ts`. If **any** event in `extends.addedEvents` is already in
-`canHandle`, stop and report that this extension is already built. Do not edit anything.
+If **any** event in `extends.addedEvents` is already in the origin's `canHandle` (or a lookup's `canHandle`),
+stop and report that this extension is already built. Do not edit anything.
 
-### E2 — Extend `projection.ts` (additive only)
+### E2 — Extend the definition (additive only)
 
-- Append each added event to the end of `canHandle`.
-- Add each field in `extends.addedFields` to the Doc interface. A field added after the read
-  model's first version is **optional** in the interface (`subscribedStudents?: …`): documents
-  written before this step don't have it.
-- Add one `case` per added event at the end of the `switch`, using the Pongo operation patterns from
-  Step 2. A case that updates a document must tolerate one written before this step. Use
-  `$push`/`$set` on the field, or `?? []` when reading an array that may be absent.
-- If an added event needs data from another entity (denormalisation, e.g. a student's name on
-  `studentWasSubscribed`), feed a lookup collection from that entity's event. Add a
-  `createCollection()` line to `init()` and a `deleteMany()` line to `truncate()`, following the lookup
-  naming in Step 2. The feeding event must itself be in `extends.addedEvents` (the modeler wires it
-  into the copy). If it isn't, don't invent it: stop and report the missing inbound event.
-- If this step derives a **new field from an event the projection already handled**, increment the
-  projection's `version` (add `version: 2` if absent). That forces a rebuild on the next start.
-- **Never** edit, reorder or delete an existing `case`, field or `canHandle` entry. The commit
-  check rejects any removed line in the origin's `projection.ts` other than the line a `canHandle`
-  entry was appended after.
+**Fold form** (`readModel.ts`):
+- Append each added event to the end of `canHandle`, and add a `case` for it at the end of `evolve`'s `switch`,
+  before the final `return doc`.
+- If an added event needs data from another entity, apply Step 2's requirement 3. Either extend an existing
+  lookup (append the related event to its `canHandle` and handle it in its `evolve`), or append a new lookup
+  entry. The events feeding a lookup must be in `extends.addedEvents` (the modeler wires them into the copy).
+  If they aren't, don't invent them: stop and report the missing inbound event.
+- Each field in `extends.addedFields` becomes an **optional** field of the Doc interface.
+- If the origin is `live-report`, re-check Step 2 for the added events. They need the key tag, or a lookup's
+  tag. If one fails, invoke `request-feedback`.
 
-### E3 — Extend `route.ts`
+**Imperative form** (`projection.ts`):
+- Append each added event to the end of `canHandle`, with one `case` per added event at the end of the
+  `switch`, using the Pongo operation patterns from P1.
+- A case that updates a document must tolerate one written before this step. Use `$push`/`$set` on the field,
+  or `?? []` when reading an array that may be absent.
+- A lookup the step needs gets a `createCollection()` line in `init()` and a `deleteMany()` line in
+  `truncate()`, named as in P1.
+- Fields in `extends.addedFields` become optional in the Doc interface.
 
-Map each added field into the response body. Default it for documents written before this step
-(`subscribedStudents: doc.subscribedStudents ?? []`), so the endpoint returns the full read model
-shape without waiting for the rebuild.
+Both forms:
+- If this step derives a **new field from an event the read model already handled**, increment `version`
+  (add `version: 2` if absent). That forces a rebuild on the next start.
+- **Never** edit, reorder or delete an existing `case`, field, lookup or `canHandle` entry. The commit check
+  rejects any removed line in the origin's `readModel.ts` / `projection.ts`, other than a line re-added with a
+  trailing comma so something can be appended after it.
+
+### E3 — The route
+
+- **Fold form:** nothing to do. `readModelRoute` returns the whole document, new fields included. Give a new
+  field its default in `evolve` (`doc.subscribedStudents ?? []`), so documents from before this step show it
+  too.
+- **Imperative form:** map each added field into the response body, with a default for documents written
+  before this step (`subscribedStudents: doc.subscribedStudents ?? []`).
 
 ### E4 — Extend `route.tests.ts`
 
-Append a new top-level `describe("{extension slice title}", () => { … })` block to the origin's
-`route.tests.ts`. It holds one `test(...)` per specification in this extension slice and reuses the
-module-level setup (`pool`, `eventStore`, `waitFn`, reset). Assert with `toMatchObject`, as in Step 5.
-If the origin's file predates the module-level layout (setup inside one `describe`), stop and report it:
-the origin needs its test setup lifted first, as a separate commit. Existing tests stay untouched and must still pass: they are proof the
-extension is additive. Add any write-slice route the new tests need to that block's `getApplication`
-call.
+Append a new top-level block to the origin's `route.tests.ts`, with one `test(...)` per specification in this
+extension slice:
+
+- **Fold form:** `describe.each(READ_MODEL_TYPES)("{extension slice title} (%s)", type => { … })`, with its
+  own `readModelTestApp`. Its `routes` include every write route the new scenarios use.
+- **Imperative form:** `describe("{extension slice title}", () => { … })`, reusing the module-level setup, as
+  in P4. If the origin's file predates the module-level layout (setup inside one `describe`), stop and report
+  it: the origin needs its test setup lifted first, as a separate commit.
+
+Existing tests stay untouched and must still pass: they are the proof the extension is additive.
 
 ### E5 — Replay is automatic
 
-Do nothing by hand. `ensureProjectionsCurrent()` in `src/index.ts` fingerprints each projection's
-`version` + `canHandle`. On the next start it rebuilds any projection whose fingerprint changed
-(truncate → replay from the beginning) before consumers start. So events of a newly handled type
-recorded before this deploy are projected rather than skipped behind the bookmark. Confirm the
-origin projection is already in that call's array; add it if missing.
+Do nothing by hand. `ensureProjectionsCurrent` (called by `startReadModels`) fingerprints each stored read
+model's `version` + `canHandle`. On the next start it rebuilds any whose fingerprint changed (truncate → replay
+from the beginning) before the app takes requests. So events of a newly handled type recorded before this
+deploy are projected rather than skipped. A live read model has nothing to rebuild: its next read folds the new
+events.
 
 ### E6 — No new wiring
 
-The origin's projection, consumer, `waitFn` and route (or, for an inline origin, its
-`inlineProjections` entry and route) are already registered in `src/index.ts`.
-Change `index.ts` only if E4's tests revealed a missing route registration.
+The origin is already registered in `src/index.ts`. Change `index.ts` only if E4's tests revealed a missing
+route registration.
 
 ### Files touched by an extension slice
 
 ```
 src/contexts/{originContext}/slices/{originFolder}/
-├── projection.ts       ← appended: canHandle entries, Doc fields, cases, lookup init/truncate lines
-├── route.ts            ← added fields mapped (with defaults)
-└── route.tests.ts      ← appended: describe("{extension slice title}")
+├── readModel.ts        ← (fold form) appended: canHandle entries, evolve cases, lookups, optional Doc fields
+│   or projection.ts    ← (imperative) appended: canHandle entries, cases, lookup init/truncate lines
+├── route.ts            ← imperative form only: added fields mapped (with defaults)
+└── route.tests.ts      ← appended: a block for the extension's specifications
 ```
 
-These are the only files outside the slice's own folder that a commit may touch, and only
-when slice.json has `extends`.
+These are the only files outside the slice's own folder that a commit may touch, and only when slice.json
+has `extends`.
+
+---
+
+## Changing a read model's type (retype)
+
+Use this section only when slice.json has a `retype` block, e.g. `{ "from": "inline-projected", "to": "live-report" }`.
+The model switched an already-built read model to another type. Clients must not notice: the contract tests
+already run every scenario against every type, so the switch is one line.
+
+### R1 — Find the definition
+
+It is in this slice's own folder (a retype is always on the origin read model).
+- `readModel.ts` present → fold form: continue.
+- Only `projection.ts` → imperative form, which can't switch in one line. Stop and invoke `request-feedback`:
+  "{SliceName} is an imperative projection. Converting it to a `readModel.ts` fold is a refactor that needs its
+  own reviewed commit before its type can change."
+
+### R2 — Check the target type
+
+If `to` is `live-report`, re-check Step 2's requirements for **every** event in the definition's `canHandle`
+and its lookups (read `Events.ts`). If one fails, invoke `request-feedback` naming it, and change nothing.
+
+### R3 — Change the `type:` line
+
+In `readModel.ts`, change `type: "{from}"` to `type: "{to}"`. **Nothing else:** no test edits, no route
+edits, no `index.ts` edits. The `retype-scope` commit check enforces this.
+
+### R4 — Prove it and commit
+
+Run the slice's tests. They already cover every type, and must pass unchanged. Commit as
+`refactor: {slice title} → {to}`, then set the slice to `Done`.
+
+On the next start, `ensureProjectionsCurrent` rebuilds the stored copy when switching into a stored type
+(async ↔ inline, or live → stored). Switching to live needs nothing.
 
 ---
 
@@ -690,47 +884,41 @@ when slice.json has `extends`.
 
 ```
 src/contexts/{context}/slices/{slicename}/
-├── projection.ts       ← pongoProjection with canHandle, init, handle, truncate
-├── route.ts            ← GET endpoint with preferWait + ETag
-└── route.tests.ts      ← Postgres integration tests (testcontainers)
+├── readModel.ts        ← fold form: defineReadModel (or projection.ts, imperative form)
+├── route.ts            ← readModelRoute (imperative form: the P3 handler)
+└── route.tests.ts      ← contract tests, describe.each over READ_MODEL_TYPES (imperative: P4)
 
 src/
-└── index.ts            ← add projection init, consumer processor, waitFn, route
+└── index.ts            ← add it to readModels (imperative: imperative) and its route to apis
 ```
 
 ---
 
 ## Checklist
 
-- [ ] `canHandle` lists every event type the projection handles — names match Events.ts exactly
-- [ ] `init()` creates all required Pongo collections (including any lookup collections)
-- [ ] `handle()` processes every event type listed in `canHandle`
-- [ ] `truncate()` deletes from every collection `init()` creates
-- [ ] Projection registered in `src/index.ts` (init, consumer, waitFn)
-- [ ] Route registered in `src/index.ts` with the projection's `waitFn`
-- [ ] `getBookmarkPosition()` reads from `_handler_bookmarks` using the correct `handler_id`
-- [ ] `withETag(bookmarkPosition)` called on every response
-- [ ] `preferWait({ waitFn })` registered before the actual GET handler when `waitFn` is present
-- [ ] Integration tests use `getTestPgDatabasePool`, `ensureInstalled`, `projection.init!`, `ensureHandlersInstalled`
-- [ ] Test setup is at module level, scenarios in `describe("{slice title}")`, and `afterEach` resets via `projection.truncate!()` (not per-collection deletes)
-- [ ] One `test(...)` block per specification in slice.json
-- [ ] Every field in `readModel.fields` appears in the doc interface and the route response body
-- [ ] No invented fields — if it's not in slice.json it's not in the code
-- [ ] Projection passed to `ensureProjectionsCurrent(...)` in `src/index.ts`
+**Fold form (new read model):**
 
-**Inline read models (`readModelType: "inline-projected"`) — instead of the consumer, `waitFn`, bookmark and ETag items above:**
+- [ ] Step 2's requirements checked against `Events.ts` (key tag on every event, lookups reachable by tags, keyed GET)
+- [ ] `readModel.ts`: `type` from slice.json, `key` = the idAttribute field, `canHandle` = slice.json `events[]` (one per line), lookups only for data from another entity
+- [ ] `evolve` is pure, returns new objects, tolerates a missing document, and ends with `return doc`
+- [ ] Every field in `readModel.fields` is produced by `evolve`, and there are no invented fields
+- [ ] `route.ts` is a `readModelRoute` call with the `path` from `apiEndpoint`
+- [ ] `readModels` in `src/index.ts` lists it, and its route is in `apis` (a separate wire commit)
+- [ ] `route.tests.ts`: `describe.each(READ_MODEL_TYPES)`, one `test` per specification, `settle()` before each GET, `toMatchObject`, nothing type-specific
 
-- [ ] Projection added to `inlineProjections` in `src/index.ts`, and **not** to the async `projections` array, `ensureHandlersInstalled` or the consumer
-- [ ] `handle()` touches only this projection's collections, makes no external calls, and never throws for a missing document or a business rule
-- [ ] Route has no `preferWait`, `waitFn`, bookmark lookup or `withETag`
-- [ ] Tests build the store with `inlineProjections: [projection]`, start no consumer, and read immediately after the write without `Prefer: wait`
+**Imperative form:** as P1–P4 (and the Inline changes). It's registered in the `imperative` array, and its
+`truncate()` clears every collection `init()` creates.
 
-**Extension slices (`extends` present) — instead of the create items above:**
+**Extension slices (`extends` present):**
 
-- [ ] No new projection, collection, route or test file created. All edits are in the origin folder.
-- [ ] None of `extends.addedEvents` was in the origin's `canHandle` before this change (E1)
-- [ ] Every event in `extends.addedEvents` appended to `canHandle` with its own `case`, and every field in `extends.addedFields` in the Doc interface (optional) and the route body (defaulted)
-- [ ] No existing `case`, field or `canHandle` entry edited, reordered or removed
-- [ ] New lookup collections are in both `init()` and `truncate()`
+- [ ] No new read model, route or test file created. All edits are in the origin folder.
+- [ ] None of `extends.addedEvents` was already handled (E1)
+- [ ] Every added event appended to `canHandle` with its own `case`, and new fields optional
+- [ ] No existing `case`, field, lookup or `canHandle` entry edited, reordered or removed
 - [ ] `version` incremented if a new field is derived from an already-handled event
-- [ ] A `describe("{extension slice title}")` block with one `test(...)` per specification appended to the origin's `route.tests.ts`, and every pre-existing test still passes unchanged
+- [ ] A block for the extension's specifications appended to the origin's `route.tests.ts`, and every pre-existing test still passes unchanged
+
+**Retype (`retype` present):**
+
+- [ ] Only the `type:` line of `readModel.ts` changed, and for live the Step 2 requirements hold
+- [ ] The existing tests pass unchanged
