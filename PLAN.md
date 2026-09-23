@@ -30,6 +30,102 @@
 
 ## Phases
 
+### Phase 12: Query Read Models (the spec's *when* is the read operation)
+
+> **Top priority** (recorded 2026-09-23), superseding 9.7, 9.11b and the 10.8 ports.
+
+**Goal:** let a read model answer a **where predicate**, meaning it filters its documents on their fields, not
+only fetches one by primary key. The read slice's GWT spec carries the query: *given* supplies the events, *when*
+is the read operation (the query and its parameters) and *then* is the documents it returns. The client contract
+from ADR-022 still holds: the same URL and body whichever read model type serves the query.
+
+**Findings (preliminary investigation, 2026-09-23):**
+1. **Every read model is a keyed GET.** The course-enrollment read models are all
+   `readModelRoute(…, "/…/:key")`, i.e. one path parameter, `reader(id)` and pongo `findOne({ _id })` or
+   `readLive(key)`:
+   - CourseDetails: `/courses/:courseId`
+   - CourseSeats: `/courses/:courseId/seats`
+   - StudentSubscriptions: `/students/:studentId/subscriptions`
+
+   The only non-keyed read in the kit is the scaffold's imperative `course-list`, which pages through a whole
+   collection with no filter. The Node kit is the same (`findById`, or `findAll({})`). No kit has a where
+   predicate.
+2. **Read specs are given events, an empty *when*, then the read model.** All 12 read specs in course-enrollment
+   have `when: []`. `build-state-view` never reads *when* for read slices.
+3. **The model can already hold a *when* step.**
+   - emcli's `spec step add` accepts any step type in any phase, and `workspace export` passes *when* through.
+   - Specs are local to emcli and render to markdown on `sync push`, so **prooph board needs no change**.
+   - Missing: a step type that means "query", and a way to state an operator other than equality.
+4. **Stored types can filter with the existing library.**
+   - Fold-form stored read models are one pongo document per key.
+   - Pongo's `collection.find(filter, { limit, skip, sort })` supports `$eq $ne $gt $gte $lt $lte $in $nin
+     $elemMatch $all $size` over JSONB.
+   - The collections have only the `_id` primary key index, so filtered fields need expression or GIN indexes.
+5. **Live read models can serve some predicates, not all.**
+   - A predicate on a **tag** (e.g. `courseId = c1`) is reachable through the DCB tag index, with the same
+     union-read machinery as lookups.
+   - A predicate on **folded state** (`freeSeats > 0`) means folding every entity per request, like a live list.
+     So those queries are stored-only.
+   - A query's supported types can therefore be narrower than its read model's.
+
+**Design pathway (settled in 12.1):**
+- **Every read is a query.** The keyed GET becomes the implicit default query (`byKey`), so existing read models
+  are unchanged. A read model can declare more named queries.
+- **Model:** a new emcli spec step type, `SPEC_QUERY`, used in *when*.
+  - Its title is the query name, e.g. `coursesWithFreeSeats`.
+  - Its fields are the parameters, with examples and an optional per-field `operator` (`eq` is the default, plus
+    `ne gt gte lt lte in contains`).
+  - *then* lists one `SPEC_READMODEL` step per expected document, in the query's order. An empty *then* means no
+    matches.
+- **Runtime:**
+  - `defineReadModel({ …, queries: { name: { params, where, sort } } })`;
+  - a stored runner that uses pongo `find`;
+  - a live runner for tag predicates only (state predicates on a live read model are rejected at startup);
+  - `readQueryRoute(…)`, which serves `{ data: [...], cursor? }` for every type;
+  - indexes on the queried fields, created by `ensureProjectionsCurrent`.
+- **Kit:**
+  - `build-state-view` turns each distinct *when* query into a declared query and a route.
+  - Contract tests append *given*, GET with *when*'s examples as the query string, and expect *then*'s rows, across
+    the query's supported types.
+
+**Tasks:**
+- [ ] **12.1 ADR-023, the read-model query contract:**
+  - the spec encoding (`SPEC_QUERY`, the operators, *then* as rows);
+  - the body shape `{ data, cursor? }`;
+  - which predicates each type supports (tag predicates: all types; state predicates: stored only);
+  - URL conventions (named parameters such as `GET /courses?minFreeSeats=1`, never a raw filter language).
+- [ ] **12.2 emcli:**
+  - the `SPEC_QUERY` step type (alias `query`) and the field `operator`;
+  - `spec step add … --phase when --type query`;
+  - markdown rendering, export and schema;
+  - a warning for state-predicate queries on live read models (extend `warnLiveLists`);
+  - tests and USAGE.md.
+- [ ] **12.3 Kit runtime (`src/shared/readModels.ts`):**
+  - `queries` in `defineReadModel`;
+  - the stored `find` runner and the live tag-predicate runner;
+  - `readQueryRoute`;
+  - index creation;
+  - real-Postgres contract tests across types.
+- [ ] **12.4 The `build-state-view` skill:** the query step, contract tests from given/when/then, extension rules
+  (adding a query is additive), and the checklist.
+- [ ] **12.5 Commit checks:** `extension-additive` accepts `queries` additions. Check whether `retype-scope` needs
+  to know about queries.
+- [ ] **12.6 Experiment on course-enrollment (Gary runs the loop):**
+  - `coursesWithFreeSeats` on CourseSeats (a state predicate, stored);
+  - a tag-predicate query served live and stored with the same body;
+  - latency with and without the index.
+- [ ] **12.7 Docs:** a new manual section, "Querying read models", and PLAN results.
+
+**Open questions for 12.1** (recommendations first):
+1. **A new `SPEC_QUERY` step type**, or reuse `SPEC_READMODEL` in *when*? A new type is unambiguous for the kit
+   and can carry operators.
+2. **Named parameters with a per-field operator**, or a generic filter parameter? Named parameters keep a stable,
+   typed client contract.
+3. **Paged `{ data, cursor? }` for every query**, or a bare array? The paged shape matches the scaffold's
+   existing list shape.
+
+---
+
 ### Phase 11: Read Model Types ✅
 
 > Was the top priority, superseding 9.7, 9.11b and the 10.8 ports. **Done 2026-09-23**, so those items are open
@@ -687,6 +783,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-22 | Automatic rebuild on changed `canHandle`/`version` (ADR-020, supersedes ADR-016) | Bookmarks skip a newly handled type's history; proven necessary in the t2 proof step |
 | 2026-09-22 | Include `idAttribute` fields in Zod body schema | When a command field has `idAttribute: true` and no `generated: true`, include it in the body schema. Client sends it for deterministic tests and idempotent creation. |
 | 2026-09-23 | Inline read models share `build-state-view`, chosen by `readModelType` (ADR-021) | Same projection code and extension steps as async; only wiring, route and tests differ. First sighting of an inline projection backfills from history |
+| 2026-09-23 | Read specs' *when* carries the read operation (Phase 12, to become ADR-023) | Every read model is a keyed GET today. A *when* query with named parameters gives filtered reads a stable client contract, generated and tested from given/when/then |
 
 ## Progress
 
@@ -703,4 +800,5 @@ What each `build-*` skill generates and what it verifies:
 | 9 — Progressive Read Model Evolution | ✅ Core complete | emcli copies + extension slices, `build-state-view` extend mode, automatic rebuild; proven t0→t4 on a live DB (32/32). Real Ralph run done (9.6). Node kit port remains |
 | 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 done (stale InProgress recovery in `--local` mode) |
 | 11 — Read Model Types | ✅ Complete | Async, inline and live read models from one fold definition, with an identical data shape across types (ADR-021/022). Proven on course-enrollment t5–t10: inline, a retype to live and back, a new live read model with a lookup |
+| 12 — Query Read Models | 📋 Planned (top priority) | Preliminary investigation done. The spec's *when* becomes a named query with a where predicate; stored types use pongo `find`, live types serve tag predicates only |
 | 7 — Board Re-pointing | ⛔ Dropped | eventmodelers board retired; prooph board via emcli is the only board |
