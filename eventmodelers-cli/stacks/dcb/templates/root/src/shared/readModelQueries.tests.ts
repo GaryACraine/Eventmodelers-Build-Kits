@@ -9,7 +9,9 @@ import {
     buildQuerySql,
     matchesQuery,
     pageOf,
+    sortTuple,
     type QueryDefinition,
+    type SortTuple,
     type QueryPage,
     type QueryParams
 } from "./readModelQueries.js"
@@ -202,6 +204,25 @@ describe("stored SQL mirrors the in-memory semantics", () => {
             }
         }
     })
+
+    test("after every cursor position, and after a cursor no unsorted page would hand out", async () => {
+        const { pool } = await started("database-projected")
+        const stored = await pool.query<{ _id: string; data: CourseDoc }>("SELECT _id, data FROM test_query_courses")
+        const rows = stored.rows.map(r => ({ key: r._id, doc: r.data }))
+
+        for (const [name, query] of Object.entries(queries)) {
+            const afters: SortTuple[] = [...rows.map(r => sortTuple(r.doc, r.key, query)), [0, 0, "", ""], [1, 0, "", "c1"], [0, 5, "", "c0"]]
+            for (const params of grid[name] as QueryParams[]) {
+                for (const after of afters) {
+                    const page = { limit: 200, after }
+                    const inMemory = pageOf(rows.filter(r => matchesQuery(r.doc, query, params)), query, page)
+                    const sql = buildQuerySql("test_query_courses", query, params, page)
+                    const viaSql = (await pool.query<{ data: CourseDoc }>(sql.text, sql.values)).rows.map(r => r.data.courseId)
+                    expect({ name, params, after, ids: viaSql }).toEqual({ name, params, after, ids: ids(inMemory) })
+                }
+            }
+        }
+    })
 })
 
 // ─── Contract details ────────────────────────────────────────────────────────
@@ -317,6 +338,30 @@ describe("runtime guards", () => {
                 const plan = await client.query(`EXPLAIN (FORMAT JSON) ${sql.text}`, sql.values)
                 expect({ name, plan: JSON.stringify(plan.rows[0]) }).toEqual({ name, plan: expect.stringMatching(/Index/) })
             }
+        } finally {
+            client.release()
+        }
+    })
+
+    test("unsorted queries get a key-order index, and their cursor seeks it", async () => {
+        const { pool } = await started("database-projected")
+        const indexes = await pool.query<{ indexname: string; indexdef: string }>("SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'test_query_courses'")
+        const keyOrder = indexes.rows.find(r => /USING btree \(\(?\(?_id COLLATE "C"\)?\)?\)$/.test(r.indexdef))
+        expect(keyOrder, indexes.rows.map(r => r.indexdef).join("\n")).toBeDefined()
+
+        const unsorted = buildQuerySql("test_query_courses", queries["withSeats"], { min: 0 }, { limit: 2, after: [0, 0, "", "c2"] })
+        expect(unsorted.text).toContain(`(_id COLLATE "C") > $2::text`)
+        expect(unsorted.text).not.toMatch(/\) > \(/)
+        const sorted = buildQuerySql("test_query_courses", queries["forStudent"], { studentId: "s1" }, { limit: 2, after: [2, 0, "apple", "c1"] })
+        expect(sorted.text).toMatch(/\) > \(\$2::int, \$3::numeric, \$4::text, \$5::text\)/)
+
+        // On four rows the planner would rather sort; take its other options away to show the index serves the seek
+        const client = await pool.connect()
+        try {
+            await client.query("SET enable_seqscan = off; SET enable_bitmapscan = off; SET enable_sort = off")
+            const plan = JSON.stringify((await client.query(`EXPLAIN (FORMAT JSON) ${unsorted.text}`, unsorted.values)).rows[0])
+            expect(plan).toContain(`"Index Name":"${keyOrder!.indexname}"`)
+            expect(plan).toMatch(/"Index Cond":"\(\(_id\)::text > /)
         } finally {
             client.release()
         }

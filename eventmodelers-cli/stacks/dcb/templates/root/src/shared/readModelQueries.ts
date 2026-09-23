@@ -366,8 +366,14 @@ export function buildQuerySql(
     const tuple = tupleSql(query)
     if (page.after) {
         const [r, n, s, k] = page.after
-        const after = `(${bind(r, "int")}, ${bind(n, "numeric")}, ${bind(s, "text")}, ${bind(k, "text")})`
-        where.push(`(${tuple.join(", ")}) ${desc ? "<" : ">"} ${after}`)
+        if (!query.sort && r === 0 && n === 0 && s === "") {
+            // Unsorted: the tuple is [0, 0, "", key], so "after" is just the key. Said this way it seeks
+            // the key-order index; the row comparison's constant columns can't be an index condition.
+            where.push(`${tuple[3]} > ${bind(k, "text")}`)
+        } else {
+            const after = `(${bind(r, "int")}, ${bind(n, "numeric")}, ${bind(s, "text")}, ${bind(k, "text")})`
+            where.push(`(${tuple.join(", ")}) ${desc ? "<" : ">"} ${after}`)
+        }
     }
     const order = tuple.map(e => `${e} ${desc ? "DESC" : "ASC"}`).join(", ")
     const text =
@@ -377,7 +383,12 @@ export function buildQuerySql(
     return { text, values }
 }
 
-/** Indexes for a stored read model's queries: one per compared field, GIN for contains, one per sort order. */
+/**
+ * Indexes for a stored read model's queries: one per compared field, GIN for contains, one per sort order,
+ * and for unsorted queries the key order — `(_id COLLATE "C")`, which the primary key (default collation)
+ * can't serve. With it, a page of a query most documents match walks the keys and stops at `limit + 1`,
+ * and a cursor seeks, instead of sorting every match.
+ */
 export function queryIndexStatements(collection: string, queries: Record<string, QueryDefinition>): string[] {
     const expressions = new Map<string, string>() // index name → CREATE INDEX statement
     const add = (using: string, expression: string) => {
@@ -390,6 +401,7 @@ export function queryIndexStatements(collection: string, queries: Record<string,
             else add("btree", typedAt(def.field, def.type))
         }
         if (query.sort) add("btree", tupleSql(query).join(", "))
+        else add("btree", tupleSql(query)[3])
     }
     return [...expressions.values()]
 }
