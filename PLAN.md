@@ -30,10 +30,10 @@
 
 ## Phases
 
-### Phase 11: Read Model Types 🔴 Top priority (inline ✅, live next)
+### Phase 11: Read Model Types ✅
 
-> **Supersedes every other open item** (9.7, 9.11b, and porting 10.8 to the react stack and `ralph.sh`). Those
-> stay parked until Phase 11 is done.
+> Was the top priority, superseding 9.7, 9.11b and the 10.8 ports. **Done 2026-09-23**, so those items are open
+> again.
 
 **Goal:** let a read model choose how it is kept up to date, and build each type in the DCB kit. Some business
 users need a read model that is consistent the moment a command returns; eventual consistency isn't acceptable
@@ -128,7 +128,7 @@ inline projections (`projections.inline([...])`), so this phase is about the DCB
   Manual: §1 read model types, a new §10 walkthrough (old §10–15 are now §11–16), §13 inline rebuilds, and two
   troubleshooting rows. Not measured: the write-latency cost per inline projection. The library has a
   `contention` benchmark for that.)*
-- [ ] **11.7 Live read models, and switchable types** (design approved 2026-09-23; ADR-022).
+- [x] **11.7 Live read models, and switchable types** (design approved 2026-09-23; ADR-022).
   - **The contract is the data shape only:** the same URL, body and status for a read model whichever type serves
     it. Headers (`ETag`, `Prefer: wait`) are outside it.
   - **One definition per read model:** a keyed fold (`defineReadModel`: `key`, `canHandle`, pure `evolve`), with
@@ -180,16 +180,39 @@ inline projections (`projections.inline([...])`), so this phase is about the DCB
       unchanged.
       *(Done: `checks/17-retype-scope.cjs`, with 5 `node:test` cases in `stacks/dcb/tests/checks/retype-scope.test.cjs`
       that run in a throwaway git repo.)*
-    - [ ] **11.7f** Experiment on course-enrollment:
+    - [x] **11.7f** Experiment on course-enrollment:
       - migrate CourseSeats and CourseDetails to fold form (existing scenarios unchanged);
       - retype CourseDetails async → live, with the body identical before and after (the lookup union on the live
         DB);
       - retype CourseSeats inline → live → async;
       - measure live latency against stored;
       - model one new live read model.
-    - [ ] **11.7g** Manual: "Switching read model types" (the contract, lookups in live reads, when to choose live,
+      *(Done 2026-09-23, increments t7–t10 merged.
+      - **t7:** CourseSeats and CourseDetails (with a `students` lookup) were converted to fold form in reviewed
+        commits. With `version: 2` they rebuilt from history, and all 14 read-model URLs kept identical bodies and
+        statuses (key order ignored). 10 scenarios → 30 contract tests.
+      - **t8:** emcli re-queued both retypes. The loop made two one-line commits, which passed the (now active)
+        hook, retype-scope included. Bodies stayed identical after the switch to live. Stale reads for
+        CourseDetails fell from 199/200 (async) to 0.
+      - **t9:** CourseSeats live → async. A subscription made while it was live was missing from the stale stored
+        copy. The restart logged `Rebuilding …: live:v2 → v2`, and the body was then correct.
+      - **t10:** a new live `StudentSubscriptions`. The loop derived the `courses` lookup (courseWasRegistered +
+        courseTitleWasChanged, by `courseId` tag) from the skill alone. Its data was correct against the live
+        history, including a read straight after a write.
+      - **Latency** (medians, 300 GETs each). Stored read models answered in 2.0–2.5 ms. Live answered in 3.0 ms
+        (5 events, no lookup), 4.2 ms (5 events + lookup), 7.1 ms (612 events) and 9.4 ms (813 events + lookup).
+      - **Full suite:** 94 tests.
+      - **Kit fixes found on the way:**
+        - PR #22: `ReadModel[]` typing.
+        - PR #23: the commit hook was silently off in projects scaffolded without `--hooks`, and the scaffold
+          failed `tsc --noEmit` on `uuid` types.)*
+    - [x] **11.7g** Manual: "Switching read model types" (the contract, lookups in live reads, when to choose live,
       a measured retype walkthrough), plus updates to §1, §13, troubleshooting and the known limits. PLAN
       results.
+      *(Done. New §11, "Increments t7–t10: switching read model types", covers the contract, fold form and the
+      union read, the conversion, retype to live and back, a new live read model, and a cost table. §1 table,
+      §6.5, §10.3 note, §14 live fingerprints, three troubleshooting rows, the command reference and the known
+      limits are updated. Sections from §12 on are renumbered.)*
 
 ---
 
@@ -679,5 +702,5 @@ What each `build-*` skill generates and what it verifies:
 | 8 — Integration Tests | ✅ Complete | Postgres integration tests for state-change slices; prototype proven, skill template updated |
 | 9 — Progressive Read Model Evolution | ✅ Core complete | emcli copies + extension slices, `build-state-view` extend mode, automatic rebuild; proven t0→t4 on a live DB (32/32). Real Ralph run done (9.6). Node kit port remains |
 | 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 done (stale InProgress recovery in `--local` mode) |
-| 11 — Read Model Types | 🟡 Inline done | Inline-projected read models built and proven on course-enrollment t5/t6 (11.1–11.6). Live read models and switchable types (11.7a–g) in progress, still ahead of all other open items |
+| 11 — Read Model Types | ✅ Complete | Async, inline and live read models from one fold definition, with an identical data shape across types (ADR-021/022). Proven on course-enrollment t5–t10: inline, a retype to live and back, a new live read model with a lookup |
 | 7 — Board Re-pointing | ⛔ Dropped | eventmodelers board retired; prooph board via emcli is the only board |
