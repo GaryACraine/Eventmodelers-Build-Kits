@@ -14,6 +14,22 @@ import {
 } from "@dcb-es/event-store-postgres"
 import { on, OK, preferWait, withETag, type WaitFunction, type WebApiSetup } from "@dcb-es/event-store-express"
 import { ensureProjectionsCurrent } from "./ensureProjectionsCurrent.js"
+import {
+    buildQuerySql,
+    encodeCursor,
+    liveNarrowingParam,
+    sortTuple,
+    matchesQuery,
+    pageOf,
+    parseQueryRequest,
+    queryIndexStatements,
+    validateQueries,
+    type QueryDefinition,
+    type QueryPage,
+    type QueryPageRequest,
+    type QueryParams,
+    type QueryValue
+} from "./readModelQueries.js"
 
 /**
  * Read models with a stable data shape, whichever type serves them (ADR-022).
@@ -29,6 +45,9 @@ import { ensureProjectionsCurrent } from "./ensureProjectionsCurrent.js"
  *
  * Both runners fold the same functions over the same events in the same order, so the document —
  * and so the response body — is identical across types. Switching type is a one-line change.
+ *
+ * Besides the keyed GET, a read model can declare named `queries` — where predicates over its documents,
+ * served as `{ data, cursor? }` pages by every type (ADR-023, `readModelQueries.ts`).
  */
 
 export const READ_MODEL_TYPES = ["database-projected", "inline-projected", "live-report"] as const
@@ -68,6 +87,8 @@ export interface ReadModelDefinition<
     lookups?: { [K in keyof TLookups]: LookupDefinition<TLookups[K]> }
     /** Pure fold of one key's document. Return null to delete it. */
     evolve: (doc: TDoc | null, event: SequencedEvent, lookups: LookupViews<TLookups>) => TDoc | null
+    /** Named where predicates over the documents (ADR-023). Adding one never rebuilds. */
+    queries?: Record<string, QueryDefinition>
 }
 
 // Defaults are `any` so `ReadModel[]` (the scaffold's readModels array) holds read models with and
@@ -84,6 +105,7 @@ export function defineReadModel<
     TDoc extends ReadModelDoc,
     TLookups extends Record<string, ReadModelDoc> = Record<string, never>
 >(definition: ReadModelDefinition<TDoc, TLookups>): ReadModel<TDoc, TLookups> {
+    if (definition.queries) validateQueries(definition.name, definition.queries)
     return { ...definition, projection: storedProjection(definition) }
 }
 
@@ -277,6 +299,38 @@ export async function readLive(
     throw new Error(`${definition.name}: related entities kept changing during ${MAX_LIVE_READS} live reads of ${id}`)
 }
 
+/**
+ * Run a query live (ADR-023). The query's tagged parameter finds the candidates — the keys of the
+ * primary events carrying `{tag}={value}` — each candidate is folded with `readLive`, and then every
+ * predicate is applied in memory, exactly as the stored runner's SQL applies it.
+ */
+export async function queryLive(
+    eventStore: EventStore,
+    definition: ReadModelDefinition<any, any>,
+    queryName: string,
+    params: QueryParams,
+    page: QueryPageRequest
+): Promise<QueryPage> {
+    const query = definition.queries![queryName]
+    const narrowing = liveNarrowingParam(query)
+    if (!narrowing) throw new Error(`${definition.name}.${queryName}: live-report needs a required tagged eq/in/contains parameter`)
+    const tag = query.params[narrowing].tag!
+    const values = ([] as QueryValue[]).concat(params[narrowing] as QueryValue | QueryValue[])
+
+    const candidates = new Set<string>()
+    const narrowed = Query.fromItems([{ types: definition.canHandle, tags: Tags.from(values.map(v => `${tag}=${v}`)) }])
+    for await (const event of eventStore.read(narrowed)) {
+        for (const key of tagValues(event, definition.key)) candidates.add(key)
+    }
+
+    const rows: { key: string; doc: ReadModelDoc }[] = []
+    for (const key of candidates) {
+        const doc = await readLive(eventStore, definition, key)
+        if (doc && matchesQuery(doc, query, params)) rows.push({ key, doc })
+    }
+    return pageOf(rows, query, page)
+}
+
 // ─── Wiring ──────────────────────────────────────────────────────────────────
 
 /** An imperative projection that can't be a keyed fold (ADR-022): stored only. */
@@ -291,6 +345,8 @@ export interface ReadModelRuntime {
     consumer?: RunningConsumer
     /** Fetch one document by key, whichever type serves the read model. */
     reader(readModel: ReadModel<any, any>): (id: string) => Promise<ReadModelDoc | null>
+    /** Run a named query, whichever type serves the read model (ADR-023). */
+    querier(readModel: ReadModel<any, any>, queryName: string): (params: QueryParams, page: QueryPageRequest) => Promise<QueryPage>
     /** Async read models only: waits for the consumer (the optional `Prefer: wait` extra). */
     waitFn(readModel: ReadModel<any, any>): WaitFunction | undefined
     stop(): Promise<void>
@@ -316,6 +372,17 @@ export async function startReadModels(
     ]
     const liveProjections = readModels.filter(r => r.type === "live-report").map(r => r.projection)
 
+    // A live read model can only serve queries a tag narrows (ADR-023) — refuse to start otherwise.
+    const unservable = readModels
+        .filter(r => r.type === "live-report")
+        .flatMap(r => Object.entries(r.queries ?? {}).filter(([, q]) => !liveNarrowingParam(q)).map(([name]) => `${r.name}.${name}`))
+    if (unservable.length > 0) {
+        throw new Error(
+            `live-report can't serve ${unservable.join(", ")}: no required eq/in/contains parameter declares a tag. ` +
+                "Add one, or make the read model database-projected or inline-projected."
+        )
+    }
+
     const eventStore = new PostgresEventStore({ pool, inlineProjections })
     await eventStore.ensureInstalled()
 
@@ -324,6 +391,9 @@ export async function startReadModels(
         for (const projection of asyncProjections) await projection.init!(client)
     } finally {
         client.release()
+    }
+    for (const readModel of readModels.filter(r => r.type !== "live-report" && r.queries)) {
+        for (const statement of queryIndexStatements(readModel.collection, readModel.queries!)) await pool.query(statement)
     }
     await ensureHandlersInstalled(pool, asyncProjections.map(p => p.name), "_handler_bookmarks")
     await ensureProjectionsCurrent(pool, eventStore, asyncProjections, {
@@ -358,6 +428,23 @@ export async function startReadModels(
                       )
                       return r.rows[0] ? stripMeta(r.rows[0].data) : null
                   }
+        },
+        querier: (requested, queryName) => {
+            const readModel = resolve(requested)
+            const query = readModel.queries?.[queryName]
+            if (!query) throw new Error(`${readModel.name} has no query "${queryName}"`)
+            if (readModel.type === "live-report") return (params, page) => queryLive(eventStore, readModel, queryName, params, page)
+            return async (params, page) => {
+                const sql = buildQuerySql(readModel.collection, query, params, page)
+                const r = await pool.query<{ _id: string; data: Record<string, unknown> }>(sql.text, sql.values)
+                // One extra row was fetched to tell whether there is a next page. Keep the SQL's order as is.
+                const rows = r.rows.slice(0, page.limit)
+                const last = rows[rows.length - 1]
+                return {
+                    data: rows.map(row => stripMeta(row.data)),
+                    ...(r.rows.length > page.limit ? { cursor: encodeCursor(sortTuple(stripMeta(last.data), last._id, query)) } : {})
+                }
+            }
         },
         waitFn: requested => {
             const readModel = resolve(requested)
@@ -410,6 +497,38 @@ export function readModelRoute(
                     }
                 }
                 return OK({ body: doc })
+            })
+        )
+    }
+}
+
+/**
+ * The GET route for a named query: `path` (e.g. "/available-courses" or "/students/:studentId/courses")
+ * → `{ data: [...documents], cursor? }`, the same page whichever type serves the read model (ADR-023).
+ * 400 for a missing or unparseable parameter; never 404. Async read models also honour `Prefer: wait`.
+ */
+export function readQueryRoute(
+    readModel: ReadModel<any, any>,
+    runtime: Pick<ReadModelRuntime, "querier" | "waitFn">,
+    queryName: string,
+    path: string
+): WebApiSetup {
+    const query = readModel.queries?.[queryName]
+    if (!query) throw new Error(`${readModel.name} has no query "${queryName}"`)
+    const run = runtime.querier(readModel, queryName)
+    const waitFn = runtime.waitFn(readModel)
+
+    return router => {
+        if (waitFn) router.get(path, preferWait({ waitFn }))
+        router.get(
+            path,
+            on(async req => {
+                const parsed = parseQueryRequest(query, req.params as Record<string, string>, req.query as Record<string, unknown>)
+                if ("error" in parsed) {
+                    const detail = parsed.error
+                    return res => res.status(400).json({ status: 400, title: "Bad Request", detail })
+                }
+                return OK({ body: await run(parsed.params, parsed.page) })
             })
         )
     }
