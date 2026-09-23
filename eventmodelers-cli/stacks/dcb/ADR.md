@@ -480,8 +480,9 @@ query can also generate and test it.
 - **Each parameter is a `Field`** (name, type, `optional`, `example`) with two additions:
   - `operator`: `eq` (the default), `ne`, `gt`, `gte`, `lt`, `lte`, `in` or `contains`;
   - `mapping`: the document field it compares, as a dot path. It defaults to the parameter's name.
-- **Path parameters:** a parameter named in the endpoint's `{…}` is a path parameter, so it is required and uses
-  `eq`. Every other parameter is a query-string parameter.
+- **Path parameters:** a parameter named in the endpoint's `{…}` is a path parameter, so it is required and
+  matched by equality: `eq`, or `contains` when its field is an array (`/students/{studentId}/courses` matches
+  `subscribedStudents.studentId`). Every other parameter is a query-string parameter.
 - **The spec's *when* is one `SPEC_QUERY` step** (emcli type alias `query`):
   - its title is the query name, and it links to the read model element;
   - its fields give the example values for this scenario.
@@ -518,8 +519,8 @@ query can also generate and test it.
 - **The stored runner** (async or inline) translates the params into a pongo `find` filter, sorted by
   `(sort, key)` and paged from the cursor. The runtime creates the indexes the queried fields need at startup.
   Indexes don't change documents, so they are **not** part of the rebuild fingerprint.
-- **The live runner** can serve a query **only if the query has a required `eq` or `in` parameter that declares a
-  `tag`**:
+- **The live runner** can serve a query **only if the query has a required equality parameter (`eq`, `in` or
+  `contains`) that declares a `tag`**:
   - It reads the primary events carrying `{tag}={value}` and collects their key tags as candidates.
   - It folds each candidate, with the ADR-022 union read for lookups.
   - It then applies **every** predicate in memory, sorts and pages.
