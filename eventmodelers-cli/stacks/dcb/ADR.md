@@ -544,8 +544,17 @@ query can also generate and test it.
 - **A query without a tag parameter is stored-only.** That includes a parameterless "list everything" query,
   which replaces imperative list read models in fold form. `startReadModels` refuses to start a live read model
   with such a query, and emcli warns at export (alongside `warnLiveLists`).
-- One generic handler, `readQueryRoute(readModel, runtime, name, path)`, parses and validates the parameters and
+- One generic handler, `readQueryRoute(readModel, runtime, name, path?)`, parses and validates the parameters and
   serves the page for every type, so the shape can't drift per slice.
+- **Each query declares its `path`** in the definition (the model's `apiEndpoint`, with `:param`), and
+  `readModelRoute` mounts every declared query next to the keyed GET. Adding a query then changes only
+  `readModel.ts` and its tests. The route file and the app's wiring stay the same, which keeps the loop's
+  query-added path additive. `defineReadModel` checks that each `:param` is a required `eq`/`contains`
+  parameter.
+- **Tests across types:** `withType(readModel, "live-report")` keeps only the queries live can serve, so a read
+  model with a stored-only query still runs its keyed contract tests live. `queryTypes(readModel, name)` gives
+  the types a query's own tests run over. `startReadModels` still refuses a *definition* typed live that has
+  an untagged query.
 
 *Tests and the loop*
 - **Contract tests:** each spec with a *when* query becomes a test that appends *given*, GETs the endpoint with

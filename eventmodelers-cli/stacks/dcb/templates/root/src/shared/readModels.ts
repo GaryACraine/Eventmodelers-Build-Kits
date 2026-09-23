@@ -47,7 +47,8 @@ import {
  * and so the response body — is identical across types. Switching type is a one-line change.
  *
  * Besides the keyed GET, a read model can declare named `queries` — where predicates over its documents,
- * served as `{ data, cursor? }` pages by every type (ADR-023, `readModelQueries.ts`).
+ * served as `{ data, cursor? }` pages by every type at their own `path`, next to the keyed GET
+ * (ADR-023, `readModelQueries.ts`).
  */
 
 export const READ_MODEL_TYPES = ["database-projected", "inline-projected", "live-report"] as const
@@ -109,12 +110,25 @@ export function defineReadModel<
     return { ...definition, projection: storedProjection(definition) }
 }
 
-/** The same read model served as another type (tests; a retype is the `type:` line in the definition). */
+/**
+ * The same read model served as another type (tests; a retype is the `type:` line in the definition).
+ * As live-report it keeps only the queries live can serve: the others are stored-only (ADR-023), and
+ * the keyed contract tests still have to run live.
+ */
 export function withType<TDoc extends ReadModelDoc, TLookups extends Record<string, ReadModelDoc>>(
     readModel: ReadModel<TDoc, TLookups>,
     type: ReadModelType
 ): ReadModel<TDoc, TLookups> {
-    return { ...readModel, type }
+    if (type !== "live-report" || !readModel.queries) return { ...readModel, type }
+    const servable = Object.entries(readModel.queries).filter(([, query]) => liveNarrowingParam(query))
+    return { ...readModel, type, queries: Object.fromEntries(servable) }
+}
+
+/** The types that can serve a query: all three when a tag narrows it, the stored two otherwise (ADR-023). */
+export function queryTypes(readModel: ReadModel<any, any>, queryName: string): ReadModelType[] {
+    const query = readModel.queries?.[queryName]
+    if (!query) throw new Error(`${readModel.name} has no query "${queryName}"`)
+    return READ_MODEL_TYPES.filter(type => type !== "live-report" || liveNarrowingParam(query) !== undefined)
 }
 
 // ─── Folding (shared by both runners) ────────────────────────────────────────
@@ -432,7 +446,13 @@ export async function startReadModels(
         querier: (requested, queryName) => {
             const readModel = resolve(requested)
             const query = readModel.queries?.[queryName]
-            if (!query) throw new Error(`${readModel.name} has no query "${queryName}"`)
+            if (!query) {
+                // Registered without it: withType(…, "live-report") drops stored-only queries. The route
+                // still mounts (the keyed tests run live); only calling the query fails.
+                return async () => {
+                    throw new Error(`${readModel.name}.${queryName} isn't served as ${readModel.type}`)
+                }
+            }
             if (readModel.type === "live-report") return (params, page) => queryLive(eventStore, readModel, queryName, params, page)
             return async (params, page) => {
                 const sql = buildQuerySql(readModel.collection, query, params, page)
@@ -467,13 +487,18 @@ export async function startReadModels(
  */
 export function readModelRoute(
     readModel: ReadModel<any, any>,
-    runtime: Pick<ReadModelRuntime, "reader" | "waitFn">,
+    runtime: Pick<ReadModelRuntime, "reader" | "querier" | "waitFn">,
     path: string,
     options: { pool?: Pool; notFound?: string } = {}
 ): WebApiSetup {
     const read = runtime.reader(readModel)
     const waitFn = runtime.waitFn(readModel)
     const param = path.match(/:(\w+)/)?.[1] ?? readModel.key
+    // Every query that declares a path is served next to the keyed GET, so adding a query to a
+    // read model never touches its route or the app's wiring (ADR-023).
+    const queryRoutes = Object.entries(readModel.queries ?? {})
+        .filter(([, query]) => query.path)
+        .map(([name]) => readQueryRoute(readModel, runtime, name))
 
     return router => {
         if (waitFn) router.get(path, preferWait({ waitFn }))
@@ -499,22 +524,25 @@ export function readModelRoute(
                 return OK({ body: doc })
             })
         )
+        for (const queryRoute of queryRoutes) queryRoute(router)
     }
 }
 
 /**
- * The GET route for a named query: `path` (e.g. "/available-courses" or "/students/:studentId/courses")
- * → `{ data: [...documents], cursor? }`, the same page whichever type serves the read model (ADR-023).
- * 400 for a missing or unparseable parameter; never 404. Async read models also honour `Prefer: wait`.
+ * The GET route for a named query: `path` (default: the query's own, e.g. "/available-courses" or
+ * "/students/:studentId/courses") → `{ data: [...documents], cursor? }`, the same page whichever type
+ * serves the read model (ADR-023). 400 for a missing or unparseable parameter; never 404. Async read
+ * models also honour `Prefer: wait`. `readModelRoute` mounts these for every query with a path.
  */
 export function readQueryRoute(
     readModel: ReadModel<any, any>,
     runtime: Pick<ReadModelRuntime, "querier" | "waitFn">,
     queryName: string,
-    path: string
+    path = readModel.queries?.[queryName]?.path
 ): WebApiSetup {
     const query = readModel.queries?.[queryName]
     if (!query) throw new Error(`${readModel.name} has no query "${queryName}"`)
+    if (!path) throw new Error(`${readModel.name}.${queryName} has no path`)
     const run = runtime.querier(readModel, queryName)
     const waitFn = runtime.waitFn(readModel)
 

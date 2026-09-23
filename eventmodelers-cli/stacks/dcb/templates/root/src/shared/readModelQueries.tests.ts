@@ -4,7 +4,7 @@ import { Tags, SequencePosition, type TaggedEvent } from "@dcb-es/event-store"
 import { getApplication } from "@dcb-es/event-store-express"
 import supertest from "supertest"
 import { getTestPgDatabasePool } from "@test/testPgDbPool"
-import { defineReadModel, readQueryRoute, startReadModels, withType, type ReadModel, type ReadModelRuntime, type ReadModelType } from "./readModels.js"
+import { defineReadModel, queryTypes, readModelRoute, readQueryRoute, startReadModels, withType, type ReadModel, type ReadModelRuntime, type ReadModelType } from "./readModels.js"
 import {
     buildQuerySql,
     matchesQuery,
@@ -79,13 +79,6 @@ const courses = defineReadModel<CourseDoc>({
     }
 })
 
-/** Each type as it would be registered: a live read model carries only the queries live can serve. */
-function asType(type: ReadModelType): ReadModel<CourseDoc> {
-    const typed = withType(courses, type)
-    if (type !== "live-report") return typed
-    return { ...typed, queries: Object.fromEntries(Object.entries(queries).filter(([name]) => LIVE_QUERIES.includes(name))) } as ReadModel<CourseDoc>
-}
-
 const e = (type: string, data: Record<string, unknown>, tags: Record<string, string>): TaggedEvent => ({ event: { type, data } as any, tags: Tags.fromObj(tags) })
 const register = (courseId: string, title: string, capacity: number, tags: string[], level?: unknown) =>
     e("courseWasRegistered", { courseId, title, capacity, tags, ...(level !== undefined ? { level } : {}) }, { courseId })
@@ -119,7 +112,7 @@ afterEach(async () => {
 async function started(type: ReadModelType, events = history): Promise<{ pool: Pool; runtime: ReadModelRuntime; readModel: ReadModel<CourseDoc> }> {
     const pool = await getTestPgDatabasePool({ max: 10 })
     pools.push(pool)
-    const readModel = asType(type)
+    const readModel = withType(courses, type)
     const runtime = await startReadModels(pool, [readModel])
     runtimes.push(runtime)
     for (const event of events) await runtime.eventStore.append({ events: event })
@@ -151,7 +144,7 @@ const cases: { query: string; params: QueryParams; expected: string[] }[] = [
 ]
 
 describe.each(["database-projected", "inline-projected", "live-report"] as ReadModelType[])("queries (%s)", type => {
-    const supported = cases.filter(c => type !== "live-report" || LIVE_QUERIES.includes(c.query))
+    const supported = cases.filter(c => queryTypes(courses, c.query).includes(type))
 
     test("each query returns the expected documents, in order", async () => {
         const { runtime, readModel } = await started(type)
@@ -256,9 +249,45 @@ describe("runtime guards", () => {
     test("a live read model with a query no tag narrows refuses to start", async () => {
         const pool = await getTestPgDatabasePool({ max: 5 })
         pools.push(pool)
-        await expect(startReadModels(pool, [withType(courses, "live-report")])).rejects.toThrow(
+        // A definition typed live-report with every query (withType would drop the stored-only ones)
+        await expect(startReadModels(pool, [{ ...courses, type: "live-report" } as ReadModel<CourseDoc>])).rejects.toThrow(
             /live-report can't serve TestQueryCourses.withSeats, TestQueryCourses.byTitle, TestQueryCourses.taggedWith/
         )
+    })
+
+    test("stored-only queries: queryTypes leaves out live, and withType(live) drops them but the routes still mount", async () => {
+        const stored = ["database-projected", "inline-projected"]
+        for (const name of Object.keys(queries)) {
+            expect(queryTypes(courses, name)).toEqual(LIVE_QUERIES.includes(name) ? [...stored, "live-report"] : stored)
+        }
+        expect(Object.keys(withType(courses, "live-report").queries!)).toEqual(LIVE_QUERIES)
+        expect(Object.keys(withType(courses, "inline-projected").queries!)).toEqual(Object.keys(queries))
+
+        const { runtime } = await started("live-report")
+        // A slice's route module passes the definition with every query; the live runtime has only some.
+        const agent = supertest(
+            getApplication({
+                apis: [readQueryRoute(courses, runtime, "withSeats", "/available-courses"), readQueryRoute(courses, runtime, "forStudent", "/s/:studentId")]
+            })
+        )
+        expect((await agent.get("/s/s1")).status).toBe(200)
+        expect((await agent.get("/available-courses?min=1")).status).toBe(500)
+    })
+
+    test("readModelRoute serves every query that declares a path, next to the keyed GET", async () => {
+        const withPaths = defineReadModel<CourseDoc>({
+            ...courses,
+            queries: {
+                ...queries,
+                withSeats: { ...queries.withSeats, path: "/available-courses" },
+                forStudent: { ...queries.forStudent, path: "/students/:studentId/courses" }
+            }
+        })
+        const { runtime } = await started("inline-projected")
+        const agent = supertest(getApplication({ apis: [readModelRoute(withPaths, runtime, "/courses/:courseId")] }))
+        expect((await agent.get("/courses/c1")).body).toMatchObject({ courseId: "c1" })
+        expect(ids((await agent.get("/available-courses?min=9")).body)).toEqual(["c3"])
+        expect(ids((await agent.get("/students/s1/courses")).body)).toEqual(ids(await runtime.querier(courses, "forStudent")({ studentId: "s1" }, { limit: 50 })))
     })
 
     test("invalid query definitions are rejected when the read model is defined", () => {
@@ -267,6 +296,10 @@ describe("runtime guards", () => {
         expect(bad({ params: { x: { field: "a b", type: "string" } } })).toThrow(/dot path/)
         expect(bad({ params: { x: { field: "x", op: "gte", type: "number", tag: "x" } } })).toThrow(/tag needs/)
         expect(bad({ params: { x: { field: "x", type: "string", optional: true, tag: "x" } } })).toThrow(/tag needs/)
+        expect(bad({ path: "/s/:studentId", params: { x: { field: "x", type: "string" } } })).toThrow(/path parameter ":studentId"/)
+        expect(bad({ path: "/s/:x", params: { x: { field: "x", op: "gte", type: "string" } } })).toThrow(/path parameter ":x"/)
+        expect(bad({ path: "/s/:x", params: { x: { field: "x", type: "string", optional: true } } })).toThrow(/path parameter ":x"/)
+        expect(bad({ path: "/s/:x", params: { x: { field: "x.y", op: "contains", type: "string" } } })).not.toThrow()
     })
 
     test("stored read models get indexes the queries use", async () => {

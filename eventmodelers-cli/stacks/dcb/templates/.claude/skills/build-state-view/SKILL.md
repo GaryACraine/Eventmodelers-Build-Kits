@@ -1,6 +1,6 @@
 ---
 name: build-state-view
-description: Implements a DCB state-view slice — one read model definition served as async, inline or live, with a generic route and contract tests across all three types — from a slice.json definition
+description: Implements a DCB state-view slice — one read model definition served as async, inline or live, with a generic route, named where-predicate queries and contract tests across all three types — from a slice.json definition
 ---
 
 # Build State View Slice (DCB)
@@ -28,6 +28,13 @@ later without breaking a client. That works because the read model is written **
 (`defineReadModel` in `readModel.ts`). The scaffold's `src/shared/readModels.ts` runs that one definition as
 any of the three types, and `readModelRoute` serves it. The type is one line.
 
+**Queries (ADR-023).** Besides the keyed GET, a read model can answer named **queries**: where predicates over
+its documents, such as "courses with at least one free seat". The model declares each one on the read model
+element (`readmodels[0].queries`), and a spec whose *when* is a `SPEC_QUERY` step exercises it. A query is
+`GET {its endpoint}?{parameters}` → `{ "data": [ …documents… ], "cursor"?: "…" }`, 200 even when `data` is
+empty, 400 for a bad parameter, never 404. Queries are declared in `readModel.ts` too, and `readModelRoute`
+serves them all, so the page is the same whichever type serves it.
+
 > **Cross-slice events**: A read model typically consumes events from several write slices. That works because
 > the DCB event store is a single ordered log. The `events[]` array in slice.json already lists every event it
 > needs, including cross-slice references.
@@ -40,9 +47,18 @@ Read the slice.json first:
 
 - **`retype` block present** (`{ "from": …, "to": … }`) → the model changed an already-built read model's
   type. Follow **"Changing a read model's type"** below. Nothing else changes.
+- **`addQueries` present** (`["availableCourses"]`) → an already-built slice whose specs now run queries its
+  read model doesn't serve yet. Follow **"Adding queries"** below. Nothing else changes: not `evolve`, not the
+  events, not the existing tests. If `retype` is present too, do the retype first, as its own commit (R1–R3),
+  then the queries, and set the slice to `Done` only after both.
 - **`extends` block present** → an **extension slice**. Its read model is a copy (`readmodels[0].linkedTo`) of
   one an earlier slice built. Follow **"Extending a read model"** below. Don't create a new read model.
 - **Otherwise** → a new read model: Steps 1–6.
+
+In every case, the **queries to build** are the query names in this slice's specs (the title of each *when*
+`SPEC_QUERY` step) that the definition doesn't declare yet. For a new read model that's every query its specs
+run. A query declared on the element that no spec runs isn't built, because nothing would test it: say so in
+your report.
 
 Read models grow one event at a time as the timeline is discovered. Each copy of a read model on the board is
 its own slice, so each growth step is its own unit of delivery. The code stays in one place, the origin's
@@ -60,6 +76,10 @@ From the slice definition, extract:
 - **path** — `readmodels[0].apiEndpoint` with `{param}` written as `:param` (`/courses/{courseId}` → `/courses/:courseId`)
 - **events[]** — the events this read model handles
 - **readModel.fields** — the shape of the document, which is the response body
+- **queries[]** — `readmodels[0].queries` (optional): each `{ name, apiEndpoint, parameters, sort? }`. See Step 3b.
+- **specifications[]** — each is *given* events → *when* → *then*. An empty *when* is the keyed GET (*then* is
+  the one document). A *when* holding one `SPEC_QUERY` step runs the query named by its title, with its fields'
+  `example`s as the parameter values (*then* is the rows it returns, in order; empty means no matches).
 - **storylines[]** (optional) — board walkthroughs; see "Storyline-derived tests" under P4
 
 > **Comments & description**: Use these as implementation hints. Resolve used comments via the board API when done.
@@ -80,13 +100,23 @@ From the slice definition, extract:
    and the events that hold the data (`studentWasRegistered`) carry the same tag. Each such entity becomes a
    **lookup**.
 
+4. **Live queries** (only when the type is `live-report` and there are queries to build): each query needs a
+   required parameter with a `tag` and operator `eq`, `in` or `contains`. A live read finds the query's
+   candidates by that tag: the keys of the `events[]` events tagged `{tag}={value}`. So at least one event in
+   `events[]` must carry **both** that tag and the key tag, and it must be the event that makes a document match
+   (`studentWasSubscribed` carries `courseId` and `studentId`, so "courses for a student" works). A query
+   without such a parameter is stored-only: `startReadModels` refuses it on a live read model.
+
 **Imperative form** (`projection.ts`, the "Imperative form" section below) is only for what fold form can't
 express: list read models, or data reachable only by payload fields, not tags. It can be async or inline, but
-**never live**.
+**never live**, and it **can't serve queries**. A list the model gives a query (often a parameterless one) is
+built in fold form, one document per key, with that query. It isn't an imperative list.
 
 If the type is `live-report` and any requirement above fails, stop and invoke `request-feedback` naming the
 failing requirement (for example, "`studentWasRegistered` has no `courseId` tag and isn't reachable as a
-lookup"). Never build a different type than slice.json names.
+lookup", or "query `availableCourses` has no tagged parameter, so live can't serve it"). If there are queries to
+build and fold form's requirements 1–3 fail, do the same: never serve a query from an imperative projection.
+Never build a different type than slice.json names.
 
 ---
 
@@ -130,6 +160,15 @@ export const {sliceName} = defineReadModel<{SliceName}Doc, { {relatedPlural}: {R
             }
         }
     },
+    // Only when there are queries to build (Step 3b):
+    queries: {
+        {queryName}: {
+            path: "{query path}",       // the query's apiEndpoint, `{param}` written as `:param`
+            params: {
+                {paramName}: { field: "{mapping}", op: "{operator}", type: "{string|number|boolean}" }
+            }
+        }
+    },
     evolve: (doc, { event }, { {relatedPlural} }) => {
         const data = event.data as Record<string, any>
         switch (event.type) {
@@ -143,7 +182,9 @@ export const {sliceName} = defineReadModel<{SliceName}Doc, { {relatedPlural}: {R
 })
 ```
 
-Leave out `lookups` (and the second type argument) when the read model needs no other entity.
+Leave out `lookups` (and the second type argument) when the read model needs no other entity, and `queries`
+when there are none to build. Keep `queries` **before `evolve`**: a query added later is then an insertion,
+never an edit of the lines around it.
 
 Rules for `evolve`. They are what make the three types produce the same data:
 
@@ -157,6 +198,34 @@ Rules for `evolve`. They are what make the three types produce the same data:
 - **Ignored events:** end the `switch` with `return doc`.
 - Write `canHandle` (and each lookup's `canHandle`) **one event per line**, each followed by a comma except the
   last. Extension slices append to these arrays.
+
+### Step 3b — Declare the queries
+
+One entry in `queries` per query to build (Step 0), copied from its `readmodels[0].queries` entry. The model
+has settled every choice here. Transcribe it and don't invent parameters, operators or endpoints.
+
+| slice.json (`queries[]`) | `readModel.ts` |
+|---|---|
+| `name` | the key in `queries` |
+| `apiEndpoint` `/students/{studentId}/courses` | `path: "/students/:studentId/courses"` |
+| parameter `name` | the key in `params` |
+| parameter `mapping` (a dot path into the document) | `field` |
+| parameter `operator` | `op`: leave it out when it's `eq` |
+| parameter `type`: `String`, `UUID`, `Date`, `DateTime` | `type: "string"` |
+| parameter `type`: `Int`, `Long`, `Double`, `Decimal` | `type: "number"` |
+| parameter `type`: `Boolean` | `type: "boolean"` |
+| parameter `optional: true` | `optional: true` |
+| parameter `tag` | `tag` (the tag key on the events, e.g. `"studentId"`) |
+| `sort: { field, direction }` | `sort: { field }`, adding `direction: "desc"` only when it's `desc` |
+
+- `pathParameter: true` marks a parameter named in the endpoint. It needs nothing of its own, because
+  `defineReadModel` checks that each `:param` in `path` is a required `eq`/`contains` parameter.
+- Write each query's `params` **one parameter per line**, and end every query entry with `},` except the last,
+  as with `canHandle`.
+- `field` must be a field the document actually has, because `evolve` writes it. A `mapping` into a field this
+  read model doesn't produce is a model error. Invoke `request-feedback` naming it.
+- Don't write any SQL, filtering or paging. The runtime serves every query the same way for every type, and
+  creates the indexes it uses on start.
 
 ---
 
@@ -180,7 +249,9 @@ export function configure{SliceName}Route(deps: SliceDependencies): WebApiSetup 
 ```
 
 Don't write a handler by hand: `readModelRoute` returns the document as the body, 404 for an unknown key, and
-for an async read model the optional `Prefer: wait` / ETag extras.
+for an async read model the optional `Prefer: wait` / ETag extras. It also serves **every query in the
+definition** at that query's `path`, so a query needs no route code of its own. The route file is the same with
+or without queries.
 
 ---
 
@@ -248,6 +319,60 @@ describe.each(READ_MODEL_TYPES)("{slice title} (%s)", type => {
   retype run these tests unchanged.
 - Every test gets a fresh database (the harness does it), so there is no reset code.
 - Storyline-derived tests (see P4) go in their own `describe.each` block in the same layout.
+- The block above holds the **keyed** specifications, the ones with an empty *when*. Specifications whose *when*
+  runs a query go in the query blocks below.
+
+### Step 6b — Query tests: one block per query
+
+A specification whose *when* is a `SPEC_QUERY` step becomes a test in its query's block. Each block runs over
+**the types that can serve that query**: `queryTypes` gives all three when a tag narrows the query, and the two
+stored types otherwise. (`withType(…, "live-report")` drops stored-only queries, which is why the keyed block
+above still runs live.)
+
+```typescript
+import { READ_MODEL_TYPES, queryTypes, withType } from "../../../../shared/readModels.js"
+
+describe.each(queryTypes({sliceName}, "{queryName}"))("{slice title}: {queryName} (%s)", type => {
+    const app = readModelTestApp({
+        readModels: [withType({sliceName}, type)],
+        routes: deps => [configure{WriteSlice}Route(deps), configure{SliceName}Route(deps)]
+    })
+
+    test("{specification title}", async () => {
+        // Given: every event in the specification's given, through the write routes
+        expect((await app.agent().post("/{resource}").send({ /* command body */ })).status).toBe(201)
+        await app.settle()
+
+        // When: the query, with the when step's example values
+        const res = await app.agent().get("{query path with path parameters filled in}").query({ {param}: "{example}" })
+
+        // Then: the rows, in order
+        expect(res.status).toBe(200)
+        expect(res.body.data).toMatchObject([
+            { /* then row 1: the fields it gives examples for */ },
+            { /* then row 2 */ }
+        ])
+    })
+})
+```
+
+- **When:** each *when* field is a parameter, and its `example` is the value.
+  - A path parameter goes into the URL (`/students/s1/courses`). The others go in `.query({ … })`, always as
+    strings.
+  - An `in` parameter's values are joined with commas (`{ courseIds: "c1,c2" }`).
+  - Leave out an optional parameter that has no example. A required one with no example on the *when* field
+    uses the parameter's own `example` from `queries[]`.
+- **Then:** one object per *then* row, in the order given. That is the query's order (its `sort`, else the key
+  ascending), so write the *given* events so that holds.
+  - `toMatchObject` on the array checks the row count and the order, and each row only on the fields it names.
+    So an extension that adds fields later can't break it.
+  - An empty *then* is `expect(res.body.data).toEqual([])`.
+  - A *then* row with no example values can't be asserted. Invoke `request-feedback` ("specification X: the rows
+    it expects have no example values") and don't invent them.
+- **Given:** its events must produce the documents the rows name, and also documents the query should **not**
+  return, when the specification gives them. That is what proves the predicate.
+- Keep these blocks free of anything type-specific, like the keyed block. Don't assert `cursor` unless a
+  specification is about paging.
 
 ---
 
@@ -790,6 +915,9 @@ stop and report that this extension is already built. Do not edit anything.
   `truncate()`, named as in P1.
 - Fields in `extends.addedFields` become optional in the Doc interface.
 
+**Queries:** if the extension's specifications run queries the origin doesn't declare yet (Step 0), add them to
+the origin's `readModel.ts` as in "Adding queries" A3–A4, in the same commit.
+
 Both forms:
 - If this step derives a **new field from an event the read model already handled**, increment `version`
   (add `version: 2` if absent). That forces a rebuild on the next start.
@@ -811,7 +939,9 @@ Append a new top-level block to the origin's `route.tests.ts`, with one `test(..
 extension slice:
 
 - **Fold form:** `describe.each(READ_MODEL_TYPES)("{extension slice title} (%s)", type => { … })`, with its
-  own `readModelTestApp`. Its `routes` include every write route the new scenarios use.
+  own `readModelTestApp`. Its `routes` include every write route the new scenarios use. Specifications whose
+  *when* runs a query go in `describe.each(queryTypes(…))("{extension slice title}: {queryName} (%s)", …)`
+  blocks instead (Step 6b).
 - **Imperative form:** `describe("{extension slice title}", () => { … })`, reusing the module-level setup, as
   in P4. If the origin's file predates the module-level layout (setup inside one `describe`), stop and report
   it: the origin needs its test setup lifted first, as a separate commit.
@@ -846,6 +976,56 @@ has `extends`.
 
 ---
 
+## Adding queries (`addQueries`)
+
+Use this section only when slice.json has `addQueries`. The slice was built before, and its specifications now
+run queries the read model doesn't serve yet: the modeler added a query to the read model element and a
+specification that uses it. A query reads the documents the read model already has, so this is **additive**.
+The documents don't change and nothing is rebuilt. The runtime creates the query's indexes on the next start.
+
+### A1 — Find the definition
+
+The query goes on the origin read model's definition. If slice.json has `extends`, that is the origin folder
+(see "Extending a read model"). Otherwise it's this slice's own folder.
+- `readModel.ts` present → continue.
+- Only `projection.ts` → stop and invoke `request-feedback`: "{SliceName} is an imperative projection. Queries
+  need the `readModel.ts` fold form. Converting it is a refactor that needs its own reviewed commit first."
+
+### A2 — Guard against double-building
+
+If a name in `addQueries` is already a key in the definition's `queries`, stop and report that this query is
+already built. Do not edit anything.
+
+### A3 — Check live
+
+If the definition's `type` is `live-report`, apply Step 2's requirement 4 to each added query. If one fails,
+invoke `request-feedback` naming it, and change nothing.
+
+### A4 — Declare the queries (additive only)
+
+In `readModel.ts`, declare each name in `addQueries` as Step 3b describes, from its `readmodels[0].queries`
+entry:
+- **No `queries` property yet:** insert the whole `queries: { … },` block on the lines just **before
+  `evolve:`**, which is a pure insertion.
+- **`queries` exists:** append the new entries at the end of it. The previous last entry's closing `}` is
+  re-added as `},`.
+- Never touch `canHandle`, `lookups`, `evolve`, `version`, the Doc interface or an existing query. The
+  documents don't change, so nothing else may either.
+
+`route.ts` and `src/index.ts` stay as they are. `readModelRoute` serves every declared query.
+
+### A5 — The tests
+
+In the route.tests.ts next to the definition, append one `describe.each(queryTypes(…))` block per added query
+(Step 6b), with one `test` per specification in **this** slice whose *when* runs it. Add `queryTypes` to the
+file's `readModels.js` import if it isn't there. The existing tests stay untouched and must still pass.
+
+### A6 — Prove it and commit
+
+Run the slice's tests, then commit as `feat: {slice title} query {names}` and set the slice to `Done`.
+
+---
+
 ## Changing a read model's type (retype)
 
 Use this section only when slice.json has a `retype` block, e.g. `{ "from": "inline-projected", "to": "live-report" }`.
@@ -863,7 +1043,8 @@ It is in this slice's own folder (a retype is always on the origin read model).
 ### R2 — Check the target type
 
 If `to` is `live-report`, re-check Step 2's requirements for **every** event in the definition's `canHandle`
-and its lookups (read `Events.ts`). If one fails, invoke `request-feedback` naming it, and change nothing.
+and its lookups (read `Events.ts`), and requirement 4 for every query in its `queries`. If one fails, invoke
+`request-feedback` naming it, and change nothing.
 
 ### R3 — Change the `type:` line
 
@@ -892,6 +1073,9 @@ src/
 └── index.ts            ← add it to readModels (imperative: imperative) and its route to apis
 ```
 
+Queries add no files: they're declared in `readModel.ts`, served by `readModelRoute` and tested in
+`route.tests.ts`.
+
 ---
 
 ## Checklist
@@ -904,7 +1088,15 @@ src/
 - [ ] Every field in `readModel.fields` is produced by `evolve`, and there are no invented fields
 - [ ] `route.ts` is a `readModelRoute` call with the `path` from `apiEndpoint`
 - [ ] `readModels` in `src/index.ts` lists it, and its route is in `apis` (a separate wire commit)
-- [ ] `route.tests.ts`: `describe.each(READ_MODEL_TYPES)`, one `test` per specification, `settle()` before each GET, `toMatchObject`, nothing type-specific
+- [ ] `route.tests.ts`: `describe.each(READ_MODEL_TYPES)`, one `test` per keyed specification, `settle()` before each GET, `toMatchObject`, nothing type-specific
+
+**Queries (any slice whose specifications run a query the definition doesn't declare yet):**
+
+- [ ] Only queries some specification runs are declared, each transcribed from `readmodels[0].queries` (path with `:param`, `field` = mapping, `op`, `type`, `optional`, `tag`, `sort`)
+- [ ] `queries` sits before `evolve`, one parameter per line, and every `field` is one `evolve` produces
+- [ ] For `live-report`: every query has a required tagged `eq`/`in`/`contains` parameter, and an event in `events[]` carries both that tag and the key tag
+- [ ] No route code for queries. `route.ts` and `index.ts` are unchanged by them
+- [ ] One `describe.each(queryTypes({sliceName}, "{queryName}"))("{slice title}: {queryName} (%s)")` block per query, one `test` per specification that runs it, the rows asserted in order with `toMatchObject` on `res.body.data`
 
 **Imperative form:** as P1–P4 (and the Inline changes). It's registered in the `imperative` array, and its
 `truncate()` clears every collection `init()` creates.
@@ -917,6 +1109,12 @@ src/
 - [ ] No existing `case`, field, lookup or `canHandle` entry edited, reordered or removed
 - [ ] `version` incremented if a new field is derived from an already-handled event
 - [ ] A block for the extension's specifications appended to the origin's `route.tests.ts`, and every pre-existing test still passes unchanged
+
+**Adding queries (`addQueries` present):**
+
+- [ ] None of `addQueries` was already declared (A2), and the definition is fold form (A1)
+- [ ] `readModel.ts` only gained query entries. `canHandle`, `lookups`, `evolve`, `version` and existing queries are untouched
+- [ ] Query blocks appended to the existing `route.tests.ts`, and every pre-existing test still passes unchanged
 
 **Retype (`retype` present):**
 

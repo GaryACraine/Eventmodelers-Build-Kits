@@ -6,14 +6,19 @@ import { createHash } from "node:crypto"
  * A query is declared on the read model definition, e.g.
  *
  *     queries: {
- *         availableCourses: { params: { minRemainingSeats: { field: "remainingSeats", op: "gte", type: "number" } } },
+ *         availableCourses: {
+ *             path: "/available-courses",
+ *             params: { minRemainingSeats: { field: "remainingSeats", op: "gte", type: "number" } }
+ *         },
  *         coursesForStudent: {
+ *             path: "/students/:studentId/courses",
  *             params: { studentId: { field: "subscribedStudents.studentId", op: "contains", type: "string", tag: "studentId" } },
  *             sort: { field: "title" }
  *         }
  *     }
  *
- * and served as `GET {path}?{params}` → `{ data: [...documents], cursor? }` by every read model type.
+ * and served by `readModelRoute` as `GET {path}?{params}` → `{ data: [...documents], cursor? }` by every
+ * read model type.
  * This file holds the parts both runners share, so they can't disagree:
  *
  * - `matchesQuery` / `sortTuple` / `compareTuples` — the semantics, evaluated in memory (live runner)
@@ -55,6 +60,11 @@ export interface QueryParamDefinition {
 }
 
 export interface QueryDefinition {
+    /**
+     * Where `readModelRoute` serves it, in Express form ("/available-courses", "/students/:studentId/courses"):
+     * the query's apiEndpoint. Each `:param` is a required eq/contains parameter.
+     */
+    path?: string
     params: Record<string, QueryParamDefinition>
     /** Order of the page; the key breaks ties (in the same direction). Default: the key, ascending. */
     sort?: { field: string; direction?: "asc" | "desc" }
@@ -84,6 +94,11 @@ function isFieldPath(path: string): boolean {
     return path.split(".").every(segment => PATH_SEGMENT.test(segment))
 }
 
+/** The `:param` names in an Express path. */
+export function pathParamNames(path: string): string[] {
+    return [...path.matchAll(/:(\w+)/g)].map(m => m[1])
+}
+
 /** Throws on a query definition the runtime can't serve. Called by `defineReadModel`. */
 export function validateQueries(readModel: string, queries: Record<string, QueryDefinition>): void {
     const problems: string[] = []
@@ -97,6 +112,12 @@ export function validateQueries(readModel: string, queries: Record<string, Query
             if (!(QUERY_PARAM_TYPES as readonly string[]).includes(def.type)) problems.push(`${at}: type must be string, number or boolean`)
             if (def.tag !== undefined && (!EQUALITY_OPERATORS.includes(op) || def.optional)) {
                 problems.push(`${at}: a tag needs a required eq, in or contains parameter`)
+            }
+        }
+        for (const param of pathParamNames(query.path ?? "")) {
+            const def = query.params[param]
+            if (!def || def.optional || !["eq", "contains"].includes(def.op ?? "eq")) {
+                problems.push(`${readModel}.${name}: path parameter ":${param}" needs a required eq or contains parameter`)
             }
         }
         if (query.sort && !isFieldPath(query.sort.field)) problems.push(`${readModel}.${name}: sort field "${query.sort.field}" must be a dot path`)
