@@ -30,12 +30,13 @@ data already in your database when you do.
 9. [Increments t3 and t4](#9-increments-t3-and-t4)
 10. [Increments t5 and t6: a read model that's never stale](#10-increments-t5-and-t6-a-read-model-thats-never-stale)
 11. [Increments t7–t10: switching read model types](#11-increments-t7t10-switching-read-model-types)
-12. [Working with git: branches, commits and merges](#12-working-with-git-branches-commits-and-merges)
-13. [How the Ralph loop builds a slice](#13-how-the-ralph-loop-builds-a-slice)
-14. [Rebuilds in depth](#14-rebuilds-in-depth)
-15. [Troubleshooting](#15-troubleshooting)
-16. [Command reference](#16-command-reference)
-17. [Known limits](#17-known-limits)
+12. [Increments t11 and t12: querying read models](#12-increments-t11-and-t12-querying-read-models)
+13. [Working with git: branches, commits and merges](#13-working-with-git-branches-commits-and-merges)
+14. [How the Ralph loop builds a slice](#14-how-the-ralph-loop-builds-a-slice)
+15. [Rebuilds in depth](#15-rebuilds-in-depth)
+16. [Troubleshooting](#16-troubleshooting)
+17. [Command reference](#17-command-reference)
+18. [Known limits](#18-known-limits)
 
 ---
 
@@ -87,7 +88,8 @@ That's the default kind of read model. The model can choose one of three per rea
 | `live-report` | not stored: worked out from the events on every read | always the new answer | every read replays that entity's events |
 
 Most read models should stay async. §10 builds an inline one. A read model returns the same data whichever type
-serves it, so you can switch later: §11 switches types and builds a live one.
+serves it, so you can switch later: §11 switches types and builds a live one. Besides the document for a key,
+a read model can answer **queries** such as "the courses with free seats" (§12).
 
 ### Event modeling: designing on a timeline
 
@@ -208,7 +210,7 @@ Empty enrollment context ready: event-feed
 ```
 
 Install dependencies. `--hooks` above installed the **pre-commit hook** (`.githooks/pre-commit`), which checks
-every slice commit (see [§13](#13-how-the-ralph-loop-builds-a-slice)). Confirm it's on:
+every slice commit (see [§14](#14-how-the-ralph-loop-builds-a-slice)). Confirm it's on:
 
 ```bash
 npm install
@@ -305,7 +307,7 @@ git add em-helpers.sh && git commit -m "chore: name-based emcli helpers"
 Each increment gets its own git branch. The loop builds on whatever branch is checked out, and you merge the
 branch when the increment is done. **Creating, committing your model to, and merging this branch is your job.
 The loop only adds its own code commits to it** (the full split is in
-[§12](#12-working-with-git-branches-commits-and-merges)):
+[§13](#13-working-with-git-branches-commits-and-merges)):
 
 ```bash
 git switch -c increment/t0
@@ -768,7 +770,7 @@ projection's bookmark had moved past that event when it processed c3's registrat
 started handling a new event type would continue from its bookmark and never see the older capacity change.
 On startup, `ensureProjectionsCurrent` compares each projection's list of handled events with the list it ran
 with last time. When the list changes, it truncates the read model and replays every event from the start.
-You don't do anything; §14 has the details.
+You don't do anything; §15 has the details.
 
 Finish the increment:
 
@@ -1390,7 +1392,7 @@ Rebuilding CourseSeatsProjection: live:v2:… → v2:…
 ```
 
 `/courses/c4/seats` now shows 1 subscription and 11 seats from storage, the same body as the live read gave.
-While a read model is live, its fingerprint is recorded as `live:…` (§14), so switching back always rebuilds.
+While a read model is live, its fingerprint is recorded as `live:…` (§15), so switching back always rebuilds.
 
 ### 11.5 A new read model, live from the start (t10)
 
@@ -1452,15 +1454,233 @@ A live read replays one entity's events, plus its lookups' events, on every GET.
 - **Stay async** for everything else.
 
 Live read models have two limits:
-- **Keyed GETs only.** A list would fold every entity on every request. emcli warns, and the loop asks you to
-  choose another type.
+- **Keyed GETs, and tagged queries only.** A list would fold every entity on every request. emcli warns, and the
+  loop asks you to choose another type. A query works live only if a tag narrows it to a few entities (§12.1).
 - **Everything must be reachable by tags.** Every event must carry the read model's key as a tag, and every
   looked-up entity must be named by a tag on the events that reference it. If that fails, the loop explains
   which event breaks the rule.
 
 ---
 
-## 12. Working with git: branches, commits and merges
+## 12. Increments t11 and t12: querying read models
+
+So far every read model answers one question: *the document for this key* (`/courses/c1`). Screens also ask
+*which ones*: the courses that still have free seats, the courses a student takes. A **query** answers that. It
+filters a read model's documents on their fields and returns a page of them.
+
+A query doesn't store anything new. It reads the documents the read model already has, so adding one never
+rebuilds anything. The rule from §11 still holds, per query:
+
+> **A query returns the same page whichever type serves its read model.** The body is always
+> `{ "data": [ …documents… ], "cursor"?: "…" }`, and the status is 200 even when nothing matches (never 404), or
+> 400 for a bad parameter.
+
+### 12.1 What a query is
+
+You declare a query once, on the **original** read model; copies inherit it, as they inherit the type. It has:
+
+- a **name** in camelCase, such as `availableCourses`;
+- its own **GET route**, such as `/available-courses`. A `{param}` in the route is a path parameter;
+- **named parameters.** Each has a type, an **operator** (`eq`, the default, or `ne gt gte lt lte in contains`)
+  and the document **field** it compares (a dot path such as `subscribedStudents.studentId`). There's no
+  general filter language, so the client contract stays small and stable;
+- optionally a **sort** field. Without one, rows come in key order.
+
+Every query also takes `limit` (default 50, at most 200) and `cursor`. When there are more rows, the response
+carries a `cursor`. Pass it back to get the next page.
+
+**Which types can serve it.** Stored read models (async and inline) serve every query. A **live** read model has
+nothing stored to filter, so it serves a query only if a required `eq`, `in` or `contains` parameter names an
+event **tag** (`--tag studentId`). The tag finds the few entities that could match, and only those are folded.
+A query without a tag parameter is **stored-only**. On a live read model, export reports it, and the loop asks
+you to add a tag or choose a stored type.
+
+**Scenarios exercise a query.** In a read slice's scenario, *when* is one `query` step that names the query,
+with example values for its parameters. *then* lists the documents it returns, in order: one `readmodel` step per
+row, or none for "no matches". The loop builds the queries its slices' scenarios run. A query that no scenario
+runs isn't built, because nothing would test it.
+
+### 12.2 Model two queries (t11)
+
+`availableCourses` lists the courses with at least a given number of free seats. `coursesForStudent` lists the
+courses a student is subscribed to, sorted by title. It gets a tag, so it works live too: `CourseDetails` has been
+live since §11.3.
+
+```bash
+git switch -c increment/t11-queries
+SEATS=$(el_id 'course seats' information CourseSeats)
+DETAILS=$(el_id 'course details' information CourseDetails)
+emcli element query add "$(chapter_id)" "$SEATS" availableCourses --endpoint /available-courses
+emcli element query param add "$(chapter_id)" "$SEATS" availableCourses minRemainingSeats Int \
+  --operator gte --field remainingSeats --example 1
+emcli element query add "$(chapter_id)" "$DETAILS" coursesForStudent \
+  --endpoint '/students/{studentId}/courses' --sort title
+emcli element query param add "$(chapter_id)" "$DETAILS" coursesForStudent studentId String \
+  --operator contains --field subscribedStudents.studentId --tag studentId
+```
+
+```text
+Added query "availableCourses" to "CourseSeats": GET /available-courses
+Added parameter "minRemainingSeats" to query "availableCourses": remainingSeats gte
+Added query "coursesForStudent" to "CourseDetails": GET /students/{studentId}/courses
+Added parameter "studentId" to query "coursesForStudent": subscribedStudents.studentId contains, tag studentId
+```
+
+> **Pick a route that doesn't collide.** `/courses/available` would be swallowed by `/courses/{courseId}`, so
+> emcli rejects it.
+
+**Where the scenarios go.** `availableCourses` filters on `remainingSeats`, which the *course seats* slice
+builds, so its scenarios go there. `coursesForStudent` filters on `subscribedStudents`, which only exists from
+the *course details subscriptions* extension on (§7.2), so its scenarios go in that slice, on its copy.
+
+```bash
+S='course seats'; SUB_EVT=$(el_id 'subscribe student' event studentWasSubscribed)
+sp=$(emcli spec add "$(chapter_id)" "$(slice_id "$S")" "lists the courses with enough free seats" --json | jq -r .id)
+step "$S" "$sp" given event "$REG_EVT"   # c1 Math 2
+step "$S" "$sp" given event "$REG_EVT"   # c2 Art 1
+step "$S" "$sp" given event "$SUB_EVT"   # s1 takes c2's only seat
+step "$S" "$sp" given event "$REG_EVT"   # c3 Chess 3
+emcli spec step add "$(chapter_id)" "$(slice_id "$S")" "$sp" when query availableCourses --link "$SEATS" --seed
+ex "$S" "$sp" when 0 minRemainingSeats 1
+step "$S" "$sp" then readmodel "$SEATS"  # c1: capacity 2, 0 subscriptions, 2 remaining
+step "$S" "$sp" then readmodel "$SEATS"  # c3: capacity 3, 0 subscriptions, 3 remaining
+# … the example values, with ex, as in §5.2
+```
+
+```text
+WHEN:
+  [0] availableCourses (query): minRemainingSeats=`1`
+THEN:
+  [0] CourseSeats (readmodel): courseId=`c1`, capacity=`2`, subscriptionCount=`0`, remainingSeats=`2`
+  [1] CourseSeats (readmodel): courseId=`c3`, capacity=`3`, subscriptionCount=`0`, remainingSeats=`3`
+```
+
+The four scenarios:
+- *course seats*: "lists the courses with enough free seats" (above), and "no course has that many free seats"
+  (`minRemainingSeats` 3, no rows).
+- *course details subscriptions*: "lists a student's courses by title" (s1 takes Math and Art, s2 takes Chess:
+  s1 gets Art, then Math), and "a student with no subscriptions has no courses".
+
+Push, commit, export:
+
+```bash
+emcli sync push --safe
+git add -A && git commit -m "model(t11): availableCourses on CourseSeats, coursesForStudent on CourseDetails"
+emcli workspace export --build-kit .build-kit --chapter "$(chapter_id)"
+```
+
+```text
+Exported 14 slice(s) to .build-kit/.slices (5 extension slice(s))
+Re-queued 2 built read slice(s) whose specs run new queries:
+  course details subscriptions: add coursesForStudent
+  course seats: add availableCourses
+```
+
+Both slices were Done. Export puts them back to Planned with `"addQueries": [ … ]` in `slice.json`. Only a
+retype (§11.3) and added queries re-queue a Done slice.
+
+### 12.3 What the loop builds
+
+Start the loop. Each slice is one commit, and it only adds:
+
+```text
+feat: course details subscriptions query coursesForStudent   (80 s, $0.83)
+  coursedetails/readModel.ts   | 9 +   ← into the origin's folder: this slice is an extension
+  coursedetails/route.tests.ts | 37 +-
+feat: course seats query availableCourses                    (68 s, $0.78)
+  courseseats/readModel.ts     | 8 +
+  courseseats/route.tests.ts   | 54 +-
+```
+
+The query is a few declarative lines in the read model's definition. The runtime turns them into SQL for
+stored types or an in-memory filter for live ones, and mounts the route:
+
+```typescript
+    queries: {
+        coursesForStudent: {
+            path: "/students/:studentId/courses",
+            params: {
+                studentId: { field: "subscribedStudents.studentId", op: "contains", type: "string", tag: "studentId" }
+            },
+            sort: { field: "title" }
+        }
+    },
+```
+
+Each scenario becomes a test in a `describe.each(queryTypes(courseDetails, "coursesForStudent"))` block, which
+runs it on every type that can serve the query: all three for `coursesForStudent`, and only the two stored types
+for `availableCourses`. The only existing line that changes is the tests' import, which gains `queryTypes`. The
+**query-additive** commit check (§14) holds the loop to that. For an extension, **extension-additive** does.
+
+### 12.4 Verify it yourself
+
+Restart the app. `CourseSeats` is async and `CourseDetails` is live, so these two answers come from storage and
+from the event store respectively:
+
+```bash
+curl -s 'localhost:3000/available-courses?minRemainingSeats=1' -w '\n'
+curl -s localhost:3000/students/s1/courses -w '\n'
+```
+
+```json
+{"data":[{"capacity":45,"courseId":"c1","remainingSeats":44,"subscriptionCount":1},{"capacity":25,"courseId":"c2","remainingSeats":24,"subscriptionCount":1},{"capacity":15,"courseId":"c3","remainingSeats":14,"subscriptionCount":1},{"capacity":12,"courseId":"c4","remainingSeats":11,"subscriptionCount":1},{"capacity":18,"courseId":"c5","remainingSeats":18,"subscriptionCount":0},{"capacity":10,"courseId":"c6","remainingSeats":10,"subscriptionCount":0}]}
+{"data":[{"courseId":"c4","title":"Chemistry","capacity":12,"subscribedStudents":[{"studentId":"s1","name":"Ada"}]},{"courseId":"c1","title":"Math","capacity":45,"subscribedStudents":[{"studentId":"s1","name":"Ada"}]}]}
+```
+
+Paging, and a bad parameter:
+
+```bash
+curl -s 'localhost:3000/available-courses?minRemainingSeats=1&limit=2' -w '\n'
+curl -s 'localhost:3000/available-courses?minRemainingSeats=1&limit=2&cursor=WzAsMCwiIiwiYzIiXQ' -w '\n'
+curl -s 'localhost:3000/available-courses?minRemainingSeats=abc' -w ' %{http_code}\n'
+```
+
+```text
+{"data":[{…"courseId":"c1"…},{…"courseId":"c2"…}],"cursor":"WzAsMCwiIiwiYzIiXQ"}
+{"data":[{…"courseId":"c3"…},{…"courseId":"c4"…}],"cursor":"WzAsMCwiIiwiYzQiXQ"}
+{"status":400,"title":"Bad Request","detail":"Parameter \"minRemainingSeats\" must be a number"} 400
+```
+
+### 12.5 Indexes, and what queries cost (t12)
+
+At startup the runtime creates the indexes a stored read model's queries need: one per compared field, a GIN
+index for `contains`, one per sort order, and a key-order index for an unsorted query. You don't write any of
+them. Measured with 20,000 courses, 20,000 students and 100,000 subscriptions (140,000 events), with 300 calls each,
+page limit 50:
+
+| Query | With the indexes (median) | Without |
+|---|---|---|
+| `coursesForStudent` (stored, 5 rows) | 0.40 ms | 8.84 ms |
+| `availableCourses` ≥500 (200 of 20,000 match) | 0.50 ms | 6.58 ms |
+| `availableCourses` ≥1 (96% match), first page | 0.50 ms | 7.82 ms |
+| `availableCourses` ≥1, a page deep in the results | 0.40 ms | 3.47 ms |
+| `coursesForStudent` (**live**) | 14.1 ms | — |
+
+- **Stored queries stay flat** as the table grows, because every page is an index lookup. Without the indexes,
+  each page scans the whole table.
+- **The last two stored rows are t12.** An unsorted query returns rows in key order. At first that order had no
+  index, so a query most courses match sorted all 19,200 matches to return 50. t12 was only a kit update: the
+  key-order index and a cursor that uses it. Nothing in the model or the slices changed.
+- **Live queries don't grow with the table.** The tag narrows the work to one student's five courses, but each of
+  those is a fold: 22 event-store reads per request, so it's about 35 times the stored cost. It returned the same
+  pages as the stored copy in all 50 comparisons.
+
+> **After a rebuild, run `VACUUM ANALYZE`.** A rebuild (§15) rewrites every document. Until autovacuum catches
+> up, the leftover dead rows, and a GIN index's backlog of pending entries, can make Postgres skip an index. On
+> 2,000 courses right after the load, `coursesForStudent` took 1.26 ms instead of 0.36 ms, until
+> `VACUUM ANALYZE course_details`.
+
+**Choosing:**
+- **Use a query** for "which ones" questions a client asks often. Declare parameters for what the screen
+  filters on, not a general search.
+- **Keep read models that serve heavy queries stored.** Live can serve a tagged query, and the answer is never
+  stale, but each request costs the folds of every candidate.
+- **Out of scope:** OR conditions, full-text search, counts and sums, and joins across read models. Model a read
+  model that holds the answer instead.
+
+---
+
+## 13. Working with git: branches, commits and merges
 
 Two parties commit to your repository: **you** (the model, and your bookkeeping) and **the loop** (the code).
 They share one working tree, so the order of operations matters. This section brings together the git steps
@@ -1600,7 +1820,7 @@ Then start the next increment from the updated `main`: `git switch -c increment/
 
 ---
 
-## 13. How the Ralph loop builds a slice
+## 14. How the Ralph loop builds a slice
 
 For every slice with status **Planned** in `.build-kit/.slices/<context>/index.json`, the loop starts a fresh
 Claude agent with the kit's build prompt. The agent:
@@ -1642,14 +1862,14 @@ If a check fails, the agent must fix the code, or set the slice to **Blocked** w
 commits over a failure.
 
 **Branches:** the loop never creates, switches or merges branches. It builds on whatever is checked out. That's
-why each increment starts with `git switch -c increment/<name>` (see [§12](#12-working-with-git-branches-commits-and-merges)).
+why each increment starts with `git switch -c increment/<name>` (see [§13](#13-working-with-git-branches-commits-and-merges)).
 
 **Statuses:** only `planned` slices are built. `draft` (exported as `Created`) is ignored, which lets you stage
 work. Once the loop has marked a slice InProgress, Done or Blocked, re-exporting keeps that status.
 
 ---
 
-## 14. Rebuilds in depth
+## 15. Rebuilds in depth
 
 A projection reads only the event types in its `canHandle` list, and only from its bookmark onward. The bookmark
 moves forward with every event the projection handles. So when an extension adds an event type, any events of
@@ -1690,7 +1910,7 @@ instantaneous in this example, and it grows with your event store.
 
 ---
 
-## 15. Troubleshooting
+## 16. Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
@@ -1705,18 +1925,18 @@ instantaneous in this example, and it grows with your event store.
 | commit rejected: `[extension-additive]` | an extension changed existing projection code | keep extensions to additions only |
 | a read model is missing older data after an extension | the app wasn't restarted, so no rebuild | restart the app and look for `Rebuilding …` |
 | a command that used to work returns 500 after an inline read model was added | the inline projection threw, so the whole append rolled back (§10.1) | read the app log for the projection's error and fix it in its `projection.ts`. Nothing was recorded, so the client can retry |
-| a live slice goes **Blocked** naming an event or a list | a live read model needs every event tagged with its key, lookups reachable by tags, and a keyed GET (§11.6) | tag the event in the model, or choose `inline-projected` / `database-projected` for it |
+| a live slice goes **Blocked** naming an event, a list or a query | a live read model needs every event tagged with its key, lookups reachable by tags, a keyed GET, and a tag parameter on each query (§11.6, §12.1) | tag the event in the model, or choose `inline-projected` / `database-projected` for it |
 | a retype goes **Blocked**: "imperative projection … a refactor" | the read model is an older `projection.ts` | convert it to `readModel.ts` first (§11.2), then export again |
 | export didn't re-queue a type change | the type was changed on a copy, or the slice isn't built yet | change it on the original read model. An unbuilt slice is just built with the new type |
 | slices from other chapters appear in `.build-kit/.slices` | exported without `--chapter` after a `sync pull` | re-export with `--chapter "$(chapter_id)"` |
 | `eventmodelers init` crashes with `ERR_USE_AFTER_CLOSE` | no terminal input was available | run it in an interactive terminal and answer the prompts |
-| a slice went back to Planned and `git stash list` shows `ralph: interrupted slice …` | the agent was interrupted mid-slice (Claude usage ran out, a crash, the terminal closed). The loop stashed the partial work and rebuilds the slice (§13). If Claude is still unavailable, the loop retries every 60 s | nothing, once Claude is available again (restart the loop if you closed it). Drop the stash after the rebuilt slice is committed: `git stash drop stash@{N}` |
+| a slice went back to Planned and `git stash list` shows `ralph: interrupted slice …` | the agent was interrupted mid-slice (Claude usage ran out, a crash, the terminal closed). The loop stashed the partial work and rebuilds the slice (§14). If Claude is still unavailable, the loop retries every 60 s | nothing, once Claude is available again (restart the loop if you closed it). Drop the stash after the rebuilt slice is committed: `git stash drop stash@{N}` |
 | a slice is **Blocked** after an interruption | the agent committed part of the slice but was interrupted before marking it Done. `progress.txt` names the commits | check them with `git log`. If the slice is complete, set it to Done. Otherwise `git revert` them and set it back to Planned |
 | a slice stays **InProgress** and the loop says *waiting* | an interrupted agent, with the loop running with board sync (without `--local`). There the loop can't tell an interrupted claim from another agent's, so it only logs a warning | once no agent is building it: `git stash push -u -m "interrupted slice"`, then set the slice back to Planned on the board |
 
 ---
 
-## 16. Command reference
+## 17. Command reference
 
 ### emcli (model)
 
@@ -1730,11 +1950,13 @@ instantaneous in this example, and it grows with your event store.
 | `emcli element field add <chapter> <element> <name> <Type> [--id] [--optional] [--cardinality List] [--subfields "a:String,b:Int"] [--example v]` | add a field |
 | `emcli element update <chapter> <element> --api-endpoint "/path"` | set the HTTP route |
 | `emcli element update <chapter> <element> --read-model-type database-projected\|inline-projected\|live-report` | choose how a read model is kept current (set on the origin; copies follow). On a built read model, the next export re-queues it as a one-line retype |
+| `emcli element query add <chapter> <readmodel> <name> --endpoint "/path" [--sort <field>]` | declare a query on the origin read model; `update`, `remove`, `list` too |
+| `emcli element query param add <chapter> <readmodel> <query> <param> <Type> [--operator gte] [--field a.b] [--tag <tag>] [--example v]` | add a query parameter (`--tag` lets a live read model serve it) |
 | `emcli element copy <chapter> <origin> --slice <slice> --lane <lane>` | place a read-model copy later on the timeline |
 | `emcli element update <chapter> <element> --copy-of <origin>` | mark an existing sticky as a copy |
 | `emcli dependency add <from> <to> produces\|hydrates\|triggers` | link stickies |
 | `emcli spec add <chapter> <slice> "<title>" --json` | add a scenario |
-| `emcli spec step add <chapter> <slice> <spec> <phase> <type> <title> [--link <el> --seed]` | add a Given/When/Then step |
+| `emcli spec step add <chapter> <slice> <spec> <phase> <type> <title> [--link <el> --seed]` | add a Given/When/Then step (`when query <name> --link <readmodel>` runs a query) |
 | `emcli spec step example <chapter> <slice> <spec> <phase> <index> <field> <value>` | set an example value |
 | `emcli slice status <chapter> <slice> draft\|planned\|…` | set a slice's status |
 | `emcli sync push --safe` | push local changes to the board (never deletes) |
@@ -1755,7 +1977,7 @@ instantaneous in this example, and it grows with your event store.
 
 ---
 
-## 17. Known limits
+## 18. Known limits
 
 - **The node (Emmett) kit has no extension mode.** This manual covers the DCB kit only.
 - **The copy link doesn't survive a pull.** emcli keeps it in `copyOf`, and pushes copies as ordinary stickies.
@@ -1763,9 +1985,12 @@ instantaneous in this example, and it grows with your event store.
   expose that link. So a copy someone makes on the board arrives as an unrelated sticky. Mark it with
   `element update --copy-of <origin>` before exporting, or the loop builds it as a new read model instead of an
   extension.
-- **Done slices can't be re-queued by export.** Change a built read model with a new copy, as shown.
-- **Live read models serve keyed GETs only**, and need their events and lookups reachable by tags (§11.6).
-  Their cost grows with one entity's history.
+- **Export re-queues a Done slice only for a retype (§11.3) or added queries (§12.2).** Change a built read model
+  in any other way with a new copy, as shown.
+- **Live read models serve keyed GETs and tagged queries only**, and need their events and lookups reachable by
+  tags (§11.6, §12.1). Their cost grows with one entity's history, times the candidates a query folds.
+- **Queries are named, parameterised filters.** No OR conditions, full-text search, aggregates or joins across
+  read models (§12.5).
 - **Looked-up values are captured when the event that uses them is folded.** A student renamed after subscribing
   keeps the old name in `CourseDetails`, in every type alike.
 - **Only `readModel.ts` read models can switch type.** Older `projection.ts` ones need a one-off conversion (§11.2).
