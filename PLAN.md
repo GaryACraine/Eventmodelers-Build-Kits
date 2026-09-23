@@ -179,6 +179,138 @@ Spoken input is just dictation into the same prompt, so it needs no speech-speci
     hand-off), t0 as prompts paired with the §5 commands they become, and a prompt cookbook. Command reference
     (now §18) rewritten in name form; Known limits is §19. Troubleshooting gains the name-matching errors.
 
+### Phase 14: UI from the model (screens → board → React)
+
+> Recorded 2026-09-23, after Phase 13 (13.6 comes first). Planned, not started; expected to grow.
+
+**Goal:** the model already knows most of a frontend: screens, the fields of every command and read model, their
+routes and queries, the examples, and the scenarios. Use it to:
+- sketch screens as HTML in the model and see them on prooph board;
+- scaffold a React frontend next to the DCB backend;
+- have the Ralph loop build each slice's UI from its screen, so the backend shapes the components.
+
+**Findings (researched 2026-09-23)**
+
+- **prooph board has HTML wireframes, but not in its API.**
+  - Alexander Miertsch's newsletter *Issue #5: Fighting entropy with UX* (LinkedIn) describes:
+    - **HTML wireframes** on cards (Ctrl/Cmd+hover opens the editor), used in the Animal Shelter reference model;
+    - reusable **HTML snippets** (design-system CSS, components, JS) imported into wireframes, with programmatic
+      API access described as *planned*;
+    - Mermaid diagrams.
+  - Read-only check of the public Animal Shelter workspace (`6a1e495d-…`), all five chapters in full:
+    - every card returns only `name`, `description` (Markdown or ASCII mockups) and `details` (always empty);
+    - six UI cards have no mockup at all (the four in *Adoption Application*, plus *Animal Registration Form* and
+      *Occupancy Board*), the likeliest homes of the wireframes, so the HTML is stored where the API doesn't reach;
+    - the REST OpenAPI (`https://flow.prooph-board.com/openapi.json`) has no wireframe or snippet endpoint;
+    - the book's UI chapter is "coming soon".
+- **Images do work through the API.**
+  - `POST /images/upload` (multipart: `chapter_id`, `element_id`, `file_name`, `image`; SVG, PNG and others up to
+    5 MB) returns a `![…](storage:markdown-images/…)` tag for the description.
+  - `POST /images/replace` swaps the image behind a tag.
+  - emcli doesn't call either yet.
+- **A push would erase any image added on the board:** `sync push` regenerates a fielded element's description from
+  its fields (`renderFieldsToDescription`). Anything visual on a screen must be part of what emcli renders.
+- **proophboard/skills:**
+  - `modeling/wireframe-sketch` draws hand-drawn SVG and uploads it to UI cards through MCP. An SVG is paths and
+    coordinates with no form, list or button structure, so it can't be turned into components. It costs 500–2000+
+    tokens per screen and can't be edited on the canvas.
+  - `cody/ui` is prooph's own structured UI (`cody-metadata`, `cody-sidebar`, `cody-views`, `cody-commands` in a
+    card's details, with React JSON Schema Form `uiSchema`). It's built for Cody Play and Cody Engine, and its
+    forms are generic.
+- **The eventmodelers board's `HTML_SCREEN`** (`meta.pages` HTML plus `marks` naming the part of a shared screen
+  that belongs to each slice) is what `stacks/supabase-react` builds from. That platform is retired here.
+- **Stacks:**
+  - `stacks/react` is an empty template (TODO placeholders).
+  - `stacks/supabase-react` is the design to borrow from:
+    - one component per command and per read model, translated **1:1 from the screen's HTML**;
+    - props are exactly the command's fields;
+    - all I/O through one `src/lib/api.ts` seam;
+    - `VITE_DATA_MODE=mock` with numbered samples (the same number across components tells one scenario);
+    - pages composed by **screen title** (`src/pages/` is the only cross-slice importer);
+    - deletable slice folders;
+    - `init-style-guide` / `learn-styleguide`.
+  - Its gaps:
+    - it depends on the eventmodelers board;
+    - it reads Supabase tables through row-level security, not a REST API;
+    - it has no component test runner.
+- **The DCB backend already gives a frontend what it needs:**
+  - a Zod schema with `.openapi()` per slice, and `/openapi.json`;
+  - writes return a sequence position, and reads honour `Prefer: wait` until the read model has caught up
+    (read-your-writes);
+  - Problem-JSON rejections carry the scenario's error text; reads send ETags.
+  - **Gap:** `scripts/start-empty.sh` deletes the `openapi` slice with the example slices. Empty projects
+    (course-enrollment) serve no `/openapi.json`.
+- **Environment:** `~/Projects/CLAUDE.md`, a leftover from an older template, tells every project under
+  `~/Projects` to use **Bulma exclusively** and `src/slices/…`. A frontend built there would be pulled toward
+  Bulma.
+
+**Recommendation**
+
+| Question | Answer | Why |
+|---|---|---|
+| HTML UI in the model, shown on the board? | **Yes.** The mockup is an **HTML fragment stored in the model** (on the screen element in `workspace.json`, with field bindings), written to suit prooph board's own wireframes (plain HTML and CSS, the design system as a shared snippet). **Target:** push it as a native board wireframe once the API exposes wireframes. **Until then:** `sync push` renders it to PNG in a headless browser and uploads it into the description it already generates. | prooph board already treats HTML as its screen format. HTML is both a **picture for people** and a **blueprint for code** (supabase-react's proven approach). The image path works with today's API, and rendering inside push is the only way an image survives push. |
+| Bindings | `data-field="<field>"` (an input or shown value), `data-list="<field>"` (a repeated row), `data-command="<command>"` (the submit), `data-slice="<slice>"` (the part of a shared screen that belongs to a slice) | Generation becomes checkable: every binding must name a real field or command (`completeness` can check it), and the build skill can't invent inputs. |
+| ASCII and SVG wireframes | ASCII stays as the quick storm-mode sketch. `wireframe-sketch` isn't ported: a **sketch theme** for the rendered HTML gives the same look from the same source. | One source of truth. |
+| A frontend next to the backend? | **Yes: `web/` in the same repo, built by the same loop.** A slice with a screen gets its backend and then its UI in one pass (the UI step runs once the backend tests pass). The typed client is **generated from the backend's `/openapi.json`**. | The slice is the unit: its fields, route, examples and scenarios drive both halves, so they can't drift. One export, one loop, one PR per increment. Deployed separately (S3), so one repo costs nothing at deploy time. |
+| Frontend stack | **Vite + React 19 + TypeScript, Tailwind CSS + shadcn/ui (Radix), TanStack Query, React Router, React Hook Form + Zod, openapi-typescript + openapi-fetch, Vitest + Testing Library + MSW** | A static SPA build suits S3 + CloudFront, with no server. Code models write shadcn/Tailwind most reliably, and a Tailwind-classed HTML mockup becomes JSX almost mechanically (`class` → `className`). Components are copied into the repo, so there's no version lock-in. TanStack Query fits commands and queries: a mutation passes the returned position to `Prefer: wait`, then refreshes the query. Zod matches the backend's schemas. MSW serves the **scenario examples** as mock responses, replacing supabase-react's samples and adding the tests that stack lacks. Mantine was considered and rejected: it's less common in generated code, and mockups don't map to it as directly. |
+| Cody (`cody-views`, RJSF) | Not adopted; borrow only the **default form from a schema** idea. | Cody is metadata for prooph's own engine, and its forms look generic. Without a mockup, a screen gets a draft form or list generated from its fields, as HTML the user can edit. |
+
+**Tasks**
+
+- [ ] **14.0 Board HTML: format and access.**
+  - Gary opens an Animal Shelter UI card that has a wireframe, plus a snippet, in the board editor, and records
+    their shape: full document or fragment, and how CSS and snippets are imported.
+  - Ask prooph board whether and when wireframes and snippets reach the REST API / MCP.
+  - The outcome decides whether 14.3 pushes native wireframes, images, or both.
+- [ ] **14.1 Backend contract for a frontend (DCB kit).**
+  - `start-empty.sh` keeps a minimal `openapi` slice.
+  - Each slice's `schema.ts` registers its paths (build skills updated), so `/openapi.json` is complete.
+  - CORS for the frontend origin (`CORS_ORIGIN`).
+  - Proven on course-enrollment while its loop is idle.
+- [ ] **14.2 Mockups in the model (emcli).**
+  - `element mockup <screen> --html <file> | --draft | --clear`, stored on the ui element (`mockup: { html }`).
+  - `--draft` builds a form (a write slice: the command's fields) or a view or list (a read slice: the read
+    model's fields, `data-list` for list elements).
+  - `completeness` checks the bindings.
+  - The export adds `screens[].mockup` to slice.json (it already has a `screenImages` slot).
+  - Tests and USAGE.
+- [ ] **14.3 Show mockups on the board (emcli).**
+  - Native wireframe push if 14.0 finds API access.
+  - Otherwise, and meanwhile, `sync push` renders changed mockups to PNG (Playwright) and uploads or replaces them
+    through the image endpoints. The storage ref and a content hash are kept locally, and the image goes into the
+    generated description.
+  - A `--sketch` theme.
+  - A render failure warns and never blocks the push.
+  - Proven on a real board.
+- [ ] **14.4 The `event-model` skill: screen mode.**
+  - Ask what the person sees and does, write the mockup (Tailwind classes, bindings), draft first, push, and show
+    the board image.
+  - A shared screen is one screen title per page, with `data-slice` regions.
+  - `ascii-mockups` stays retired once screen mode covers it.
+- [ ] **14.5 Frontend scaffold (DCB kit, `templates/root/web/`).**
+  - The stack above.
+  - `src/lib/api.ts` (the generated client, plus position → `Prefer: wait`); `npm run gen:api` from the backend's
+    `/openapi.json`.
+  - MSW handlers; an app shell (router, layout from the screen titles); `vite build` output for S3.
+  - `init-style-guide` / `learn-styleguide` ported from supabase-react.
+  - The kit's `CLAUDE.md` names the stack, overriding the global Bulma instruction.
+- [ ] **14.6 Build skills for screens.**
+  - `build-screen` runs after `build-state-change` / `build-state-view` when the slice has a screen.
+  - One component per command: a form, props = fields, React Hook Form + Zod from the generated types, rejections
+    shown from Problem-JSON.
+  - One component per read model: a view or list through TanStack Query.
+  - Mockup → JSX 1:1; pages composed by screen title.
+  - MSW handlers and component tests from the slice's scenarios: the happy path renders, and each rejection shows
+    its message.
+  - Commit checks cover `web/src/slices/<slice>/`.
+- [ ] **14.7 Loop and export wiring.** Screens and mockups are exported; the loop runs `build-screen` after the
+  backend step; the hand-off ready check includes "the screen has a mockup".
+- [ ] **14.8 Deploy.** The `web/` build goes to S3 + CloudFront (SPA fallback to `index.html`), with `VITE_API_BASE`
+  per environment. A script first; CDK later if wanted.
+- [ ] **14.9 Prove and document.** One increment end to end on a real project: mockup → board image → the loop
+  builds backend and UI → the app works against the live backend. New manual section; results here.
+- **Open:** `~/Projects/CLAUDE.md` (Bulma). Gary decides whether to delete or narrow it.
+
 ### Phase 12: Query Read Models (the spec's *when* is the read operation) ✅
 
 > Was the top priority (recorded 2026-09-23), superseding 9.7, 9.11b and the 10.8 ports. **Done 2026-09-23**, so
@@ -1106,6 +1238,8 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-23 | Read specs' *when* carries the read operation (ADR-023) | Every read model is a keyed GET today. A *when* query with named parameters gives filtered reads a stable client contract, generated and tested from given/when/then |
 | 2026-09-23 | Natural-language modeling is an emcli skill, not an MCP server (Phase 13) | The gap is modeling method, which a skill carries. Name-based emcli commands serve the skill, people and a later MCP server alike. Skills are linked one by one so they sit next to the build kit's |
 | 2026-09-23 | The modeling skill is `event-model`, not `model` | `/model` is Claude Code's built-in model switcher, so `/model` could never force the skill; the new name matches what it does and matches the description's trigger words |
+| 2026-09-23 | Screens are HTML mockups in the model, shown on the board as rendered images until its API exposes wireframes (Phase 14) | prooph board uses HTML for screens but its API can't read or write them yet; HTML is both picture and code blueprint; push regenerates descriptions, so rendering belongs in push |
+| 2026-09-23 | The frontend is `web/` in the backend repo: Vite + React + Tailwind/shadcn + TanStack Query, client generated from `/openapi.json` (Phase 14) | One slice drives both halves from one model; a static build suits S3; Tailwind mockups map 1:1 to JSX |
 
 ## Progress
 
@@ -1123,4 +1257,5 @@ What each `build-*` skill generates and what it verifies:
 | 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 done (stale InProgress recovery in `--local` mode) |
 | 11 — Read Model Types | ✅ Complete | Async, inline and live read models from one fold definition, with an identical data shape across types (ADR-021/022). Proven on course-enrollment t5–t10: inline, a retype to live and back, a new live read model with a lookup |
 | 12 — Query Read Models | 🚧 In progress (top priority) | 12.1–12.3 done: ADR-023 query contract; emcli queries + `SPEC_QUERY` + `addQueries` re-queue; kit runtime (stored SQL + live, one semantics). Named queries on the read model element, the spec *when* references them, `{ data, cursor? }` pages; live needs a tag parameter |
+| 14 — UI from the model | 📋 Planned | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 first: board HTML format and access |
 | 7 — Board Re-pointing | ⛔ Dropped | eventmodelers board retired; prooph board via emcli is the only board |
