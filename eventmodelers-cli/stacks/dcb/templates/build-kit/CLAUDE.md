@@ -85,7 +85,8 @@ It loads every check under `.build-kit/lib/checks/` and rejects the commit if an
 - **slice-tests** — the tests of every slice folder the commit touches must pass (for an extension, that is
   the origin's full test file, earlier scenarios included)
 
-The hook is installed by `npm install` (`prepare` sets `core.hooksPath .githooks`). It only acts on commits
+The hook lives in `.githooks/`, added by `eventmodelers init --hooks` (or `eventmodelers init-hooks` later); `npm install`'s
+`prepare` then keeps `core.hooksPath` pointing at it (and leaves it alone when `.githooks/` is absent). It only acts on commits
 that touch a slice folder, so model, docs and `index.ts` wiring commits pass straight through.
 
 ## Branching
