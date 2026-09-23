@@ -330,6 +330,21 @@ routes and queries, the examples, and the scenarios. Use it to:
         (emcli ISSUES.md), and each card of a shared screen shows its own slice's part.
       - emcli gap found on the way: pushing a new chapter without an information-flow lane fails, because push
         deletes the board's default one and the board requires exactly one (logged in emcli ISSUES.md).
+    - **Snippet API (live 2026-09-23; not yet in prooph's published `openapi.json`).** Alexander's QA list:
+      `GET/POST /api/snippets`, `GET/PATCH/DELETE /api/snippets/{slug}`, with `workspace_id` like the other
+      endpoints. Experiment on the same throwaway chapter, everything deleted afterwards:
+      - **Slugs:** `POST { name, snippet }` derives the slug from the name, lower-cased and kebab-cased with
+        punctuation dropped (`Course Theme V2!` → `course-theme-v2`). An explicit `slug` is accepted
+        (`emcli-explicit`). A second snippet with a taken slug is rejected with a clear error. `PATCH` changes
+        `name` and/or `snippet` and answers `updated: [...]`.
+      - **Imports resolve for API-pushed wireframes:** a card whose pushed HTML has
+        `<!-- @import design-system -->` in `<head>` is drawn with the API-created snippet's CSS. The board expands
+        it only for display: the stored description keeps the one line.
+      - **Imports are live:** after a `PATCH` of the snippet's CSS, that card showed the new style on reload with
+        no re-push.
+      - **The expanded form is a frozen copy:** a card pushed with `@import-start … @import-end` around a copy of
+        the CSS renders, but keeps the old CSS after the `PATCH`. So never push the expanded form.
+      - **A missing slug** (`<!-- @import no-such-snippet -->`) renders the page unstyled, with no error.
 - [x] **14.1 Backend contract for a frontend (DCB kit).** *(Done 2026-09-23.)*
   - `start-empty.sh` keeps a minimal `openapi` slice.
   - Each slice's `schema.ts` registers its paths (build skills updated), so `/openapi.json` is complete.
@@ -397,9 +412,11 @@ routes and queries, the examples, and the scenarios. Use it to:
     someone drew in the board editor.
   - Bindings are kept by name locally. Board ids go into `data-pb-element-id` / `data-pb-element-type` on push,
     so the board's hover badges work.
-  - The design system: `<!-- @import <slug> -->`, from a local snippet file. Push it through the snippet API when
-    that lands; until then, push its CSS inline. Check first whether the board accepts the expanded
-    `@import-start` / `@import-end` form it uses itself.
+  - The design system is a board snippet, kept in the model as a local file (`snippets/<slug>.html`), pushed and
+    pulled through the snippet API (`emcli snippet …`, with an explicit slug so references never depend on how
+    a name is slugged). Mockups only ever reference it with `<!-- @import <slug> -->`: one edit of the snippet
+    restyles every screen on the board, and the same CSS ships in `web/`. `completeness` warns on an import
+    whose slug has no snippet (the board would draw it unstyled, without a word).
   - A `--sketch` theme is a snippet, not a renderer.
   - Proven on a real board. The PNG path (Playwright, `/images/upload`) is no longer planned. Keep it only if a
     need appears that native wireframes can't meet.
@@ -1364,6 +1381,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-23 | Screens are HTML mockups in the model, shown on the board as rendered images until its API exposes wireframes (Phase 14) | prooph board uses HTML for screens but its API can't read or write them yet; HTML is both picture and code blueprint; push regenerates descriptions, so rendering belongs in push |
 | 2026-09-23 | The frontend is `web/` in the backend repo: Vite + React + Tailwind/shadcn + TanStack Query, client generated from `/openapi.json` (Phase 14) | One slice drives both halves from one model; a static build suits S3; Tailwind mockups map 1:1 to JSX |
 | 2026-09-23 | Mockups are pushed as native board wireframes (a fenced ` ```html ` block in the ui element's description), not rendered PNGs (14.0, supersedes the image path) | The API already reads and writes descriptions, and the board draws the block on the card (experiment 2026-09-23). No renderer, no image storage, and the board shows the same HTML the loop builds from. Description, not details: details are shared across copies |
+| 2026-09-23 | Mockups import the design system by slug (`<!-- @import <slug> -->`), never expanded; emcli owns snippets by explicit slug (14.0 snippet experiment) | Imports resolve for API-pushed wireframes and follow snippet edits live; the expanded form is a frozen copy. An explicit slug keeps references stable whatever the name |
 | 2026-09-23 | Each slice registers its own routes in a shared OpenAPI registry; `readModelRoute` documents read models and their queries itself (14.1, ADR-007 update) | A central `document.ts` would be a cross-slice edit the loop can't make; deriving queries from the definition keeps `addQueries` additive, and a `ZodType<TDoc>` schema lets tsc catch drift |
 | 2026-09-23 | DCB gets an `openapi-registered` check after all (supersedes "omit `60-openapi-annotation`") | The client is generated from `/openapi.json`, so a missing route is a frontend bug. The check reads `registerCommand`/`registerRead` and `readModelRoute`'s `schema:`, not JSDoc |
 | 2026-09-23 | `readModelRoute`'s `schema` is optional in the type and required by the check | Required in the type, the kit update breaks tsc in existing projects, and no single per-slice backfill commit can pass tsc-build. The check still covers every slice a commit touches |
