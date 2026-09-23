@@ -400,3 +400,59 @@ models are blocked with a question until the kit supports them (PLAN 11.7).
 - Library quirk: an inline `pongoProjection` is recorded as type `'a'` in `_projections`, because its `init`
   re-registers it after `ensureInstalled()` registered it as `'i'`. Behaviour is unaffected: inline dispatch only
   checks `status`.
+
+---
+
+### ADR-022: Read model contract and switchable read model types
+
+**Status:** Accepted
+**Date:** 2026-09-23
+
+**Context:** A read model can be `database-projected` (async), `inline-projected` (ADR-021) or `live-report`
+(folded from the event store per request). A model may need to change a read model's type after clients use it:
+live when stored data isn't worth keeping, inline when staleness starts to matter, async when writes need to be
+cheaper. Until now each type was generated as different code. The t5 inline route didn't even send the ETag
+that the async routes do, so the type leaked into what clients saw. Live read models also have to handle
+cross-entity data, such as a student's name on a course, which stored projections get from lookup collections.
+
+**Decision:**
+- **The contract is the data shape.** For a read model, the URL, the response body and the status (200, or 404
+  for an unknown key) are identical whichever type serves it, and so is the OpenAPI schema. Headers are outside
+  the contract. An async route may keep its `ETag` / `Prefer: wait` extras, but clients must not depend on them.
+  A switch changes freshness only.
+- **One definition, several runners.** A read model is written once, as a keyed fold. `defineReadModel` takes a
+  `key` (the idAttribute field, carried as a tag by every primary event), `canHandle`, and a pure
+  `evolve(doc, event, lookups)`.
+- **Lookups.** Cross-entity data is declared as `lookups`: a related key, the related entity's event types, and a
+  small `evolve` of its own. `evolve` can see only the lookup entries whose ids are in the current event's tags.
+- **The stored runner** (async or inline) is a generic pongo projection. A lookup event folds into a lookup
+  collection. A primary event loads its document and the referenced lookup entries, runs `evolve`, and saves the
+  result.
+- **The live runner, read 1:** the primary events for the key. The related ids come from their tags.
+- **The live runner, read 2:** one **union read**, `(primary types ∧ key tag) OR (lookup types ∧ tags && {related ids})`.
+  dcb-event-store ORs query items and matches tags by overlap, so this is a single position-ordered query using the
+  tags GIN index. The runner folds it exactly like the stored runner. If read 2 reveals related ids that read 1
+  didn't have (a subscription committed in between), it repeats until the set is stable.
+- **Identical data.** Both runners fold the same functions over the same event sequence, in position order.
+  Contract tests run every scenario against every supported type to prove it.
+- **Switching.** A switch changes one `type:` line. `ensureProjectionsCurrent` fingerprints live read models as
+  `live:…`, so switching back to a stored type rebuilds the stored copy instead of serving data that went stale
+  while unused.
+
+**Alternatives considered:**
+- **A uniform header protocol** (ETag = the position reflected, `Prefer: wait` honoured by every type). Rejected
+  as the contract: clients care about the data. It stays an optional async extra.
+- **Live read models without lookups.** Rejected: it would exclude most real read models. The union read gives
+  lookups the same semantics as a stored lookup collection.
+- **Separate code per type**, as in ADR-021. Rejected: a switch would mean a rewrite, and the outputs could drift.
+
+**Consequences:**
+- Read models that are keyed folds can switch freely between all three types.
+- Live requires every primary event to carry the key tag, and every related id to be a tag on the primary events
+  that reference it. Read models that can't meet that stay in imperative form, as async or inline.
+- Live serves keyed GETs only. Its cost per request is two reads, sized by one entity's history plus its related
+  entities' lookup events.
+- Lookup values are captured when a primary event is folded, as before, in every type.
+- Verified read-only on course-enrollment: the union read for CourseDetails c1 returned positions 1, 3, 5, 6, 7,
+  8, 11, exactly the sequence the stored projection processed.
+

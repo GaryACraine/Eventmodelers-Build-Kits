@@ -47,7 +47,7 @@ inline projections (`projections.inline([...])`), so this phase is about the DCB
 |---|---|---|---|---|
 | `database-projected` (the default when the field is absent) | `pongoProjection` run by a consumer, with a bookmark and `preferWait` | eventual | none | ✅ built today |
 | `inline-projected` | the same `Projection`, passed to `new PostgresEventStore({ inlineProjections })` | immediate | lock hold on every append of its events | 11.1–11.6 |
-| `live-report` | nothing stored: fold events per request (`eventStore.read(query)` / `buildDecisionModel`) | immediate | a read on every query | 11.7, deferred |
+| `live-report` | nothing stored: fold events per request, with one union read for lookups | immediate | two reads per query | 11.7 |
 
 **Library behaviour (`event-store-postgres/src/eventStore/PostgresEventStore.ts`):**
 - A throw in an inline projection rolls back the append, so a bug in the projection fails the command.
@@ -128,13 +128,46 @@ inline projections (`projections.inline([...])`), so this phase is about the DCB
   Manual: §1 read model types, a new §10 walkthrough (old §10–15 are now §11–16), §13 inline rebuilds, and two
   troubleshooting rows. Not measured: the write-latency cost per inline projection. The library has a
   `contention` benchmark for that.)*
-- [ ] **11.7 (deferred, separate task)** Live read models (`live-report`).
-  - No stored state and no rebuild. The route folds events per request, using `eventStore.read(query)`, or
-    `buildDecisionModel` with tag-scoped handlers. dcb-event-store has no "live projection" abstraction, and
-    none is needed: nothing is registered.
-  - The design work is scoping the query by tags so each read stays small.
-  - Probably its own `build-live-view` skill, since it shares no projection code; the switchboard routes
-    `live-report` to it.
+- [ ] **11.7 Live read models, and switchable types** (design approved 2026-09-23; ADR-022).
+  - **The contract is the data shape only:** the same URL, body and status for a read model whichever type serves
+    it. Headers (`ETag`, `Prefer: wait`) are outside it.
+  - **One definition per read model:** a keyed fold (`defineReadModel`: `key`, `canHandle`, pure `evolve`), with
+    declared **lookups** for cross-entity data.
+  - **Three runners over it:**
+    - Stored (async or inline): a generic pongo projection with lookup collections.
+    - Live, read 1: the primary events for the key; collect the related ids from their tags.
+    - Live, read 2: **one union read**, `(primary types ∧ key tag) OR (lookup types ∧ tags && {related ids})`,
+      folded in position order, and repeated until the related-id set is stable.
+    Both fold the same functions over the same event sequence, so every type gives the same data.
+  - Verified read-only on course-enrollment: the union read for CourseDetails c1 returns positions 1, 3, 5, 6, 7,
+    8, 11, the exact sequence the stored projection processed.
+  - **Requirements:** every primary event carries the key tag, and every related id is a tag on the primary events
+    that reference it. Live serves keyed GETs only. A retype changes one `type:` line and is re-queued by emcli
+    export.
+  - Sub-tasks, one PR each:
+    - [ ] **11.7a** ADR-022 "Read model contract and switchable types", and these entries.
+    - [ ] **11.7b** Scaffold runtime `src/shared/readModels.ts` (`defineReadModel`, stored and live runners,
+      `startReadModels`, `readModelRoute`, `supportedTypes`), `src/test/readModelHarness.ts`, and the `live:`
+      fingerprint in `ensureProjectionsCurrent`. Real-Postgres tests: identical bodies across the three types for a
+      model with a lookup, the fixpoint under a concurrent subscription, live → stored rebuild, and 404.
+    - [ ] **11.7c** `build-state-view`: fold form by default (`readModel.ts`), imperative form only when §4 of the
+      design excludes fold form. Live gets built, with a generic route and body-only contract tests across all
+      supported types (`describe.each`). Extensions append `evolve` cases or lookups. R-steps for a retype. The
+      switchboard builds `live-report`.
+    - [ ] **11.7d** emcli: retype re-queue on export (`retype: { from, to }`, with the built type recorded in
+      `index.json`), and a warning for a live list read model.
+    - [ ] **11.7e** Commit check `retype-scope`: a retype commit may change only the `type:` line, with tests
+      unchanged.
+    - [ ] **11.7f** Experiment on course-enrollment:
+      - migrate CourseSeats and CourseDetails to fold form (existing scenarios unchanged);
+      - retype CourseDetails async → live, with the body identical before and after (the lookup union on the live
+        DB);
+      - retype CourseSeats inline → live → async;
+      - measure live latency against stored;
+      - model one new live read model.
+    - [ ] **11.7g** Manual: "Switching read model types" (the contract, lookups in live reads, when to choose live,
+      a measured retype walkthrough), plus updates to §1, §13, troubleshooting and the known limits. PLAN
+      results.
 
 ---
 
@@ -593,7 +626,7 @@ What each `build-*` skill generates and what it verifies:
 
 ## Decisions Log
 
-> **Architectural decisions with full rationale and alternatives:** see [`eventmodelers-cli/stacks/dcb/ADR.md`](eventmodelers-cli/stacks/dcb/ADR.md) — 21 ADRs covering projections, identity, consistency, testing, error handling, idempotency, versioning, and more.
+> **Architectural decisions with full rationale and alternatives:** see [`eventmodelers-cli/stacks/dcb/ADR.md`](eventmodelers-cli/stacks/dcb/ADR.md) — 22 ADRs covering projections, identity, consistency, testing, error handling, idempotency, versioning, and more.
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
@@ -624,5 +657,5 @@ What each `build-*` skill generates and what it verifies:
 | 8 — Integration Tests | ✅ Complete | Postgres integration tests for state-change slices; prototype proven, skill template updated |
 | 9 — Progressive Read Model Evolution | ✅ Core complete | emcli copies + extension slices, `build-state-view` extend mode, automatic rebuild; proven t0→t4 on a live DB (32/32). Real Ralph run done (9.6). Node kit port remains |
 | 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 done (stale InProgress recovery in `--local` mode) |
-| 11 — Read Model Types | 🟡 Inline done | Inline-projected read models built and proven on course-enrollment t5/t6 (11.1–11.6). Live read models (11.7) remain, still ahead of all other open items |
+| 11 — Read Model Types | 🟡 Inline done | Inline-projected read models built and proven on course-enrollment t5/t6 (11.1–11.6). Live read models and switchable types (11.7a–g) in progress, still ahead of all other open items |
 | 7 — Board Re-pointing | ⛔ Dropped | eventmodelers board retired; prooph board via emcli is the only board |
