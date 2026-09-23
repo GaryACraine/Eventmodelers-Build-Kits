@@ -30,9 +30,10 @@
 
 ## Phases
 
-### Phase 12: Query Read Models (the spec's *when* is the read operation)
+### Phase 12: Query Read Models (the spec's *when* is the read operation) ✅
 
-> **Top priority** (recorded 2026-09-23), superseding 9.7, 9.11b and the 10.8 ports.
+> Was the top priority (recorded 2026-09-23), superseding 9.7, 9.11b and the 10.8 ports. **Done 2026-09-23**, so
+> those items are open again.
 
 **Goal:** let a read model answer a **where predicate**, meaning it filters its documents on their fields, not
 only fetches one by primary key. The read slice's GWT spec carries the query: *given* supplies the events, *when*
@@ -274,7 +275,25 @@ from ADR-022 still holds: the same URL and body whichever read model type serves
   - **Tests:** a new mirror test compares SQL and in-memory pages after every cursor position, plus forged
     cursors, for every query. Another checks the key-order index exists and that a cursor page's plan has an
     `Index Cond` on it. The template suite passes: 64 tests (62 + 2). ADR-023 is updated.
-- [ ] **12.7 Docs:** a new manual section, "Querying read models", and PLAN results.
+- [x] **12.7 Docs.** *(Done 2026-09-23.)*
+  - **New manual §12, "Increments t11 and t12: querying read models":**
+    - 12.1: what a query is (the route, named parameters with operators, sort, `{ data, cursor? }`, 200/400) and
+      which types serve it (stored: all; live: only with a tagged parameter);
+    - 12.2: modeling the two t11 queries with emcli, where their scenarios go (the extension that brings the
+      filtered field), and export's `addQueries` re-queue;
+    - 12.3: the loop's additive commits and the query test blocks;
+    - 12.4: the curl checks, paging and a 400;
+    - 12.5: the indexes, the 20k measurements with and without them, live against stored, t12's key-order index,
+      the `VACUUM ANALYZE`-after-a-rebuild note, and how to choose.
+  - Sections 12–17 became 13–18, and every anchor and `§` reference was renumbered.
+  - **Updated elsewhere in the manual:**
+    - §1 now mentions queries;
+    - §11.6's live limits allow tagged queries;
+    - the troubleshooting row covers a live query without a tag;
+    - the command reference gains `element query add` / `query param add` and the `when query` step;
+    - the known limits correct "Done slices can't be re-queued" (retypes and added queries can be) and add the
+      query scope limits.
+  - ADR-023 already carried the design; 12.6b added its index notes.
 
 ---
 
