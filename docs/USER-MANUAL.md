@@ -1630,6 +1630,8 @@ folder, so nothing can skip them:
 | blocked-paths | slice commits that touch `package.json` or `src/index.ts` |
 | slice-scope | changes outside the slice's own folder |
 | extension-additive | an extension that edits or removes existing projection code, or lacks its test block |
+| query-additive | adding queries that changes anything but the `queries` block and new query tests |
+| retype-scope | a retype that changes more than the `type:` line |
 | test-file-present | code without a test file |
 | no-invented-fields | fields not in `slice.json` (heuristic) |
 | spec-coverage | fewer tests than scenarios |

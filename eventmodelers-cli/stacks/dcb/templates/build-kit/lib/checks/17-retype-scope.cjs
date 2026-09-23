@@ -9,6 +9,11 @@
 //  2. In readModel.ts, the only removed line is the old `type:` line and the only added line is
 //     `type: "{retype.to}"`.
 //
+// A slice can carry `addQueries` too (ADR-023): the retype is its own commit first, then the queries.
+// So with `addQueries`, a commit that leaves the type: line alone is the queries commit — the
+// query-additive check governs it and this one steps aside. A commit that does touch the type:
+// line is still held to rules 1 and 2.
+//
 // The slice being built is the one the loop marked InProgress in the current context's
 // index.json. No InProgress retype slice → this check does nothing.
 
@@ -60,6 +65,14 @@ module.exports = {
     for (const slice of inProgressRetypes(ctx.repoRoot)) {
       const ownKey = normalize(slice.title);
       const { from, to } = slice.retype;
+      if (Array.isArray(slice.addQueries) && slice.addQueries.length > 0) {
+        const own = ctx.changes.find(({ path: p }) => {
+          const m = p.match(SLICE_KEY_PATTERN);
+          return m && normalize(m[2]) === ownKey && p === `${m[0]}readModel.ts`;
+        });
+        const { removed, added } = own ? diffLines(ctx.repoRoot, own.path) : { removed: [], added: [] };
+        if (![...removed, ...added].some((l) => TYPE_LINE.test(l))) continue;
+      }
       let definition = null;
 
       for (const { path: p } of ctx.changes) {

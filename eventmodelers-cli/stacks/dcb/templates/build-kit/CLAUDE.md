@@ -71,11 +71,18 @@ It loads every check under `.build-kit/lib/checks/` and rejects the commit if an
   `src/contexts/{context}/Events.ts`
 - **extension-additive** — while an extension slice (`extends` in slice.json) is InProgress: changes stay in
   its origin's folder, the origin's `readModel.ts` / `projection.ts` only gains lines, and the origin's
-  `route.tests.ts` has a top-level block for the extension (`describe("{extension title}")`, or
-  `describe.each(…)("{extension title} (%s)")`) with a test per specification
-- **retype-scope** — while a retype slice (`retype` in slice.json) is InProgress: the commit changes only the
-  `type:` line of that slice's `readModel.ts`, to `retype.to`. No test, route or other slice edits, because the
-  existing contract tests are the proof that clients see the same data.
+  `route.tests.ts` has top-level blocks for the extension (`describe("{extension title}")`, or
+  `describe.each(…)("{extension title} (%s)")`, plus `"{extension title}: {query} (%s)"` for each query its
+  specs run) with a test per specification across them
+- **query-additive** — while a slice with `addQueries` in slice.json is InProgress: only that slice's
+  `readModel.ts` and tests change; `readModel.ts` gains lines only inside `queries` (the previous last entry's
+  `}` may be re-added as `},`) and declares every added name; `route.tests.ts` gets a
+  `describe.each(queryTypes(…))("{slice title}: {query} (%s)")` block per added query with a test per
+  specification that runs it, and keeps every existing line except the `readModels.js` import gaining `queryTypes`
+- **retype-scope** — while a retype slice (`retype` in slice.json) is InProgress: a commit that touches the
+  `type:` line changes only that line of the slice's `readModel.ts`, to `retype.to`. No test, route or other
+  slice edits, because the existing contract tests are the proof that clients see the same data. With
+  `addQueries` too, the queries follow as their own commit, which query-additive checks.
 - **test-file-present** — a changed `decider.ts`, `projection.ts`, `readModel.ts`, or `processor.ts` needs a sibling `*.tests.ts`
 - **no-invented-fields** — heuristic: flags a field used in code that isn't declared anywhere in
   `.build-kit/.slices/{context}/{slice}/slice.json`

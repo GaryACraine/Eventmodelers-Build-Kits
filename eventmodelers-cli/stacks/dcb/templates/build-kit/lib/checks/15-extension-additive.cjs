@@ -8,9 +8,10 @@
 //  2. The origin's definition — readModel.ts (fold form) or projection.ts (imperative form) —
 //     only grows: no removed lines, except a line that is re-added with a trailing comma
 //     (appending after the last canHandle entry or lookup).
-//  3. The origin's route.tests.ts has a top-level describe("{extension title}") block —
-//     or describe.each(...)("{extension title} (%s)") in fold form — with at least one
-//     test(...) per specification in the extension's slice.json.
+//  3. The origin's route.tests.ts has the extension's top-level blocks — describe("{extension title}"),
+//     or describe.each(...)("{extension title} (%s)") in fold form, plus a
+//     describe.each(queryTypes(...))("{extension title}: {query} (%s)") block per query its specs run —
+//     with at least one test(...) per specification in the extension's slice.json, across them.
 //
 // The slice being built is the one the loop marked InProgress in the current
 // context's index.json. No InProgress extension slice → this check does nothing.
@@ -19,6 +20,7 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const { normalize } = require('../util/find-slice.cjs');
+const { describeBlocks, isSliceBlock, queryOfBlock } = require('../util/describe-blocks.cjs');
 
 const SLICE_KEY_PATTERN = /^src\/contexts\/([^/]+)\/slices\/([^/]+)\//;
 
@@ -61,28 +63,14 @@ function originFolder(repoRoot, ext) {
   return folder ? `src/contexts/${context}/slices/${folder}` : null;
 }
 
-const TEST_BLOCK = /\b(?:test|it)(?:\.(?:only|skip))?\s*\(/g;
-
-function escapeRegExp(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-// A top-level describe(...) or describe.each(...)(...) call.
-const TOP_LEVEL_DESCRIBE = /^describe(?:\.each\([^)]*\))?\(/m;
-
-// Tests inside the top-level describe block named `title` — `describe("title", …)`, or in fold form
-// `describe.each(TYPES)("title (%s)", …)` — up to the next top-level describe or end of file.
-// Returns null when the block is missing.
+// Tests in the extension's top-level blocks — `describe("title", …)`, `describe.each(TYPES)("title (%s)", …)`,
+// and one `describe.each(queryTypes(…))("title: {query} (%s)", …)` per query its specs run (ADR-023).
+// Returns null when there is no such block.
 function testsInDescribe(content, title) {
-  const t = escapeRegExp(title);
-  const start = content.search(
-    new RegExp(`^describe(?:\\.each\\([^)]*\\))?\\(\\s*["'\`]${t}(?: \\(%s\\))?["'\`]`, 'm'),
+  const blocks = describeBlocks(content).filter(
+    (b) => isSliceBlock(b.title, title) || queryOfBlock(b.title, title) !== null,
   );
-  if (start === -1) return null;
-  const rest = content.slice(start + 1);
-  const next = rest.search(TOP_LEVEL_DESCRIBE);
-  const block = next === -1 ? rest : rest.slice(0, next);
-  return (block.match(TEST_BLOCK) || []).length;
+  return blocks.length === 0 ? null : blocks.reduce((sum, b) => sum + b.tests, 0);
 }
 
 function removedLines(repoRoot, file) {
@@ -163,12 +151,12 @@ module.exports = {
         if (count === null) {
           violations.push({
             path: testsFile,
-            reason: `no top-level describe("${slice.title}") (or describe.each(...)("${slice.title} (%s)")) block for this extension slice's specifications`,
+            reason: `no top-level describe("${slice.title}") (or describe.each(...)("${slice.title} (%s)"), or a "${slice.title}: {query} (%s)" query block) for this extension slice's specifications`,
           });
         } else if (count < specCount) {
           violations.push({
             path: testsFile,
-            reason: `describe("${slice.title}") has ${count} test(...) block(s) but the extension declares ${specCount} specification(s)`,
+            reason: `the "${slice.title}" describe blocks have ${count} test(...) block(s) but the extension declares ${specCount} specification(s)`,
           });
         }
       }

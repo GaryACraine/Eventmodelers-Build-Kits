@@ -1012,7 +1012,8 @@ entry:
 - Never touch `canHandle`, `lookups`, `evolve`, `version`, the Doc interface or an existing query. The
   documents don't change, so nothing else may either.
 
-`route.ts` and `src/index.ts` stay as they are. `readModelRoute` serves every declared query.
+`route.ts` and `src/index.ts` stay as they are. `readModelRoute` serves every declared query. The
+`query-additive` commit check enforces this and A5.
 
 ### A5 — The tests
 
