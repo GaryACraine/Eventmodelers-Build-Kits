@@ -36,7 +36,9 @@ These are always up to date — read them directly before invoking any skill.
 - Shared events live at `src/contexts/{context}/Events.ts`
 - No migration files — Pongo creates JSONB collections automatically via `projection.init()`
 - No Flyway, no Knex — use Pongo for read model persistence
-- OpenAPI is programmatic via `document.ts` + Zod, not JSDoc `@openapi` annotations
+- OpenAPI is programmatic via Zod, not JSDoc `@openapi` annotations: each slice's `schema.ts` registers its routes
+  (`registerCommand` / `registerRead` from `src/shared/openapi.ts`); `readModelRoute` documents a read model from
+  its required `schema`. `/openapi.json` is what the frontend generates its client from
 - Test files are named `*.tests.ts` (plural), not `*.test.ts`
 - Test blocks use `test(...)` (vitest), not `it(...)`
 - Integration tests use `getTestPgDatabasePool` + testcontainers — requires Docker

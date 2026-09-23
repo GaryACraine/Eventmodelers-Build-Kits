@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { extendZodWithOpenApi } from "@asteasolutions/zod-to-openapi"
+import { registerCommand } from "../../../../shared/openapi.js"
 
 extendZodWithOpenApi(z)
 
@@ -10,3 +11,12 @@ export const RegisterCourseSchema = z
         capacity: z.number().int().min(1).openapi({ example: 30, description: "Maximum number of students" })
     })
     .openapi("RegisterCourseBody")
+
+registerCommand({
+    method: "post",
+    path: "/courses",
+    summary: "Register a course",
+    body: RegisterCourseSchema,
+    success: "createdId",
+    errors: { 422: "Course already exists" }
+})

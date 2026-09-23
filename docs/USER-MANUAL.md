@@ -1816,7 +1816,8 @@ folder, so nothing can skip them:
 | test-file-present | code without a test file |
 | no-invented-fields | fields not in `slice.json` (heuristic) |
 | spec-coverage | fewer tests than scenarios |
-| tsc-build | TypeScript errors |
+| openapi-registered | a route missing from `/openapi.json` (no `registerCommand`/`registerRead` in `schema.ts`) |
+| tsc-build | TypeScript errors (including a read model's `schema` that doesn't match its document) |
 | slice-tests | failing tests in any slice folder the commit touches |
 
 If a check fails, the agent must fix the code, or set the slice to **Blocked** with the reason. It never

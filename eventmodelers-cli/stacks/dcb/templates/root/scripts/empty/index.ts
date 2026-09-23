@@ -5,7 +5,9 @@ import type { SequencePosition } from "@dcb-es/event-store"
 
 import { startReadModels, type ReadModel, type StoredProjectionRegistration } from "./shared/readModels.js"
 import type { SliceDependencies } from "./shared/dependencies.js"
+import { configureCors } from "./shared/cors.js"
 import { configureEventFeedRoute } from "./contexts/enrollment/slices/event-feed/route.js"
+import { configureOpenApiRoute } from "./contexts/enrollment/slices/openapi/route.js"
 
 const connectionString = process.env["PG_CONNECTION_STRING"]
 if (!connectionString) {
@@ -38,7 +40,9 @@ const deps: SliceDependencies = { store: eventStore, pool, readModels: readModel
 
 const app = getApplication({
     apis: [
-        configureEventFeedRoute(eventStore)
+        configureCors(),
+        configureEventFeedRoute(eventStore),
+        configureOpenApiRoute()
     ]
 })
 
@@ -47,6 +51,7 @@ const server = startAPI(app, { port })
 server.on("listening", () => {
     const addr = server.address() as { port: number }
     console.log(`enrollment listening on http://localhost:${addr.port}`)
+    console.log(`  GET  http://localhost:${addr.port}/openapi.json`)
 })
 
 void deps

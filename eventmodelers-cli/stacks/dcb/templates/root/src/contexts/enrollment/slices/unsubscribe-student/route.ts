@@ -3,6 +3,7 @@ import { on, NoContent, withETag, getIdempotencyKey, type WebApiSetup } from "@d
 import type { SliceDependencies } from "../../../../shared/dependencies.js"
 import { findExistingPosition } from "../../../../shared/idempotency.js"
 import { unsubscribeStudentFromCourse } from "./decider.js"
+import "./schema.js"
 
 export function configureUnsubscribeStudentRoute(deps: SliceDependencies): WebApiSetup {
     const { store, pool } = deps

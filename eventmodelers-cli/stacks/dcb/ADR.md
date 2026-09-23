@@ -123,6 +123,13 @@ This document captures the architectural decisions made in the DCB build kit's s
 
 **Consequences:** Single source of truth for validation and docs. Schema changes automatically propagate to the OpenAPI spec. The trade-off is tying API documentation format to Zod's type system, and `.openapi()` extensions add verbosity to schema definitions.
 
+**Update 2026-09-23 (PLAN 14.1):** the registry is no longer one central `document.ts` that imports every slice's
+schema. Slices built by the loop can only touch their own folder, so each slice registers its own routes in
+`src/shared/openapi.ts`: `registerCommand` / `registerRead` in its `schema.ts`, and `readModelRoute` documents a
+fold-form read model (keyed GET and every query) from the document's Zod schema, typed against the Doc so tsc
+catches drift. The `openapi` slice serves the result. The `openapi-registered` commit check keeps it complete,
+because a frontend now generates its client from `/openapi.json`.
+
 ---
 
 ### ADR-008: Single ordered event log (no per-aggregate streams)

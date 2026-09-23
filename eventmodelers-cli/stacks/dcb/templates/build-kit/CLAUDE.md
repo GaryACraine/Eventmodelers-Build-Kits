@@ -18,7 +18,9 @@ Read `src/contexts/` to understand the global structure. Events for each context
 1. Each slice is self-contained under `src/contexts/{context}/slices/{slicename}/`
 2. Shared events live at `src/contexts/{context}/Events.ts` — add to it, never rewrite
 3. No migration files — Pongo creates JSONB collections via `projection.init()`
-4. OpenAPI documentation is programmatic via `src/contexts/{context}/slices/openapi/document.ts`
+4. OpenAPI is programmatic: each slice documents its routes (`registerCommand` / `registerRead` in its
+   `schema.ts`, or `readModelRoute`'s `schema`) through `src/shared/openapi.ts`, and the `openapi` slice serves
+   them all at `/openapi.json`. The frontend's client is generated from it, so every route must be there
 
 Only check `src/contexts/{context}/slices/{slicename}/*.ts`, do not check subfolders, unless explicitly tasked to build the UI.
 
@@ -91,6 +93,9 @@ It loads every check under `.build-kit/lib/checks/` and rejects the commit if an
   `.build-kit/.slices/{context}/{slice}/slice.json`
 - **spec-coverage** — heuristic: each `*.tests.ts` file needs at least as many `test(...)` blocks as
   slice.json has `specifications[]` entries (applies to both `route.tests.ts` and `route.integration.tests.ts`)
+- **openapi-registered** — every `router.get/post/put/patch/delete("<path>")` in a slice's `route.ts` has a
+  `registerCommand` / `registerRead` with the same method and path in its `schema.ts`, and `route.ts` imports
+  `./schema.js`; every `readModelRoute(…)` passes `schema:` (it documents the keyed GET and the queries itself)
 - **tsc-build** — `npx tsc --noEmit` must still pass
 - **slice-tests** — the tests of every slice folder the commit touches must pass (for an extension, that is
   the origin's full test file, earlier scenarios included)

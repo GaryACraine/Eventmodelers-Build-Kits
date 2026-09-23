@@ -3,6 +3,7 @@ import type { Pool } from "pg"
 import { Tags, SequencePosition, type TaggedEvent } from "@dcb-es/event-store"
 import { getApplication } from "@dcb-es/event-store-express"
 import supertest from "supertest"
+import { z } from "zod"
 import { getTestPgDatabasePool } from "@test/testPgDbPool"
 import { defineReadModel, queryTypes, readModelRoute, readQueryRoute, startReadModels, withType, type ReadModel, type ReadModelRuntime, type ReadModelType } from "./readModels.js"
 import {
@@ -28,6 +29,16 @@ interface CourseDoc {
     tags: string[]
     subscribedStudents: { studentId: string }[]
 }
+
+const CourseDocSchema = z.object({
+    courseId: z.string(),
+    title: z.string(),
+    capacity: z.number(),
+    remainingSeats: z.number(),
+    level: z.unknown().optional(),
+    tags: z.array(z.string()),
+    subscribedStudents: z.array(z.object({ studentId: z.string() }))
+})
 
 const queries: Record<string, QueryDefinition> = {
     // stored-only: state predicates, no tag
@@ -305,7 +316,7 @@ describe("runtime guards", () => {
             }
         })
         const { runtime } = await started("inline-projected")
-        const agent = supertest(getApplication({ apis: [readModelRoute(withPaths, runtime, "/courses/:courseId")] }))
+        const agent = supertest(getApplication({ apis: [readModelRoute(withPaths, runtime, "/courses/:courseId", { schema: CourseDocSchema })] }))
         expect((await agent.get("/courses/c1")).body).toMatchObject({ courseId: "c1" })
         expect(ids((await agent.get("/available-courses?min=9")).body)).toEqual(["c3"])
         expect(ids((await agent.get("/students/s1/courses")).body)).toEqual(ids(await runtime.querier(courses, "forStudent")({ studentId: "s1" }, { limit: 50 })))

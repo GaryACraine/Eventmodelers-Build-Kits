@@ -43,7 +43,11 @@ BASE_URL=http://localhost:3000 node dist/seed.js
 
 ## API
 
-Once running, visit `http://localhost:3000/openapi.json` for the full OpenAPI document.
+Once running, visit `http://localhost:3000/openapi.json` for the full OpenAPI document. Each slice registers its
+own routes (`src/shared/openapi.ts`), so the document grows as slices are built.
+
+A browser app on another origin (the `web/` frontend, Vite's dev server on `:5173`) needs `CORS_ORIGIN`: a
+comma-separated list of allowed origins, or `*`. Unset, the API sends no CORS headers.
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -66,12 +70,13 @@ Each feature is a vertical slice under `src/contexts/{context}/slices/{slicename
 - `command.ts` — command type
 - `decisionModels.ts` — `EventHandlerWithState` decision models (tag-scoped state)
 - `decider.ts` — `decider()` combining models + business logic
-- `schema.ts` — Zod request validation + OpenAPI extensions
+- `schema.ts` — Zod request validation, and the route's `/openapi.json` entry (`registerCommand`)
 - `route.ts` — Express route using `handle()`, `validateBody()`, `withETag()`
 - `route.tests.ts` — `ApiSpecification` unit tests (in-memory store)
 
 **Read slices** (events → projection → query):
 - `projection.ts` — `pongoProjection()` (Pongo/JSONB collections)
+- `schema.ts` — the response body's Zod schema, and the route's `/openapi.json` entry (`registerRead`)
 - `route.ts` — Express GET with `preferWait` middleware
 - `route.tests.ts` — Postgres integration tests via testcontainers
 

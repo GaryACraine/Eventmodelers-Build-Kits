@@ -12,6 +12,7 @@ import {
     STUDENT_PROJECTION_NAME
 } from "./contexts/enrollment/slices/student-details/projection.js"
 
+import { configureCors } from "./shared/cors.js"
 import { startReadModels, type ReadModel, type StoredProjectionRegistration } from "./shared/readModels.js"
 
 import { configureRegisterCourseRoute } from "./contexts/enrollment/slices/register-course/route.js"
@@ -59,6 +60,7 @@ const deps = { store: eventStore, pool, readModels: readModelRuntime }
 
 const app = getApplication({
     apis: [
+        configureCors(),
         configureRegisterCourseRoute(deps),
         configureRegisterStudentRoute(deps),
         configureSubscribeStudentRoute(deps),

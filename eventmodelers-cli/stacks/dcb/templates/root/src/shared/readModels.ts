@@ -14,6 +14,8 @@ import {
 } from "@dcb-es/event-store-postgres"
 import { on, OK, preferWait, withETag, type WaitFunction, type WebApiSetup } from "@dcb-es/event-store-express"
 import { ensureProjectionsCurrent } from "./ensureProjectionsCurrent.js"
+import { registerReadModel } from "./openapi.js"
+import type { ZodType, ZodTypeDef } from "zod"
 import {
     buildQuerySql,
     encodeCursor,
@@ -484,15 +486,26 @@ export async function startReadModels(
  * The body is the document itself, so it is the same whichever type serves it (ADR-022).
  * Async read models also honour `Prefer: wait` + `If-None-Match` and send a bookmark ETag — an
  * optional extra, outside the contract.
+ *
+ * `schema` is the Zod schema of the document (the slice's `schema.ts`). It documents the keyed GET and
+ * every query in `/openapi.json`, at the paths served here, and tsc checks it covers the document's fields.
+ * The build skills always pass it (the openapi-registered check requires it); without one the paths are
+ * still listed, with an untyped body.
  */
-export function readModelRoute(
-    readModel: ReadModel<any, any>,
+export function readModelRoute<TDoc extends ReadModelDoc>(
+    readModel: ReadModel<TDoc, any>,
     runtime: Pick<ReadModelRuntime, "reader" | "querier" | "waitFn">,
     path: string,
-    options: { pool?: Pool; notFound?: string } = {}
+    options: { schema?: ZodType<TDoc, ZodTypeDef, unknown>; pool?: Pool; notFound?: string; summary?: string } = {}
 ): WebApiSetup {
     const read = runtime.reader(readModel)
     const waitFn = runtime.waitFn(readModel)
+    registerReadModel(readModel, path, {
+        schema: options.schema,
+        summary: options.summary,
+        notFound: options.notFound,
+        wait: Boolean(waitFn)
+    })
     const param = path.match(/:(\w+)/)?.[1] ?? readModel.key
     // Every query that declares a path is served next to the keyed GET, so adding a query to a
     // read model never touches its route or the app's wiring (ADR-023).

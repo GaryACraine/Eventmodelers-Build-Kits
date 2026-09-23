@@ -229,7 +229,33 @@ has settled every choice here. Transcribe it and don't invent parameters, operat
 
 ---
 
-## Step 4 — Create `route.ts`
+## Step 4 — Create `schema.ts` and `route.ts`
+
+File: `src/contexts/{context}/slices/{slicename}/schema.ts`
+
+The Zod schema of the document: what `/openapi.json` shows a frontend for the keyed GET and every query.
+
+```typescript
+import { z } from "zod"
+import { extendZodWithOpenApi } from "@asteasolutions/zod-to-openapi"
+
+extendZodWithOpenApi(z)
+
+export const {SliceName}Schema = z
+    .object({
+        // One entry per field of the Doc interface, same names and types (slice.json readModel.fields)
+        {key}: z.string().openapi({ example: "{example}" }),
+        {field1}: z.number().int().openapi({ example: {example} }),
+        {listField}: z.array(z.object({ {subField}: z.string() }))
+    })
+    .openapi("{SliceName}")
+```
+
+- Types follow the Doc interface: `string` → `z.string()`, `number` → `z.number()` (`.int()` for `Int`/`Long`),
+  `boolean` → `z.boolean()`, a list → `z.array(z.object({ … }))`, a value `evolve` may store as `null` →
+  `.nullable()`, an optional Doc field → `.optional()`.
+- Examples come from the slice.json field `example`s. Leave `.openapi({ … })` out of a field without one.
+- Don't add `.min()` or other validation: this schema describes a response, it doesn't check input.
 
 File: `src/contexts/{context}/slices/{slicename}/route.ts`
 
@@ -238,10 +264,12 @@ import type { WebApiSetup } from "@dcb-es/event-store-express"
 import type { SliceDependencies } from "../../../../shared/dependencies.js"
 import { readModelRoute } from "../../../../shared/readModels.js"
 import { {sliceName} } from "./readModel.js"
+import { {SliceName}Schema } from "./schema.js"
 
 // Serves the {SliceName} document as the body, whichever type the read model runs as (ADR-022).
 export function configure{SliceName}Route(deps: SliceDependencies): WebApiSetup {
     return readModelRoute({sliceName}, deps.readModels!, "{path}", {
+        schema: {SliceName}Schema,
         pool: deps.pool,
         notFound: "{Entity} not found"
     })
@@ -252,6 +280,11 @@ Don't write a handler by hand: `readModelRoute` returns the document as the body
 for an async read model the optional `Prefer: wait` / ETag extras. It also serves **every query in the
 definition** at that query's `path`, so a query needs no route code of its own. The route file is the same with
 or without queries.
+
+`readModelRoute` also puts the keyed GET and every query into `/openapi.json`, documented with `schema`. The
+`openapi-registered` commit check rejects a `readModelRoute` call without `schema`, and tsc checks the schema
+against the Doc interface: a field missing from it, or with another type, fails the build. (An optional Doc
+field left out isn't caught: add those too.)
 
 ---
 
@@ -524,7 +557,34 @@ configure{SliceName}Route(deps),
 `startReadModels` inits it, registers async projections with the consumer and inline ones in the event store,
 and keeps them current (`ensureProjectionsCurrent`).
 
-### P3 — `route.ts` (async)
+### P3 — `schema.ts` and `route.ts` (async)
+
+File: `src/contexts/{context}/slices/{slicename}/schema.ts`
+
+A hand-written route is documented by hand, with `registerRead`, the response body as a Zod schema written as
+in Step 4:
+
+```typescript
+import { z } from "zod"
+import { registerRead } from "../../../../shared/openapi.js"
+
+export const {SliceName}Schema = z
+    .object({
+        // the response body's fields, as the handler below maps them
+    })
+    .openapi("{SliceName}")
+
+registerRead({
+    path: "/{resource}/:id",            // exactly as route.ts writes it
+    summary: "{the read model's title}",
+    response: {SliceName}Schema,        // a list: z.object({ data: z.array({SliceName}Schema), cursor: z.string().optional() })
+    notFound: "{Entity} not found",     // keyed reads only
+    wait: true                          // async: it honours Prefer: wait and sends an ETag; false for inline
+})
+```
+
+The `openapi-registered` commit check rejects a `router.get(…)` path that `schema.ts` doesn't register, and a
+`route.ts` that doesn't import `./schema.js`.
 
 File: `src/contexts/{context}/slices/{slicename}/route.ts`
 
@@ -533,6 +593,7 @@ import { on, OK, withETag, preferWait, type WebApiSetup, type WaitFunction } fro
 import type { SliceDependencies } from "../../../../shared/dependencies.js"
 import { {PROJECTION_NAME_CONST} } from "./projection.js"
 import type { {SliceName}Doc } from "./projection.js"
+import "./schema.js"
 
 export function configure{SliceName}Route(deps: SliceDependencies & { waitFn?: WaitFunction }): WebApiSetup {
     const { pool, waitFn } = deps
@@ -761,12 +822,14 @@ Write it exactly as P1. Because `handle()` now runs inside every append of the e
 #### Inline: `route.ts` has no waiting and no bookmark (replaces P3's plumbing)
 
 The read model is already current when any command returns, so drop `preferWait`, `waitFn`,
-`getBookmarkPosition` and `withETag`. The query and the response mapping stay as in P3:
+`getBookmarkPosition` and `withETag`. The query and the response mapping stay as in P3, and so does
+`schema.ts`, with `wait: false` in its `registerRead`:
 
 ```typescript
 import { on, OK, type WebApiSetup } from "@dcb-es/event-store-express"
 import type { SliceDependencies } from "../../../../shared/dependencies.js"
 import type { {SliceName}Doc } from "./projection.js"
+import "./schema.js"
 
 // Inline read model: updated inside the append transaction, so it is current the moment a
 // command returns. No Prefer: wait, no bookmark ETag.
@@ -902,7 +965,8 @@ stop and report that this extension is already built. Do not edit anything.
   lookup (append the related event to its `canHandle` and handle it in its `evolve`), or append a new lookup
   entry. The events feeding a lookup must be in `extends.addedEvents` (the modeler wires them into the copy).
   If they aren't, don't invent them: stop and report the missing inbound event.
-- Each field in `extends.addedFields` becomes an **optional** field of the Doc interface.
+- Each field in `extends.addedFields` becomes an **optional** field of the Doc interface, and an `.optional()`
+  field at the end of the origin's `schema.ts` object (Step 4), so `/openapi.json` shows it.
 - If the origin is `live-report`, re-check Step 2 for the added events. They need the key tag, or a lookup's
   tag. If one fails, invoke `request-feedback`.
 
@@ -913,7 +977,8 @@ stop and report that this extension is already built. Do not edit anything.
   or `?? []` when reading an array that may be absent.
 - A lookup the step needs gets a `createCollection()` line in `init()` and a `deleteMany()` line in
   `truncate()`, named as in P1.
-- Fields in `extends.addedFields` become optional in the Doc interface.
+- Fields in `extends.addedFields` become optional in the Doc interface, and `.optional()` fields at the end of
+  the response schema in the origin's `schema.ts` (P3).
 
 **Queries:** if the extension's specifications run queries the origin doesn't declare yet (Step 0), add them to
 the origin's `readModel.ts` as in "Adding queries" A3–A4, in the same commit.
@@ -967,6 +1032,7 @@ route registration.
 src/contexts/{originContext}/slices/{originFolder}/
 ├── readModel.ts        ← (fold form) appended: canHandle entries, evolve cases, lookups, optional Doc fields
 │   or projection.ts    ← (imperative) appended: canHandle entries, cases, lookup init/truncate lines
+├── schema.ts           ← appended: an .optional() field per added field
 ├── route.ts            ← imperative form only: added fields mapped (with defaults)
 └── route.tests.ts      ← appended: a block for the extension's specifications
 ```
@@ -1067,15 +1133,16 @@ On the next start, `ensureProjectionsCurrent` rebuilds the stored copy when swit
 ```
 src/contexts/{context}/slices/{slicename}/
 ├── readModel.ts        ← fold form: defineReadModel (or projection.ts, imperative form)
-├── route.ts            ← readModelRoute (imperative form: the P3 handler)
+├── schema.ts           ← the document's Zod schema (imperative form: plus registerRead)
+├── route.ts            ← readModelRoute with that schema (imperative form: the P3 handler)
 └── route.tests.ts      ← contract tests, describe.each over READ_MODEL_TYPES (imperative: P4)
 
 src/
 └── index.ts            ← add it to readModels (imperative: imperative) and its route to apis
 ```
 
-Queries add no files: they're declared in `readModel.ts`, served by `readModelRoute` and tested in
-`route.tests.ts`.
+Queries add no files: they're declared in `readModel.ts`, served and documented in `/openapi.json` by
+`readModelRoute`, and tested in `route.tests.ts`.
 
 ---
 
@@ -1087,7 +1154,8 @@ Queries add no files: they're declared in `readModel.ts`, served by `readModelRo
 - [ ] `readModel.ts`: `type` from slice.json, `key` = the idAttribute field, `canHandle` = slice.json `events[]` (one per line), lookups only for data from another entity
 - [ ] `evolve` is pure, returns new objects, tolerates a missing document, and ends with `return doc`
 - [ ] Every field in `readModel.fields` is produced by `evolve`, and there are no invented fields
-- [ ] `route.ts` is a `readModelRoute` call with the `path` from `apiEndpoint`
+- [ ] `schema.ts` has the document's Zod schema, one entry per Doc field (optional ones too)
+- [ ] `route.ts` is a `readModelRoute` call with the `path` from `apiEndpoint` and `schema`
 - [ ] `readModels` in `src/index.ts` lists it, and its route is in `apis` (a separate wire commit)
 - [ ] `route.tests.ts`: `describe.each(READ_MODEL_TYPES)`, one `test` per keyed specification, `settle()` before each GET, `toMatchObject`, nothing type-specific
 
@@ -1106,7 +1174,7 @@ Queries add no files: they're declared in `readModel.ts`, served by `readModelRo
 
 - [ ] No new read model, route or test file created. All edits are in the origin folder.
 - [ ] None of `extends.addedEvents` was already handled (E1)
-- [ ] Every added event appended to `canHandle` with its own `case`, and new fields optional
+- [ ] Every added event appended to `canHandle` with its own `case`, and new fields optional, in the Doc and in `schema.ts`
 - [ ] No existing `case`, field, lookup or `canHandle` entry edited, reordered or removed
 - [ ] `version` incremented if a new field is derived from an already-handled event
 - [ ] A block for the extension's specifications appended to the origin's `route.tests.ts`, and every pre-existing test still passes unchanged
