@@ -562,6 +562,13 @@ query can also generate and test it.
   types.
 - **New queries are additive.** A query added to a Done read model re-queues it through the loop, as a retype does
   (ADR-022), and the skill adds the query without touching `evolve`. Documents don't change, so no rebuild.
+- **Commit checks hold it additive.** While an `addQueries` slice is InProgress, `query-additive` allows only
+  its own `readModel.ts` and tests to change: lines added inside `queries` (re-adding the previous last entry's
+  `}` as `},`), every added name declared, a `"{slice title}: {query} (%s)"` block per added query with a test per
+  spec that runs it, and existing test lines kept, except the import widened with `queryTypes`. With a `retype`
+  too, the retype is its own one-line commit first: `retype-scope` holds any commit that touches the `type:`
+  line to that line, and leaves the queries commit to `query-additive`. An extension's queries go in the
+  origin, where `extension-additive` counts its query blocks with its keyed block.
 
 **Alternatives considered:**
 - **Reusing `SPEC_READMODEL` in *when*.** Rejected: it's ambiguous against *then* for the kit, and it can't carry

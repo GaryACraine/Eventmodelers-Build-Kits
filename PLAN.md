@@ -174,14 +174,31 @@ from ADR-022 still holds: the same URL and body whichever read model type serves
       on all three types).
     - All 99 tests pass. The `readModel.ts` diffs are pure insertions, and the only changed lines are the
       `route.tests.ts` imports gaining `queryTypes`.
-- [ ] **12.5 Commit checks.** Findings from 12.4:
-  - `extension-additive` and `spec-coverage` must count tests in query blocks. `describe.each(queryTypes(rm,
-    "q"))(…)` has nested parentheses, which the current `describe.each\([^)]*\)` pattern doesn't match. The
-    block title is `"{slice title}: {query} (%s)"`.
-  - `retype-scope` rejects the queries commit that follows a retype while `addQueries` is also present. When
-    `addQueries` is set, it must allow additions inside `queries` and appended test blocks.
-  - An `addQueries` slice that isn't an extension needs the same additive rule for its own `readModel.ts`: only
-    lines added inside `queries`, and nothing removed except a `}` re-added as `},`.
+- [x] **12.5 Commit checks.** *(Done 2026-09-23.)*
+  - **`util/describe-blocks.cjs`** (DCB kit, merged next to the shared `find-slice.cjs` on install) lists the
+    top-level describe blocks, with `.each(…)` arguments nesting one level of calls, so
+    `describe.each(queryTypes(rm, "q"))(…)` is recognised both as a block start and as the end of the previous
+    block.
+  - **`extension-additive`** counts the extension's keyed block and its `"{title}: {query} (%s)"` blocks together.
+  - **New `16-query-additive`**, for an InProgress `addQueries` slice that isn't an extension:
+    - only its own `readModel.ts` and `*.tests.ts` change;
+    - `readModel.ts` gains lines only inside the `queries: { … }` block (found by brace matching, and checked by
+      new-file line number from the `-U0` hunks). The only removal allowed is a line re-added with `,`, and
+      every `addQueries` name must be declared;
+    - `route.tests.ts` must change, with a query block per added name holding ≥ one test per spec whose *when*
+      runs it. Existing lines stay, except an import re-added with more names from the same module;
+    - a `type:` line change without a `retype` block is rejected.
+  - **`retype-scope`:** with `addQueries`, a commit that leaves the `type:` line alone is the queries commit,
+    and query-additive governs it. A commit that touches the type line is still held to that one line, so a
+    combined retype-plus-queries commit is rejected, matching the skill's "retype first, as its own commit".
+  - **`spec-coverage` needed no change,** contrary to the 12.4 finding: it counts every `test(` in the file,
+    whatever block it's in.
+  - **Tests:** 18 new `node:test` cases in `stacks/dcb/tests/checks/query-checks.test.cjs`, plus the 5 existing
+    retype-scope cases; all 23 pass. On the 12.4 dry-run diffs (CourseSeats `availableCourses`, CourseDetails
+    `coursesForStudent`), checks 15, 16, 17 and 50 all pass, including CourseDetails with a `retype` block. The
+    old retype-scope rejected that same diff.
+  - Docs: ADR-023 "Tests and the loop", the build kit's CLAUDE.md check list, skill A4, and the manual's check
+    table (which gains the missing retype-scope row too).
 - [ ] **12.6 Experiment on course-enrollment (Gary runs the loop):**
   - `availableCourses` on CourseSeats (`GET /available-courses?minRemainingSeats=1`, `remainingSeats gte`,
     stored-only);
