@@ -199,12 +199,66 @@ from ADR-022 still holds: the same URL and body whichever read model type serves
     old retype-scope rejected that same diff.
   - Docs: ADR-023 "Tests and the loop", the build kit's CLAUDE.md check list, skill A4, and the manual's check
     table (which gains the missing retype-scope row too).
-- [ ] **12.6 Experiment on course-enrollment (Gary runs the loop):**
-  - `availableCourses` on CourseSeats (`GET /available-courses?minRemainingSeats=1`, `remainingSeats gte`,
-    stored-only);
-  - `coursesForStudent` on CourseDetails (`GET /students/{studentId}/courses`, `subscribedStudents.studentId`
-    contains, tag `studentId`), with the same body live and stored;
-  - latency with and without the index, and live against stored.
+- [x] **12.6 Experiment on course-enrollment (Gary ran the loop).** *(Done 2026-09-23, branch
+  `increment/t11-queries`.)*
+  - **Kit update** (`69e295b`): the post-12.3 shared runtime, the new checks and util, the skill and the build
+    kit's CLAUDE.md, copied over the project. `index.ts` needed no change. All 108 existing tests pass.
+  - **Model** (`49bab61`, emcli):
+    - `availableCourses` on CourseSeats (`/available-courses`, `minRemainingSeats` Int `gte remainingSeats`,
+      stored-only). Two specs in the `course seats` slice: ≥1 returns c1 and c3 and skips the full c2; ≥3 returns
+      no rows.
+    - `coursesForStudent` on CourseDetails (`/students/{studentId}/courses`, `contains
+      subscribedStudents.studentId`, tag `studentId`, sort `title`). Its two specs are in the **extension** `course
+      details subscriptions`, where `subscribedStudents` exists, so the loop took both the plain path
+      (query-additive) and the extension path (extension-additive).
+    - Export re-queued both built slices as Planned with `addQueries`.
+  - **Loop:** both slices built first time, and every check passed on the first commit:
+    - `coursesForStudent`: 80 s, $0.83;
+    - `availableCourses`: 68 s, $0.78.
+    - Each commit adds a `queries` entry before `evolve` in the (origin's) `readModel.ts` and widens the import
+      with `queryTypes`. Each appends one query block with a test per spec: `coursesForStudent` over all three
+      types, `availableCourses` over the two stored types.
+    - 118 tests pass (108 + 10). The loop recorded both patterns in `.build-kit/AGENTS.md`.
+  - **Over HTTP on the dev DB:**
+    - `/available-courses?minRemainingSeats=1` returns six courses in key order;
+    - `/students/s1/courses` is served live (CourseDetails is `live-report`) and sorted by title;
+    - a non-numeric parameter gets a 400;
+    - `limit=1` returns a cursor, and following it continues at the next key.
+  - **Latency.** Seeded through the command routes, then `runtime.querier` timed in-process: 300 calls after
+    20 warm-ups, median, page limit 50. Datasets: 2k courses / 2k students / 10k subscriptions (14k events), and
+    20k / 20k / 100k (140k events).
+
+    | query (stored, after VACUUM ANALYZE) | 2k with index | 2k without | 20k with index | 20k without |
+    |---|---|---|---|---|
+    | `coursesForStudent` (GIN `jsonb_path_ops`, 5 rows) | 0.36 ms | 1.23 ms | 0.40 ms | 8.84 ms |
+    | `availableCourses ≥500` (btree, 20 / 200 matches) | 0.32 ms | 0.94 ms | 0.50 ms | 6.58 ms |
+    | `availableCourses ≥1` (96 % match, first page) | 1.27 ms | 1.18 ms | 8.39 ms | 8.23 ms |
+
+    - **Selective queries:** the indexes keep them flat as the table grows (22× and 13× at 20k).
+    - **Unselective queries:** an unsorted query orders by `(_id COLLATE "C")`, and no index has that order
+      (the primary key uses the default collation). So Postgres filters and sorts every match to return 50.
+      With an index on `(_id COLLATE "C")`, the first page drops from 8.2 ms to 0.41 ms, because Postgres walks
+      key order and stops at 51 rows. Deep pages stay O(offset) (2.3 ms after c5000): the cursor predicate is
+      the 4-tuple row comparison, and its constant columns can't be an index condition. → 12.6b.
+    - **Right after a bulk load (2k):** the GIN index had 10,648 tuples in its fastupdate pending list, and each
+      table had 10,000 dead tuples. The planner seq-scanned `coursesForStudent` (1.26 ms) until VACUUM (0.36 ms).
+      At 20k, autovacuum kept up (1,147 pending) and the index was used. This matters after a rebuild
+      (truncate + replay) → 12.7 docs.
+  - **Live against stored** (CourseDetails, `coursesForStudent`, 5 rows):
+    - 0.39 ms stored against 14.1 ms live at 20k. At 2k, live was 27 ms.
+    - Keyed GET: 0.21 ms stored against 2.6 ms live.
+    - All 50 compared pages are identical live and stored (deep equality; only JSONB key order differs).
+    - The live query doesn't grow with the table, because the tag narrows the candidates. Its cost is round
+      trips: 22 event reads, 79 statements (BEGIN / DECLARE / FETCH / ROLLBACK for each), and 1.4 ms of it is
+      database time.
+    - The 2k store is slower because the store reads through `DECLARE CURSOR`, which Postgres plans with
+      `cursor_tuple_fraction = 0.1`. On a small events table that plan loses to the GIN tag index: 22 FETCHes
+      took 10 ms against 0.4 ms at 20k. With `cursor_tuple_fraction = 1.0` on the session, 2k live drops to
+      14.4 ms. This is a dcb-event-store finding (the read path's cursor planning), not a kit one.
+- [ ] **12.6b Key-order index for unsorted queries** (from 12.6):
+  - `queryIndexStatements` adds `(_id COLLATE "C")` for a collection whose queries include an unsorted one.
+  - `buildQuerySql` emits the cursor for an unsorted query as `(_id COLLATE "C") > $key`, so deep pages seek too.
+  - Unselective first pages at 20k go from 8.2 ms to about 0.4 ms. The mirror test and the query tests stay green.
 - [ ] **12.7 Docs:** a new manual section, "Querying read models", and PLAN results.
 
 ---
