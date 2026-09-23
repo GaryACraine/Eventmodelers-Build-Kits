@@ -953,6 +953,7 @@ What comes back on a pull, and what doesn't:
 | Notes in a slice's or sticky's details | ✅ arrives in `workspace.json` |
 | Renamed stickies or slices, new stickies | ✅ arrives |
 | Edited field lists, dependencies, scenarios | ❌ your local model wins; they're re-rendered on the next push |
+| A read model copied on the board | ⚠️ arrives as a new, unlinked sticky. Mark it: `emcli element update "$(chapter_id)" <copy> --copy-of <origin>` |
 
 Your local model is the source of truth for structure. The board is where people see it and comment on it.
 
@@ -1332,11 +1333,12 @@ instantaneous in this example, and it grows with your event store.
 
 ## 15. Known limits
 
-- **Only emcli adds `extends`.** Slices exported from the eventmodelers platform don't carry it yet, so extension
-  mode works only with emcli-sourced slices.
 - **The node (Emmett) kit has no extension mode.** This manual covers the DCB kit only.
-- **Copies on the board are ordinary stickies.** The "copy" relationship lives in emcli (`copyOf`), not on prooph
-  board.
+- **The copy link doesn't survive a pull.** emcli keeps it in `copyOf`, and pushes copies as ordinary stickies.
+  prooph board's own copy function does link a copy to its origin (they share `details`), but its API doesn't
+  expose that link. So a copy someone makes on the board arrives as an unrelated sticky. Mark it with
+  `element update --copy-of <origin>` before exporting, or the loop builds it as a new read model instead of an
+  extension.
 - **Done slices can't be re-queued by export.** Change a built read model with a new copy, as shown.
 - **Rebuild time grows with the event store.** Fine for development. For large production stores, plan rebuilds
   deliberately.

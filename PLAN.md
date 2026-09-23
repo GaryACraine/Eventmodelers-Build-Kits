@@ -376,7 +376,14 @@ docker-compose Postgres was kept across every step.
 - [x] **9.6** Run the real Ralph loop over the proof project (`eventmodelers run --local`) from a plain terminal, starting at `t-empty` with the t0–t4 exports. *(Done: the unattended journey run `t-empty` → `t4`, then again in 10.3 against chapter `Course Enrollment`: 11 slices, 42/42 tests.)*
 - [ ] **9.7** Node kit: port the extend mode, and replace re-emitted `CREATE TABLE IF NOT EXISTS` with an `ALTER TABLE ... ADD COLUMN` migration path (finding 1 above).
 - [x] ~~**9.9** Does the eventmodelers `slicedata` export carry `linkedTo`?~~ *Dropped: the eventmodelers board is no longer used. Its slice schema survives only as the format the kit's skills generate code from, and emcli (prooph board + `workspace.json`) is the only slice source, so emcli computes `extends`.*
-- [ ] **9.10** Does prooph REST expose element copy, and does pull mark copies? If it does, `copyOf` can be pulled instead of kept local.
+- [x] **9.10** Does prooph REST expose element copy, and does pull mark copies? If it does, `copyOf` can be pulled instead of kept local.
+  *(Answered 2026-09-23: **no**, so `copyOf` stays local. REST has `POST /chapters/{id}/elements/{id}/copy`, and the
+  board does link the copy internally: editing the origin's `details` changed the copy's, while `description`
+  stays per element. But no response carries the link. `GET /chapters/{id}` and `GET .../elements/{id}` return
+  identical key sets for origin and copy, with no origin/group field, and neither the OpenAPI spec (`/openapi.json`)
+  nor the copy response mentions one. Probed in a scratch chapter, since deleted. The manual now tells readers to mark a
+  board-made copy with `element update --copy-of` after a pull. Possible follow-up: have `sync pull` warn about a
+  new information sticky that has the same name as an existing one and no `copyOf`.)*
 - [x] **9.11a** Install a pre-commit hook in the DCB scaffold. *(Done in PR #8: `.githooks/` plus `"prepare": "git config core.hooksPath .githooks"` in the scaffold's `package.json`, so `npm install` enables it.)*
 - [ ] **9.11b** Fix `eventmodelers init` on a closed stdin (`ERR_USE_AFTER_CLOSE` at the credentials prompt). Parked: it only affects unattended setup (scripts, CI, agents), not the manual's interactive path.
 
