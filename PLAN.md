@@ -255,10 +255,25 @@ from ADR-022 still holds: the same URL and body whichever read model type serves
       `cursor_tuple_fraction = 0.1`. On a small events table that plan loses to the GIN tag index: 22 FETCHes
       took 10 ms against 0.4 ms at 20k. With `cursor_tuple_fraction = 1.0` on the session, 2k live drops to
       14.4 ms. This is a dcb-event-store finding (the read path's cursor planning), not a kit one.
-- [ ] **12.6b Key-order index for unsorted queries** (from 12.6):
-  - `queryIndexStatements` adds `(_id COLLATE "C")` for a collection whose queries include an unsorted one.
-  - `buildQuerySql` emits the cursor for an unsorted query as `(_id COLLATE "C") > $key`, so deep pages seek too.
-  - Unselective first pages at 20k go from 8.2 ms to about 0.4 ms. The mirror test and the query tests stay green.
+- [x] **12.6b Key-order index for unsorted queries.** *(Done 2026-09-23.)*
+  - **The problem:** a query without `sort` returns rows in key order. When most documents match (courses with ≥1
+    free seat), Postgres had to find every match, sort them all by key, and discard all but 51. That's O(table)
+    for every page (7.8 ms at 20k courses). No index had that order: the runtime orders keys by bytes
+    (`COLLATE "C"`, to match the live runner and the cursors), and the primary key uses the default collation.
+  - **`queryIndexStatements`** adds `(_id COLLATE "C")` for every unsorted query.
+  - **`buildQuerySql`** sends an unsorted query's cursor as `(_id COLLATE "C") > $key`. An index on the 4-tuple
+    with its constant columns was tried too. It served the first page, but not the cursor: Postgres folds the
+    constants, so deep pages still read from the start (2.3 ms). A cursor that isn't unsorted-shaped (forged)
+    keeps the full row comparison, so the SQL still matches the in-memory order exactly.
+  - Sorted queries already seek, in both directions, through their tuple index (checked at 20k: 0.07 ms deep
+    page), so they're unchanged.
+  - **20k courses, `availableCourses`, before → after:**
+    - ≥1 first page: 7.82 → 0.50 ms;
+    - ≥1 page after c5050: 3.47 → 0.40 ms;
+    - selective (≥500) and empty (≥995) results: unchanged (~0.4 ms, still on the field index).
+  - **Tests:** a new mirror test compares SQL and in-memory pages after every cursor position, plus forged
+    cursors, for every query. Another checks the key-order index exists and that a cursor page's plan has an
+    `Index Cond` on it. The template suite passes: 64 tests (62 + 2). ADR-023 is updated.
 - [ ] **12.7 Docs:** a new manual section, "Querying read models", and PLAN results.
 
 ---

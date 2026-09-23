@@ -532,6 +532,11 @@ query can also generate and test it.
     of these would make stored results differ from live ones.
   - At startup the runtime creates the indexes the queries use: one typed expression index per compared field, a
     `jsonb_path_ops` GIN index for `contains` (the SQL uses `data @? jsonpath`), and one per sort order.
+    An unsorted query orders by the key alone, so it gets a key-order index, `(_id COLLATE "C")`, which the
+    primary key (default collation) can't serve. Its cursor is sent as `(_id COLLATE "C") > $key`, not as the
+    full tuple comparison, whose constant columns can't be an index condition. A page of a query most documents
+    match then walks the keys and stops at `limit + 1`. At 20k documents, the first page drops from 7.8 ms to
+    0.5 ms and a deep page from 3.5 ms to 0.4 ms (PLAN 12.6b).
     Indexes don't change documents, so they are **not** part of the rebuild fingerprint.
 - **The live runner** can serve a query **only if the query has a required equality parameter (`eq`, `in` or
   `contains`) that declares a `tag`**:
@@ -594,6 +599,7 @@ query can also generate and test it.
   parameter pins its read model to stored types.
 - Live query cost scales with the number of candidates, i.e. the entities tagged with the parameter's value, not
   with the store.
-- Stored queries cost an indexed `find`. Heavily filtered fields may need tuning beyond the indexes the runtime
-  creates.
+- Stored queries cost an indexed SELECT. Heavily filtered fields may need tuning beyond the indexes the runtime
+  creates. Right after a bulk load (a rebuild's replay), a GIN index's pending list and the dead tuples can make
+  the planner skip an index until VACUUM runs (PLAN 12.6).
 - Out of scope: OR predicates, full-text search, aggregates (counts, sums) and cross-read-model joins.
