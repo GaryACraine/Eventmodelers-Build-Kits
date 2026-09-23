@@ -6,7 +6,8 @@
 
 | Role | Location |
 |------|----------|
-| **Build Kit (source patterns)** | `eventmodelers-cli/stacks/node/` — Emmett-based Node.js stack |
+| **Build Kit (source patterns)** | `eventmodelers-cli/stacks/node/` — the Emmett-based Node.js stack this kit was ported from |
+| **DCB Build Kit (this project)** | `eventmodelers-cli/stacks/dcb/` |
 | **DCB Event Store library** | `/Users/garyalexandercraine/Projects/dcb-event-store/` |
 | **DCB example app (ported)** | `dcb-event-store/examples/course-manager-web-api-sliced/` — vertical-slice architecture |
 
@@ -28,6 +29,79 @@
 | OpenAPI | JSDoc `@openapi` blocks + swagger-jsdoc | `@asteasolutions/zod-to-openapi` + programmatic registry |
 
 ## Phases
+
+### Phase 11: Read Model Types 🔴 Top priority
+
+> **Supersedes every other open item** (9.7, 9.11b, and porting 10.8 to the react stack and `ralph.sh`). Those
+> stay parked until Phase 11 is done.
+
+**Goal:** let a read model choose how it is kept up to date, and build each type in the DCB kit. Some business
+users need a read model that is consistent the moment a command returns; eventual consistency isn't acceptable
+for them. dcb-event-store's **inline projections** solve this: they run inside the append transaction. They hold the
+append's advisory locks while they run, so every append of their events gets slower. Use them sparingly.
+
+The DCB kit (`stacks/dcb`) builds only async projections today. The Emmett kit (`stacks/node`) already builds
+inline projections (`projections.inline([...])`), so this phase is about the DCB kit.
+
+| Type (emcli `readModelType`) | DCB mechanism | Consistency | Write cost | Status |
+|---|---|---|---|---|
+| `database-projected` (the default when the field is absent) | `pongoProjection` run by a consumer, with a bookmark and `preferWait` | eventual | none | ✅ built today |
+| `inline-projected` | the same `Projection`, passed to `new PostgresEventStore({ inlineProjections })` | immediate | lock hold on every append of its events | 11.1–11.6 |
+| `live-report` | nothing stored: fold events per request (`eventStore.read(query)` / `buildDecisionModel`) | immediate | a read on every query | 11.7, deferred |
+
+**Library behaviour (`event-store-postgres/src/eventStore/PostgresEventStore.ts`):**
+- A throw in an inline projection rolls back the append, so a bug in the projection fails the command.
+- `ensureInstalled()` registers inline projections as type `'i'` and runs their `init`. `pongoProjection.init`
+  then re-registers them as `'a'`, which looks cosmetic.
+- `rebuildProjection()` handles inline projections: it deactivates the projection, replays through a temporary
+  consumer, then reactivates it.
+
+**Rebuild hypothesis:**
+- **Extensions:** expected to work unchanged. The fingerprint changes, and `ensureProjectionsCurrent` rebuilds
+  the projection at startup, before any append.
+- **Greenfield:** differs. A new inline projection has no consumer to read from the beginning, so on an app that
+  already has history it would never see the earlier events. The first time `ensureProjectionsCurrent` sees an
+  inline projection must trigger a replay.
+
+#### Tasks
+
+- [ ] **11.1 (emcli)** Add `inline-projected` to `readModelType`: the schema, the domain type, export, and the
+  `element update` validation and help. `--copy-of` inherits the origin's type, and a copy whose type differs from
+  its origin's is rejected. `workspace export --build-kit` warns when one event type feeds three or more inline
+  read models. Add tests, and update `USAGE.md` and `CLAUDE.md`.
+- [ ] **11.2 (kit)** `build-kit/CLAUDE.md` switchboard: both projected types go to `/build-state-view`.
+  `live-report` → `request-feedback` (Blocked: not supported yet), instead of silently building an async
+  projection.
+- [ ] **11.3 (kit)** `build-state-view` gets an inline variant, chosen in Step 0 from `readmodels[0].readModelType`:
+  - `projection.ts` is unchanged, plus rules for inline code: keep it fast, make no external calls, and remember
+    that a throw fails the command.
+  - Wiring: the projection goes in `inlineProjections`. It gets no consumer and no `waitFn`.
+  - The route has no `preferWait` or bookmark ETag.
+  - Tests do a GET immediately after the POST, with no wait.
+  - The extension steps (E1–E6) apply unchanged.
+- [ ] **11.4 (kit)** `ensureProjectionsCurrent` takes the inline projections and replays one the first time it
+  sees it.
+- [ ] **11.5 (kit)** Add ADR-021 "Inline projections for immediate consistency": when to choose inline, the lock
+  cost, sparing use, and the fact that failures surface as write failures.
+- [ ] **11.6 (experiment)** On `~/Projects/course-enrollment`, build a **CourseSeats** read model (inline).
+  - **t5:** the origin, handling `courseWasRegistered`, `studentWasSubscribed` and `studentWasUnsubscribed`.
+    Check that it is backfilled from existing history, that a read immediately after a write shows the change,
+    and what the registry records as its type.
+  - **t6:** an extension adding `courseCapacityWasChanged`, with a capacity change made *before* the extension.
+    Check that the rebuild picks it up.
+  - Record whether the rebuild strategy and the copy/extension flow are the same as for async read models. Then
+    update the manual (read model types in §1, a t5/t6 walkthrough, rebuild differences in §12, and a
+    troubleshooting row).
+- [ ] **11.7 (deferred, separate task)** Live read models (`live-report`).
+  - No stored state and no rebuild. The route folds events per request, using `eventStore.read(query)`, or
+    `buildDecisionModel` with tag-scoped handlers. dcb-event-store has no "live projection" abstraction, and
+    none is needed: nothing is registered.
+  - The design work is scoping the query by tags so each read stays small.
+  - Probably its own `build-live-view` skill, since it shares no projection code; the switchboard routes
+    `live-report` to it.
+
+---
+
 
 ### Phase 1: Stack Scaffolding & Init Command ✅
 
@@ -513,4 +587,5 @@ What each `build-*` skill generates and what it verifies:
 | 8 — Integration Tests | ✅ Complete | Postgres integration tests for state-change slices; prototype proven, skill template updated |
 | 9 — Progressive Read Model Evolution | ✅ Core complete | emcli copies + extension slices, `build-state-view` extend mode, automatic rebuild; proven t0→t4 on a live DB (32/32). Real Ralph run done (9.6). Node kit port remains |
 | 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 done (stale InProgress recovery in `--local` mode) |
+| 11 — Read Model Types | 🔴 Top priority | Inline-projected read models in the DCB kit (11.1–11.6), then live read models (11.7). Supersedes all other open items |
 | 7 — Board Re-pointing | ⛔ Dropped | eventmodelers board retired; prooph board via emcli is the only board |
