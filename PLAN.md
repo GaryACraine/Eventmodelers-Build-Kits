@@ -147,13 +147,41 @@ from ADR-022 still holds: the same URL and body whichever read model type serves
     - The cases include 10 against 9, `"Banana"` sorting before `"apple"` (byte order), the string `"2"` never
       equalling the number `2`, and a missing field matching only `ne`.
     - ADR-023's semantics section is rewritten to match.
-- [ ] **12.4 The `build-state-view` skill:**
-  - a query step (declare the query, route it, and check the tag requirement against `Events.ts` for live);
-  - contract tests from given/when/then;
-  - the query-added path, which is additive;
-  - the checklist.
-- [ ] **12.5 Commit checks:** `extension-additive` accepts `queries` additions and `readQueryRoute` routes. The
-  query-added path touches neither `evolve` nor `canHandle`.
+- [x] **12.4 The `build-state-view` skill.** Query sections added to the skill, with a small runtime change
+  alongside:
+  - **Step 0:** `addQueries` routes the slice to a new "Adding queries" section (A1–A6), which runs after a retype
+    when both are present. In every case, the queries to build are the ones this slice's specs run that the
+    definition doesn't declare yet. A declared query that no spec runs isn't built.
+  - **Step 2:** new requirement 4 for live queries: a required tagged `eq`/`in`/`contains` parameter, and an
+    event in `events[]` that carries both that tag and the key tag. Imperative projections can't serve queries.
+  - **Step 3b:** a transcription table from `readmodels[0].queries` to `queries: { name: { path, params, sort } }`,
+    with the emcli-to-kit type mapping. `queries` sits before `evolve`, so a later addition is a pure insertion.
+  - **Step 6b:** one `describe.each(queryTypes(rm, "q"))("{slice title}: q (%s)")` block per query. *when*'s
+    examples become the path and query string, and *then*'s rows are checked in order with `toMatchObject` on
+    `res.body.data`.
+  - The extension, retype (R2 checks live queries), files and checklist sections are updated.
+  - **Runtime change (found while writing the skill):**
+    - Keyed contract tests run every type, and `startReadModels` refused `withType(rm, "live-report")` once `rm`
+      had an untagged query. So adding a stored-only query would have broken the existing tests, which are the
+      proof that the change is additive. Now `withType` to live drops stored-only queries, and `queryTypes()`
+      gives each query's types.
+    - Queries now declare their own `path`, and `readModelRoute` mounts them all. Adding a query touches neither
+      `route.ts` nor `index.ts`.
+    - `SliceDependencies.readModels` includes `querier`. Template suite: 62 tests pass.
+  - **Dry run:** on a copy of course-enrollment with the new runtime, following only the skill's A-steps:
+    - `availableCourses` on CourseSeats (stored-only; its tests ran on database-projected and inline-projected);
+    - `coursesForStudent` on CourseDetails (live, `contains` plus tag `studentId`, sorted by title; its tests ran
+      on all three types).
+    - All 99 tests pass. The `readModel.ts` diffs are pure insertions, and the only changed lines are the
+      `route.tests.ts` imports gaining `queryTypes`.
+- [ ] **12.5 Commit checks.** Findings from 12.4:
+  - `extension-additive` and `spec-coverage` must count tests in query blocks. `describe.each(queryTypes(rm,
+    "q"))(…)` has nested parentheses, which the current `describe.each\([^)]*\)` pattern doesn't match. The
+    block title is `"{slice title}: {query} (%s)"`.
+  - `retype-scope` rejects the queries commit that follows a retype while `addQueries` is also present. When
+    `addQueries` is set, it must allow additions inside `queries` and appended test blocks.
+  - An `addQueries` slice that isn't an extension needs the same additive rule for its own `readModel.ts`: only
+    lines added inside `queries`, and nothing removed except a `}` re-added as `},`.
 - [ ] **12.6 Experiment on course-enrollment (Gary runs the loop):**
   - `availableCourses` on CourseSeats (`GET /available-courses?minRemainingSeats=1`, `remainingSeats gte`,
     stored-only);
