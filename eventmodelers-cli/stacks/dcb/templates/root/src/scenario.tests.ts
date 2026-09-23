@@ -1,4 +1,4 @@
-import { describe, test, beforeAll, afterAll } from "vitest"
+import { describe, test, expect, beforeAll, afterAll } from "vitest"
 import http from "node:http"
 import supertest from "supertest"
 import type { Pool } from "pg"

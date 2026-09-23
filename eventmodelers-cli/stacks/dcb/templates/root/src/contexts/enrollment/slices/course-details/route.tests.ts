@@ -1,4 +1,4 @@
-import { describe, test, beforeAll, afterAll, afterEach } from "vitest"
+import { describe, test, expect, beforeAll, afterAll, afterEach } from "vitest"
 import supertest from "supertest"
 import type { Pool } from "pg"
 import { getApplication } from "@dcb-es/event-store-express"

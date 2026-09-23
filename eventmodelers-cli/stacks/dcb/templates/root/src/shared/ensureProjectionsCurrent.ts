@@ -5,6 +5,12 @@ import { ensureHandlersInstalled, rebuildProjection, type Projection } from "@dc
 export interface EnsureProjectionsCurrentOptions {
     /** The inline projections passed to `new PostgresEventStore({ inlineProjections })`. */
     inline?: Projection[]
+    /**
+     * The stored projections of read models currently served live (ADR-022). They are not run;
+     * their fingerprint is recorded as `live:…`, so switching back to a stored type rebuilds them
+     * instead of serving what went stale while they were unused.
+     */
+    live?: Projection[]
     bookmarkTableName?: string
 }
 
@@ -25,7 +31,8 @@ export interface EnsureProjectionsCurrentOptions {
  * - async: only recorded — its consumer starts from the beginning anyway;
  * - inline: rebuilt — nothing else would ever project the history recorded before it.
  * Switching a projection between async and inline changes its fingerprint, so it is
- * rebuilt too.
+ * rebuilt too. A live read model's fingerprint is only recorded (prefixed `live:`), so a later
+ * switch back to a stored type always rebuilds.
  *
  * Call after `eventStore.ensureInstalled()`, the async projections' `init()` and
  * `ensureHandlersInstalled()`, and before `createConsumer()` and `startAPI()`.
@@ -50,6 +57,14 @@ export async function ensureProjectionsCurrent(
     // whose projections are all inline).
     const inlineNames = (options.inline ?? []).map(p => p.name)
     if (inlineNames.length > 0) await ensureHandlersInstalled(pool, inlineNames, bookmarkTableName)
+
+    for (const projection of options.live ?? []) {
+        await pool.query(
+            `INSERT INTO _projection_fingerprints (name, fingerprint) VALUES ($1, $2)
+             ON CONFLICT (name) DO UPDATE SET fingerprint = EXCLUDED.fingerprint, updated_at = now()`,
+            [projection.name, `live:${projectionFingerprint(projection)}`]
+        )
+    }
 
     const all = [
         ...projections.map(projection => ({ projection, inline: false })),

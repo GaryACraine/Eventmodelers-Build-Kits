@@ -145,11 +145,17 @@ inline projections (`projections.inline([...])`), so this phase is about the DCB
     that reference it. Live serves keyed GETs only. A retype changes one `type:` line and is re-queued by emcli
     export.
   - Sub-tasks, one PR each:
-    - [ ] **11.7a** ADR-022 "Read model contract and switchable types", and these entries.
-    - [ ] **11.7b** Scaffold runtime `src/shared/readModels.ts` (`defineReadModel`, stored and live runners,
+    - [x] **11.7a** ADR-022 "Read model contract and switchable types", and these entries.
+    - [x] **11.7b** Scaffold runtime `src/shared/readModels.ts` (`defineReadModel`, stored and live runners,
       `startReadModels`, `readModelRoute`, `supportedTypes`), `src/test/readModelHarness.ts`, and the `live:`
       fingerprint in `ensureProjectionsCurrent`. Real-Postgres tests: identical bodies across the three types for a
       model with a lookup, the fixpoint under a concurrent subscription, live → stored rebuild, and 404.
+      *(Done: 12 tests in `src/shared/readModels.tests.ts`, all passing on real Postgres. The CourseDetails-like
+      model with a student-name lookup gives identical documents and HTTP bodies as async, inline and live, and
+      404 for an unknown key. The fixpoint test commits a new subscription after live read 1 and gets the new
+      student's name, in 3 reads. A live → stored switch rebuilds, including events appended while live. The
+      scaffold's `index.ts` files use `startReadModels`, and the bundled example's projections are registered as
+      `imperative`. The full template suite passes: 48 tests.)*
     - [ ] **11.7c** `build-state-view`: fold form by default (`readModel.ts`), imperative form only when §4 of the
       design excludes fold form. Live gets built, with a generic route and body-only contract tests across all
       supported types (`describe.each`). Extensions append `evolve` cases or lookups. R-steps for a retype. The
