@@ -456,3 +456,113 @@ cross-entity data, such as a student's name on a course, which stored projection
 - Verified read-only on course-enrollment: the union read for CourseDetails c1 returned positions 1, 3, 5, 6, 7,
   8, 11, exactly the sequence the stored projection processed.
 
+
+---
+
+### ADR-023: Read model queries: the spec's *when* is the read operation
+
+**Status:** Accepted
+**Date:** 2026-09-23
+
+**Context:** Every read model so far answers one operation, a GET of one document by its key (ADR-022). Clients
+also need **where predicates**: filtering documents on their fields, e.g. "courses with at least one free seat"
+or "the courses a student is subscribed to". A read slice's GWT spec has always been *given* events, an empty
+*when*, then the read model. The *when* slot is free to name the read operation, so the specs that describe a
+query can also generate and test it.
+
+**Decision:**
+
+*Model: the query is declared once, and specs exercise it*
+- **A query belongs to the read model element**, next to its keyed `apiEndpoint`, the same way a command element
+  holds the fields that command specs fill in. emcli stores `queries: [{ name, apiEndpoint, parameters }]` on the
+  origin read model (copies inherit it, as they do `readModelType`). Export puts it on `readmodels[0].queries` in
+  slice.json.
+- **Each parameter is a `Field`** (name, type, `optional`, `example`) with two additions:
+  - `operator`: `eq` (the default), `ne`, `gt`, `gte`, `lt`, `lte`, `in` or `contains`;
+  - `mapping`: the document field it compares, as a dot path. It defaults to the parameter's name.
+- **Path parameters:** a parameter named in the endpoint's `{…}` is a path parameter, so it is required and uses
+  `eq`. Every other parameter is a query-string parameter.
+- **The spec's *when* is one `SPEC_QUERY` step** (emcli type alias `query`):
+  - its title is the query name, and it links to the read model element;
+  - its fields give the example values for this scenario.
+- ***then* is the expected rows:** one `SPEC_READMODEL` step per document the query returns, in order. An empty
+  *then* means "no matches". A spec with an empty *when* is still the keyed GET.
+
+*The contract (extends ADR-022; still the data shape only)*
+- **URL:** a query is `GET {apiEndpoint}?{parameters}`, with **named parameters only**. There is never a raw
+  filter language, so clients see a typed, stable API, and the predicate behind a parameter can change without
+  breaking them.
+  - `limit` and `cursor` are reserved names.
+  - `in` takes a comma-separated list.
+  - emcli rejects a query endpoint that another read endpoint's pattern also matches. For example,
+    `/courses/{courseId}` would swallow `/courses/available`, so pick `/available-courses` instead.
+- **Body:** always a page, `{ "data": [ …documents… ], "cursor"?: "…" }`.
+  - Each document has the same shape as the keyed GET body.
+  - `cursor` is opaque, and present only when there may be more rows. `limit` defaults to 50, with a maximum of
+    200 (`parsePageParams`).
+- **Status:** 200 always, including an empty `data`. A missing required parameter or a value that doesn't parse
+  gives 400. A query is never 404.
+- **Semantics:**
+  - **Predicates:** parameters are ANDed, and an absent optional parameter drops its predicate.
+    - `contains` matches an array field that holds the value. Through an array of objects, the dot path matches
+      any element's subfield, e.g. `subscribedStudents.studentId`.
+    - Comparisons follow pongo (MongoDB) semantics, including missing fields.
+  - **Order:** by the query's declared `sort` field, then by key. The default is the key, ascending.
+- The page body is the same whichever type serves the query.
+
+*Runtime*
+- `defineReadModel({ …, queries: { name: { params, sort? } } })` describes the query declaratively, with no
+  predicate function, so every runner can read it:
+  - `params: { minFreeSeats: { field: "remainingSeats", op: "gte", type: "number" } }`;
+  - an optional `tag` names the tag key that finds candidates live (below).
+- **The stored runner** (async or inline) translates the params into a pongo `find` filter, sorted by
+  `(sort, key)` and paged from the cursor. The runtime creates the indexes the queried fields need at startup.
+  Indexes don't change documents, so they are **not** part of the rebuild fingerprint.
+- **The live runner** can serve a query **only if the query has a required `eq` or `in` parameter that declares a
+  `tag`**:
+  - It reads the primary events carrying `{tag}={value}` and collects their key tags as candidates.
+  - It folds each candidate, with the ADR-022 union read for lookups.
+  - It then applies **every** predicate in memory, sorts and pages.
+  - The tag only narrows the candidates, so any state predicate can ride along.
+  - The requirement: every document that should match has at least one primary event tagged with that value. The
+    skill checks this against `Events.ts`, as it does lookups.
+- **A query without a tag parameter is stored-only.** That includes a parameterless "list everything" query,
+  which replaces imperative list read models in fold form. `startReadModels` refuses to start a live read model
+  with such a query, and emcli warns at export (alongside `warnLiveLists`).
+- One generic handler, `readQueryRoute(readModel, runtime, name, path)`, parses and validates the parameters and
+  serves the page for every type, so the shape can't drift per slice.
+
+*Tests and the loop*
+- **Contract tests:** each spec with a *when* query becomes a test that appends *given*, GETs the endpoint with
+  *when*'s examples, and expects `data` to equal *then*'s rows. It runs `describe.each` over the query's supported
+  types.
+- **New queries are additive.** A query added to a Done read model re-queues it through the loop, as a retype does
+  (ADR-022), and the skill adds the query without touching `evolve`. Documents don't change, so no rebuild.
+
+**Alternatives considered:**
+- **Reusing `SPEC_READMODEL` in *when*.** Rejected: it's ambiguous against *then* for the kit, and it can't carry
+  operators.
+- **Defining the query only in the spec steps** (the kit collects them). Rejected: two specs could disagree on an
+  operator or an endpoint, and there'd be nowhere to hold the endpoint. The read model element already owns its
+  API.
+- **A generic filter parameter** (`?filter=remainingSeats>0` or MongoDB JSON). Rejected: it exposes the storage
+  model and ties clients to what one type can evaluate. That breaks the switchable contract and needs its own
+  guarding.
+- **A bare array body.** Rejected: it has no room for a cursor, and the scaffold's list already uses
+  `{ data, cursor? }`.
+- **Deriving query URLs by convention** (`{keyed path}/{query-name}`). Rejected: Express would match them to the
+  keyed route's parameter. The model names the endpoint instead.
+- **Stored-only queries.** Rejected: tag narrowing lets live serve the common "X for a given Y" queries with the
+  same body.
+
+**Consequences:**
+- The keyed GET is unchanged. Existing read models and specs need no migration.
+- A query is a model decision: emcli owns its endpoint, parameters and operators, and the spec's *when* shows it in
+  use. prooph board sees it as rendered markdown only.
+- Read models can switch type freely as long as each query supports the target type. A query without a tag
+  parameter pins its read model to stored types.
+- Live query cost scales with the number of candidates, i.e. the entities tagged with the parameter's value, not
+  with the store.
+- Stored queries cost an indexed `find`. Heavily filtered fields may need tuning beyond the indexes the runtime
+  creates.
+- Out of scope: OR predicates, full-text search, aggregates (counts, sums) and cross-read-model joins.
