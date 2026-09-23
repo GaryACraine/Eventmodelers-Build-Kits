@@ -29,12 +29,13 @@ data already in your database when you do.
 8. [Client feedback through the board](#8-client-feedback-through-the-board)
 9. [Increments t3 and t4](#9-increments-t3-and-t4)
 10. [Increments t5 and t6: a read model that's never stale](#10-increments-t5-and-t6-a-read-model-thats-never-stale)
-11. [Working with git: branches, commits and merges](#11-working-with-git-branches-commits-and-merges)
-12. [How the Ralph loop builds a slice](#12-how-the-ralph-loop-builds-a-slice)
-13. [Rebuilds in depth](#13-rebuilds-in-depth)
-14. [Troubleshooting](#14-troubleshooting)
-15. [Command reference](#15-command-reference)
-16. [Known limits](#16-known-limits)
+11. [Increments t7–t10: switching read model types](#11-increments-t7t10-switching-read-model-types)
+12. [Working with git: branches, commits and merges](#12-working-with-git-branches-commits-and-merges)
+13. [How the Ralph loop builds a slice](#13-how-the-ralph-loop-builds-a-slice)
+14. [Rebuilds in depth](#14-rebuilds-in-depth)
+15. [Troubleshooting](#15-troubleshooting)
+16. [Command reference](#16-command-reference)
+17. [Known limits](#17-known-limits)
 
 ---
 
@@ -83,9 +84,10 @@ That's the default kind of read model. The model can choose one of three per rea
 |---|---|---|---|
 | `database-projected` (default) | in the background, by an **async** projection | possibly the old answer, for a moment | none on writes |
 | `inline-projected` | in the same transaction as the events | always the new answer | every write of its events waits for it |
-| `live-report` | not stored: worked out from the events on every read | always the new answer | every read replays events. Not supported by the DCB kit yet |
+| `live-report` | not stored: worked out from the events on every read | always the new answer | every read replays that entity's events |
 
-Most read models should stay async. §10 builds an inline one.
+Most read models should stay async. §10 builds an inline one. A read model returns the same data whichever type
+serves it, so you can switch later: §11 switches types and builds a live one.
 
 ### Event modeling: designing on a timeline
 
@@ -206,7 +208,7 @@ Empty enrollment context ready: event-feed
 ```
 
 Install dependencies. `--hooks` above installed the **pre-commit hook** (`.githooks/pre-commit`), which checks
-every slice commit (see [§12](#12-how-the-ralph-loop-builds-a-slice)). Confirm it's on:
+every slice commit (see [§13](#13-how-the-ralph-loop-builds-a-slice)). Confirm it's on:
 
 ```bash
 npm install
@@ -303,7 +305,7 @@ git add em-helpers.sh && git commit -m "chore: name-based emcli helpers"
 Each increment gets its own git branch. The loop builds on whatever branch is checked out, and you merge the
 branch when the increment is done. **Creating, committing your model to, and merging this branch is your job.
 The loop only adds its own code commits to it** (the full split is in
-[§11](#11-working-with-git-branches-commits-and-merges)):
+[§12](#12-working-with-git-branches-commits-and-merges)):
 
 ```bash
 git switch -c increment/t0
@@ -722,12 +724,15 @@ projection*.
 
 The loop runs the same `build-state-view` skill, whose first step sees `extends` and switches to extension mode:
 
-1. Opens the **origin's** `projection.ts` and checks the new event isn't handled already.
+1. Opens the **origin's** read model definition (`readModel.ts`; `projection.ts` in projects built before
+   §11's fold form) and checks the new event isn't handled already.
 2. Appends it to `canHandle` and adds one `case` for it. It never edits existing code.
-3. Adds any new fields to the route's response, with defaults for older data.
-4. Appends a `describe("course details capacity")` test block to the origin's test file.
+3. Gives any new field a default for older data (in `readModel.ts` the generic route then shows it; in the
+   older `projection.ts` form the route maps it).
+4. Appends a test block for the extension (`describe("course details capacity")`, or
+   `describe.each(…)("course details capacity (%s)")` in `readModel.ts` form) to the origin's test file.
 5. Commits. The pre-commit hook's **extension-additive** check rejects any edit or deletion of existing
-   projection code, and **slice-tests** runs the whole test file, so every earlier scenario must still pass.
+   read model code, and **slice-tests** runs the whole test file, so every earlier scenario must still pass.
 
 ```bash
 git show --stat HEAD~1          # after the loop says "waiting"
@@ -763,7 +768,7 @@ projection's bookmark had moved past that event when it processed c3's registrat
 started handling a new event type would continue from its bookmark and never see the older capacity change.
 On startup, `ensureProjectionsCurrent` compares each projection's list of handled events with the list it ran
 with last time. When the list changes, it truncates the read model and replays every event from the start.
-You don't do anything; §13 has the details.
+You don't do anything; §14 has the details.
 
 Finish the increment:
 
@@ -1146,6 +1151,9 @@ Then plan, push, commit and export, exactly as in §5.4. The exported `slice.jso
 
 ### 10.3 What the loop builds differently
 
+*(This walkthrough was recorded with the kit's earlier `projection.ts` form; with the current kit, the code is a
+`readModel.ts` fold listed in `readModels`, as §11 shows, and nothing else changes for you.)*
+
 The same `build-state-view` skill builds it, and its first step reads `readModelType`. The `projection.ts` is
 written exactly like `CourseDetails`'s. The differences are all in how it's run:
 
@@ -1268,7 +1276,191 @@ Both capacity changes are there: Math's from t1, and History's, made in t5 befor
 
 ---
 
-## 11. Working with git: branches, commits and merges
+## 11. Increments t7–t10: switching read model types
+
+A read model's type isn't fixed forever. Traffic grows, a client stops tolerating stale data, or you realise
+you're storing data nobody needs to keep. Then you switch its type. The rule that makes this safe:
+
+> **The data a client gets is the same whichever type serves a read model:** the same URL, the same response
+> body and the same status (200, or 404 for an unknown key). Only freshness changes. Headers are not part of that
+> promise: an async read model also sends an `ETag` and honours `Prefer: wait`, and the others don't.
+
+This section switches `CourseDetails` from async to live, and `CourseSeats` from inline to live and on to async.
+It also builds a new read model that is live from the start. Every body was compared before and after each
+switch on the live database, and they were identical.
+
+### 11.1 One definition, any type
+
+The build kit writes each read model **once**, as a *keyed fold* in the slice's `readModel.ts`:
+- `evolve(doc, event)` builds the document for one key (one course) from that key's events, in order;
+- data from another entity, such as a student's name on a course, comes from a declared **lookup**.
+
+```typescript
+export const courseDetails = defineReadModel<CourseDetailsDoc, { students: StudentEntry }>({
+    name: "CourseDetails",
+    type: "database-projected",       // ← the only line a switch changes
+    key: "courseId",
+    collection: "course_details",
+    canHandle: ["courseWasRegistered", "courseCapacityWasChanged", "studentWasSubscribed", …],
+    lookups: {
+        students: { key: "studentId", canHandle: ["studentWasRegistered"], evolve: (_, { event }) => ({ name: event.data.name }) }
+    },
+    evolve: (doc, { event }, { students }) => { … }
+})
+```
+
+The scaffold's `src/shared/readModels.ts` runs that definition as any type:
+- **Stored** (async or inline): a projection writes each document, and each lookup, to the database.
+- **Live:** each GET folds the key's events straight from the event store. That takes two reads:
+  1. The course's own events (tagged `courseId=c1`), whose tags name the students involved.
+  2. One **union read**: the course's events *or* those students' `studentWasRegistered` events (tagged
+     `studentId=…`), in the order they happened.
+
+  That is the same sequence the stored projection processed, so the result is the same document.
+
+The route is one generic call, `readModelRoute(courseDetails, …)`. Every slice serves its document the same way.
+The tests run every scenario against all three types (`describe.each(READ_MODEL_TYPES)`), so every commit proves
+the types agree.
+
+> **Projects started before this kit version** have imperative `projection.ts` read models, like the outputs shown
+> in §5–§10. Those can't switch type until they're converted to a `readModel.ts` fold, a one-off refactor. t7 below
+> converts both of this project's read models.
+
+### 11.2 Convert existing read models (t7)
+
+Convert each read model by hand, in reviewed commits:
+- **Slice commit:** add `readModel.ts` (with `version: 2`, so it's rebuilt from history through the new code),
+  shrink `route.ts` to `readModelRoute`, and turn the existing scenarios into contract tests.
+- **Wire commit:** list the read model in `src/index.ts`'s `readModels` array.
+- **Cleanup commit:** delete `projection.ts`.
+
+```text
+Rebuilding CourseSeatsProjection: inline:v1:… → inline:v2:…
+Rebuilding CourseDetailsProjection: v1:… → v2:…
+```
+
+Before and after, all 14 read-model URLs returned identical bodies and statuses. Those are
+`/courses/{c1…c6, nope}` and `/courses/{…}/seats`, with key order ignored. The 10 existing scenarios now run as
+30 contract tests.
+
+### 11.3 Switch two read models to live (t8)
+
+Set the new type on the **original** read model; its copies follow. Commit, then export:
+
+```bash
+git switch -c increment/t8-retype
+emcli element update "$(chapter_id)" "$(el_id 'course details' information CourseDetails)" --read-model-type live-report
+emcli element update "$(chapter_id)" "$(el_id 'course seats' information CourseSeats)" --read-model-type live-report
+git add -A && git commit -m "model(t8): retype CourseDetails and CourseSeats to live-report"
+emcli workspace export --build-kit .build-kit --chapter "$(chapter_id)"
+```
+
+```text
+Exported 13 slice(s) to .build-kit/.slices (5 extension slice(s))
+Re-queued 2 built read model(s) whose type changed:
+  course details: database-projected → live-report
+  course seats: inline-projected → live-report
+```
+
+Export puts both slices back to Planned with a `retype` block. That's the one case where it re-queues a Done
+slice. The loop's change is one line each, and the **retype-scope** commit check allows nothing else:
+
+```text
+refactor: course details → live-report      readModel.ts | 2 +-     -    type: "database-projected",
+refactor: course seats → live-report        readModel.ts | 2 +-     +    type: "live-report",
+```
+
+Restart the app. Every body is identical to before the switch. The stale-read test from §10.4 now finds
+**0** stale reads for `CourseDetails` too, where it found 199 of 200 when it was async.
+
+### 11.4 Switch back, and the rebuild (t9)
+
+A stored read model that sat unused while live is out of date. To see it, switch `CourseSeats` to async, and
+subscribe Ada to Chemistry (c4) first, while it's still live:
+
+```text
+live body:   {"courseId":"c4","capacity":12,"subscriptionCount":1,"remainingSeats":11}
+stored doc:  {"courseId":"c4","capacity":12,"subscriptionCount":0,"remainingSeats":12,…}
+```
+
+After the loop's one-line retype, restart:
+
+```text
+Rebuilding CourseSeatsProjection: live:v2:… → v2:…
+```
+
+`/courses/c4/seats` now shows 1 subscription and 11 seats from storage, the same body as the live read gave.
+While a read model is live, its fingerprint is recorded as `live:…` (§14), so switching back always rebuilds.
+
+### 11.5 A new read model, live from the start (t10)
+
+`StudentSubscriptions` lists a student's courses with their titles. The titles are a lookup: they come from
+the courses' events.
+
+```bash
+git switch -c increment/t10-student-subscriptions
+REG_EVT=$(el_id 'register course' event courseWasRegistered)
+TITLE_EVT=$(el_id 'change course title' event courseTitleWasChanged)
+RS_EVT=$(el_id 'register student' event studentWasRegistered)
+SUB_EVT=$(el_id 'subscribe student' event studentWasSubscribed)
+UNSUB_EVT=$(el_id 'unsubscribe student' event studentWasUnsubscribed)
+S='student subscriptions'
+emcli slice add "$(chapter_id)" "$S"
+emcli element add "$(chapter_id)" "$(slice_id "$S")" "$(lane_id Enrollment)" information StudentSubscriptions
+SS=$(el_id "$S" information StudentSubscriptions)
+emcli element field add "$(chapter_id)" "$SS" studentId String --id --example s1
+emcli element field add "$(chapter_id)" "$SS" name String --example Ada
+emcli element field add "$(chapter_id)" "$SS" courses Custom --cardinality List \
+  --subfields "courseId:String,title:String" --example '[{"courseId":"c1","title":"Math"}]'
+for e in "$REG_EVT" "$TITLE_EVT" "$RS_EVT" "$SUB_EVT" "$UNSUB_EVT"; do emcli dependency add "$e" "$SS" hydrates; done
+emcli element update "$(chapter_id)" "$SS" --api-endpoint "/students/{studentId}/subscriptions" --read-model-type live-report
+```
+
+Add the scenarios as usual:
+- *lists a subscribed course by title*;
+- *an unsubscribed course is no longer listed*;
+- *shows the title a course had when the student subscribed*.
+
+Then plan, push, commit and export. From the event tags, the loop worked out that `studentWasRegistered`,
+`studentWasSubscribed` and `studentWasUnsubscribed` build the document, and that `courseWasRegistered` +
+`courseTitleWasChanged` are a `courses` lookup joined by the `courseId` tag.
+
+```bash
+curl -s localhost:3000/students/s1/subscriptions -w '\n'
+```
+
+```json
+{"studentId":"s1","name":"Ada","courses":[{"courseId":"c1","title":"Math"},{"courseId":"c4","title":"Chemistry"}]}
+```
+
+### 11.6 When to choose live, and what it costs
+
+A live read replays one entity's events, plus its lookups' events, on every GET. Measured on this project, with
+300 sequential GETs each:
+
+| Read | Events folded | Stored (median) | Live (median / p95) |
+|---|---|---|---|
+| `/courses/c1` (with the students lookup) | 5 + lookups | 2.1 ms | 4.2 / 5.1 ms |
+| `/courses/c3` | 612 | 2.5 ms | 7.1 / 10.3 ms |
+| `/courses/c1/seats` (no lookup) | 5 | 2.1 ms | 3.0 / 4.1 ms |
+| `/courses/c3/seats` | 612 | 2.0 ms | 4.1 / 5.9 ms |
+| `/students/s1/subscriptions` (courses lookup) | 813 | — | 9.4 / 12.9 ms |
+
+- **Choose live** when a read model must never be stale, and each entity's history stays modest. Live costs
+  nothing on writes (unlike inline) and stores nothing, so there's nothing to rebuild.
+- **Choose inline** when it must never be stale but histories are long or reads are frequent.
+- **Stay async** for everything else.
+
+Live read models have two limits:
+- **Keyed GETs only.** A list would fold every entity on every request. emcli warns, and the loop asks you to
+  choose another type.
+- **Everything must be reachable by tags.** Every event must carry the read model's key as a tag, and every
+  looked-up entity must be named by a tag on the events that reference it. If that fails, the loop explains
+  which event breaks the rule.
+
+---
+
+## 12. Working with git: branches, commits and merges
 
 Two parties commit to your repository: **you** (the model, and your bookkeeping) and **the loop** (the code).
 They share one working tree, so the order of operations matters. This section brings together the git steps
@@ -1408,7 +1600,7 @@ Then start the next increment from the updated `main`: `git switch -c increment/
 
 ---
 
-## 12. How the Ralph loop builds a slice
+## 13. How the Ralph loop builds a slice
 
 For every slice with status **Planned** in `.build-kit/.slices/<context>/index.json`, the loop starts a fresh
 Claude agent with the kit's build prompt. The agent:
@@ -1448,14 +1640,14 @@ If a check fails, the agent must fix the code, or set the slice to **Blocked** w
 commits over a failure.
 
 **Branches:** the loop never creates, switches or merges branches. It builds on whatever is checked out. That's
-why each increment starts with `git switch -c increment/<name>` (see [§11](#11-working-with-git-branches-commits-and-merges)).
+why each increment starts with `git switch -c increment/<name>` (see [§12](#12-working-with-git-branches-commits-and-merges)).
 
 **Statuses:** only `planned` slices are built. `draft` (exported as `Created`) is ignored, which lets you stage
 work. Once the loop has marked a slice InProgress, Done or Blocked, re-exporting keeps that status.
 
 ---
 
-## 13. Rebuilds in depth
+## 14. Rebuilds in depth
 
 A projection reads only the event types in its `canHandle` list, and only from its bookmark onward. The bookmark
 moves forward with every event the projection handles. So when an extension adds an event type, any events of
@@ -1488,12 +1680,15 @@ after they exist. So for them:
 
 The rebuild runs at startup, before the app takes requests, so no command can append while it runs.
 
+**Live read models** (§11) store nothing, so they never rebuild. Their fingerprint is recorded as `live:…`,
+so switching one back to a stored type always rebuilds its stored copy, which went stale while unused.
+
 **Cost:** a rebuild replays all the events this projection handles, so startup waits for it. That's
 instantaneous in this example, and it grows with your event store.
 
 ---
 
-## 14. Troubleshooting
+## 15. Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
@@ -1508,16 +1703,18 @@ instantaneous in this example, and it grows with your event store.
 | commit rejected: `[extension-additive]` | an extension changed existing projection code | keep extensions to additions only |
 | a read model is missing older data after an extension | the app wasn't restarted, so no rebuild | restart the app and look for `Rebuilding …` |
 | a command that used to work returns 500 after an inline read model was added | the inline projection threw, so the whole append rolled back (§10.1) | read the app log for the projection's error and fix it in its `projection.ts`. Nothing was recorded, so the client can retry |
-| a slice goes **Blocked** with "live read models aren't supported" | its read model is `live-report`, which the DCB kit can't build yet | set it to `database-projected` or `inline-projected`, or leave it until live read models are supported |
+| a live slice goes **Blocked** naming an event or a list | a live read model needs every event tagged with its key, lookups reachable by tags, and a keyed GET (§11.6) | tag the event in the model, or choose `inline-projected` / `database-projected` for it |
+| a retype goes **Blocked**: "imperative projection … a refactor" | the read model is an older `projection.ts` | convert it to `readModel.ts` first (§11.2), then export again |
+| export didn't re-queue a type change | the type was changed on a copy, or the slice isn't built yet | change it on the original read model. An unbuilt slice is just built with the new type |
 | slices from other chapters appear in `.build-kit/.slices` | exported without `--chapter` after a `sync pull` | re-export with `--chapter "$(chapter_id)"` |
 | `eventmodelers init` crashes with `ERR_USE_AFTER_CLOSE` | no terminal input was available | run it in an interactive terminal and answer the prompts |
-| a slice went back to Planned and `git stash list` shows `ralph: interrupted slice …` | the agent was interrupted mid-slice (Claude usage ran out, a crash, the terminal closed). The loop stashed the partial work and rebuilds the slice (§12). If Claude is still unavailable, the loop retries every 60 s | nothing, once Claude is available again (restart the loop if you closed it). Drop the stash after the rebuilt slice is committed: `git stash drop stash@{N}` |
+| a slice went back to Planned and `git stash list` shows `ralph: interrupted slice …` | the agent was interrupted mid-slice (Claude usage ran out, a crash, the terminal closed). The loop stashed the partial work and rebuilds the slice (§13). If Claude is still unavailable, the loop retries every 60 s | nothing, once Claude is available again (restart the loop if you closed it). Drop the stash after the rebuilt slice is committed: `git stash drop stash@{N}` |
 | a slice is **Blocked** after an interruption | the agent committed part of the slice but was interrupted before marking it Done. `progress.txt` names the commits | check them with `git log`. If the slice is complete, set it to Done. Otherwise `git revert` them and set it back to Planned |
 | a slice stays **InProgress** and the loop says *waiting* | an interrupted agent, with the loop running with board sync (without `--local`). There the loop can't tell an interrupted claim from another agent's, so it only logs a warning | once no agent is building it: `git stash push -u -m "interrupted slice"`, then set the slice back to Planned on the board |
 
 ---
 
-## 15. Command reference
+## 16. Command reference
 
 ### emcli (model)
 
@@ -1530,7 +1727,7 @@ instantaneous in this example, and it grows with your event store.
 | `emcli element add <chapter> <slice> <lane> command\|event\|information "<name>"` | add a sticky |
 | `emcli element field add <chapter> <element> <name> <Type> [--id] [--optional] [--cardinality List] [--subfields "a:String,b:Int"] [--example v]` | add a field |
 | `emcli element update <chapter> <element> --api-endpoint "/path"` | set the HTTP route |
-| `emcli element update <chapter> <element> --read-model-type database-projected\|inline-projected\|live-report` | choose how a read model is kept current (set on the origin; copies follow) |
+| `emcli element update <chapter> <element> --read-model-type database-projected\|inline-projected\|live-report` | choose how a read model is kept current (set on the origin; copies follow). On a built read model, the next export re-queues it as a one-line retype |
 | `emcli element copy <chapter> <origin> --slice <slice> --lane <lane>` | place a read-model copy later on the timeline |
 | `emcli element update <chapter> <element> --copy-of <origin>` | mark an existing sticky as a copy |
 | `emcli dependency add <from> <to> produces\|hydrates\|triggers` | link stickies |
@@ -1556,7 +1753,7 @@ instantaneous in this example, and it grows with your event store.
 
 ---
 
-## 16. Known limits
+## 17. Known limits
 
 - **The node (Emmett) kit has no extension mode.** This manual covers the DCB kit only.
 - **The copy link doesn't survive a pull.** emcli keeps it in `copyOf`, and pushes copies as ordinary stickies.
@@ -1565,8 +1762,11 @@ instantaneous in this example, and it grows with your event store.
   `element update --copy-of <origin>` before exporting, or the loop builds it as a new read model instead of an
   extension.
 - **Done slices can't be re-queued by export.** Change a built read model with a new copy, as shown.
-- **Live read models (`live-report`) aren't supported by the DCB kit yet.** The loop blocks such a slice with a
-  question instead of building something else.
+- **Live read models serve keyed GETs only**, and need their events and lookups reachable by tags (§11.6).
+  Their cost grows with one entity's history.
+- **Looked-up values are captured when the event that uses them is folded.** A student renamed after subscribing
+  keeps the old name in `CourseDetails`, in every type alike.
+- **Only `readModel.ts` read models can switch type.** Older `projection.ts` ones need a one-off conversion (§11.2).
 - **Inline read models slow writes.** Each one adds its projection's work to every append of the events it
   handles. The kit doesn't measure it for you. Keep them few, and check write latency when you add one.
 - **Rebuild time grows with the event store.** Fine for development. For large production stores, plan rebuilds
