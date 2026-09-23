@@ -4,7 +4,8 @@ import {
     createConsumer,
     projectionToProcessor,
     ensureHandlersInstalled,
-    waitUntilProcessed
+    waitUntilProcessed,
+    type Projection
 } from "@dcb-es/event-store-postgres"
 import { getApplication, startAPI } from "@dcb-es/event-store-express"
 import type { SequencePosition } from "@dcb-es/event-store"
@@ -40,7 +41,13 @@ if (!connectionString) {
 const port = parseInt(process.env["PORT"] ?? "3000", 10)
 
 const pool = new Pool({ connectionString, max: 20 })
-const eventStore = new PostgresEventStore({ pool })
+
+// Inline projections run inside the append transaction: their read models are current the moment a
+// command returns. Every append of one of their events waits for them — keep this list short.
+// `ensureInstalled()` registers and inits them; they need no consumer and no waitFn.
+const inlineProjections: Projection[] = []
+
+const eventStore = new PostgresEventStore({ pool, inlineProjections })
 
 await eventStore.ensureInstalled()
 
@@ -56,7 +63,9 @@ await ensureHandlersInstalled(pool, [COURSE_PROJECTION_NAME, STUDENT_PROJECTION_
 
 // Rebuild any projection whose handled events (or version) changed since the last start —
 // events of a newly handled type recorded before this deploy would otherwise be skipped.
-await ensureProjectionsCurrent(pool, eventStore, [courseDetailsProjection, studentDetailsProjection])
+await ensureProjectionsCurrent(pool, eventStore, [courseDetailsProjection, studentDetailsProjection], {
+    inline: inlineProjections
+})
 
 const consumer = createConsumer({
     pool,

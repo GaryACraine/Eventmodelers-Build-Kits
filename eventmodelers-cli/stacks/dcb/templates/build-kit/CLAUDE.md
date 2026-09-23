@@ -44,6 +44,11 @@ When asked to build a slice, always follow this flow:
    - **Translation** — `sliceType === "TRANSLATION"` → default to `/build-automation`
    - **Automation** — `processors` array is non-empty → invoke `/build-automation`
    - **State-view** — `sliceType === "STATE_VIEW"`, or `projections`/`queries` array is non-empty → invoke `/build-state-view`
+     - Check `readmodels[0].readModelType` first. Absent, `database-projected` (async, eventually consistent) or
+       `inline-projected` (updated inside the append transaction, immediately consistent) → `/build-state-view`,
+       whose Step 0 picks the variant. `live-report` (folded from the event store per query) isn't supported by
+       this kit yet → invoke `request-feedback` with that, and build nothing. Never build a different type than
+       slice.json names.
    - **State-change** — default (has `commands` / `events`) → invoke `/build-state-change`
    - **Extension** — a state-view slice whose slice.json has an `extends` block. It grows a read model an
      earlier slice built (its read model is a board copy, `linkedTo` the origin) → `/build-state-view`,

@@ -22,7 +22,13 @@ if (!connectionString) {
 const port = parseInt(process.env["PORT"] ?? "3000", 10)
 
 const pool = new Pool({ connectionString, max: 20 })
-const eventStore = new PostgresEventStore({ pool })
+
+// Inline projections run inside the append transaction: their read models are current the moment a
+// command returns. Every append of one of their events waits for them — keep this list short.
+// `ensureInstalled()` registers and inits them; they need no consumer and no waitFn.
+const inlineProjections: Projection[] = []
+
+const eventStore = new PostgresEventStore({ pool, inlineProjections })
 
 await eventStore.ensureInstalled()
 
@@ -39,8 +45,9 @@ try {
 await ensureHandlersInstalled(pool, projections.map(p => p.name), "_handler_bookmarks")
 
 // Rebuild any projection whose handled events (or version) changed since the last start —
-// events of a newly handled type recorded before this deploy would otherwise be skipped.
-await ensureProjectionsCurrent(pool, eventStore, projections)
+// events of a newly handled type recorded before this deploy would otherwise be skipped — and
+// backfill any inline projection seen for the first time.
+await ensureProjectionsCurrent(pool, eventStore, projections, { inline: inlineProjections })
 
 const consumer = createConsumer({
     pool,

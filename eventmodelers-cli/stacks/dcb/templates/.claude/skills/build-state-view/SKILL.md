@@ -1,6 +1,6 @@
 ---
 name: build-state-view
-description: Implements a DCB state-view slice (Pongo projection, route, integration tests) from a slice.json definition
+description: Implements a DCB state-view slice (Pongo projection — async or inline — route, integration tests) from a slice.json definition
 ---
 
 # Build State View Slice (DCB)
@@ -20,6 +20,11 @@ Key DCB differences from SQL-based projection stacks:
 - Read-your-writes via per-projection `waitFn` + `preferWait` middleware
 - Bookmark positions from `_handler_bookmarks` table for ETags
 
+The paragraph above describes the default, **async** projection: a consumer follows the event store
+and the read model is eventually consistent. A read model can instead be **inline**: the same
+projection runs inside the append transaction, so the read model is current the moment the command
+returns. Step 0 decides which one this slice builds.
+
 > **Cross-slice events**: A projection typically consumes events from multiple write slices (e.g. a
 > student-details view handles `studentWasRegistered`, `studentWasSubscribed`, and course events —
 > each produced by a different write slice). This works because the DCB event store is a single
@@ -28,9 +33,23 @@ Key DCB differences from SQL-based projection stacks:
 
 ---
 
-## Step 0 — Greenfield or extension?
+## Step 0 — Which read model type, greenfield or extension?
 
-Read the slice.json first and look for a top-level `extends` block.
+Read the slice.json first.
+
+**Read model type** — `readmodels[0].readModelType`:
+
+| Value | Build |
+|---|---|
+| absent, or `"database-projected"` | **async** projection: Steps 1–5 as written |
+| `"inline-projected"` | **inline** projection: Steps 1–5, with the changes in **"Inline variant"** below |
+| `"live-report"` | not supported yet. Stop and invoke `request-feedback` ("live read models aren't supported by the DCB kit yet"). Do **not** build an async or inline projection in its place |
+
+The model chose inline because a stale read isn't acceptable here, and chose async everywhere else
+because inline slows every append of the events it handles. Build exactly the type slice.json names;
+never switch one for the other.
+
+**Greenfield or extension** — look for a top-level `extends` block.
 
 - **No `extends`** → a new read model. Follow Steps 1–5 below as written.
 - **`extends` present** → an **extension slice**. Its read model is a copy (`readmodels[0].linkedTo`)
@@ -177,6 +196,8 @@ Note: with Pongo there is no need to pin to a transaction client — Pongo manag
 
 ## Step 3 — Register projection in `src/index.ts`
 
+> This step wires an **async** projection. For an inline one, follow **I2** instead.
+
 Two additions needed:
 
 **1. Import and call `init()`:**
@@ -190,7 +211,7 @@ await {sliceName}Projection.init!(initClient)
 await ensureHandlersInstalled(pool, [..., {PROJECTION_NAME_CONST}], "_handler_bookmarks")
 
 // In ensureProjectionsCurrent() — rebuilds a projection whose canHandle/version changed since last start:
-await ensureProjectionsCurrent(pool, eventStore, [..., {sliceName}Projection])
+await ensureProjectionsCurrent(pool, eventStore, [..., {sliceName}Projection], { inline: inlineProjections })
 ```
 
 **2. Add to consumer processors:**
@@ -426,6 +447,153 @@ Put these in a separate `describe` block named after the storyline.
 
 ---
 
+## Inline variant (`readModelType: "inline-projected"`)
+
+An inline projection is the same `Projection` object, run by the event store inside the append
+transaction instead of by a consumer. Only these parts differ from Steps 2–5.
+
+### I1 — `projection.ts`: same code, stricter rules
+
+Write it exactly as Step 2. Because `handle()` now runs inside every append of the events in
+`canHandle`, while that append holds its consistency locks:
+
+- Keep `handle()` small and fast: Pongo reads and writes on this projection's own collections only.
+- No external calls (HTTP, queues, other services) and no reads of other projections' collections.
+- **A throw fails the command.** It rolls back the append, so the client gets an error and nothing is
+  recorded. Handle a missing document (`findOne` returning null, `updateOne` matching nothing)
+  quietly, as the async patterns in Step 2 already do. Never throw for a business rule; rules belong
+  in the command's decider.
+
+### I2 — Register it in `src/index.ts` (replaces Step 3)
+
+Add it to the `inlineProjections` array that is passed to the one `PostgresEventStore`:
+
+```typescript
+import { {sliceName}Projection } from "./contexts/{context}/slices/{slicename}/projection.js"
+
+const inlineProjections: Projection[] = [..., {sliceName}Projection]
+
+const eventStore = new PostgresEventStore({ pool, inlineProjections })
+```
+
+That's all: `eventStore.ensureInstalled()` registers and inits it, and
+`ensureProjectionsCurrent(pool, eventStore, projections, { inline: inlineProjections })` backfills it
+from the existing history on its first start and rebuilds it when its fingerprint changes. Do **not**
+add it to the async `projections` array, `ensureHandlersInstalled`, the consumer, or a `waitFor`.
+The route gets `deps` without a `waitFn`.
+
+### I3 — `route.ts`: no waiting, no bookmark (replaces the Step 4 plumbing)
+
+The read model is already current when any command returns, so drop `preferWait`, `waitFn`,
+`getBookmarkPosition` and `withETag`. The query and the response mapping stay as in Step 4:
+
+```typescript
+import { on, OK, type WebApiSetup } from "@dcb-es/event-store-express"
+import type { SliceDependencies } from "../../../../shared/dependencies.js"
+import type { {SliceName}Doc } from "./projection.js"
+
+// Inline read model: updated inside the append transaction, so it is current the moment a
+// command returns. No Prefer: wait, no bookmark ETag.
+export function configure{SliceName}Route(deps: SliceDependencies): WebApiSetup {
+    const { pool } = deps
+
+    return router => {
+        router.get(
+            "/{resource}/:id",
+            on(async req => {
+                const id = req.params["id"] as string
+                const result = await pool.query<{ data: {SliceName}Doc }>(
+                    "SELECT data FROM {collectionName} WHERE _id = $1",
+                    [id]
+                )
+                if (result.rows.length === 0) {
+                    return res =>
+                        res.status(404).json({ status: 404, title: "Not Found", detail: "{Entity} not found" })
+                }
+                const doc = result.rows[0].data
+                return OK({
+                    body: {
+                        id: doc.{entityId},
+                        // ... map from doc fields per slice.json readModel
+                    }
+                })
+            })
+        )
+    }
+}
+```
+
+### I4 — `route.tests.ts`: read straight after the write (replaces the Step 5 setup)
+
+The store is built with the projection inline, and there is no consumer. Each test reads
+**immediately** after the write, with no `Prefer: wait` header; that read is the proof the read
+model is inline. Keep the module-level layout, the `describe("{slice title}")` block, one `test` per
+specification and `toMatchObject`, exactly as Step 5 requires.
+
+```typescript
+import { describe, test, expect, beforeAll, afterAll, afterEach } from "vitest"
+import supertest from "supertest"
+import type { Pool } from "pg"
+import { getApplication } from "@dcb-es/event-store-express"
+import { PostgresEventStore } from "@dcb-es/event-store-postgres"
+import { getTestPgDatabasePool } from "@test/testPgDbPool"
+import { configure{WriteSlice}Route } from "../{write-slice}/route.js"
+import { configure{SliceName}Route } from "./route.js"
+import { {sliceName}Projection } from "./projection.js"
+
+let pool: Pool
+let eventStore: PostgresEventStore
+
+beforeAll(async () => {
+    pool = await getTestPgDatabasePool({ max: 20 })
+    // Inline: the store runs the projection inside every append. ensureInstalled() registers and inits it.
+    eventStore = new PostgresEventStore({ pool, inlineProjections: [{sliceName}Projection] })
+    await eventStore.ensureInstalled()
+})
+
+afterEach(async () => {
+    await pool.query("TRUNCATE TABLE events")
+    await pool.query("ALTER SEQUENCE events_sequence_position_seq RESTART WITH 1")
+    const client = await pool.connect()
+    try {
+        await {sliceName}Projection.truncate!(client)
+    } finally {
+        client.release()
+    }
+})
+
+afterAll(async () => {
+    if (pool) await pool.end()
+})
+
+describe("{slice title}", () => {
+    test("{specification title}", async () => {
+        const deps = { store: eventStore, pool }
+        const agent = supertest(
+            getApplication({ apis: [configure{WriteSlice}Route(deps), configure{SliceName}Route(deps)] })
+        )
+
+        const postRes = await agent.post("/{resource}").send({ /* command body */ })
+        expect(postRes.status).toBe(201)
+
+        // No Prefer: wait — the append that returned 201 already updated the read model.
+        const getRes = await agent.get("/{resource}/test-id")
+        expect(getRes.status).toBe(200)
+        expect(getRes.body).toMatchObject({ /* the read model fields this specification asserts */ })
+    })
+})
+```
+
+### Extensions of an inline read model
+
+A copy of an inline read model is inline too (emcli exports the origin's type for every copy), so
+an extension slice of it follows "Extending an existing projection" unchanged. The origin's
+`route.tests.ts` already has the inline setup, so the appended `describe` block reads straight after
+writing, like the origin's tests. E5 holds for inline projections too: `ensureProjectionsCurrent`
+rebuilds an inline projection whose fingerprint changed, before the app takes requests.
+
+---
+
 ## Extending an existing projection (extension slices)
 
 Use this section only when slice.json has an `extends` block (see Step 0).
@@ -500,7 +668,8 @@ origin projection is already in that call's array; add it if missing.
 
 ### E6 — No new wiring
 
-The origin's projection, consumer, `waitFn` and route are already registered in `src/index.ts`.
+The origin's projection, consumer, `waitFn` and route (or, for an inline origin, its
+`inlineProjections` entry and route) are already registered in `src/index.ts`.
 Change `index.ts` only if E4's tests revealed a missing route registration.
 
 ### Files touched by an extension slice
@@ -548,6 +717,13 @@ src/
 - [ ] Every field in `readModel.fields` appears in the doc interface and the route response body
 - [ ] No invented fields — if it's not in slice.json it's not in the code
 - [ ] Projection passed to `ensureProjectionsCurrent(...)` in `src/index.ts`
+
+**Inline read models (`readModelType: "inline-projected"`) — instead of the consumer, `waitFn`, bookmark and ETag items above:**
+
+- [ ] Projection added to `inlineProjections` in `src/index.ts`, and **not** to the async `projections` array, `ensureHandlersInstalled` or the consumer
+- [ ] `handle()` touches only this projection's collections, makes no external calls, and never throws for a missing document or a business rule
+- [ ] Route has no `preferWait`, `waitFn`, bookmark lookup or `withETag`
+- [ ] Tests build the store with `inlineProjections: [projection]`, start no consumer, and read immediately after the write without `Prefer: wait`
 
 **Extension slices (`extends` present) — instead of the create items above:**
 
