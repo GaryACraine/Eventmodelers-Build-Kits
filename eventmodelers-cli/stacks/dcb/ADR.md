@@ -499,16 +499,25 @@ query can also generate and test it.
     `/courses/{courseId}` would swallow `/courses/available`, so pick `/available-courses` instead.
 - **Body:** always a page, `{ "data": [ …documents… ], "cursor"?: "…" }`.
   - Each document has the same shape as the keyed GET body.
-  - `cursor` is opaque, and present only when there may be more rows. `limit` defaults to 50, with a maximum of
-    200 (`parsePageParams`).
+  - `cursor` is opaque, and present only when there are more rows (the runner fetches `limit + 1`). `limit`
+    defaults to 50, with a maximum of 200.
 - **Status:** 200 always, including an empty `data`. A missing required parameter or a value that doesn't parse
   gives 400. A query is never 404.
-- **Semantics:**
+- **Semantics** (the same in the SQL and in the in-memory matcher; `readModelQueries.ts`):
   - **Predicates:** parameters are ANDed, and an absent optional parameter drops its predicate.
-    - `contains` matches an array field that holds the value. Through an array of objects, the dot path matches
-      any element's subfield, e.g. `subscribedStudents.studentId`.
-    - Comparisons follow pongo (MongoDB) semantics, including missing fields.
-  - **Order:** by the query's declared `sort` field, then by key. The default is the key, ascending.
+  - **Types:** each parameter declares `string`, `number` or `boolean`, and a comparison only matches a document
+    value of that JSON type. So the string `"2"` never equals the number `2`, and numbers compare numerically.
+  - **Paths:** `eq`, `ne`, `gt`, `gte`, `lt`, `lte` and `in` read a scalar at a dot path through objects. A path
+    that is missing, or that crosses an array, has no value.
+  - **`contains`** follows the path through arrays at every step, including a final array field. That is
+    Postgres jsonpath lax mode. It matches if any value reached equals the parameter:
+    `subscribedStudents.studentId`, or `tags`.
+  - **Missing fields:** a missing field matches only `ne`.
+  - **Strings** compare and sort by UTF-8 bytes (`COLLATE "C"`, `Buffer.compare`), never by the database's
+    locale.
+  - **Order:** by the query's `sort` field (types rank missing < number < string < boolean < object), then by the
+    key, both in the sort's direction. The default is the key, ascending. The cursor encodes a position in that
+    order.
 - The page body is the same whichever type serves the query.
 
 *Runtime*
@@ -516,9 +525,14 @@ query can also generate and test it.
   predicate function, so every runner can read it:
   - `params: { minFreeSeats: { field: "remainingSeats", op: "gte", type: "number" } }`;
   - an optional `tag` names the tag key that finds candidates live (below).
-- **The stored runner** (async or inline) translates the params into a pongo `find` filter, sorted by
-  `(sort, key)` and paged from the cursor. The runtime creates the indexes the queried fields need at startup.
-  Indexes don't change documents, so they are **not** part of the rebuild fingerprint.
+- **The stored runner** (async or inline) runs one parameterised JSONB SELECT, sorted by
+  `(rank, number, string, key)`, with keyset paging from the cursor.
+  - It does **not** use pongo's `find`. Verified in pongo 0.17: `find` compares `$gt`/`$gte`/`$lt`/`$lte`/`$ne`
+    as text (`'10' < '9'`), doesn't reach into arrays along a dot path, and sorts by the database collation. Any
+    of these would make stored results differ from live ones.
+  - At startup the runtime creates the indexes the queries use: one typed expression index per compared field, a
+    `jsonb_path_ops` GIN index for `contains` (the SQL uses `data @? jsonpath`), and one per sort order.
+    Indexes don't change documents, so they are **not** part of the rebuild fingerprint.
 - **The live runner** can serve a query **only if the query has a required equality parameter (`eq`, `in` or
   `contains`) that declares a `tag`**:
   - It reads the primary events carrying `{tag}={value}` and collects their key tags as candidates.

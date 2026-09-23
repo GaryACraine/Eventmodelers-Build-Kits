@@ -123,14 +123,30 @@ from ADR-022 still holds: the same URL and body whichever read model type serves
     ADR-023 is updated.
   - Smoke-tested on a copy of the course-enrollment workspace. Adding a spec that runs `availableCourses` to the
     Done "course seats capacity" slice re-queued it with `addQueries: ["availableCourses"]`.
-- [ ] **12.3 Kit runtime (`src/shared/readModels.ts`):**
-  - `queries` in `defineReadModel`;
-  - the stored `find` runner (sort, then key; an opaque cursor) and the live tag-narrowing runner with in-memory
-    predicates;
-  - `readQueryRoute`;
-  - startup indexes;
-  - a startup refusal for live read models with untagged queries;
-  - real-Postgres contract tests across types, including missing-field semantics and paging.
+- [x] **12.3 Kit runtime.** A new `src/shared/readModelQueries.ts`, plus changes in `readModels.ts`:
+  - `queries` in `defineReadModel`, validated when the read model is defined: reserved names, dot paths,
+    operators, types, and a tag only on a required equality parameter.
+  - The stored runner is one parameterised JSONB SELECT with keyset paging. The live runner collects candidates
+    through the tag, folds each with `readLive`, then applies the predicates in memory.
+  - `runtime.querier(readModel, name)` and `readQueryRoute(readModel, runtime, name, path)`. The route answers
+    `{ data, cursor? }`, 400s bad input and is never 404.
+  - `startReadModels` refuses to start a live read model with an untagged query, and creates the query indexes
+    for the stored types.
+  - Tests: 12 on real Postgres in `readModelQueries.tests.ts`, all passing. The full template suite passes
+    (60 tests).
+    - Every type returns the same pages for 13 cases, and cursor paging over HTTP gives the same order in all three
+      types.
+    - A **mirror test** runs every query over a grid of 40 parameter sets through both the SQL and the in-memory
+      matcher, and gets identical results.
+    - Also covered: the 400s, the empty 200, the live-start refusal, rejected definitions, and the indexes being
+      created and used (checked with `EXPLAIN`).
+  - **Finding:** pongo's `find` can't be the stored runner. In pongo 0.17 it compares ranges as text
+    (`'10' < '9'`), doesn't reach into arrays along a dot path, and sorts by the database collation. The runtime
+    writes its own SQL instead: typed comparisons, `COLLATE "C"`, and jsonpath lax mode for `contains`.
+    - The in-memory matcher mirrors that SQL, and the mirror test enforces it.
+    - The cases include 10 against 9, `"Banana"` sorting before `"apple"` (byte order), the string `"2"` never
+      equalling the number `2`, and a missing field matching only `ne`.
+    - ADR-023's semantics section is rewritten to match.
 - [ ] **12.4 The `build-state-view` skill:**
   - a query step (declare the query, route it, and check the tag requirement against `Events.ts` for live);
   - contract tests from given/when/then;
@@ -822,5 +838,5 @@ What each `build-*` skill generates and what it verifies:
 | 9 — Progressive Read Model Evolution | ✅ Core complete | emcli copies + extension slices, `build-state-view` extend mode, automatic rebuild; proven t0→t4 on a live DB (32/32). Real Ralph run done (9.6). Node kit port remains |
 | 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 done (stale InProgress recovery in `--local` mode) |
 | 11 — Read Model Types | ✅ Complete | Async, inline and live read models from one fold definition, with an identical data shape across types (ADR-021/022). Proven on course-enrollment t5–t10: inline, a retype to live and back, a new live read model with a lookup |
-| 12 — Query Read Models | 🚧 In progress (top priority) | 12.1–12.2 done: ADR-023 query contract; emcli queries + `SPEC_QUERY` + `addQueries` re-queue. Named queries on the read model element, the spec *when* references them, `{ data, cursor? }` pages; live needs a tag parameter |
+| 12 — Query Read Models | 🚧 In progress (top priority) | 12.1–12.3 done: ADR-023 query contract; emcli queries + `SPEC_QUERY` + `addQueries` re-queue; kit runtime (stored SQL + live, one semantics). Named queries on the read model element, the spec *when* references them, `{ data, cursor? }` pages; live needs a tag parameter |
 | 7 — Board Re-pointing | ⛔ Dropped | eventmodelers board retired; prooph board via emcli is the only board |
