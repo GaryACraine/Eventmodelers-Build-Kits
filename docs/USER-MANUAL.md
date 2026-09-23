@@ -23,17 +23,18 @@ data already in your database when you do.
 2. [The tools and how they fit together](#2-the-tools-and-how-they-fit-together)
 3. [Install](#3-install)
 4. [Create the project](#4-create-the-project)
-5. [Increment t0: register a course, see its details](#5-increment-t0--register-a-course-see-its-details)
-6. [Increment t1: capacity changes (your first growing read model)](#6-increment-t1--capacity-changes-your-first-growing-read-model)
-7. [Increment t2: students subscribe (a new field and a lookup)](#7-increment-t2--students-subscribe-a-new-field-and-a-lookup)
+5. [Increment t0: register a course, see its details](#5-increment-t0-register-a-course-see-its-details)
+6. [Increment t1: capacity changes (your first growing read model)](#6-increment-t1-capacity-changes-your-first-growing-read-model)
+7. [Increment t2: students subscribe (a new field and a lookup)](#7-increment-t2-students-subscribe-a-new-field-and-a-lookup)
 8. [Client feedback through the board](#8-client-feedback-through-the-board)
 9. [Increments t3 and t4](#9-increments-t3-and-t4)
-10. [Working with git: branches, commits and merges](#10-working-with-git-branches-commits-and-merges)
-11. [How the Ralph loop builds a slice](#11-how-the-ralph-loop-builds-a-slice)
-12. [Rebuilds in depth](#12-rebuilds-in-depth)
-13. [Troubleshooting](#13-troubleshooting)
-14. [Command reference](#14-command-reference)
-15. [Known limits](#15-known-limits)
+10. [Increments t5 and t6: a read model that's never stale](#10-increments-t5-and-t6-a-read-model-thats-never-stale)
+11. [Working with git: branches, commits and merges](#11-working-with-git-branches-commits-and-merges)
+12. [How the Ralph loop builds a slice](#12-how-the-ralph-loop-builds-a-slice)
+13. [Rebuilds in depth](#13-rebuilds-in-depth)
+14. [Troubleshooting](#14-troubleshooting)
+15. [Command reference](#15-command-reference)
+16. [Known limits](#16-known-limits)
 
 ---
 
@@ -74,6 +75,17 @@ updates the read model for each one.
 
 A projection runs in the background and remembers how far it has read the event store. That position is its
 **bookmark**. You'll see later why the bookmark matters a great deal.
+
+That's the default kind of read model. The model can choose one of three per read model, with emcli's
+`--read-model-type`:
+
+| Type | Kept up to date | A reader straight after a write sees | Cost |
+|---|---|---|---|
+| `database-projected` (default) | in the background, by an **async** projection | possibly the old answer, for a moment | none on writes |
+| `inline-projected` | in the same transaction as the events | always the new answer | every write of its events waits for it |
+| `live-report` | not stored: worked out from the events on every read | always the new answer | every read replays events. Not supported by the DCB kit yet |
+
+Most read models should stay async. §10 builds an inline one.
 
 ### Event modeling: designing on a timeline
 
@@ -194,7 +206,7 @@ Empty enrollment context ready: event-feed
 ```
 
 Install dependencies. This also switches on the **pre-commit hook**, which checks every slice commit (see
-[§11](#11-how-the-ralph-loop-builds-a-slice)):
+[§12](#12-how-the-ralph-loop-builds-a-slice)):
 
 ```bash
 npm install
@@ -288,7 +300,7 @@ git add em-helpers.sh && git commit -m "chore: name-based emcli helpers"
 Each increment gets its own git branch. The loop builds on whatever branch is checked out, and you merge the
 branch when the increment is done. **Creating, committing your model to, and merging this branch is your job.
 The loop only adds its own code commits to it** (the full split is in
-[§10](#10-working-with-git-branches-commits-and-merges)):
+[§11](#11-working-with-git-branches-commits-and-merges)):
 
 ```bash
 git switch -c increment/t0
@@ -748,7 +760,7 @@ projection's bookmark had moved past that event when it processed c3's registrat
 started handling a new event type would continue from its bookmark and never see the older capacity change.
 On startup, `ensureProjectionsCurrent` compares each projection's list of handled events with the list it ran
 with last time. When the list changes, it truncates the read model and replays every event from the start.
-You don't do anything; §12 has the details.
+You don't do anything; §13 has the details.
 
 Finish the increment:
 
@@ -1056,7 +1068,204 @@ After t4 the model is complete:
 
 ---
 
-## 10. Working with git: branches, commits and merges
+## 10. Increments t5 and t6: a read model that's never stale
+
+The client has a new request: *"When a student takes the last seat, nobody else may see it as free, not even
+for a moment."* Every read model so far is **async**: a projection follows the event store in the background,
+so for a few milliseconds after a write, a reader can see the old answer. (An async read route lets a client wait
+for its *own* write: it sends the `ETag` from its command's response as `If-None-Match`, with a `Prefer: wait=5` header. Other
+readers don't know to wait.) Usually that's fine. Here it isn't.
+
+An **inline** read model closes the gap. Its projection runs *inside* the append transaction, so the read model
+changes in the same commit as the events. When the command returns, the read model is already current, for
+every reader.
+
+### 10.1 When to choose inline
+
+Inline has a price. Every append of an event waits for each inline projection that handles it, while holding the
+event store's consistency locks. One inline read model on `studentWasSubscribed` costs little. Ten would slow
+every subscription. So:
+
+- Choose inline only where a stale read is a business problem, not a cosmetic one. Here, a free seat that's
+  already gone qualifies.
+- Keep everything else async (the default).
+- emcli's export warns when one event feeds three or more inline read models.
+
+Also note: **a bug in an inline projection fails the command.** The projection runs in the append
+transaction, so if it throws, the events are rolled back and the client gets an error. The build skill keeps
+inline projection code small, with no external calls, and never throws for a missing document.
+
+### 10.2 The *course seats* slice (t5)
+
+`CourseSeats` answers "how many seats are free?" per course. It starts with registration and subscriptions.
+Capacity changes come in t6, so you can watch an inline read model grow.
+
+```bash
+git switch -c increment/t5-course-seats
+REG_EVT=$(el_id 'register course' event courseWasRegistered)
+SUB_EVT=$(el_id 'subscribe student' event studentWasSubscribed)
+UNSUB_EVT=$(el_id 'unsubscribe student' event studentWasUnsubscribed)
+
+emcli slice add "$(chapter_id)" "course seats"
+emcli element add "$(chapter_id)" "$(slice_id 'course seats')" "$(lane_id Enrollment)" information CourseSeats
+SEATS=$(el_id 'course seats' information CourseSeats)
+emcli element field add "$(chapter_id)" "$SEATS" courseId String --id --example c1
+emcli element field add "$(chapter_id)" "$SEATS" capacity Int --example 30
+emcli element field add "$(chapter_id)" "$SEATS" subscriptionCount Int --example 0
+emcli element field add "$(chapter_id)" "$SEATS" remainingSeats Int --example 30
+for e in "$REG_EVT" "$SUB_EVT" "$UNSUB_EVT"; do emcli dependency add "$e" "$SEATS" hydrates; done
+emcli element update "$(chapter_id)" "$SEATS" --api-endpoint "/courses/{courseId}/seats" \
+  --read-model-type inline-projected
+```
+
+`--read-model-type inline-projected` is the only new step. It goes on the origin. Every copy of it follows
+automatically, and emcli rejects setting it on a copy.
+
+The scenarios are written as before:
+- *a registered course has all its seats free*: 30 capacity, 0 subscriptions, 30 free;
+- *a subscription takes a seat*: 30, 1, 29;
+- *an unsubscription frees the seat again*: 30, 0, 30.
+
+For example:
+
+```bash
+S='course seats'
+sp=$(emcli spec add "$(chapter_id)" "$(slice_id "$S")" "a subscription takes a seat" --json | jq -r .id)
+step "$S" "$sp" given event "$REG_EVT"; step "$S" "$sp" given event "$SUB_EVT"; step "$S" "$sp" then readmodel "$SEATS"
+ex "$S" "$sp" given 0 courseId c1; ex "$S" "$sp" given 0 title Math; ex "$S" "$sp" given 0 capacity 30
+ex "$S" "$sp" given 1 courseId c1; ex "$S" "$sp" given 1 studentId s1
+ex "$S" "$sp" then 0 courseId c1; ex "$S" "$sp" then 0 capacity 30
+ex "$S" "$sp" then 0 subscriptionCount 1; ex "$S" "$sp" then 0 remainingSeats 29
+```
+
+Then plan, push, commit and export, exactly as in §5.4. The exported `slice.json` carries
+`"readModelType": "inline-projected"` on its read model.
+
+### 10.3 What the loop builds differently
+
+The same `build-state-view` skill builds it, and its first step reads `readModelType`. The `projection.ts` is
+written exactly like `CourseDetails`'s. The differences are all in how it's run:
+
+| | async (`CourseDetails`) | inline (`CourseSeats`) |
+|---|---|---|
+| registered in `src/index.ts` | `projections` (consumer, bookmark, `waitFor`) | `inlineProjections`, passed to the `PostgresEventStore` |
+| route | `preferWait` + bookmark ETag | plain GET: nothing to wait for |
+| tests | read with `Prefer: wait` | read straight after the write, with no wait. That read is the proof |
+
+```text
+0d8275d feat: course seats
+926c2af chore: wire course seats inline projection and route
+```
+
+The wiring commit is one line in `src/index.ts`:
+
+```typescript
+const inlineProjections: Projection[] = [courseSeatsProjection]
+const eventStore = new PostgresEventStore({ pool, inlineProjections })
+```
+
+### 10.4 Verify: history, and reads that are never stale
+
+Restart the app. The event store already holds t0–t4's history, but an inline projection only sees appends
+made after it exists, so on its first start it is rebuilt from the whole history:
+
+```text
+Rebuilding CourseSeatsProjection: (new inline projection) → inline:v1:courseWasRegistered,studentWasSubscribed,studentWasUnsubscribed
+enrollment listening on http://localhost:3000
+```
+
+```bash
+curl -s localhost:3000/courses/c1/seats -w '\n'
+curl -s localhost:3000/courses/c2/seats -w '\n'
+```
+
+```json
+{"courseId":"c1","capacity":30,"subscriptionCount":1,"remainingSeats":29}
+{"courseId":"c2","capacity":20,"subscriptionCount":1,"remainingSeats":19}
+```
+
+Ada and Grace subscribed to Math, and Grace unsubscribed, so one seat is taken. Math's capacity reads 30, not
+45: `CourseSeats` doesn't handle capacity changes yet.
+
+Now the difference that matters. Subscribe and unsubscribe 100 times, and read both read models the instant
+each command returns, without `Prefer: wait`:
+
+```bash
+node --input-type=module -e '
+const B = "http://localhost:3000"; let seats = 0, details = 0
+for (let i = 0; i < 100; i++) {
+  await fetch(`${B}/courses/c3/students`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ studentId: "s1" }) })
+  const [s, d] = await Promise.all([fetch(`${B}/courses/c3/seats`).then(r => r.json()), fetch(`${B}/courses/c3`).then(r => r.json())])
+  if (s.subscriptionCount !== 1) seats++
+  if (!d.subscribedStudents.some(x => x.studentId === "s1")) details++
+  await fetch(`${B}/courses/c3/students/s1`, { method: "DELETE" })
+}
+console.log(`stale reads: CourseSeats ${seats}, CourseDetails ${details}`)'
+```
+
+```text
+stale reads: CourseSeats 0, CourseDetails 100
+```
+
+Your `CourseDetails` number will vary. On a fast local machine the async read model is behind almost every
+time, because the read arrives before its consumer has caught up. `CourseSeats` is always 0.
+
+Before closing t5, make one more change that `CourseSeats` can't see yet:
+
+```bash
+curl -s -X PUT localhost:3000/courses/c2/capacity -H 'content-type: application/json' -d '{"newCapacity":25}' -w '%{http_code}\n'
+curl -s localhost:3000/courses/c2/seats -w '\n'      # still capacity 20
+```
+
+Import statuses, push, commit and merge the increment (§5.6, §5.8).
+
+### 10.5 Grow it: capacity changes (t6)
+
+An inline read model grows exactly like an async one, through a copy and an extension slice. The existing
+`courseCapacityWasChanged` sticky sits earlier on the timeline, so an arrow from it to a *new* copy points
+forward:
+
+```bash
+git switch -c increment/t6-seats-capacity
+CAP_EVT=$(el_id 'change course capacity' event courseCapacityWasChanged)
+S='course seats capacity'
+emcli slice add "$(chapter_id)" "$S"
+emcli element copy "$(chapter_id)" "$SEATS" --slice "$(slice_id "$S")" --lane "$(lane_id Enrollment)"
+COPY=$(el_id "$S" information CourseSeats)
+for e in "$REG_EVT" "$SUB_EVT" "$UNSUB_EVT" "$CAP_EVT"; do emcli dependency add "$e" "$COPY" hydrates; done
+```
+
+Add the scenario *a capacity change moves the free seats* (30 capacity, one subscription, capacity changed to
+45: then 45, 1, 44), and plan, push, commit and export. The copy is inline because its origin is. The loop
+treats it as an extension: it appends `courseCapacityWasChanged` to the origin's `canHandle` and a `case` that
+recomputes `remainingSeats`, and it touches nothing else.
+
+Restart the app:
+
+```text
+Rebuilding CourseSeatsProjection: inline:v1:courseWasRegistered,studentWasSubscribed,studentWasUnsubscribed → inline:v1:courseCapacityWasChanged,courseWasRegistered,studentWasSubscribed,studentWasUnsubscribed
+```
+
+```json
+{"courseId":"c1","capacity":45,"subscriptionCount":1,"remainingSeats":44}
+{"courseId":"c2","capacity":25,"subscriptionCount":1,"remainingSeats":24}
+```
+
+Both capacity changes are there: Math's from t1, and History's, made in t5 before the extension existed.
+
+### 10.6 Async and inline, side by side
+
+| | async | inline |
+|---|---|---|
+| a reader right after a write | may see the old answer unless it sends `Prefer: wait` | always sees the new one |
+| cost | none on writes | every append of a handled event waits for it |
+| a bug in the projection | the read model falls behind; the command still succeeds | the command fails and nothing is recorded |
+| first start on existing history | its consumer reads from the beginning | rebuilt from the beginning (`Rebuilding …: (new inline projection)`) |
+| growing it | copy → extension slice → automatic rebuild on restart | the same |
+
+---
+
+## 11. Working with git: branches, commits and merges
 
 Two parties commit to your repository: **you** (the model, and your bookkeeping) and **the loop** (the code).
 They share one working tree, so the order of operations matters. This section brings together the git steps
@@ -1196,7 +1405,7 @@ Then start the next increment from the updated `main`: `git switch -c increment/
 
 ---
 
-## 11. How the Ralph loop builds a slice
+## 12. How the Ralph loop builds a slice
 
 For every slice with status **Planned** in `.build-kit/.slices/<context>/index.json`, the loop starts a fresh
 Claude agent with the kit's build prompt. The agent:
@@ -1236,14 +1445,14 @@ If a check fails, the agent must fix the code, or set the slice to **Blocked** w
 commits over a failure.
 
 **Branches:** the loop never creates, switches or merges branches. It builds on whatever is checked out. That's
-why each increment starts with `git switch -c increment/<name>` (see [§10](#10-working-with-git-branches-commits-and-merges)).
+why each increment starts with `git switch -c increment/<name>` (see [§11](#11-working-with-git-branches-commits-and-merges)).
 
 **Statuses:** only `planned` slices are built. `draft` (exported as `Created`) is ignored, which lets you stage
 work. Once the loop has marked a slice InProgress, Done or Blocked, re-exporting keeps that status.
 
 ---
 
-## 12. Rebuilds in depth
+## 13. Rebuilds in depth
 
 A projection reads only the event types in its `canHandle` list, and only from its bookmark onward. The bookmark
 moves forward with every event the projection handles. So when an extension adds an event type, any events of
@@ -1266,12 +1475,22 @@ v<version>:<sorted canHandle list>        e.g.  v1:courseCapacityWasChanged,cour
 `canHandle` doesn't change, so bump `version` in `projection.ts` to force the rebuild. The skill does this
 automatically when needed.
 
+**Inline projections** (§10) have no consumer and no bookmark to catch up from. They only see events appended
+after they exist. So for them:
+
+- **First start:** the projection is rebuilt from the whole history, not just recorded:
+  `Rebuilding <Projection>: (new inline projection) → inline:v1:…`.
+- **Fingerprint changed:** rebuilt, exactly as above. Their fingerprint starts with `inline:`, so switching a
+  read model between async and inline also rebuilds it.
+
+The rebuild runs at startup, before the app takes requests, so no command can append while it runs.
+
 **Cost:** a rebuild replays all the events this projection handles, so startup waits for it. That's
 instantaneous in this example, and it grows with your event store.
 
 ---
 
-## 13. Troubleshooting
+## 14. Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
@@ -1285,15 +1504,17 @@ instantaneous in this example, and it grows with your event store.
 | commit rejected: `[slice-tests]` | a test fails | fix it. The message names the failing scenario |
 | commit rejected: `[extension-additive]` | an extension changed existing projection code | keep extensions to additions only |
 | a read model is missing older data after an extension | the app wasn't restarted, so no rebuild | restart the app and look for `Rebuilding …` |
+| a command that used to work returns 500 after an inline read model was added | the inline projection threw, so the whole append rolled back (§10.1) | read the app log for the projection's error and fix it in its `projection.ts`. Nothing was recorded, so the client can retry |
+| a slice goes **Blocked** with "live read models aren't supported" | its read model is `live-report`, which the DCB kit can't build yet | set it to `database-projected` or `inline-projected`, or leave it until live read models are supported |
 | slices from other chapters appear in `.build-kit/.slices` | exported without `--chapter` after a `sync pull` | re-export with `--chapter "$(chapter_id)"` |
 | `eventmodelers init` crashes with `ERR_USE_AFTER_CLOSE` | no terminal input was available | run it in an interactive terminal and answer the prompts |
-| a slice went back to Planned and `git stash list` shows `ralph: interrupted slice …` | the agent was interrupted mid-slice (Claude usage ran out, a crash, the terminal closed). The loop stashed the partial work and rebuilds the slice (§11). If Claude is still unavailable, the loop retries every 60 s | nothing, once Claude is available again (restart the loop if you closed it). Drop the stash after the rebuilt slice is committed: `git stash drop stash@{N}` |
+| a slice went back to Planned and `git stash list` shows `ralph: interrupted slice …` | the agent was interrupted mid-slice (Claude usage ran out, a crash, the terminal closed). The loop stashed the partial work and rebuilds the slice (§12). If Claude is still unavailable, the loop retries every 60 s | nothing, once Claude is available again (restart the loop if you closed it). Drop the stash after the rebuilt slice is committed: `git stash drop stash@{N}` |
 | a slice is **Blocked** after an interruption | the agent committed part of the slice but was interrupted before marking it Done. `progress.txt` names the commits | check them with `git log`. If the slice is complete, set it to Done. Otherwise `git revert` them and set it back to Planned |
 | a slice stays **InProgress** and the loop says *waiting* | an interrupted agent, with the loop running with board sync (without `--local`). There the loop can't tell an interrupted claim from another agent's, so it only logs a warning | once no agent is building it: `git stash push -u -m "interrupted slice"`, then set the slice back to Planned on the board |
 
 ---
 
-## 14. Command reference
+## 15. Command reference
 
 ### emcli (model)
 
@@ -1306,6 +1527,7 @@ instantaneous in this example, and it grows with your event store.
 | `emcli element add <chapter> <slice> <lane> command\|event\|information "<name>"` | add a sticky |
 | `emcli element field add <chapter> <element> <name> <Type> [--id] [--optional] [--cardinality List] [--subfields "a:String,b:Int"] [--example v]` | add a field |
 | `emcli element update <chapter> <element> --api-endpoint "/path"` | set the HTTP route |
+| `emcli element update <chapter> <element> --read-model-type database-projected\|inline-projected\|live-report` | choose how a read model is kept current (set on the origin; copies follow) |
 | `emcli element copy <chapter> <origin> --slice <slice> --lane <lane>` | place a read-model copy later on the timeline |
 | `emcli element update <chapter> <element> --copy-of <origin>` | mark an existing sticky as a copy |
 | `emcli dependency add <from> <to> produces\|hydrates\|triggers` | link stickies |
@@ -1331,7 +1553,7 @@ instantaneous in this example, and it grows with your event store.
 
 ---
 
-## 15. Known limits
+## 16. Known limits
 
 - **The node (Emmett) kit has no extension mode.** This manual covers the DCB kit only.
 - **The copy link doesn't survive a pull.** emcli keeps it in `copyOf`, and pushes copies as ordinary stickies.
@@ -1340,5 +1562,9 @@ instantaneous in this example, and it grows with your event store.
   `element update --copy-of <origin>` before exporting, or the loop builds it as a new read model instead of an
   extension.
 - **Done slices can't be re-queued by export.** Change a built read model with a new copy, as shown.
+- **Live read models (`live-report`) aren't supported by the DCB kit yet.** The loop blocks such a slice with a
+  question instead of building something else.
+- **Inline read models slow writes.** Each one adds its projection's work to every append of the events it
+  handles. The kit doesn't measure it for you. Keep them few, and check write latency when you add one.
 - **Rebuild time grows with the event store.** Fine for development. For large production stores, plan rebuilds
   deliberately.
