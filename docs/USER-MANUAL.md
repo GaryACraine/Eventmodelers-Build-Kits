@@ -229,7 +229,7 @@ cp .env.example .env
 ```
 
 `init` also links emcli's Claude Code skills into `.claude/skills/`, one link per skill, next to the build kit's
-own `build-*` skills. The one that matters here is **`model`**, which turns what you say into emcli commands
+own `build-*` skills. The one that matters here is **`event-model`**, which turns what you say into emcli commands
 ([§17](#17-model-by-talking)). The links point into your emcli checkout, so `init` git-ignores them. After a fresh
 clone, run `emcli skills link` to recreate them.
 
@@ -1901,16 +1901,79 @@ instantaneous in this example, and it grows with your event store.
 
 ## 17. Model by talking
 
-Everything in §5–§12 can be said instead of typed. emcli's **`model`** skill (linked into `.claude/skills/` by
+Everything in §5–§12 can be said instead of typed. emcli's **`event-model`** skill (linked into `.claude/skills/` by
 `emcli workspace init`, §4) turns what you tell Claude Code into the same emcli commands, pushes the result to the
 board so you can watch the model grow, and hands planned slices to the loop.
+
+### Set up a project for a new process
+
+To model a process of your own (not course enrollment), start a new project. It isn't just a folder: `eventmodelers
+init` creates the whole DCB project (a Node project, the build kit, the loop's skills), so there's no `npm init`.
+The steps are §4's, with a new name and three differences. The example uses *library lending*; use your own.
+
+```bash
+mkdir ~/Projects/library-lending && cd ~/Projects/library-lending   # next to dcb-event-store, like §4
+git init -b main
+eventmodelers init --stack dcb --hooks        # credentials: type 4 (Skip for now)
+bash scripts/start-empty.sh
+npm install
+ls .githooks && git config core.hooksPath     # → pre-commit, and a path ending in .githooks
+
+emcli workspace init "Library Lending"
+emcli skills list                             # → event-model  linked
+cp .env.example .env
+sed -i.bak '/^workspace.json$/d' .gitignore && rm .gitignore.bak
+printf '.build-kit/.slices/\nralph.log\n' >> .gitignore
+```
+
+The differences:
+
+1. **Postgres port.** Another project's Postgres (course enrollment's) may already hold port 5432, and then
+   `docker compose up` fails. Give this project 5433. The loop doesn't need it (tests start their own database);
+   only running the app does.
+
+   ```bash
+   docker ps --format '{{.Names}} {{.Ports}}'        # anything on 5432 already?
+   sed -i.bak 's/"5432:5432"/"5433:5432"/' docker-compose.yml && rm docker-compose.yml.bak
+   sed -i.bak 's/localhost:5432/localhost:5433/' .env && rm .env.bak
+   ```
+
+2. **Board.** Add `PROOPH_BOARD_API_KEY` and `PROOPH_BOARD_WORKSPACE_ID` to `.env` as in §4, but use a **separate
+   prooph board workspace** from your other projects, so their pushes can't interfere.
+
+3. **The context name.** The empty scaffold has one code context, `src/contexts/enrollment/`, and `src/index.ts`
+   wires it. The chapter's `--context` decides where the loop puts code, and for a new process the skill picks a
+   name of its own (`--context lending`). Whether the loop builds cleanly into a new context folder hasn't been
+   tried yet (PLAN 13.6). Before the first hand-off, check with `emcli chapter list`.
+
+Then make the first commit, as in §4:
+
+```bash
+docker compose up -d postgres
+npm run build
+git add -A && git commit -m "chore: empty DCB project with an emcli workspace"
+```
+
+### How Claude picks the skill
+
+There is no activation word. When Claude Code starts in a project, it reads the **name and description** of every
+skill in `.claude/skills/` (not the whole skill). The `event-model` description says it's for describing a business
+process, event storming, adding events, commands, read models, screens, fields, scenarios and queries, reviewing a
+model, and planning slices for the loop. When what you say matches, Claude loads the full skill and follows it.
+
+- **You can see it happen:** the session shows `Skill(event-model)` before the first `emcli` command. emcli
+  commands without that line mean Claude is working without the method; say so.
+- **Words that match well:** *"Let's event-storm …"*, *"I want to model how …"*, *"Add to the event model: …"*.
+  *"Build me an app for …"* is vaguer and may not match.
+- **To be sure:** type `/event-model` followed by what you want, e.g. `/event-model members borrow and return
+  books`. That always loads it.
 
 ### Start
 
 In **terminal 1**, start Claude Code in the project (`claude`) and describe what you want. Typed or dictated makes
-no difference: speech-to-text just fills the same prompt. Check the skill is there with `emcli skills list`
-(`model  linked`). You never name a command or an ID. The skill asks one question at a time, and asks once
-whether it may push to the board as you go.
+no difference: speech-to-text just fills the same prompt. You never name a command or an ID. The skill asks one
+question at a time, and asks once whether it may push to the board as you go. Run the loop in **terminal 2** as
+usual, once the skill has planned and exported the first slices.
 
 ### What it does, by what you say
 
@@ -1957,7 +2020,7 @@ board except through `emcli sync push --safe`, and never commits or exports whil
 | the hand-off | *"Plan subscribe student, keep the details copy as a draft."* |
 
 The skill's own reference, including the phrase-to-command cookbook it works from, is in your emcli checkout:
-`skills/model/SKILL.md` and `skills/model/references/`.
+`skills/event-model/SKILL.md` and `skills/event-model/references/`.
 
 ---
 

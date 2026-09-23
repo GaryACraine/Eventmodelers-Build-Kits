@@ -122,7 +122,8 @@ Spoken input is just dictation into the same prompt, so it needs no speech-speci
     whole-folder link; prunes links to retired skills; git-ignores the links under a marker block. 11 tests.
   - Found and fixed: `workspace init --no-skills` never took effect (Commander stores `skills: false`).
   - The manual's §4 change (`--no-skills` → linked skills) is part of 13.7.
-- [x] **13.3 The entry skill.** *Done 2026-09-23, emcli `00e9006`.* Named `model` (`skills/model/SKILL.md`):
+- [x] **13.3 The entry skill.** *Done 2026-09-23, emcli `00e9006`.* Named `model` (`skills/model/SKILL.md`), since renamed
+  `event-model` (13.6):
   frontmatter that triggers on modeling talk; storm, slice, detail, review and hand-off modes; ground rules (emcli
   only, names only, build then summarise, one question per turn, hotspots for open questions, push only once
   agreed, `--safe`); hand-off checks the loop is idle (`ralph.log` *waiting*, no `InProgress` slice) and follows
@@ -144,11 +145,24 @@ Spoken input is just dictation into the same prompt, so it needs no speech-speci
   `request-feedback` (status and the question written to `.build-kit/.slices`, surfaced by
   `emcli workspace import-status`), and drop `connect`/`load-slice` from `lib/AGENT.md` in `--local` mode. Then
   deprecate the eventmodelers `shared/skills`.
-- [ ] **13.6 Experiment.**
+- [ ] **13.6 Experiment.** *Not run yet: Gary hasn't tried it.* Preparation done 2026-09-23 (below).
   - In a fresh project, model a small new context by conversation only: events, then slices, then specs, then
     planned. Gary runs the loop.
   - Record the prompts, the commands the skill ran, the corrections needed, and the time from the first sentence
     to the first green slice.
+  - Also record: did Claude pick the skill by itself (a `Skill(event-model)` line before the first emcli command),
+    or did it need `/event-model`?
+  - **Preparation (done, untested):**
+    - The skill is renamed `model` → **`event-model`** (emcli `2dbae32`). `/model` is Claude Code's built-in
+      model switcher, so the skill couldn't be forced by name. `emcli skills link` prunes the old `model` link
+      (checked in a scratch project).
+    - Manual §17 has the new-project setup (§4 with a new name) and *How Claude picks the skill* (description
+      matching, `/event-model` to force it).
+    - Two known risks for the run:
+      - Port 5432 is held by course-enrollment's Postgres; the manual moves the new project to 5433.
+      - The empty scaffold only has `src/contexts/enrollment/`, but the skill gives a new process its own
+        `--context`. The loop building into a new context folder is untested; check `emcli chapter list`
+        before the first hand-off.
 - [x] **13.7 Docs.** *Done 2026-09-23*, except the recorded skill session, which is 13.6's.
   - §4: `workspace init` without `--no-skills` (it links the `model` skill beside the kit's skills; `emcli skills
     link` after a clone); the `em-helpers.sh` section is replaced by *Names, not IDs* (names, `"<slice>/<name>"`
@@ -1091,6 +1105,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-23 | Inline read models share `build-state-view`, chosen by `readModelType` (ADR-021) | Same projection code and extension steps as async; only wiring, route and tests differ. First sighting of an inline projection backfills from history |
 | 2026-09-23 | Read specs' *when* carries the read operation (ADR-023) | Every read model is a keyed GET today. A *when* query with named parameters gives filtered reads a stable client contract, generated and tested from given/when/then |
 | 2026-09-23 | Natural-language modeling is an emcli skill, not an MCP server (Phase 13) | The gap is modeling method, which a skill carries. Name-based emcli commands serve the skill, people and a later MCP server alike. Skills are linked one by one so they sit next to the build kit's |
+| 2026-09-23 | The modeling skill is `event-model`, not `model` | `/model` is Claude Code's built-in model switcher, so `/model` could never force the skill; the new name matches what it does and matches the description's trigger words |
 
 ## Progress
 
