@@ -257,7 +257,8 @@ routes and queries, the examples, and the scenarios. Use it to:
 
 **Tasks**
 
-- [ ] **14.0 Board HTML: format and access.** *Format found 2026-09-23; API access still open.*
+- [x] **14.0 Board HTML: format and access.** *(Done 2026-09-23: wireframes work through today's API; the
+  snippet API is on its way, see 14.3.)*
   - Gary opens an Animal Shelter UI card that has a wireframe, plus a snippet, in the board editor, and records
     their shape: full document or fragment, and how CSS and snippets are imported.
   - Ask prooph board whether and when wireframes and snippets reach the REST API / MCP.
@@ -301,10 +302,34 @@ routes and queries, the examples, and the scenarios. Use it to:
       - mockups stay static (no scripts);
       - the design-system CSS must be precompiled (a Tailwind CDN script wouldn't run in the sandbox), and the same
         CSS ships in `web/`, so classes carry over 1:1 into JSX.
-    - **Still open:** ask prooph board (Alexander Miertsch):
+    - **Asked prooph board (Alexander Miertsch):**
       1. API/MCP access to wireframe HTML and `html_snippets`;
       2. which field holds the HTML;
       3. why the API and the app list different chapters for the reference workspace.
+    - **His reply (2026-09-23):**
+      - **Snippets:** MCP/API access to HTML snippets is planned "for the next days" (built, in QA). He'll say when
+        it's ready.
+      - **Where the HTML lives:** a fenced ` ```html ` code block in **any** description or details documentation:
+        an element, a slice, a lane, even a milestone. So it's ordinary text the API already reads and writes.
+      - **Scripts:** he wants to allow JS in the HTML and fetching external data into it (production stats as
+        charts, for example).
+      - Question 3 is left: the Animal Shelter workspace has its own API query issues. We move on without it.
+    - **Experiment (2026-09-23), through emcli on the course-enrollment board** (throwaway chapter
+      *zz HTML wireframe experiment (delete me)*, `2b512bf2-…`, pushed from a scratch emcli workspace):
+      - Three UI cards carried the same full HTML document (inline `<style>`, a *Register a course* form with
+        `data-slice`, `data-field` and `data-command` attributes):
+        - **A:** description = the fenced block only;
+        - **B:** a line of prose, then the fenced block;
+        - **C:** prose description, fenced block in `details`.
+      - `sync push` stored every variant **byte for byte** (read back through the REST API).
+      - In the board app, **A and B draw the wireframe on the card**, under any prose, as native wireframes do:
+        `iframe srcdoc`, `sandbox="allow-same-origin"`, 1024px wide. Our `data-*` attributes reach the iframe
+        unchanged. **C** draws it in the Documentation panel, not on the card.
+      - So native wireframes need no image upload and no rendering: `sync push` writes the fenced block into the
+        description. Use the **description**: prooph board shares `details` between an element and its copies
+        (emcli ISSUES.md), and each card of a shared screen shows its own slice's part.
+      - emcli gap found on the way: pushing a new chapter without an information-flow lane fails, because push
+        deletes the board's default one and the board requires exactly one (logged in emcli ISSUES.md).
 - [x] **14.1 Backend contract for a frontend (DCB kit).** *(Done 2026-09-23.)*
   - `start-empty.sh` keeps a minimal `openapi` slice.
   - Each slice's `schema.ts` registers its paths (build skills updated), so `/openapi.json` is complete.
@@ -359,20 +384,27 @@ routes and queries, the examples, and the scenarios. Use it to:
   - **Not yet proven:** the loop hasn't built a new slice with the updated skills. The next slice with a route
     (13.6's, or 14.9's increment) is that proof.
 - [ ] **14.2 Mockups in the model (emcli).**
-  - `element mockup <screen> --html <file> | --draft | --clear`, stored on the ui element (`mockup: { html }`).
+  - `element mockup <screen> --html <file> | --draft | --clear`, stored on the ui element (`mockup: { html }`) as
+    a **full HTML document**, the form the board draws (14.0).
   - `--draft` builds a form (a write slice: the command's fields) or a view or list (a read slice: the read
     model's fields, `data-list` for list elements).
   - `completeness` checks the bindings.
   - The export adds `screens[].mockup` to slice.json (it already has a `screenImages` slot).
   - Tests and USAGE.
-- [ ] **14.3 Show mockups on the board (emcli).**
-  - Native wireframe push if 14.0 finds API access.
-  - Otherwise, and meanwhile, `sync push` renders changed mockups to PNG (Playwright) and uploads or replaces them
-    through the image endpoints. The storage ref and a content hash are kept locally, and the image goes into the
-    generated description.
-  - A `--sketch` theme.
-  - A render failure warns and never blocks the push.
-  - Proven on a real board.
+- [ ] **14.3 Show mockups on the board (emcli).** *Native wireframes (14.0 experiment); no PNG.*
+  - `sync push` appends the mockup to the ui element's description as a fenced ` ```html ` block, after the prose.
+  - `sync pull` takes it back out into `mockup`, so the round trip is lossless. It also adopts a mockup that
+    someone drew in the board editor.
+  - Bindings are kept by name locally. Board ids go into `data-pb-element-id` / `data-pb-element-type` on push,
+    so the board's hover badges work.
+  - The design system: `<!-- @import <slug> -->`, from a local snippet file. Push it through the snippet API when
+    that lands; until then, push its CSS inline. Check first whether the board accepts the expanded
+    `@import-start` / `@import-end` form it uses itself.
+  - A `--sketch` theme is a snippet, not a renderer.
+  - Proven on a real board. The PNG path (Playwright, `/images/upload`) is no longer planned. Keep it only if a
+    need appears that native wireframes can't meet.
+  - Mockups stay script-free, although the board may allow JS. They're blueprints for components, and static
+    HTML maps 1:1 to JSX. Live HTML (charts from production data) is a separate idea, outside Phase 14.
 - [ ] **14.4 The `event-model` skill: screen mode.**
   - Ask what the person sees and does, write the mockup (Tailwind classes, bindings), draft first, push, and show
     the board image.
@@ -1331,6 +1363,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-23 | The modeling skill is `event-model`, not `model` | `/model` is Claude Code's built-in model switcher, so `/model` could never force the skill; the new name matches what it does and matches the description's trigger words |
 | 2026-09-23 | Screens are HTML mockups in the model, shown on the board as rendered images until its API exposes wireframes (Phase 14) | prooph board uses HTML for screens but its API can't read or write them yet; HTML is both picture and code blueprint; push regenerates descriptions, so rendering belongs in push |
 | 2026-09-23 | The frontend is `web/` in the backend repo: Vite + React + Tailwind/shadcn + TanStack Query, client generated from `/openapi.json` (Phase 14) | One slice drives both halves from one model; a static build suits S3; Tailwind mockups map 1:1 to JSX |
+| 2026-09-23 | Mockups are pushed as native board wireframes (a fenced ` ```html ` block in the ui element's description), not rendered PNGs (14.0, supersedes the image path) | The API already reads and writes descriptions, and the board draws the block on the card (experiment 2026-09-23). No renderer, no image storage, and the board shows the same HTML the loop builds from. Description, not details: details are shared across copies |
 | 2026-09-23 | Each slice registers its own routes in a shared OpenAPI registry; `readModelRoute` documents read models and their queries itself (14.1, ADR-007 update) | A central `document.ts` would be a cross-slice edit the loop can't make; deriving queries from the definition keeps `addQueries` additive, and a `ZodType<TDoc>` schema lets tsc catch drift |
 | 2026-09-23 | DCB gets an `openapi-registered` check after all (supersedes "omit `60-openapi-annotation`") | The client is generated from `/openapi.json`, so a missing route is a frontend bug. The check reads `registerCommand`/`registerRead` and `readModelRoute`'s `schema:`, not JSDoc |
 | 2026-09-23 | `readModelRoute`'s `schema` is optional in the type and required by the check | Required in the type, the kit update breaks tsc in existing projects, and no single per-slice backfill commit can pass tsc-build. The check still covers every slice a commit touches |
@@ -1352,5 +1385,5 @@ What each `build-*` skill generates and what it verifies:
 | 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 done (stale InProgress recovery in `--local` mode) |
 | 11 — Read Model Types | ✅ Complete | Async, inline and live read models from one fold definition, with an identical data shape across types (ADR-021/022). Proven on course-enrollment t5–t10: inline, a retype to live and back, a new live read model with a lookup |
 | 12 — Query Read Models | 🚧 In progress (top priority) | 12.1–12.3 done: ADR-023 query contract; emcli queries + `SPEC_QUERY` + `addQueries` re-queue; kit runtime (stored SQL + live, one semantics). Named queries on the read model element, the spec *when* references them, `{ data, cursor? }` pages; live needs a tag parameter |
-| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0: format found, API access open. 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
+| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
 | 7 — Board Re-pointing | ⛔ Dropped | eventmodelers board retired; prooph board via emcli is the only board |
