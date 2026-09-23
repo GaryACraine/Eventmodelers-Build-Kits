@@ -610,3 +610,56 @@ query can also generate and test it.
   creates. Right after a bulk load (a rebuild's replay), a GIN index's pending list and the dead tuples can make
   the planner skip an index until VACUUM runs (PLAN 12.6).
 - Out of scope: OR predicates, full-text search, aggregates (counts, sums) and cross-read-model joins.
+
+---
+
+### ADR-024: Screens as bound HTML
+
+**Status:** Accepted (implementation in progress: PLAN 14.2b–14.9)
+**Date:** 2026-09-23
+
+**Context:** A slice's screen was an ASCII sketch in a board description: a picture, but nothing a build could
+use or check. Two things changed that (PLAN 14.0):
+- prooph board draws a fenced ` ```html ` block in an element's description as a native wireframe;
+- its snippet API lets a workspace share a design system that wireframes import with `<!-- @import <slug> -->`.
+
+The backend already exposes every route in `/openapi.json` (14.1).
+
+**Decision:**
+- **A screen's mockup is a full HTML document** on its `ui` element in the model (`mockup.html`), static (no
+  scripts). It names what it shows with bindings:
+  - `data-field` (an input or a shown value);
+  - `data-list` (a repeated region);
+  - `data-command` (what submits);
+  - `data-slice` (a region of a shared screen owned by another slice).
+- **The screen's dependencies are the contract.** It `displays` read models and `submits` commands. Every binding
+  must come from those dependencies, every dependency must be bound, and every field of a submitted command must
+  have an input. emcli's completeness enforces it, in the same way it enforces the backend's field flow.
+- **On the board:** the mockup is pushed into the screen's description as a fenced HTML block, never as an image.
+  It goes in the description because details are shared between an element and its copies. The design system is
+  a board snippet, pushed by emcli with an explicit slug. Mockups import it by slug and never expand it, since the
+  expanded form is a frozen copy.
+- **In code:** the loop builds `web/` (React, Tailwind) from the mockup, one component per bound command and read
+  model, with the client generated from `/openapi.json`. Tests come from the slice's scenarios.
+
+**Alternatives considered:**
+- **Images** (PNG rendered from the HTML, or SVG sketches). Rejected: they need a renderer and image storage,
+  can't be edited on the board, and carry no structure a build can use.
+- **Checking bindings against the slice's elements** (14.2's first version). Rejected: slice membership is
+  layout, not information flow. A screen can show a read model from another slice, and a slice can hold a command
+  its screen doesn't submit.
+- **Generic generated forms** (prooph's Cody / RJSF). Rejected as the target. Borrowed only as the idea behind
+  `--draft`.
+- **Scripts in mockups.** Rejected for mockups, although the board may allow JS: a blueprint has to be static to
+  map 1:1 to JSX. Live HTML (charts from production data) is a separate use.
+
+**Consequences:**
+- One HTML document is the board's wireframe, a checked part of the model, and the blueprint for the React
+  screen.
+- Screens need explicit `displays` / `submits` dependencies before they can be drafted or built. Existing models
+  (course-enrollment's 24 screens have none) need them added.
+- A design-system change is one snippet edit: every wireframe on the board follows it live, and the same CSS ships
+  in `web/`.
+- The board shows mockups only as long as emcli pushes the description: `sync push` owns it, and a board-side edit
+  is taken back into the model on pull (14.3).
+

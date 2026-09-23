@@ -447,6 +447,31 @@ routes and queries, the examples, and the scenarios. Use it to:
       credits?") and a warning that `CreateCourse` can no longer send `credits`;
     - `workspace export --build-kit` warned about both errors and wrote full documents to the three slices'
       `screens[].mockup.html`.
+- [ ] **14.2b The screen contract: dependencies (emcli).** *Added 2026-09-23 at Gary's request.*
+  - **Why:** a screen's information flow is a contract, not decoration. The read models it displays and the
+    commands it submits decide what the frontend queries and calls, so they must be modelled explicitly, and
+    checked, before any mockup is drafted or built. Found while planning it:
+    - none of the 24 screens in course-enrollment's model has a dependency;
+    - emcli has `displays` (read model → screen) but no connection type for screen → command;
+    - completeness skips screens, because they have no fields.
+  - **A new connection type `submits`: SCREEN → COMMAND.** `dependency add <screen> <command> submits`, with the
+    same pair rule as the others.
+  - **The mockup is checked against the contract, not the slice:**
+    - `data-command` must name a command the screen `submits`;
+    - `data-field` / `data-list` must come from a read model it `displays` or a command it `submits`;
+    - a `data-slice` region narrows that to the dependencies in that slice (a shared screen).
+  - **Completeness:**
+    - a screen with a mockup but no dependencies is an error;
+    - a screen with no dependencies is a warning;
+    - a `submits` with no `data-command` in the mockup is an error;
+    - a `displays` with no binding from that read model is a warning;
+    - a command submitted from a screen gets its fields from the screen's inputs: each non-generated field needs
+      a `data-field` in the mockup (an error). A screen without a mockup counts as user input (a warning).
+  - **`--draft` drafts from the dependencies**, a form per submitted command and a view per displayed read model.
+    With none, it refuses and prints the `dependency add … displays|submits` lines for the slice's read models and
+    commands, to run or adjust. It never adds dependencies silently.
+  - The export already carries a screen's dependencies, so `build-screen` (14.6) knows exactly which queries and
+    commands to wire. Tests, USAGE.
 - [ ] **14.3 Show mockups on the board (emcli).** *Native wireframes (14.0 experiment); no PNG.*
   - `sync push` appends the mockup to the ui element's description as a fenced ` ```html ` block, after the prose.
   - `sync pull` takes it back out into `mockup`, so the round trip is lossless. It also adopts a mockup that
@@ -464,10 +489,18 @@ routes and queries, the examples, and the scenarios. Use it to:
   - Mockups stay script-free, although the board may allow JS. They're blueprints for components, and static
     HTML maps 1:1 to JSX. Live HTML (charts from production data) is a separate idea, outside Phase 14.
 - [ ] **14.4 The `event-model` skill: screen mode.**
-  - Ask what the person sees and does, write the mockup (Tailwind classes, bindings), draft first, push, and show
-    the board image.
+  - Ask what the person sees (which read models it displays) and does (which commands it submits). Wire those as
+    dependencies first (14.2b), then draft, edit (Tailwind classes, bindings), check, push, and show the board
+    wireframe.
   - A shared screen is one screen title per page, with `data-slice` regions.
   - `ascii-mockups` stays retired once screen mode covers it.
+- [ ] **14.4b Manual: screens in the model (increment t13 on course-enrollment).** A new manual section, verified by
+  replaying it:
+  - give the Enrollment chapter's slices screens and wire their dependencies;
+  - draft and check the mockups, or describe them to the `event-model` skill;
+  - push, see native wireframes on the board, and restyle every screen through one design-system snippet.
+  - It's usable before any frontend exists. Also update §1 (a slice now includes its screen), §2 (tools) and §18
+    (commands).
 - [ ] **14.5 Frontend scaffold (DCB kit, `templates/root/web/`).**
   - The stack above.
   - `src/lib/api.ts` (the generated client, plus position → `Prefer: wait`); `npm run gen:api` from the backend's
@@ -484,12 +517,24 @@ routes and queries, the examples, and the scenarios. Use it to:
   - MSW handlers and component tests from the slice's scenarios: the happy path renders, and each rejection shows
     its message.
   - Commit checks cover `web/src/slices/<slice>/`.
+  - **Reference frontend:**
+    - the kit's example app (the reference the backend skills were written from) gets screens, mockups and
+      dependencies for its slices, plus a built `web/` for them, as the pattern `build-screen` copies.
+      `start-empty.sh` removes it with the example backend;
+    - `tests/enrollment-proof` fixtures gain screens with mockups and dependencies, so `build-screen` is proven
+      the way 5.5 proved the backend skills.
 - [ ] **14.7 Loop and export wiring.** Screens and mockups are exported; the loop runs `build-screen` after the
   backend step; the hand-off ready check includes "the screen has a mockup".
 - [ ] **14.8 Deploy.** The `web/` build goes to S3 + CloudFront (SPA fallback to `index.html`), with `VITE_API_BASE`
   per environment. A script first; CDK later if wanted.
-- [ ] **14.9 Prove and document.** One increment end to end on a real project: mockup → board image → the loop
-  builds backend and UI → the app works against the live backend. New manual section; results here.
+- [ ] **14.9 Prove and document (increment t14 on course-enrollment).**
+  - One increment end to end on a real project: the dependencies and a mockup → a board wireframe → the loop builds
+    backend and UI → the app works against the live backend.
+  - Manual: "The loop builds the UI" (t14), and a deploy section from 14.8. §14 (how the loop builds a slice) and
+    §19 (known limits) updated. Results here.
+- [x] **14.A ADR-024 "Screens as bound HTML"** in the DCB kit's ADR.md *(2026-09-23)*: mockups as full HTML
+  documents with checked bindings, the dependency contract, native board wireframes in the description, the
+  design system as a snippet imported by slug, and `web/` built from the mockup plus `/openapi.json`.
 - **Resolved 2026-09-23:** `~/Projects/CLAUDE.md` (Bulma, inherited from eventmodelers) deleted at Gary's request.
 
 ### Phase 12: Query Read Models (the spec's *when* is the read operation) ✅
@@ -1400,7 +1445,7 @@ What each `build-*` skill generates and what it verifies:
 
 ## Decisions Log
 
-> **Architectural decisions with full rationale and alternatives:** see [`eventmodelers-cli/stacks/dcb/ADR.md`](eventmodelers-cli/stacks/dcb/ADR.md) — 23 ADRs covering projections, identity, consistency, testing, error handling, idempotency, versioning, and more.
+> **Architectural decisions with full rationale and alternatives:** see [`eventmodelers-cli/stacks/dcb/ADR.md`](eventmodelers-cli/stacks/dcb/ADR.md) — 24 ADRs covering projections, identity, consistency, testing, error handling, idempotency, versioning, and more.
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
@@ -1423,6 +1468,8 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-23 | The frontend is `web/` in the backend repo: Vite + React + Tailwind/shadcn + TanStack Query, client generated from `/openapi.json` (Phase 14) | One slice drives both halves from one model; a static build suits S3; Tailwind mockups map 1:1 to JSX |
 | 2026-09-23 | Mockups are pushed as native board wireframes (a fenced ` ```html ` block in the ui element's description), not rendered PNGs (14.0, supersedes the image path) | The API already reads and writes descriptions, and the board draws the block on the card (experiment 2026-09-23). No renderer, no image storage, and the board shows the same HTML the loop builds from. Description, not details: details are shared across copies |
 | 2026-09-23 | Mockups import the design system by slug (`<!-- @import <slug> -->`), never expanded; emcli owns snippets by explicit slug (14.0 snippet experiment) | Imports resolve for API-pushed wireframes and follow snippet edits live; the expanded form is a frozen copy. An explicit slug keeps references stable whatever the name |
+| 2026-09-23 | A screen's dependencies are its contract: `displays` (read model → screen) and a new `submits` (screen → command); mockup bindings are checked against them, not against the slice (14.2b, ADR-024) | The information flow decides what the frontend queries and calls; slice membership is layout, not contract. Explicit dependencies make the UI step as checkable as the backend's field flow |
+| 2026-09-23 | Document Phase 14 as it lands (manual t13 after 14.4, t14 after 14.7/14.9), with a reference frontend next to the reference backend (14.6) | The manual is proven by replay, so each part needs its own increment; `build-screen` needs a worked example the way the backend skills had one |
 | 2026-09-23 | Each slice registers its own routes in a shared OpenAPI registry; `readModelRoute` documents read models and their queries itself (14.1, ADR-007 update) | A central `document.ts` would be a cross-slice edit the loop can't make; deriving queries from the definition keeps `addQueries` additive, and a `ZodType<TDoc>` schema lets tsc catch drift |
 | 2026-09-23 | DCB gets an `openapi-registered` check after all (supersedes "omit `60-openapi-annotation`") | The client is generated from `/openapi.json`, so a missing route is a frontend bug. The check reads `registerCommand`/`registerRead` and `readModelRoute`'s `schema:`, not JSDoc |
 | 2026-09-23 | `readModelRoute`'s `schema` is optional in the type and required by the check | Required in the type, the kit update breaks tsc in existing projects, and no single per-slice backfill commit can pass tsc-build. The check still covers every slice a commit touches |
