@@ -62,6 +62,20 @@ const courseDetails = defineReadModel<CourseDoc, { students: { name: string } }>
     }
 })
 
+// A read model without lookups — and the scaffold's `ReadModel[]` must hold both kinds (tsc checks this).
+const courseCounter = defineReadModel<{ [key: string]: unknown; courseId: string; subscriptions: number }>({
+    name: "TestCourseCounter",
+    type: "live-report",
+    key: "courseId",
+    collection: "test_course_counter",
+    canHandle: ["courseWasRegistered", "studentWasSubscribed"],
+    evolve: (doc, { event }) =>
+        event.type === "courseWasRegistered"
+            ? { courseId: (event.data as { courseId: string }).courseId, subscriptions: 0 }
+            : doc && { ...doc, subscriptions: doc.subscriptions + 1 }
+})
+export const registry: ReadModel[] = [courseDetails, courseCounter]
+
 const e = (type: string, data: Record<string, string | number>, tags: Record<string, string>): TaggedEvent => ({
     event: { type, data },
     tags: Tags.fromObj(tags)

@@ -70,9 +70,11 @@ export interface ReadModelDefinition<
     evolve: (doc: TDoc | null, event: SequencedEvent, lookups: LookupViews<TLookups>) => TDoc | null
 }
 
+// Defaults are `any` so `ReadModel[]` (the scaffold's readModels array) holds read models with and
+// without lookups: a definition's `evolve` parameters make the generics invariant.
 export interface ReadModel<
-    TDoc extends ReadModelDoc = ReadModelDoc,
-    TLookups extends Record<string, ReadModelDoc> = Record<string, any>
+    TDoc extends ReadModelDoc = any,
+    TLookups extends Record<string, ReadModelDoc> = any
 > extends ReadModelDefinition<TDoc, TLookups> {
     /** The stored runner: a pongo projection over this definition (used by the two stored types) */
     projection: Projection
