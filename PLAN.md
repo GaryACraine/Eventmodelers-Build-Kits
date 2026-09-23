@@ -149,13 +149,21 @@ Spoken input is just dictation into the same prompt, so it needs no speech-speci
     planned. Gary runs the loop.
   - Record the prompts, the commands the skill ran, the corrections needed, and the time from the first sentence
     to the first green slice.
-- [ ] **13.7 Docs.**
-  - A new manual section, "Model by talking", that replays t0 as prompts. Each prompt is paired with the commands
-    the skill ran and the board result.
-  - A prompt cookbook next to the command reference (§17).
-  - A short "how skills are installed" note in §4.
-  - Remove `em-helpers.sh` once 13.1 lands.
-  - Record the results here.
+- [x] **13.7 Docs.** *Done 2026-09-23*, except the recorded skill session, which is 13.6's.
+  - §4: `workspace init` without `--no-skills` (it links the `model` skill beside the kit's skills; `emcli skills
+    link` after a clone); the `em-helpers.sh` section is replaced by *Names, not IDs* (names, `"<slice>/<name>"`
+    for copies, context).
+  - §5–§12 and `docs/examples/t3.sh`/`t4.sh`: every command by name, with `emcli use chapter` once in §5.1 and
+    `use slice`/`use spec` for scenarios; steps use `--link --seed-examples`, so only differing example values
+    remain as `spec step example`. 207 helper lines gone; the manual is 20 lines shorter.
+  - **Verified by replay:** the manual's model commands (helpers version and names version, t3/t4 inlined) were
+    run in two scratch projects and the models compared by name. Identical, except ten scenario steps that are
+    now seeded with the element's examples where the old text left them blank (four `CourseDetails` copy
+    scenarios now also assert `title`/`capacity`, which follow from their given events; the §12 query scenario
+    whose values the manual elides). Tools kept in `docs/tools/manual-replay/`.
+  - New §17 *Model by talking*: starting the skill, what it does by what you say (storm, slice, detail, review,
+    hand-off), t0 as prompts paired with the §5 commands they become, and a prompt cookbook. Command reference
+    (now §18) rewritten in name form; Known limits is §19. Troubleshooting gains the name-matching errors.
 
 ### Phase 12: Query Read Models (the spec's *when* is the read operation) ✅
 

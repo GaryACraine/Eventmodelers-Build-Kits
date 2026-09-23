@@ -35,8 +35,9 @@ data already in your database when you do.
 14. [How the Ralph loop builds a slice](#14-how-the-ralph-loop-builds-a-slice)
 15. [Rebuilds in depth](#15-rebuilds-in-depth)
 16. [Troubleshooting](#16-troubleshooting)
-17. [Command reference](#17-command-reference)
-18. [Known limits](#18-known-limits)
+17. [Model by talking](#17-model-by-talking)
+18. [Command reference](#18-command-reference)
+19. [Known limits](#19-known-limits)
 
 ---
 
@@ -223,11 +224,14 @@ Without it, commits aren't checked at all.
 Create the model workspace and the environment file:
 
 ```bash
-emcli workspace init "Course Enrollment" --no-skills
+emcli workspace init "Course Enrollment"
 cp .env.example .env
 ```
 
-`--no-skills` stops emcli from replacing `.claude/skills` (the build kit's skills are already there).
+`init` also links emcli's Claude Code skills into `.claude/skills/`, one link per skill, next to the build kit's
+own `build-*` skills. The one that matters here is **`model`**, which turns what you say into emcli commands
+([§17](#17-model-by-talking)). The links point into your emcli checkout, so `init` git-ignores them. After a fresh
+clone, run `emcli skills link` to recreate them.
 
 Open `.env` and add your board credentials under the database settings that are already there:
 
@@ -256,39 +260,18 @@ npm run build
 git add -A && git commit -m "chore: empty DCB project with an emcli workspace"
 ```
 
-### Helpers for looking things up by name
+### Names, not IDs
 
-Every emcli element has an ID. **IDs change the first time you push to the board**: emcli's local IDs are
-replaced by the board's. So never write IDs down. Look them up by name whenever you need one. Save these
-helpers as `em-helpers.sh` in the project:
+Every emcli command takes **names**: `emcli element add "register course" Enrollment command registerCourse`
+means *in slice "register course", lane "Enrollment"*. Every element also has an ID, but IDs change the first
+time you push to the board (the board replaces emcli's local IDs), so this manual never uses them.
 
-```bash
-cat > em-helpers.sh <<'EOF'
-# Source me:  source em-helpers.sh
-# Name-based lookups into workspace.json, scoped to one chapter.
-CHAPTER="Course Enrollment"
-_ch='.chapters[] | select(.name == $c)'
-chapter_id() { jq -r --arg c "$CHAPTER" "$_ch | .id" workspace.json; }
-lane_id()    { jq -r --arg c "$CHAPTER" --arg l "$1" "$_ch | .lanes[] | select(.label == \$l) | .id" workspace.json; }
-slice_id()   { jq -r --arg c "$CHAPTER" --arg l "$1" "$_ch | .slices[] | select(.label == \$l) | .id" workspace.json; }
-# el_id "<slice label>" <command|event|information> <name>
-el_id() {
-  local s; s=$(slice_id "$1")
-  jq -r --arg c "$CHAPTER" --arg s "$s" --arg t "$2" --arg n "$3" \
-    "$_ch | .elements[] | select(.sliceId == \$s and .type == \$t and .name == \$n) | .id" workspace.json
-}
-# Scenario (Given/When/Then) helpers
-# step "<slice>" <spec-id> <given|when|then> <event|command|readmodel> <element-id>
-step()    { emcli spec step add "$(chapter_id)" "$(slice_id "$1")" "$2" "$3" "$4" x --link "$5" --seed >/dev/null; }
-# error_step "<slice>" <spec-id> "<error message>"
-error_step() { emcli spec step add "$(chapter_id)" "$(slice_id "$1")" "$2" then error "$3" >/dev/null; }
-# ex "<slice>" <spec-id> <phase> <step index> <field> <value>
-ex()      { emcli spec step example "$(chapter_id)" "$(slice_id "$1")" "$2" "$3" "$4" "$5" "$6" >/dev/null; }
-EOF
-echo "source em-helpers.sh" >> ~/.bashrc   # optional; otherwise run `source em-helpers.sh` in each new shell
-source em-helpers.sh
-git add em-helpers.sh && git commit -m "chore: name-based emcli helpers"
-```
+Names match ignoring case, spaces and punctuation. A name that fits more than one thing is an error that lists
+the candidates. That happens with **copies** (§6.2), which share their original's name. A bare name means the
+original, and `"<slice>/<name>"` means the copy in that slice, e.g. `"course details capacity/CourseDetails"`.
+
+emcli also remembers a **context**: `emcli use chapter "Course Enrollment"` lets later commands leave the chapter
+out, and `emcli use slice …` / `emcli use spec …` do the same for scenarios. `emcli use` shows the current context.
 
 ### Three terminals
 
@@ -322,28 +305,30 @@ models in the middle, events at the bottom.
 
 ```bash
 emcli chapter add "Course Enrollment" --context enrollment
-emcli lane add "$(chapter_id)" Student --type user-lane
-emcli lane add "$(chapter_id)" Enrollment --type information-flow
-emcli lane add "$(chapter_id)" "Enrollment Events" --type system
+emcli use chapter "Course Enrollment"
+emcli lane add Student --type user-lane
+emcli lane add Enrollment --type information-flow
+emcli lane add "Enrollment Events" --type system
 ```
 
 `--context enrollment` names the code's bounded context. Generated code lands in `src/contexts/enrollment/`.
+`emcli use chapter` makes it the current chapter, so the commands below leave it out.
 
 ### 5.2 The *register course* slice (state change)
 
 ```bash
-emcli slice add "$(chapter_id)" "register course"
-emcli element add "$(chapter_id)" "$(slice_id 'register course')" "$(lane_id Enrollment)" command registerCourse
-emcli element add "$(chapter_id)" "$(slice_id 'register course')" "$(lane_id 'Enrollment Events')" event courseWasRegistered
+emcli slice add "register course"
+emcli element add "register course" Enrollment command registerCourse
+emcli element add "register course" "Enrollment Events" event courseWasRegistered
 ```
 
 **Fields** are the data a sticky carries. The command and the event carry the same three:
 
 ```bash
-for el in "$(el_id 'register course' command registerCourse)" "$(el_id 'register course' event courseWasRegistered)"; do
-  emcli element field add "$(chapter_id)" "$el" courseId String --id --example c1
-  emcli element field add "$(chapter_id)" "$el" title String --example Math
-  emcli element field add "$(chapter_id)" "$el" capacity Int --example 30
+for el in registerCourse courseWasRegistered; do
+  emcli element field add "$el" courseId String --id --example c1
+  emcli element field add "$el" title String --example Math
+  emcli element field add "$el" capacity Int --example 30
 done
 ```
 
@@ -352,8 +337,8 @@ done
 Link command → event (*"registerCourse produces courseWasRegistered"*), and give the command its HTTP route:
 
 ```bash
-emcli dependency add "$(el_id 'register course' command registerCourse)" "$(el_id 'register course' event courseWasRegistered)" produces
-emcli element update "$(chapter_id)" "$(el_id 'register course' command registerCourse)" --api-endpoint "/courses"
+emcli dependency add registerCourse courseWasRegistered produces
+emcli element update registerCourse --api-endpoint "/courses"
 ```
 
 #### Scenarios: the slice's specification
@@ -361,50 +346,47 @@ emcli element update "$(chapter_id)" "$(el_id 'register course' command register
 A **scenario** (Given / When / Then) is an executable example: *given* these past events, *when* this command
 arrives, *then* this event is recorded (or this error). The build loop turns each scenario into a test.
 
+`emcli use slice` and `emcli use spec` point the next commands at a slice and a scenario. In
+`spec step add <phase> <type> <name>`, `--link` links the step to the element with that name, and
+`--seed-examples` fills the step's fields with the element's example values (`c1`, `Math`, `30`). Only a value
+that differs needs setting, with `emcli spec step example <phase> <index> <field> <value>` (§6.1).
+
 ```bash
-REG_CMD=$(el_id 'register course' command registerCourse)
-REG_EVT=$(el_id 'register course' event courseWasRegistered)
+emcli use slice "register course"
+emcli spec add "registers a new course"
+emcli use spec "registers a new course"
+emcli spec step add when command registerCourse --link --seed-examples
+emcli spec step add then event courseWasRegistered --link --seed-examples
 
-sp=$(emcli spec add "$(chapter_id)" "$(slice_id 'register course')" "registers a new course" --json | jq -r .id)
-step "register course" "$sp" when command "$REG_CMD"
-step "register course" "$sp" then event   "$REG_EVT"
-for ph in when then; do
-  ex "register course" "$sp" $ph 0 courseId c1; ex "register course" "$sp" $ph 0 title Math; ex "register course" "$sp" $ph 0 capacity 30
-done
-
-sp=$(emcli spec add "$(chapter_id)" "$(slice_id 'register course')" "rejects a course that is already registered" --json | jq -r .id)
-step "register course" "$sp" given event "$REG_EVT"
-step "register course" "$sp" when  command "$REG_CMD"
-error_step "register course" "$sp" "Course already exists"
-for ph in given when; do
-  ex "register course" "$sp" $ph 0 courseId c1; ex "register course" "$sp" $ph 0 title Math; ex "register course" "$sp" $ph 0 capacity 30
-done
+emcli spec add "rejects a course that is already registered"
+emcli use spec "rejects a course that is already registered"
+emcli spec step add given event courseWasRegistered --link --seed-examples
+emcli spec step add when command registerCourse --link --seed-examples
+emcli spec step add then error "Course already exists"
 ```
 
 Check the scenarios read the way you intend:
 
 ```bash
-emcli spec list "$(chapter_id)" "$(slice_id 'register course')"
+emcli spec list "register course"
 ```
 
 ### 5.3 The *course details* slice (state view)
 
 ```bash
-emcli slice add "$(chapter_id)" "course details"
-emcli element add "$(chapter_id)" "$(slice_id 'course details')" "$(lane_id Enrollment)" information CourseDetails
-DETAILS=$(el_id 'course details' information CourseDetails)
-emcli element field add "$(chapter_id)" "$DETAILS" courseId String --id --example c1
-emcli element field add "$(chapter_id)" "$DETAILS" title String --example Math
-emcli element field add "$(chapter_id)" "$DETAILS" capacity Int --example 30
-emcli dependency add "$REG_EVT" "$DETAILS" hydrates                       # the event feeds the read model
-emcli element update "$(chapter_id)" "$DETAILS" --api-endpoint "/courses/{courseId}"
+emcli slice add "course details"
+emcli element add "course details" Enrollment information CourseDetails
+emcli element field add CourseDetails courseId String --id --example c1
+emcli element field add CourseDetails title String --example Math
+emcli element field add CourseDetails capacity Int --example 30
+emcli dependency add courseWasRegistered CourseDetails hydrates                       # the event feeds the read model
+emcli element update CourseDetails --api-endpoint "/courses/{courseId}"
 
-sp=$(emcli spec add "$(chapter_id)" "$(slice_id 'course details')" "shows a registered course" --json | jq -r .id)
-step "course details" "$sp" given event     "$REG_EVT"
-step "course details" "$sp" then  readmodel "$DETAILS"
-for ph in given then; do
-  ex "course details" "$sp" $ph 0 courseId c1; ex "course details" "$sp" $ph 0 title Math; ex "course details" "$sp" $ph 0 capacity 30
-done
+emcli use slice "course details"
+emcli spec add "shows a registered course"
+emcli use spec "shows a registered course"
+emcli spec step add given event courseWasRegistered --link --seed-examples
+emcli spec step add then readmodel CourseDetails --link --seed-examples
 ```
 
 A state-view scenario says: *given* these events, *then* the read model shows this.
@@ -414,8 +396,8 @@ A state-view scenario says: *given* these events, *then* the read model shows th
 Mark both slices **planned**. That's the signal for the loop to build them:
 
 ```bash
-emcli slice status "$(chapter_id)" "$(slice_id 'register course')" planned
-emcli slice status "$(chapter_id)" "$(slice_id 'course details')" planned
+emcli slice status "register course" planned
+emcli slice status "course details" planned
 ```
 
 **Push to the board** so your team or client can see it:
@@ -454,7 +436,7 @@ Click the `register course` slice header and open **Details** to see its scenari
 
 ![The register course slice details: the Specifications (CLI-managed) block](images/SS3.png)
 
-The push replaced every local ID with the board's, which is why the helpers look everything up by name.
+The push replaced every local ID with the board's. The commands in this manual use names, so nothing changes for you.
 **Commit before exporting.** The loop shares your working tree, and you don't want your model files swept
 into its commits:
 
@@ -465,7 +447,7 @@ git add -A && git commit -m "model(t0): register course + course details"
 **Export** the planned slices to the build loop:
 
 ```bash
-emcli workspace export --build-kit .build-kit --chapter "$(chapter_id)"
+emcli workspace export --build-kit .build-kit --chapter "Course Enrollment"
 ```
 
 ```text
@@ -595,30 +577,28 @@ git switch -c increment/t1
 ### 6.1 The *change course capacity* slice
 
 ```bash
-emcli slice add "$(chapter_id)" "change course capacity"
-emcli element add "$(chapter_id)" "$(slice_id 'change course capacity')" "$(lane_id Enrollment)" command changeCourseCapacity
-emcli element add "$(chapter_id)" "$(slice_id 'change course capacity')" "$(lane_id 'Enrollment Events')" event courseCapacityWasChanged
-CAP_CMD=$(el_id 'change course capacity' command changeCourseCapacity)
-CAP_EVT=$(el_id 'change course capacity' event courseCapacityWasChanged)
-REG_EVT=$(el_id 'register course' event courseWasRegistered)
-for el in "$CAP_CMD" "$CAP_EVT"; do
-  emcli element field add "$(chapter_id)" "$el" courseId String --id --example c1
-  emcli element field add "$(chapter_id)" "$el" newCapacity Int --example 40
+emcli slice add "change course capacity"
+emcli element add "change course capacity" Enrollment command changeCourseCapacity
+emcli element add "change course capacity" "Enrollment Events" event courseCapacityWasChanged
+for el in changeCourseCapacity courseCapacityWasChanged; do
+  emcli element field add "$el" courseId String --id --example c1
+  emcli element field add "$el" newCapacity Int --example 40
 done
-emcli dependency add "$CAP_CMD" "$CAP_EVT" produces
-emcli element update "$(chapter_id)" "$CAP_CMD" --api-endpoint "/courses/{courseId}/capacity"
+emcli dependency add changeCourseCapacity courseCapacityWasChanged produces
+emcli element update changeCourseCapacity --api-endpoint "/courses/{courseId}/capacity"
 
-sp=$(emcli spec add "$(chapter_id)" "$(slice_id 'change course capacity')" "changes the capacity of a registered course" --json | jq -r .id)
-step "change course capacity" "$sp" given event   "$REG_EVT"
-step "change course capacity" "$sp" when  command "$CAP_CMD"
-step "change course capacity" "$sp" then  event   "$CAP_EVT"
-ex "change course capacity" "$sp" given 0 courseId c1; ex "change course capacity" "$sp" given 0 title Math; ex "change course capacity" "$sp" given 0 capacity 30
-for ph in when then; do ex "change course capacity" "$sp" $ph 0 courseId c1; ex "change course capacity" "$sp" $ph 0 newCapacity 40; done
+emcli use slice "change course capacity"
+emcli spec add "changes the capacity of a registered course"
+emcli use spec "changes the capacity of a registered course"
+emcli spec step add given event courseWasRegistered --link --seed-examples
+emcli spec step add when command changeCourseCapacity --link --seed-examples
+emcli spec step add then event courseCapacityWasChanged --link --seed-examples
 
-sp=$(emcli spec add "$(chapter_id)" "$(slice_id 'change course capacity')" "rejects a capacity change for an unknown course" --json | jq -r .id)
-step "change course capacity" "$sp" when command "$CAP_CMD"
-error_step "change course capacity" "$sp" "Course not found"
-ex "change course capacity" "$sp" when 0 courseId c9; ex "change course capacity" "$sp" when 0 newCapacity 40
+emcli spec add "rejects a capacity change for an unknown course"
+emcli use spec "rejects a capacity change for an unknown course"
+emcli spec step add when command changeCourseCapacity --link --seed-examples
+emcli spec step add then error "Course not found"
+emcli spec step example when 0 courseId c9
 ```
 
 The *given* in the first scenario uses `courseWasRegistered`, an event from a different slice. That's normal.
@@ -630,12 +610,11 @@ Deciders read whatever past events they need.
 sticky. Place a **copy** after the new event, in a new slice:
 
 ```bash
-emcli slice add "$(chapter_id)" "course details capacity"
-emcli element copy "$(chapter_id)" "$(el_id 'course details' information CourseDetails)" \
-  --slice "$(slice_id 'course details capacity')" --lane "$(lane_id Enrollment)"
-DETAILS_1=$(el_id 'course details capacity' information CourseDetails)
-emcli dependency add "$REG_EVT" "$DETAILS_1" hydrates
-emcli dependency add "$CAP_EVT" "$DETAILS_1" hydrates
+emcli slice add "course details capacity"
+emcli element copy CourseDetails \
+  --slice "course details capacity" --lane Enrollment
+emcli dependency add courseWasRegistered "course details capacity/CourseDetails" hydrates
+emcli dependency add courseCapacityWasChanged "course details capacity/CourseDetails" hydrates
 ```
 
 The copy inherits the original's fields and remembers its origin (`copyOf`). Wire **every** event that shapes
@@ -643,13 +622,13 @@ the read model so far, not just the new one. A copy shows the read model's compl
 time. emcli works out what's new by comparing with the previous copy.
 
 ```bash
-sp=$(emcli spec add "$(chapter_id)" "$(slice_id 'course details capacity')" "shows the changed capacity" --json | jq -r .id)
-step "course details capacity" "$sp" given event     "$REG_EVT"
-step "course details capacity" "$sp" given event     "$CAP_EVT"
-step "course details capacity" "$sp" then  readmodel "$DETAILS_1"
-ex "course details capacity" "$sp" given 0 courseId c1; ex "course details capacity" "$sp" given 0 title Math; ex "course details capacity" "$sp" given 0 capacity 30
-ex "course details capacity" "$sp" given 1 courseId c1; ex "course details capacity" "$sp" given 1 newCapacity 40
-ex "course details capacity" "$sp" then 0 courseId c1; ex "course details capacity" "$sp" then 0 title Math; ex "course details capacity" "$sp" then 0 capacity 40
+emcli use slice "course details capacity"
+emcli spec add "shows the changed capacity"
+emcli use spec "shows the changed capacity"
+emcli spec step add given event courseWasRegistered --link --seed-examples
+emcli spec step add given event courseCapacityWasChanged --link --seed-examples
+emcli spec step add then readmodel "course details capacity/CourseDetails" --link --seed-examples
+emcli spec step example then 0 capacity 40
 ```
 
 ### 6.3 Stage it: ship the command first, keep the extension as a draft
@@ -659,11 +638,11 @@ life: the capacity feature ships and gets used before the read model catches up.
 situation the automatic rebuild is designed for (§6.6).
 
 ```bash
-emcli slice status "$(chapter_id)" "$(slice_id 'change course capacity')" planned
-emcli slice status "$(chapter_id)" "$(slice_id 'course details capacity')" draft
+emcli slice status "change course capacity" planned
+emcli slice status "course details capacity" draft
 emcli sync push --safe
 git add -A && git commit -m "model(t1): change course capacity + CourseDetails copy (draft)"
-emcli workspace export --build-kit .build-kit --chapter "$(chapter_id)"
+emcli workspace export --build-kit .build-kit --chapter "Course Enrollment"
 ```
 
 ![Board with t1 staged](images/diagram-t1-staged.svg)
@@ -695,10 +674,10 @@ app. Registering c3 afterwards matters for §6.6.
 ### 6.4 Plan the extension
 
 ```bash
-emcli slice status "$(chapter_id)" "$(slice_id 'course details capacity')" planned
+emcli slice status "course details capacity" planned
 emcli sync push --safe
 git add -A && git commit -m "model(t1): plan course details capacity"
-emcli workspace export --build-kit .build-kit --chapter "$(chapter_id)"
+emcli workspace export --build-kit .build-kit --chapter "Course Enrollment"
 ```
 
 See what the builder receives:
@@ -791,71 +770,72 @@ name comes from `studentWasRegistered`).
 
 ```bash
 git switch -c increment/t2
-REG_EVT=$(el_id 'register course' event courseWasRegistered)
-CAP_EVT=$(el_id 'change course capacity' event courseCapacityWasChanged)
 ```
 
 ### 7.1 Two new state-change slices
 
 ```bash
 # register student
-emcli slice add "$(chapter_id)" "register student"
-emcli element add "$(chapter_id)" "$(slice_id 'register student')" "$(lane_id Enrollment)" command registerStudent
-emcli element add "$(chapter_id)" "$(slice_id 'register student')" "$(lane_id 'Enrollment Events')" event studentWasRegistered
-RS_CMD=$(el_id 'register student' command registerStudent); RS_EVT=$(el_id 'register student' event studentWasRegistered)
-for el in "$RS_CMD" "$RS_EVT"; do
-  emcli element field add "$(chapter_id)" "$el" studentId String --id --example s1
-  emcli element field add "$(chapter_id)" "$el" name String --example Ada
+emcli slice add "register student"
+emcli element add "register student" Enrollment command registerStudent
+emcli element add "register student" "Enrollment Events" event studentWasRegistered
+for el in registerStudent studentWasRegistered; do
+  emcli element field add "$el" studentId String --id --example s1
+  emcli element field add "$el" name String --example Ada
 done
-emcli dependency add "$RS_CMD" "$RS_EVT" produces
-emcli element update "$(chapter_id)" "$RS_CMD" --api-endpoint "/students"
-sp=$(emcli spec add "$(chapter_id)" "$(slice_id 'register student')" "registers a new student" --json | jq -r .id)
-step "register student" "$sp" when command "$RS_CMD"; step "register student" "$sp" then event "$RS_EVT"
-for ph in when then; do ex "register student" "$sp" $ph 0 studentId s1; ex "register student" "$sp" $ph 0 name Ada; done
-sp=$(emcli spec add "$(chapter_id)" "$(slice_id 'register student')" "rejects a student that is already registered" --json | jq -r .id)
-step "register student" "$sp" given event "$RS_EVT"; step "register student" "$sp" when command "$RS_CMD"
-error_step "register student" "$sp" "Student already exists"
-for ph in given when; do ex "register student" "$sp" $ph 0 studentId s1; ex "register student" "$sp" $ph 0 name Ada; done
+emcli dependency add registerStudent studentWasRegistered produces
+emcli element update registerStudent --api-endpoint "/students"
+emcli use slice "register student"
+emcli spec add "registers a new student"
+emcli use spec "registers a new student"
+emcli spec step add when command registerStudent --link --seed-examples
+emcli spec step add then event studentWasRegistered --link --seed-examples
+emcli spec add "rejects a student that is already registered"
+emcli use spec "rejects a student that is already registered"
+emcli spec step add given event studentWasRegistered --link --seed-examples
+emcli spec step add when command registerStudent --link --seed-examples
+emcli spec step add then error "Student already exists"
 
 # subscribe student
-emcli slice add "$(chapter_id)" "subscribe student"
-emcli element add "$(chapter_id)" "$(slice_id 'subscribe student')" "$(lane_id Enrollment)" command subscribeStudent
-emcli element add "$(chapter_id)" "$(slice_id 'subscribe student')" "$(lane_id 'Enrollment Events')" event studentWasSubscribed
-SUB_CMD=$(el_id 'subscribe student' command subscribeStudent); SUB_EVT=$(el_id 'subscribe student' event studentWasSubscribed)
-for el in "$SUB_CMD" "$SUB_EVT"; do
-  emcli element field add "$(chapter_id)" "$el" courseId String --id --example c1
-  emcli element field add "$(chapter_id)" "$el" studentId String --id --example s1
+emcli slice add "subscribe student"
+emcli element add "subscribe student" Enrollment command subscribeStudent
+emcli element add "subscribe student" "Enrollment Events" event studentWasSubscribed
+for el in subscribeStudent studentWasSubscribed; do
+  emcli element field add "$el" courseId String --id --example c1
+  emcli element field add "$el" studentId String --id --example s1
 done
-emcli dependency add "$SUB_CMD" "$SUB_EVT" produces
-emcli element update "$(chapter_id)" "$SUB_CMD" --api-endpoint "/courses/{courseId}/students"
-sp=$(emcli spec add "$(chapter_id)" "$(slice_id 'subscribe student')" "subscribes a registered student to a registered course" --json | jq -r .id)
-step "subscribe student" "$sp" given event "$REG_EVT"; step "subscribe student" "$sp" given event "$RS_EVT"
-step "subscribe student" "$sp" when command "$SUB_CMD"; step "subscribe student" "$sp" then event "$SUB_EVT"
-ex "subscribe student" "$sp" given 0 courseId c1; ex "subscribe student" "$sp" given 0 title Math; ex "subscribe student" "$sp" given 0 capacity 30
-ex "subscribe student" "$sp" given 1 studentId s1; ex "subscribe student" "$sp" given 1 name Ada
-for ph in when then; do ex "subscribe student" "$sp" $ph 0 courseId c1; ex "subscribe student" "$sp" $ph 0 studentId s1; done
-sp=$(emcli spec add "$(chapter_id)" "$(slice_id 'subscribe student')" "rejects a subscription to an unknown course" --json | jq -r .id)
-step "subscribe student" "$sp" given event "$RS_EVT"; step "subscribe student" "$sp" when command "$SUB_CMD"
-error_step "subscribe student" "$sp" "Course not found"
-ex "subscribe student" "$sp" given 0 studentId s1; ex "subscribe student" "$sp" given 0 name Ada
-ex "subscribe student" "$sp" when 0 courseId c9; ex "subscribe student" "$sp" when 0 studentId s1
-sp=$(emcli spec add "$(chapter_id)" "$(slice_id 'subscribe student')" "rejects a subscription for an unknown student" --json | jq -r .id)
-step "subscribe student" "$sp" given event "$REG_EVT"; step "subscribe student" "$sp" when command "$SUB_CMD"
-error_step "subscribe student" "$sp" "Student not found"
-ex "subscribe student" "$sp" given 0 courseId c1; ex "subscribe student" "$sp" given 0 title Math; ex "subscribe student" "$sp" given 0 capacity 30
-ex "subscribe student" "$sp" when 0 courseId c1; ex "subscribe student" "$sp" when 0 studentId s9
+emcli dependency add subscribeStudent studentWasSubscribed produces
+emcli element update subscribeStudent --api-endpoint "/courses/{courseId}/students"
+emcli use slice "subscribe student"
+emcli spec add "subscribes a registered student to a registered course"
+emcli use spec "subscribes a registered student to a registered course"
+emcli spec step add given event courseWasRegistered --link --seed-examples
+emcli spec step add given event studentWasRegistered --link --seed-examples
+emcli spec step add when command subscribeStudent --link --seed-examples
+emcli spec step add then event studentWasSubscribed --link --seed-examples
+emcli spec add "rejects a subscription to an unknown course"
+emcli use spec "rejects a subscription to an unknown course"
+emcli spec step add given event studentWasRegistered --link --seed-examples
+emcli spec step add when command subscribeStudent --link --seed-examples
+emcli spec step add then error "Course not found"
+emcli spec step example when 0 courseId c9
+emcli spec add "rejects a subscription for an unknown student"
+emcli use spec "rejects a subscription for an unknown student"
+emcli spec step add given event courseWasRegistered --link --seed-examples
+emcli spec step add when command subscribeStudent --link --seed-examples
+emcli spec step add then error "Student not found"
+emcli spec step example when 0 studentId s9
 ```
 
 ### 7.2 The second copy: a new field with a nested shape
 
 ```bash
-emcli slice add "$(chapter_id)" "course details subscriptions"
-emcli element copy "$(chapter_id)" "$(el_id 'course details' information CourseDetails)" \
-  --slice "$(slice_id 'course details subscriptions')" --lane "$(lane_id Enrollment)"
-DETAILS_2=$(el_id 'course details subscriptions' information CourseDetails)
-emcli element field add "$(chapter_id)" "$DETAILS_2" subscribedStudents Custom --cardinality List \
+emcli slice add "course details subscriptions"
+emcli element copy CourseDetails \
+  --slice "course details subscriptions" --lane Enrollment
+emcli element field add "course details subscriptions/CourseDetails" subscribedStudents Custom --cardinality List \
   --subfields "studentId:String,name:String" --example '[{"studentId":"s1","name":"Ada"}]'
-for e in "$REG_EVT" "$CAP_EVT" "$RS_EVT" "$SUB_EVT"; do emcli dependency add "$e" "$DETAILS_2" hydrates; done
+for e in courseWasRegistered courseCapacityWasChanged studentWasRegistered studentWasSubscribed; do emcli dependency add "$e" "course details subscriptions/CourseDetails" hydrates; done
 ```
 
 `Custom` + `--cardinality List` + `--subfields` describes a list of `{ studentId, name }` objects. All four
@@ -863,32 +843,30 @@ events are wired (cumulative). emcli will report `studentWasRegistered` and `stu
 measured against the *previous copy*, not the origin.
 
 ```bash
-sp=$(emcli spec add "$(chapter_id)" "$(slice_id 'course details subscriptions')" "lists a subscribed student by name" --json | jq -r .id)
-step "course details subscriptions" "$sp" given event "$REG_EVT"
-step "course details subscriptions" "$sp" given event "$RS_EVT"
-step "course details subscriptions" "$sp" given event "$SUB_EVT"
-step "course details subscriptions" "$sp" then readmodel "$DETAILS_2"
-ex "course details subscriptions" "$sp" given 0 courseId c1; ex "course details subscriptions" "$sp" given 0 title Math; ex "course details subscriptions" "$sp" given 0 capacity 30
-ex "course details subscriptions" "$sp" given 1 studentId s1; ex "course details subscriptions" "$sp" given 1 name Ada
-ex "course details subscriptions" "$sp" given 2 courseId c1; ex "course details subscriptions" "$sp" given 2 studentId s1
-ex "course details subscriptions" "$sp" then 0 courseId c1; ex "course details subscriptions" "$sp" then 0 subscribedStudents '[{"studentId":"s1","name":"Ada"}]'
+emcli use slice "course details subscriptions"
+emcli spec add "lists a subscribed student by name"
+emcli use spec "lists a subscribed student by name"
+emcli spec step add given event courseWasRegistered --link --seed-examples
+emcli spec step add given event studentWasRegistered --link --seed-examples
+emcli spec step add given event studentWasSubscribed --link --seed-examples
+emcli spec step add then readmodel "course details subscriptions/CourseDetails" --link --seed-examples
 
-sp=$(emcli spec add "$(chapter_id)" "$(slice_id 'course details subscriptions')" "a course with no subscriptions lists no students" --json | jq -r .id)
-step "course details subscriptions" "$sp" given event "$REG_EVT"
-step "course details subscriptions" "$sp" then readmodel "$DETAILS_2"
-ex "course details subscriptions" "$sp" given 0 courseId c1; ex "course details subscriptions" "$sp" given 0 title Math; ex "course details subscriptions" "$sp" given 0 capacity 30
-ex "course details subscriptions" "$sp" then 0 courseId c1; ex "course details subscriptions" "$sp" then 0 subscribedStudents '[]'
+emcli spec add "a course with no subscriptions lists no students"
+emcli use spec "a course with no subscriptions lists no students"
+emcli spec step add given event courseWasRegistered --link --seed-examples
+emcli spec step add then readmodel "course details subscriptions/CourseDetails" --link --seed-examples
+emcli spec step example then 0 subscribedStudents '[]'
 ```
 
 ### 7.3 Ship the write slices first, then the extension
 
 ```bash
-emcli slice status "$(chapter_id)" "$(slice_id 'register student')" planned
-emcli slice status "$(chapter_id)" "$(slice_id 'subscribe student')" planned
-emcli slice status "$(chapter_id)" "$(slice_id 'course details subscriptions')" draft
+emcli slice status "register student" planned
+emcli slice status "subscribe student" planned
+emcli slice status "course details subscriptions" draft
 emcli sync push --safe
 git add -A && git commit -m "model(t2): students (planned) + CourseDetails copy (draft)"
-emcli workspace export --build-kit .build-kit --chapter "$(chapter_id)"
+emcli workspace export --build-kit .build-kit --chapter "Course Enrollment"
 ```
 
 When the loop is *waiting*: `import-status` + `sync push` + commit (as in §5.6). Start the app and create
@@ -907,10 +885,10 @@ post /courses '{"courseId":"c4","title":"Chemistry","capacity":12}'
 Stop the app, then plan the extension:
 
 ```bash
-emcli slice status "$(chapter_id)" "$(slice_id 'course details subscriptions')" planned
+emcli slice status "course details subscriptions" planned
 emcli sync push --safe
 git add -A && git commit -m "model(t2): plan course details subscriptions"
-emcli workspace export --build-kit .build-kit --chapter "$(chapter_id)"
+emcli workspace export --build-kit .build-kit --chapter "Course Enrollment"
 jq -c '.extends | {addedEvents, addedFields: [.addedFields[].name]}' .build-kit/.slices/enrollment/coursedetailssubscriptions/slice.json
 ```
 
@@ -980,8 +958,8 @@ What comes back on a pull, and what doesn't:
 Your local model is the source of truth for structure. The board is where people see it and comment on it.
 
 > **Important:** `sync pull` imports **every chapter** in the board workspace, including other people's. That's
-> why every export in this manual uses `--chapter "$(chapter_id)"`, and why the helpers only look inside
-> `$CHAPTER`. Without `--chapter`, slices from other chapters could reach the build loop.
+> why every export in this manual uses `--chapter "Course Enrollment"`, and why the commands work inside the
+> context chapter (`emcli use chapter`). Without `--chapter`, slices from other chapters could reach the build loop.
 
 ---
 
@@ -1002,7 +980,7 @@ command `changeCourseTitle`, event `courseTitleWasChanged { courseId, newTitle }
 `course details title`, wired to all six events, with the scenario *"shows the new title"*.
 
 The modeling commands for each are in two scripts in the kit repo:
-[`docs/examples/t3.sh`](examples/t3.sh) and [`docs/examples/t4.sh`](examples/t4.sh). They use the same helpers
+[`docs/examples/t3.sh`](examples/t3.sh) and [`docs/examples/t4.sh`](examples/t4.sh). They use the same commands
 and follow the same pattern as §6–§7. The git and loop steps around them are the same every time.
 
 **t3**, from `main` in terminal 1:
@@ -1013,7 +991,7 @@ git add -A && git commit -m "model: pull client note"          # the §8 pull
 bash ~/Projects/Eventmodelers-Build-Kits/docs/examples/t3.sh
 emcli sync push --safe
 git add -A && git commit -m "model(t3): unsubscribe student + CourseDetails copy (draft)"
-emcli workspace export --build-kit .build-kit --chapter "$(chapter_id)"
+emcli workspace export --build-kit .build-kit --chapter "Course Enrollment"
 ```
 
 When the loop is *waiting* (it built `unsubscribe student`):
@@ -1034,10 +1012,10 @@ curl -s -X POST localhost:3000/courses -H 'content-type: application/json' -d '{
 Stop the app, then plan the extension:
 
 ```bash
-emcli slice status "$(chapter_id)" "$(slice_id 'course details unsubscriptions')" planned
+emcli slice status "course details unsubscriptions" planned
 emcli sync push --safe
 git add -A && git commit -m "model(t3): plan course details unsubscriptions"
-emcli workspace export --build-kit .build-kit --chapter "$(chapter_id)"
+emcli workspace export --build-kit .build-kit --chapter "Course Enrollment"
 ```
 
 When the loop is *waiting*, restart the app. It rebuilds, and Grace is gone from Math:
@@ -1112,19 +1090,15 @@ Capacity changes come in t6, so you can watch an inline read model grow.
 
 ```bash
 git switch -c increment/t5-course-seats
-REG_EVT=$(el_id 'register course' event courseWasRegistered)
-SUB_EVT=$(el_id 'subscribe student' event studentWasSubscribed)
-UNSUB_EVT=$(el_id 'unsubscribe student' event studentWasUnsubscribed)
 
-emcli slice add "$(chapter_id)" "course seats"
-emcli element add "$(chapter_id)" "$(slice_id 'course seats')" "$(lane_id Enrollment)" information CourseSeats
-SEATS=$(el_id 'course seats' information CourseSeats)
-emcli element field add "$(chapter_id)" "$SEATS" courseId String --id --example c1
-emcli element field add "$(chapter_id)" "$SEATS" capacity Int --example 30
-emcli element field add "$(chapter_id)" "$SEATS" subscriptionCount Int --example 0
-emcli element field add "$(chapter_id)" "$SEATS" remainingSeats Int --example 30
-for e in "$REG_EVT" "$SUB_EVT" "$UNSUB_EVT"; do emcli dependency add "$e" "$SEATS" hydrates; done
-emcli element update "$(chapter_id)" "$SEATS" --api-endpoint "/courses/{courseId}/seats" \
+emcli slice add "course seats"
+emcli element add "course seats" Enrollment information CourseSeats
+emcli element field add CourseSeats courseId String --id --example c1
+emcli element field add CourseSeats capacity Int --example 30
+emcli element field add CourseSeats subscriptionCount Int --example 0
+emcli element field add CourseSeats remainingSeats Int --example 30
+for e in courseWasRegistered studentWasSubscribed studentWasUnsubscribed; do emcli dependency add "$e" CourseSeats hydrates; done
+emcli element update CourseSeats --api-endpoint "/courses/{courseId}/seats" \
   --read-model-type inline-projected
 ```
 
@@ -1139,13 +1113,13 @@ The scenarios are written as before:
 For example:
 
 ```bash
-S='course seats'
-sp=$(emcli spec add "$(chapter_id)" "$(slice_id "$S")" "a subscription takes a seat" --json | jq -r .id)
-step "$S" "$sp" given event "$REG_EVT"; step "$S" "$sp" given event "$SUB_EVT"; step "$S" "$sp" then readmodel "$SEATS"
-ex "$S" "$sp" given 0 courseId c1; ex "$S" "$sp" given 0 title Math; ex "$S" "$sp" given 0 capacity 30
-ex "$S" "$sp" given 1 courseId c1; ex "$S" "$sp" given 1 studentId s1
-ex "$S" "$sp" then 0 courseId c1; ex "$S" "$sp" then 0 capacity 30
-ex "$S" "$sp" then 0 subscriptionCount 1; ex "$S" "$sp" then 0 remainingSeats 29
+emcli use slice "course seats"
+emcli spec add "a subscription takes a seat"
+emcli use spec "a subscription takes a seat"
+emcli spec step add given event courseWasRegistered --link --seed-examples
+emcli spec step add given event studentWasSubscribed --link --seed-examples
+emcli spec step add then readmodel CourseSeats --link --seed-examples
+emcli spec step example then 0 subscriptionCount 1; emcli spec step example then 0 remainingSeats 29
 ```
 
 Then plan, push, commit and export, exactly as in §5.4. The exported `slice.json` carries
@@ -1240,12 +1214,9 @@ forward:
 
 ```bash
 git switch -c increment/t6-seats-capacity
-CAP_EVT=$(el_id 'change course capacity' event courseCapacityWasChanged)
-S='course seats capacity'
-emcli slice add "$(chapter_id)" "$S"
-emcli element copy "$(chapter_id)" "$SEATS" --slice "$(slice_id "$S")" --lane "$(lane_id Enrollment)"
-COPY=$(el_id "$S" information CourseSeats)
-for e in "$REG_EVT" "$SUB_EVT" "$UNSUB_EVT" "$CAP_EVT"; do emcli dependency add "$e" "$COPY" hydrates; done
+emcli slice add "course seats capacity"
+emcli element copy CourseSeats --slice "course seats capacity" --lane Enrollment
+for e in courseWasRegistered studentWasSubscribed studentWasUnsubscribed courseCapacityWasChanged; do emcli dependency add "$e" "course seats capacity/CourseSeats" hydrates; done
 ```
 
 Add the scenario *a capacity change moves the free seats* (30 capacity, one subscription, capacity changed to
@@ -1351,10 +1322,10 @@ Set the new type on the **original** read model; its copies follow. Commit, then
 
 ```bash
 git switch -c increment/t8-retype
-emcli element update "$(chapter_id)" "$(el_id 'course details' information CourseDetails)" --read-model-type live-report
-emcli element update "$(chapter_id)" "$(el_id 'course seats' information CourseSeats)" --read-model-type live-report
+emcli element update CourseDetails --read-model-type live-report
+emcli element update CourseSeats --read-model-type live-report
 git add -A && git commit -m "model(t8): retype CourseDetails and CourseSeats to live-report"
-emcli workspace export --build-kit .build-kit --chapter "$(chapter_id)"
+emcli workspace export --build-kit .build-kit --chapter "Course Enrollment"
 ```
 
 ```text
@@ -1401,21 +1372,14 @@ the courses' events.
 
 ```bash
 git switch -c increment/t10-student-subscriptions
-REG_EVT=$(el_id 'register course' event courseWasRegistered)
-TITLE_EVT=$(el_id 'change course title' event courseTitleWasChanged)
-RS_EVT=$(el_id 'register student' event studentWasRegistered)
-SUB_EVT=$(el_id 'subscribe student' event studentWasSubscribed)
-UNSUB_EVT=$(el_id 'unsubscribe student' event studentWasUnsubscribed)
-S='student subscriptions'
-emcli slice add "$(chapter_id)" "$S"
-emcli element add "$(chapter_id)" "$(slice_id "$S")" "$(lane_id Enrollment)" information StudentSubscriptions
-SS=$(el_id "$S" information StudentSubscriptions)
-emcli element field add "$(chapter_id)" "$SS" studentId String --id --example s1
-emcli element field add "$(chapter_id)" "$SS" name String --example Ada
-emcli element field add "$(chapter_id)" "$SS" courses Custom --cardinality List \
+emcli slice add "student subscriptions"
+emcli element add "student subscriptions" Enrollment information StudentSubscriptions
+emcli element field add StudentSubscriptions studentId String --id --example s1
+emcli element field add StudentSubscriptions name String --example Ada
+emcli element field add StudentSubscriptions courses Custom --cardinality List \
   --subfields "courseId:String,title:String" --example '[{"courseId":"c1","title":"Math"}]'
-for e in "$REG_EVT" "$TITLE_EVT" "$RS_EVT" "$SUB_EVT" "$UNSUB_EVT"; do emcli dependency add "$e" "$SS" hydrates; done
-emcli element update "$(chapter_id)" "$SS" --api-endpoint "/students/{studentId}/subscriptions" --read-model-type live-report
+for e in courseWasRegistered courseTitleWasChanged studentWasRegistered studentWasSubscribed studentWasUnsubscribed; do emcli dependency add "$e" StudentSubscriptions hydrates; done
+emcli element update StudentSubscriptions --api-endpoint "/students/{studentId}/subscriptions" --read-model-type live-report
 ```
 
 Add the scenarios as usual:
@@ -1508,14 +1472,12 @@ live since §11.3.
 
 ```bash
 git switch -c increment/t11-queries
-SEATS=$(el_id 'course seats' information CourseSeats)
-DETAILS=$(el_id 'course details' information CourseDetails)
-emcli element query add "$(chapter_id)" "$SEATS" availableCourses --endpoint /available-courses
-emcli element query param add "$(chapter_id)" "$SEATS" availableCourses minRemainingSeats Int \
+emcli element query add CourseSeats availableCourses --endpoint /available-courses
+emcli element query param add CourseSeats availableCourses minRemainingSeats Int \
   --operator gte --field remainingSeats --example 1
-emcli element query add "$(chapter_id)" "$DETAILS" coursesForStudent \
+emcli element query add CourseDetails coursesForStudent \
   --endpoint '/students/{studentId}/courses' --sort title
-emcli element query param add "$(chapter_id)" "$DETAILS" coursesForStudent studentId String \
+emcli element query param add CourseDetails coursesForStudent studentId String \
   --operator contains --field subscribedStudents.studentId --tag studentId
 ```
 
@@ -1534,16 +1496,15 @@ builds, so its scenarios go there. `coursesForStudent` filters on `subscribedStu
 the *course details subscriptions* extension on (§7.2), so its scenarios go in that slice, on its copy.
 
 ```bash
-S='course seats'; SUB_EVT=$(el_id 'subscribe student' event studentWasSubscribed)
-sp=$(emcli spec add "$(chapter_id)" "$(slice_id "$S")" "lists the courses with enough free seats" --json | jq -r .id)
-step "$S" "$sp" given event "$REG_EVT"   # c1 Math 2
-step "$S" "$sp" given event "$REG_EVT"   # c2 Art 1
-step "$S" "$sp" given event "$SUB_EVT"   # s1 takes c2's only seat
-step "$S" "$sp" given event "$REG_EVT"   # c3 Chess 3
-emcli spec step add "$(chapter_id)" "$(slice_id "$S")" "$sp" when query availableCourses --link "$SEATS" --seed
-ex "$S" "$sp" when 0 minRemainingSeats 1
-step "$S" "$sp" then readmodel "$SEATS"  # c1: capacity 2, 0 subscriptions, 2 remaining
-step "$S" "$sp" then readmodel "$SEATS"  # c3: capacity 3, 0 subscriptions, 3 remaining
+emcli spec add "lists the courses with enough free seats"
+emcli use spec "lists the courses with enough free seats"
+emcli spec step add given event courseWasRegistered --link --seed-examples   # c1 Math 2
+emcli spec step add given event courseWasRegistered --link --seed-examples   # c2 Art 1
+emcli spec step add given event studentWasSubscribed --link --seed-examples   # s1 takes c2's only seat
+emcli spec step add given event courseWasRegistered --link --seed-examples   # c3 Chess 3
+emcli spec step add when query availableCourses --link CourseSeats --seed-examples
+emcli spec step add then readmodel CourseSeats --link --seed-examples  # c1: capacity 2, 0 subscriptions, 2 remaining
+emcli spec step add then readmodel CourseSeats --link --seed-examples  # c3: capacity 3, 0 subscriptions, 3 remaining
 # … the example values, with ex, as in §5.2
 ```
 
@@ -1566,7 +1527,7 @@ Push, commit, export:
 ```bash
 emcli sync push --safe
 git add -A && git commit -m "model(t11): availableCourses on CourseSeats, coursesForStudent on CourseDetails"
-emcli workspace export --build-kit .build-kit --chapter "$(chapter_id)"
+emcli workspace export --build-kit .build-kit --chapter "Course Enrollment"
 ```
 
 ```text
@@ -1767,7 +1728,7 @@ The usual rhythm within an increment:
 # model with emcli …
 emcli sync push --safe
 git add -A && git commit -m "model(tN): <what you modeled>"
-emcli workspace export --build-kit .build-kit --chapter "$(chapter_id)"
+emcli workspace export --build-kit .build-kit --chapter "Course Enrollment"
 # … the loop builds and commits; wait for "waiting" …
 emcli workspace import-status --build-kit .build-kit && emcli sync push --safe
 git add -A && git commit -m "model(tN): built"
@@ -1914,7 +1875,9 @@ instantaneous in this example, and it grows with your event store.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `Chapter not found: <id>` from a script | IDs changed on the first push | look IDs up by name (the helpers) |
+| `No slice matches "…"` / `No element matches "…"` | a typo, or the wrong context chapter | `emcli use` shows the context; `emcli slice list`, `emcli element list` show the names |
+| `"…" matches 2 elements` | a copy shares its original's name | name the copy as `"<slice>/<name>"` (§4, *Names, not IDs*) |
+| `Chapter not found: <id>` from an old script | IDs changed on the first push | use names instead of IDs |
 | `400 Only one information-flow lane is allowed per chapter` on the first push | an old emcli without new-chapter support | update emcli (`git pull` in the emcli repo) |
 | `sync diff` prints "No sync baseline found" | nothing has been pushed yet | push once. The first push has no preview |
 | the loop builds nothing | no `planned` slices in the current context, or the export was skipped | set status `planned`, `sync push`, commit, then `workspace export --build-kit … --chapter …` |
@@ -1928,7 +1891,7 @@ instantaneous in this example, and it grows with your event store.
 | a live slice goes **Blocked** naming an event, a list or a query | a live read model needs every event tagged with its key, lookups reachable by tags, a keyed GET, and a tag parameter on each query (§11.6, §12.1) | tag the event in the model, or choose `inline-projected` / `database-projected` for it |
 | a retype goes **Blocked**: "imperative projection … a refactor" | the read model is an older `projection.ts` | convert it to `readModel.ts` first (§11.2), then export again |
 | export didn't re-queue a type change | the type was changed on a copy, or the slice isn't built yet | change it on the original read model. An unbuilt slice is just built with the new type |
-| slices from other chapters appear in `.build-kit/.slices` | exported without `--chapter` after a `sync pull` | re-export with `--chapter "$(chapter_id)"` |
+| slices from other chapters appear in `.build-kit/.slices` | exported without `--chapter` after a `sync pull` | re-export with `--chapter "Course Enrollment"` |
 | `eventmodelers init` crashes with `ERR_USE_AFTER_CLOSE` | no terminal input was available | run it in an interactive terminal and answer the prompts |
 | a slice went back to Planned and `git stash list` shows `ralph: interrupted slice …` | the agent was interrupted mid-slice (Claude usage ran out, a crash, the terminal closed). The loop stashed the partial work and rebuilds the slice (§14). If Claude is still unavailable, the loop retries every 60 s | nothing, once Claude is available again (restart the loop if you closed it). Drop the stash after the rebuilt slice is committed: `git stash drop stash@{N}` |
 | a slice is **Blocked** after an interruption | the agent committed part of the slice but was interrupted before marking it Done. `progress.txt` names the commits | check them with `git log`. If the slice is complete, set it to Done. Otherwise `git revert` them and set it back to Planned |
@@ -1936,29 +1899,98 @@ instantaneous in this example, and it grows with your event store.
 
 ---
 
-## 17. Command reference
+## 17. Model by talking
+
+Everything in §5–§12 can be said instead of typed. emcli's **`model`** skill (linked into `.claude/skills/` by
+`emcli workspace init`, §4) turns what you tell Claude Code into the same emcli commands, pushes the result to the
+board so you can watch the model grow, and hands planned slices to the loop.
+
+### Start
+
+In **terminal 1**, start Claude Code in the project (`claude`) and describe what you want. Typed or dictated makes
+no difference: speech-to-text just fills the same prompt. Check the skill is there with `emcli skills list`
+(`model  linked`). You never name a command or an ID. The skill asks one question at a time, and asks once
+whether it may push to the board as you go.
+
+### What it does, by what you say
+
+| You're… | For example | It… |
+|---|---|---|
+| **storming** a process | *"Courses get registered, their capacity can change, students register and subscribe."* | adds one slice per event in timeline order, in the system lane, and pushes each round. Then it asks what happens first, what can fail, who acts. |
+| **shaping slices** | *"An admin registers the course. Anyone can see a course's details."* | turns event slices into state-change slices (command → event) and adds state-view slices (event → read model), with screens and lanes for the roles |
+| **adding detail** | *"A course has an id, a title and a capacity. You can't register it twice."* | adds fields with examples, happy-path and rejection scenarios, routes, queries, read model types |
+| **reviewing** | *"Is t1 complete? What's missing?"* | runs `emcli completeness` and the method's checklist, and lists the gaps before changing anything |
+| **handing off** | *"Plan these for the loop."* | checks the loop is idle (*waiting*), then plans, pushes, commits and exports, in §5.4's order |
+
+Open questions become **hotspots** on the board (red stickies) instead of guesses. The skill never writes to the
+board except through `emcli sync push --safe`, and never commits or exports while the loop is building.
+
+### Increment t0, said instead of typed
+
+| You say | It runs (the §5 commands) |
+|---|---|
+| *"New chapter: Course Enrollment, context enrollment. Students take part, the system is Enrollment."* | `chapter add`, `use chapter`, three `lane add` (§5.1) |
+| *"First, a course gets registered with an id, a title and a capacity."* | `slice add "register course"`, the `courseWasRegistered` event, then the `registerCourse` command that produces it, fields with examples (§5.2) |
+| *"Registering works, and registering the same course twice fails with 'Course already exists'."* | two scenarios with `--link --seed-examples` and an error step |
+| *"POST to /courses."* | `element update registerCourse --api-endpoint /courses` |
+| *"Anyone can look a course up by id."* | the `course details` slice: `CourseDetails` fed by `courseWasRegistered`, route `/courses/{courseId}`, a view scenario (§5.3) |
+| *"Plan both for the loop."* | `slice status … planned` ×2, `sync push --safe`, commit, `workspace export --build-kit` (§5.4) |
+
+### Prompt cookbook
+
+| To get… | Say something like |
+|---|---|
+| a new event on the timeline | *"After a course is registered, its capacity can change."* |
+| an event before another | *"Before registration, a course is proposed."* |
+| a rename | *"Call it courseWasPublished, not courseWasRegistered."* |
+| a command and screen | *"The admin changes the capacity on the course page."* |
+| a read model | *"Students need a list of their courses."* |
+| a growing read model (copy) | *"The course details should show the new capacity too."* |
+| an automation | *"When a student subscribes, send a welcome email."* |
+| fields | *"A subscription has the course id and the student id."* |
+| a rejection scenario | *"You can't subscribe to a full course: 'Course is full'."* |
+| a different example | *"In that scenario the capacity is 40."* |
+| a query | *"List the courses with at least N free seats, at /available-courses."* |
+| a read model type | *"Seat counts must never be stale."* (inline) / *"Compute it on read."* (live) |
+| an open question | *"Not sure yet whether a course can be cancelled with students in it."* |
+| a review | *"What's missing before t2 can be built?"* |
+| the hand-off | *"Plan subscribe student, keep the details copy as a draft."* |
+
+The skill's own reference, including the phrase-to-command cookbook it works from, is in your emcli checkout:
+`skills/model/SKILL.md` and `skills/model/references/`.
+
+---
+
+## 18. Command reference
+
+Every `<chapter>`, `<slice>`, `<lane>`, `<element>` and `<spec>` below is a **name** (or an ID). Leading ones can be
+left out once `emcli use chapter` / `use slice` / `use spec` has set them (§4, *Names, not IDs*).
 
 ### emcli (model)
 
 | Command | Purpose |
 |---|---|
-| `emcli workspace init "<name>" --no-skills` | create `workspace.json` |
+| `emcli workspace init "<name>"` | create `workspace.json` and link emcli's skills (`--no-skills` to skip) |
+| `emcli skills link` / `emcli skills list` | (re)link emcli's skills into `.claude/skills/`, one link each / show them |
+| `emcli use chapter\|slice\|spec "<name>"` / `emcli use` | set / show the context |
 | `emcli chapter add "<name>" --context <ctx>` | create a chapter |
-| `emcli lane add <chapter> "<label>" --type user-lane\|information-flow\|system` | add a lane |
-| `emcli slice add <chapter> "<label>"` | add a slice at the end of the timeline |
-| `emcli element add <chapter> <slice> <lane> command\|event\|information "<name>"` | add a sticky |
-| `emcli element field add <chapter> <element> <name> <Type> [--id] [--optional] [--cardinality List] [--subfields "a:String,b:Int"] [--example v]` | add a field |
-| `emcli element update <chapter> <element> --api-endpoint "/path"` | set the HTTP route |
-| `emcli element update <chapter> <element> --read-model-type database-projected\|inline-projected\|live-report` | choose how a read model is kept current (set on the origin; copies follow). On a built read model, the next export re-queues it as a one-line retype |
-| `emcli element query add <chapter> <readmodel> <name> --endpoint "/path" [--sort <field>]` | declare a query on the origin read model; `update`, `remove`, `list` too |
-| `emcli element query param add <chapter> <readmodel> <query> <param> <Type> [--operator gte] [--field a.b] [--tag <tag>] [--example v]` | add a query parameter (`--tag` lets a live read model serve it) |
-| `emcli element copy <chapter> <origin> --slice <slice> --lane <lane>` | place a read-model copy later on the timeline |
-| `emcli element update <chapter> <element> --copy-of <origin>` | mark an existing sticky as a copy |
-| `emcli dependency add <from> <to> produces\|hydrates\|triggers` | link stickies |
-| `emcli spec add <chapter> <slice> "<title>" --json` | add a scenario |
-| `emcli spec step add <chapter> <slice> <spec> <phase> <type> <title> [--link <el> --seed]` | add a Given/When/Then step (`when query <name> --link <readmodel>` runs a query) |
-| `emcli spec step example <chapter> <slice> <spec> <phase> <index> <field> <value>` | set an example value |
-| `emcli slice status <chapter> <slice> draft\|planned\|…` | set a slice's status |
+| `emcli lane add [<chapter>] "<label>" --type user-lane\|information-flow\|system` | add a lane |
+| `emcli slice add [<chapter>] "<label>" [--after\|--before <slice>]` | add a slice (at the end, or next to another) |
+| `emcli element add [<chapter>] <slice> <lane> command\|event\|information\|ui\|automation\|hotspot "<name>"` | add a sticky (`readmodel`, `screen` also accepted) |
+| `emcli element field add [<chapter>] <element> <name> <Type> [--id] [--optional] [--cardinality List] [--subfields "a:String,b:Int"] [--example v] [--mapping src]` | add a field |
+| `emcli element update [<chapter>] <element> --api-endpoint "/path"` | set the HTTP route |
+| `emcli element update [<chapter>] <element> --read-model-type database-projected\|inline-projected\|live-report` | choose how a read model is kept current (set on the origin; copies follow). On a built read model, the next export re-queues it as a one-line retype |
+| `emcli element query add [<chapter>] <readmodel> <name> --endpoint "/path" [--sort <field>]` | declare a query on the origin read model; `update`, `remove`, `list` too |
+| `emcli element query param add [<chapter>] <readmodel> <query> <param> <Type> [--operator gte] [--field a.b] [--tag <tag>] [--example v]` | add a query parameter (`--tag` lets a live read model serve it) |
+| `emcli element copy [<chapter>] <origin> --slice <slice> --lane <lane>` | place a read-model copy later on the timeline |
+| `emcli element update [<chapter>] <element> --copy-of <origin>` | mark an existing sticky as a copy |
+| `emcli dependency add <from> <to> produces\|hydrates\|displays\|triggers\|reacts-to\|relates-to` | link stickies |
+| `emcli spec add [<chapter>] [<slice>] "<title>"` | add a scenario |
+| `emcli spec step add [<chapter> <slice> <spec>] <phase> <type> <name> --link --seed-examples` | add a Given/When/Then step linked to the named element, seeded with its examples (`when query <name> --link <readmodel>` runs a query; `then error "<message>"` is a rejection) |
+| `emcli spec step example [<chapter> <slice> <spec>] <phase> <index> <field> <value>` | change one example value |
+| `emcli spec show [<chapter>] [<slice>] [<spec>]` | show a scenario with its step indexes |
+| `emcli slice status [<chapter>] <slice> draft\|planned\|…` | set a slice's status |
+| `emcli completeness [<chapter>] [--slice <slice>]` | check every field traces to a source |
 | `emcli sync push --safe` | push local changes to the board (never deletes) |
 | `emcli sync pull` | pull board changes (notes, names) into the model |
 | `emcli workspace export --build-kit .build-kit --chapter <chapter>` | hand planned slices to the loop |
@@ -1977,7 +2009,7 @@ instantaneous in this example, and it grows with your event store.
 
 ---
 
-## 18. Known limits
+## 19. Known limits
 
 - **The node (Emmett) kit has no extension mode.** This manual covers the DCB kit only.
 - **The copy link doesn't survive a pull.** emcli keeps it in `copyOf`, and pushes copies as ordinary stickies.
