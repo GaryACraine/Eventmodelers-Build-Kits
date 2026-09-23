@@ -398,7 +398,7 @@ routes and queries, the examples, and the scenarios. Use it to:
       `limit`/`cursor`, and a response missing a field is an error.
   - **Not yet proven:** the loop hasn't built a new slice with the updated skills. The next slice with a route
     (13.6's, or 14.9's increment) is that proof.
-- [ ] **14.2 Mockups in the model (emcli).**
+- [x] **14.2 Mockups in the model (emcli).** *(Done 2026-09-23, emcli `6746f54`.)*
   - `element mockup <screen> --html <file> | --draft | --clear`, stored on the ui element (`mockup: { html }`) as
     a **full HTML document**, the form the board draws (14.0).
   - `--draft` builds a form (a write slice: the command's fields) or a view or list (a read slice: the read
@@ -406,6 +406,47 @@ routes and queries, the examples, and the scenarios. Use it to:
   - `completeness` checks the bindings.
   - The export adds `screens[].mockup` to slice.json (it already has a `screenImages` slot).
   - Tests and USAGE.
+  - **What landed:**
+    - `model/domain/mockup.ts` (pure):
+      - `parseBindings`: a small tolerant tokenizer that skips comments and style/script text and treats void
+        and self-closed tags as leaves. It gives each binding with the `data-slice` and `data-list` regions it
+        sits in.
+      - `checkMockup` / `findMockupProblems`.
+      - `draftMockup`, `asDocument`, `mockupImports`.
+    - **Scope:** the screen's own slice, or the enclosing `data-slice` region's slice. Inside a `data-list`, the
+      list's item fields: a List field's subfields, or the fields of a list read model named by `data-list`.
+      Nested lists resolve level by level.
+    - **Problems:**
+      - ERROR: a binding naming nothing in scope, with "Did you mean" for a case or punctuation near miss.
+      - WARN: a field of a bound command with no `data-field` (a page value is a hidden input), a `<script>`, or a
+        fragment.
+    - **Draft:**
+      - a form per command: generated fields left out, input types from field types, examples as values, a
+        `data-command` button;
+      - a view per read model: a table for a list read model or a List field (rows from a JSON-array example), a
+        definition list otherwise;
+      - a small inline `<style>`.
+    - `element mockup [chapter] [screen]`: `--html <file|->` (a fragment is wrapped), `--draft [--force]`,
+      `--out <file|->`, `--clear`, `--json`. With no flag it reports the bindings, imports and problems. Names
+      work, as in the other commands.
+    - Wiring:
+      - `Element.mockup` and the Zod schema; pull preserves it; it's local-only until 14.3;
+      - `completeness` reports binding problems on the screen, and `completeness --push` skips ui elements so
+        their descriptions are never overwritten;
+      - `workspace export` warns about binding errors and writes `screens[].mockup.html`, which is in
+        `eventmodeling.schema.json` now.
+    - USAGE ("Sketching a screen as an HTML mockup") and cli/CLAUDE.md. ISSUES.md: the information-flow lane push
+      failure from 14.0.
+  - **Tests:** 22 new; 215/215 emcli tests pass. Every draft in the fixtures passes its own checks.
+  - **On a copy of course-enrollment's `workspace.json`** (the Faculty chapter's screens; the real model is
+    untouched):
+    - drafts for *Create Course Screen* (form), *Courses Screen* and *Student Details* (with a
+      `data-list="subscribedCourses"`) have no problems;
+    - a second `--draft` is refused without `--force`;
+    - an edited mockup with `data-field="Credits"` and an invented `remainingSeats` got two errors ("Did you mean
+      credits?") and a warning that `CreateCourse` can no longer send `credits`;
+    - `workspace export --build-kit` warned about both errors and wrote full documents to the three slices'
+      `screens[].mockup.html`.
 - [ ] **14.3 Show mockups on the board (emcli).** *Native wireframes (14.0 experiment); no PNG.*
   - `sync push` appends the mockup to the ui element's description as a fenced ` ```html ` block, after the prose.
   - `sync pull` takes it back out into `mockup`, so the round trip is lossless. It also adopts a mockup that
@@ -1403,5 +1444,5 @@ What each `build-*` skill generates and what it verifies:
 | 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 done (stale InProgress recovery in `--local` mode) |
 | 11 — Read Model Types | ✅ Complete | Async, inline and live read models from one fold definition, with an identical data shape across types (ADR-021/022). Proven on course-enrollment t5–t10: inline, a retype to live and back, a new live read model with a lookup |
 | 12 — Query Read Models | 🚧 In progress (top priority) | 12.1–12.3 done: ADR-023 query contract; emcli queries + `SPEC_QUERY` + `addQueries` re-queue; kit runtime (stored SQL + live, one semantics). Named queries on the read model element, the spec *when* references them, `{ data, cursor? }` pages; live needs a tag parameter |
-| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
+| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 done: `element mockup` (draft, bindings checked, exported). 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
 | 7 — Board Re-pointing | ⛔ Dropped | eventmodelers board retired; prooph board via emcli is the only board |
