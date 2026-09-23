@@ -156,10 +156,20 @@ inline projections (`projections.inline([...])`), so this phase is about the DCB
       student's name, in 3 reads. A live → stored switch rebuilds, including events appended while live. The
       scaffold's `index.ts` files use `startReadModels`, and the bundled example's projections are registered as
       `imperative`. The full template suite passes: 48 tests.)*
-    - [ ] **11.7c** `build-state-view`: fold form by default (`readModel.ts`), imperative form only when §4 of the
+    - [x] **11.7c** `build-state-view`: fold form by default (`readModel.ts`), imperative form only when §4 of the
       design excludes fold form. Live gets built, with a generic route and body-only contract tests across all
       supported types (`describe.each`). Extensions append `evolve` cases or lookups. R-steps for a retype. The
       switchboard builds `live-report`.
+      *(Done, extending the existing skill as Gary confirmed; there is no separate live skill.
+      - Step 2 chooses the form. Fold form is the default, and the imperative form (P0–P4) is kept for lists and
+        payload-only lookups.
+      - Steps 3–6 cover `readModel.ts`, the generic route, `readModels` wiring, and `describe.each(READ_MODEL_TYPES)`
+        contract tests.
+      - The extension steps (E1–E6) cover both forms. R1–R4 cover a retype.
+      - `extension-additive` guards `readModel.ts` too and recognises `describe.each` blocks. `test-file-present`
+        knows `readModel.ts`.
+      - Dry run: a fold-form CourseSeats written exactly from the templates passes tsc and 6/6 contract tests
+        (2 scenarios × 3 types) in a copy of course-enrollment.)*
     - [ ] **11.7d** emcli: retype re-queue on export (`retype: { from, to }`, with the built type recorded in
       `index.json`), and a warning for a live list read model.
     - [ ] **11.7e** Commit check `retype-scope`: a retype commit may change only the `type:` line, with tests

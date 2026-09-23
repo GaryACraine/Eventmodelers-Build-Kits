@@ -5,10 +5,12 @@
 // "Extending an existing projection". Three rules while such a slice is InProgress:
 //
 //  1. Slice-folder changes stay inside the origin's folder (or the extension's own).
-//  2. The origin's projection.ts only grows: no removed lines, except a line that is
-//     re-added with a trailing comma (appending after the last canHandle entry).
-//  3. The origin's route.tests.ts has a top-level describe("{extension title}") block
-//     with at least one test(...) per specification in the extension's slice.json.
+//  2. The origin's definition — readModel.ts (fold form) or projection.ts (imperative form) —
+//     only grows: no removed lines, except a line that is re-added with a trailing comma
+//     (appending after the last canHandle entry or lookup).
+//  3. The origin's route.tests.ts has a top-level describe("{extension title}") block —
+//     or describe.each(...)("{extension title} (%s)") in fold form — with at least one
+//     test(...) per specification in the extension's slice.json.
 //
 // The slice being built is the one the loop marked InProgress in the current
 // context's index.json. No InProgress extension slice → this check does nothing.
@@ -65,13 +67,20 @@ function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// Tests inside the top-level describe block named `title`, up to the next top-level
-// describe(...) or end of file. Returns null when the block is missing.
+// A top-level describe(...) or describe.each(...)(...) call.
+const TOP_LEVEL_DESCRIBE = /^describe(?:\.each\([^)]*\))?\(/m;
+
+// Tests inside the top-level describe block named `title` — `describe("title", …)`, or in fold form
+// `describe.each(TYPES)("title (%s)", …)` — up to the next top-level describe or end of file.
+// Returns null when the block is missing.
 function testsInDescribe(content, title) {
-  const start = content.search(new RegExp(`^describe\\(\\s*["'\`]${escapeRegExp(title)}["'\`]`, 'm'));
+  const t = escapeRegExp(title);
+  const start = content.search(
+    new RegExp(`^describe(?:\\.each\\([^)]*\\))?\\(\\s*["'\`]${t}(?: \\(%s\\))?["'\`]`, 'm'),
+  );
   if (start === -1) return null;
   const rest = content.slice(start + 1);
-  const next = rest.search(/^describe\(/m);
+  const next = rest.search(TOP_LEVEL_DESCRIBE);
   const block = next === -1 ? rest : rest.slice(0, next);
   return (block.match(TEST_BLOCK) || []).length;
 }
@@ -131,12 +140,12 @@ module.exports = {
         }
       }
 
-      const projection = `${origin}/projection.ts`;
-      if (ctx.changes.some((c) => c.path === projection)) {
-        for (const line of removedLines(ctx.repoRoot, projection)) {
+      for (const definition of [`${origin}/readModel.ts`, `${origin}/projection.ts`]) {
+        if (!ctx.changes.some((c) => c.path === definition)) continue;
+        for (const line of removedLines(ctx.repoRoot, definition)) {
           violations.push({
-            path: projection,
-            reason: `extension slices only add to the origin projection — removed/changed line: ${line}`,
+            path: definition,
+            reason: `extension slices only add to the origin's read model — removed/changed line: ${line}`,
           });
         }
       }
@@ -152,7 +161,10 @@ module.exports = {
         }
         const count = testsInDescribe(content, slice.title);
         if (count === null) {
-          violations.push({ path: testsFile, reason: `no top-level describe("${slice.title}") block for this extension slice's specifications` });
+          violations.push({
+            path: testsFile,
+            reason: `no top-level describe("${slice.title}") (or describe.each(...)("${slice.title} (%s)")) block for this extension slice's specifications`,
+          });
         } else if (count < specCount) {
           violations.push({
             path: testsFile,
