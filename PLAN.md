@@ -30,6 +30,120 @@
 
 ## Phases
 
+### Phase 13: Model by talking (an emcli modeling skill)
+
+> **Top priority** (recorded 2026-09-23), ahead of the re-opened 9.7, 9.11b and 10.8 ports.
+
+**Goal:** a user says what they want (*"customers can cancel an order before it ships"*), and Claude turns it into
+emcli commands. The commands update `workspace.json`, can push the result to prooph board, and leave planned slices
+for the Ralph loop. It works like event storming: prototype the visual model quickly, then hand it to the loop.
+Spoken input is just dictation into the same prompt, so it needs no speech-specific work.
+
+**Findings (2026-09-23):**
+- **`emcli/skills/board-model` was meant to do this, but it's stale and never reaches a build-kit project.**
+  - Its `SKILL.md` has no frontmatter (`name`, `description`), so Claude can't pick it by itself.
+  - It predates copies, read model types, queries, `slice status planned` and `workspace export --build-kit`.
+  - It works on raw IDs only.
+  - Why it isn't discoverable is explained under *How skills are found, and what symlinks do* below.
+- **emcli's other skills write around `workspace.json`.** schema, example-data, slice-scenarios, ascii-mockups,
+  wireframe-sketch and navigation all write through `mcp__proophboard__*`. `board-model` §1 itself forbids this,
+  because those writes are lost on the next `sync pull`. emcli already has the local equivalents: `element field`,
+  `spec`, and `element update --description` for mockups.
+- **The best method is tied to a retired API.**
+  - `stacks/modeling-kit` has `timeline`, a live event-storming facilitator that asks questions and grows the
+    timeline as events emerge, and 18 `eventmodeling-*` method skills: core rules, brainstorming, inputs and
+    outputs, automation chains, scenarios, slicing and validation.
+  - All of them call the retired eventmodelers API (`/connect`, `mcp__eventmodelers__*`).
+  - This repo's `CLAUDE.md` is still that kit's `tasks.json` loop.
+- **The manual works around emcli's ergonomics.** `em-helpers.sh` (jq lookups by name, plus `step`, `ex` and
+  `error_step`) exists because commands take raw IDs, and IDs change on the first push.
+
+**Decisions and rationale:**
+
+| Choice | Why |
+|---|---|
+| **A skill, not an MCP server (for now)** | Claude already runs emcli through Bash. What's missing is the *method*: which elements, lanes, specs and order. A skill carries method, whereas an MCP server only adds verbs. An MCP server would also be a second interface to keep in step with every emcli change (queries and retypes both needed one this month). Revisit when a client other than Claude Code (Claude Desktop, a voice app) needs typed tools. It would then wrap the same name-based commands. |
+| **Make emcli agent-friendly first** | Referring to lanes, slices and elements by name removes ID lookups for the skill, for people, and for any later MCP server. The manual's jq helpers can then go. |
+| **Skills live in emcli, linked one by one** | They version with the commands they drive. Linking each skill separately puts it next to the build kit's `build-*` skills instead of replacing them. |
+| **One conversational entry skill, with the method as references** | The user never picks a command or a skill. The entry skill runs in modes (storm, slice, detail, hand off) and loads the ported `eventmodeling-*` rules only when a step needs them. |
+| **prooph board is the visual** | In storm mode the skill runs `sync push` after each round, once the user has approved pushes for the session, so the board keeps up with the conversation. Screen mockups go through `element update --description` (local-first), never board MCP. |
+
+**How skills are found, and what symlinks do:**
+
+- **Where Claude Code looks.** A skill is a folder containing a `SKILL.md`. Claude Code finds skills in two places:
+  - `<project>/.claude/skills/<skill-name>/SKILL.md`, for that project only;
+  - `~/.claude/skills/<skill-name>/SKILL.md`, for every project.
+
+  The `description` in the frontmatter at the top of `SKILL.md` is how Claude decides when a skill applies. With no
+  frontmatter, Claude can't select the skill by itself.
+- **What a symlink is.** A symbolic link is a file-system pointer: `ln -s <real path> <link path>`. Opening the link
+  opens the real path. Claude Code follows links, so a skill folder in `.claude/skills/` can be a link to a folder
+  inside the emcli repo. Edits made in emcli then show up in every project that links to it, with no copying.
+- **Why emcli's skills were never found here:**
+  1. `emcli workspace init` creates **one** link: the whole `.claude/skills` folder points at `emcli/skills`
+     (`emcli/cli/commands/workspace.ts`, about line 365). It does this only when `.claude/skills` doesn't exist yet.
+  2. In a build-kit project, `eventmodelers init` has already created `.claude/skills` as a real folder holding
+     `build-state-change`, `build-state-view` and `build-automation`. So `init` quietly skips the link. The manual
+     also passes `--no-skills` (§4) so the build kit's skills aren't replaced.
+  3. The result is that no emcli skill reaches the project. If the whole-folder link had been made first, the
+     opposite would happen: the build kit's skills would be written *through* the link into the emcli repo.
+  4. `board-model` has no frontmatter, so even when linked it would only have run when typed as `/board-model`.
+- **The fix is one link per skill:** `.claude/skills/model → ~/Projects/emcli/skills/model`, next to the build kit's
+  real folders.
+  - Links are made or refreshed by `emcli skills link`, which `workspace init` also runs, and never replace a
+    folder that's already there.
+  - Links hold absolute, machine-specific paths, so git-ignore them (`.claude/skills/<emcli skill>`). Every clone
+    runs `emcli skills link` itself.
+  - The build kit's skills stay as they are: copied and committed, because the loop depends on their exact version.
+- **Alternatives, not chosen now:**
+  - Link into `~/.claude/skills/` for every project on the machine, which means no per-project setup but also no
+    per-project version.
+  - Ship emcli as a Claude Code **plugin**, which bundles skills behind a versioned install. That is worth it once
+    emcli is distributed beyond this machine.
+
+**Tasks:**
+
+- [ ] **13.1 emcli: refer to things by name.**
+  - Wherever a command takes an ID today, accept a name: lane by label, slice by label, element by name (in
+    `element add`, `dependency add`, `spec step add --link` and `element copy`). IDs still work.
+  - Give a clear error when a name is ambiguous.
+  - Tests and USAGE.md.
+- [ ] **13.2 emcli: link skills one by one.**
+  - A new `emcli skills link` links each skill folder into `.claude/skills/`, git-ignores the links, and reports
+    anything it skipped. `workspace init` runs it.
+  - Remove `--no-skills` from manual §4.
+- [ ] **13.3 The entry skill.** Rename `board-model` to `model`, or keep the name (settle it here).
+  - Add frontmatter with a description that triggers it.
+  - **storm mode:** taken from `timeline`'s conversation loop. Events come first and are pushed each round.
+  - **slice mode:** commands, read models and screens, following the core rules.
+  - **detail mode:** fields, examples, GWT specs and queries.
+  - **hand-off mode:** completeness → `slice status planned` → push → commit → `export --build-kit`, in that order.
+    It applies only when `.build-kit/` exists, and it never commits while the loop is building.
+  - A cookbook reference file pairing phrases with the commands they become.
+- [ ] **13.4 Port the method.**
+  - Move the `eventmodeling-*` rules into `emcli/skills/model/references/`, replacing API calls with emcli
+    commands.
+  - Fold schema, example-data and slice-scenarios into those references, because emcli commands supersede their
+    board-MCP writes.
+  - Rework ascii-mockups and wireframe-sketch to use `element update --description`.
+  - Drop navigation, or keep it read-only.
+- [ ] **13.5 Retire the old kit.**
+  - Mark `stacks/modeling-kit` and the eventmodelers `shared/skills` (`connect`, `learn-eventmodelers-api`,
+    `update-slice-status`, …) deprecated in their READMEs. Don't delete them yet.
+  - Replace this repo's `CLAUDE.md` (the `tasks.json` loop) with instructions for working on this repo.
+- [ ] **13.6 Experiment.**
+  - In a fresh project, model a small new context by conversation only: events, then slices, then specs, then
+    planned. Gary runs the loop.
+  - Record the prompts, the commands the skill ran, the corrections needed, and the time from the first sentence
+    to the first green slice.
+- [ ] **13.7 Docs.**
+  - A new manual section, "Model by talking", that replays t0 as prompts. Each prompt is paired with the commands
+    the skill ran and the board result.
+  - A prompt cookbook next to the command reference (§17).
+  - A short "how skills are installed" note in §4.
+  - Remove `em-helpers.sh` once 13.1 lands.
+  - Record the results here.
+
 ### Phase 12: Query Read Models (the spec's *when* is the read operation) ✅
 
 > Was the top priority (recorded 2026-09-23), superseding 9.7, 9.11b and the 10.8 ports. **Done 2026-09-23**, so
@@ -955,6 +1069,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-22 | Include `idAttribute` fields in Zod body schema | When a command field has `idAttribute: true` and no `generated: true`, include it in the body schema. Client sends it for deterministic tests and idempotent creation. |
 | 2026-09-23 | Inline read models share `build-state-view`, chosen by `readModelType` (ADR-021) | Same projection code and extension steps as async; only wiring, route and tests differ. First sighting of an inline projection backfills from history |
 | 2026-09-23 | Read specs' *when* carries the read operation (ADR-023) | Every read model is a keyed GET today. A *when* query with named parameters gives filtered reads a stable client contract, generated and tested from given/when/then |
+| 2026-09-23 | Natural-language modeling is an emcli skill, not an MCP server (Phase 13) | The gap is modeling method, which a skill carries. Name-based emcli commands serve the skill, people and a later MCP server alike. Skills are linked one by one so they sit next to the build kit's |
 
 ## Progress
 
