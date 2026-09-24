@@ -2028,15 +2028,29 @@ The skill edits the mockup, checks it, pushes it to the board, commits the model
 
 ```text
 Course Form (register course): help text added under Capacity. Checks clean. Board updated.
-Handed to the loop: register course is queued for its screen only (the backend stays as built).
+Handed to the loop: register course's UI is queued (its backend stays as built).
 Start the loop, or leave it running: it rebuilds Course Form's part and commits it as the slice's screen.
 ```
 
-The loop's log shows `update-slice-status`, then only `build-screen` for that slice (no backend skill), then
-*waiting*, in about a minute. Its one commit, `feat: [register course] screen`, changes two files: the help line
-in `web/src/slices/registercourse/RegisterCourseForm.tsx`, and a check for it in that form's test. Open
-`/courses/new` to see the help text. After the loop, the skill brings the status back (§5.6) and the slice is
-Done again, with nothing left queued.
+The loop's log shows the UI job with the UI routine, `build-screen` only, then *waiting*, in under a minute:
+
+```text
+[ralph] onPlannedSlice: building the UI of slice "register course"...
+→ Skill: build-screen
+…
+[ralph] Build of the UI of slice "register course" complete — waiting for next slice
+```
+
+Its one commit, `feat: [register course] screen`, changes two files: the help line in
+`web/src/slices/registercourse/RegisterCourseForm.tsx`, and a check for it in that form's test. Open
+`/courses/new` to see the help text. After the loop, the skill brings the status back (§5.6):
+*register course: backend Done, UI Done*, with nothing left queued.
+
+**If the mockup has a mistake.** Say the line you asked for binds a field the model doesn't have (*"You have
+{courseCount} courses"* on My Courses, with no `courseCount` anywhere). The skill reports it; if it's handed
+over anyway, the export holds back only the UI: *"student subscriptions — its UI only; the backend isn't held
+back"*. Nothing else waits. Once the skill fixes the mockup and hands it over again, the loop rebuilds the UI
+alone.
 
 **What's queued:** the export's output lists it (`Re-queued … for their screen only`), and
 `.build-kit/.slices/<context>/index.json` shows the slice `Planned` with `"concerns": { "backend": { "status":
@@ -2214,6 +2228,10 @@ no database or running backend needed), builds the slice's forms, views and page
 **A model per routine (optional):** `"models": { "ui": "<model>", "backend": "<model>" }` in
 `.eventmodelers/config.json` runs each job's agent with its own model; `"model"` stays the default.
 
+**After a kit update, restart the loop** (Ctrl+C, then `eventmodelers run --local` again) before anything is
+queued. A running loop keeps its old code in memory but rereads the routines from disk on every job, so an old
+loop would run a new routine.
+
 **If the agent is interrupted** (Claude usage ran out, a crash, the terminal closed), its job is left
 InProgress. With `--local`, the loop cleans up after its own agent: when the agent's run ends, or when the loop
 next starts if the loop itself was killed, it stashes the files the run created or changed as
@@ -2334,6 +2352,7 @@ instantaneous in this example, and it grows with your event store.
 | slices from other chapters appear in `.build-kit/.slices` | exported without `--chapter` after a `sync pull` | re-export with `--chapter "Course Enrollment"` |
 | `eventmodelers init` crashes with `ERR_USE_AFTER_CLOSE` | no terminal input was available | run it in an interactive terminal and answer the prompts |
 | a slice went back to Planned and `git stash list` shows `ralph: interrupted slice …` | the agent was interrupted mid-slice (Claude usage ran out, a crash, the terminal closed). The loop stashed the partial work and rebuilds the slice (§15). If Claude is still unavailable, the loop retries every 60 s | nothing, once Claude is available again (restart the loop if you closed it). Drop the stash after the rebuilt slice is committed: `git stash drop stash@{N}` |
+| after a kit update, the agent seems confused about which slice or job to build | the loop was still running the old code with the new routines | stop the loop and start it again; re-plan anything it blocked |
 | a slice is **Blocked** after an interruption | the agent committed part of the slice but was interrupted before marking it Done. `progress.txt` names the commits | check them with `git log`. If the slice is complete, set it to Done. Otherwise `git revert` them and set it back to Planned |
 | a slice stays **InProgress** and the loop says *waiting* | an interrupted agent, with the loop running with board sync (without `--local`). There the loop can't tell an interrupted claim from another agent's, so it only logs a warning | once no agent is building it: `git stash push -u -m "interrupted slice"`, then set the slice back to Planned on the board |
 

@@ -1002,8 +1002,8 @@ routes and queries, the examples, and the scenarios. Use it to:
       \[?<slice>\]?$"`) and never matches a screen commit.
     - I nearly exported the proof on the kit-update branch before merging it. Had the loop been running, it
       would have built the slice on that branch at once. The order is merge, then export.
-- [ ] **14.7b A build status per concern: backend and UI.** *(Decided with Gary 2026-09-24: do it now, before
-  14.8 and 14.9.)*
+- [x] **14.7b A build status per concern: backend and UI.** *(Decided with Gary 2026-09-24: do it now, before
+  14.8 and 14.9. Done 2026-09-24: emcli `8b88f1d`, course-enrollment `6650665`, ADR-027.)*
   - **Why:**
     - A slice holds backend elements and a screen, each with its own "done", but the loop tracks one status. A
       failed screen sets the whole slice to Blocked, and the hand-off gate then holds back every slice that
@@ -1038,6 +1038,61 @@ routes and queries, the examples, and the scenarios. Use it to:
   - **Proof:** on course-enrollment, a screen made to fail leaves the backend Done. A dependent slice still passes
     the gate, and planning the slice again rebuilds only the UI.
   - Detailed plan approved 2026-09-24; ADR-027.
+  - **emcli (`84056c2` + `8b88f1d`, 311 tests):**
+    - `buildKit.ts`: `concernsOf`, `previousConcerns` (older entries: Done → all Done; Blocked → backend, or the
+      ui with a pending `buildScreen`), `deriveStatus`, `resolveUi` (replaces `resolveScreen`), per-concern
+      `plannedAgain`, `builtEntryIds` (backend Done/InProgress), `holdBack` with a `Hold` per slice
+      (`all` / `ui`), `importBuildConcerns`;
+    - `handoff.ts`: `uiOnly` when every error is a screen's own; such a hold never makes dependents wait;
+    - `slice status planned` plans a slice with UI-only errors (its screen waits), and reads the kit's queue for
+      built backends;
+    - `slice.build` (local-only) is rendered by `sync push` into the details ("Backend ✓ built · UI ✗ blocked:
+      …"). `import-status` lists only notable records (a UI, or anything not Done), so t0's output is unchanged;
+    - the event-model skill (`SKILL.md`, `handoff.md`, `screens.md`), `USAGE.md`, `cli/CLAUDE.md`.
+  - **Kit:**
+    - `shared/build-kit/lib/concerns.js` (+ 6 `node:test`s): `nextWork`, `deriveStatus`, `setConcernStatus`,
+      `settleEntries`, `inProgressConcerns`;
+    - `ralph.js`:
+      - picks the next job and claims it after the run marker;
+      - runs `backend-prompt.md` or the new `screen-prompt.md` under a "Your task" header;
+      - recovery, the stuck guard and `blockedAt` are per job, and a retry skips a job no longer Planned;
+    - `ralph-claude.js`: `models.{ui,backend}`;
+    - `backend-prompt.md` (backend only) and `screen-prompt.md` (UI only), `build-kit/CLAUDE.md`, `build-screen`;
+    - **other kits unaffected:** an entry without `concerns` (axon, kurrent, opencqrs, supabase exports) runs the
+      old path, with no header and no claim. Their prompts pick and claim the slice themselves.
+    - Simulations with a fake agent (a scratch project, no Claude) showed:
+      - the backend, then the UI with the UI routine;
+      - an agent that died left only its UI job InProgress, which was reset and rebuilt;
+      - a UI blocked without a timestamp got `blockedAt`, and the next slice's backend still ran;
+      - a mixed queue ran the old path for the entry without concerns.
+  - **Docs (Gary: "a big pivot"):**
+    - the manual: §5.5 (jobs, log lines), §5.6, §13.9 (intro, situation table, example from the runs, mockup
+      mistake), §14 (the screen commit), §15 (jobs, routines, model per routine, statuses), §17, §18, §20;
+    - ADR-027; the shared `build-kit/README.md`; the DCB `RALPH-TESTING-GUIDE.md`.
+  - **Proof on course-enrollment:**
+    - kit update, then the migration export: the five screen slices get both concerns Done, nothing is
+      queued, and `nextWork` finds nothing;
+    - My Courses got a line binding `courseCount`, which the model doesn't have. The skill reported it. The export
+      held back **only the UI** (*"its UI only; the backend isn't held back"*): ui Created, backend Done;
+    - the binding was fixed, and after your loop restart the export queued the UI alone (backend Done, ui Planned);
+    - **the loop:** `building the UI of slice "student subscriptions"`, the UI routine, only `build-screen`
+      (43 s, $0.57). One commit, `feat: [student subscriptions] screen` (the line plus a test assertion). ui
+      Done, the slice Done; web 31/31;
+    - `import-status` listed the five screen slices "backend Done, UI Done"; the push put the build line in
+      their board details;
+    - **simulated** (the queue edited as the loop would, then restored):
+      - `subscribe student` UI Blocked → model `blocked`; planning its dependent `course details subscriptions`
+        passed the gate, and the export held nothing back;
+      - with its **backend** Blocked instead, the same planning was held: "waits on subscribe student
+        (blocked)";
+    - Chrome, live backend: `/my-courses` shows the line.
+  - **Findings:**
+    - A kit update that changes `ralph.js` needs a **loop restart**. The running loop keeps the old code but
+      rereads the prompts on every run, so it would give a new prompt to the old loop. The manual's §15 says so.
+    - The first draft claimed every slice in the loop, which would have broken the other kits (their agents pick
+      and claim). Hence the old path for entries without concerns.
+    - The export's first wording ("the backend is queued") was wrong for a built backend. It now says "the
+      backend isn't held back".
 - [ ] **14.8 Deploy.** The `web/` build goes to S3 + CloudFront (SPA fallback to `index.html`), with `VITE_API_BASE`
   per environment. A script first; CDK later if wanted.
 - [ ] **14.9 Prove and document (increment t14 on course-enrollment).**
@@ -2030,6 +2085,9 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-24 | `gen:api` builds the types from the code with stand-in dependencies, not from a running backend (14.7) | No database or server in the loop, and a backend started earlier can't serve stale routes; the output is identical |
 | 2026-09-24 | A slice whose backend commit is already in the history gets only its screen built (14.7) | A screen step that was blocked or interrupted can be planned again without rebuilding the backend on top of itself |
 | 2026-09-24 | A build status per concern (backend, UI) in the loop's queue, the slice's status derived from them; one loop with a routine per concern (14.7b, Gary) | A failing screen must not hold up slices that need only the backend; the status should say what's true; it matches how full-stack work is tracked. Two loops at once would collide in one working tree |
+| 2026-09-24 | The loop claims a job itself (InProgress, after the run marker) and names it above the routine; the agent only finishes its concern (14.7b) | The agent no longer edits nested JSON to claim, and recovery sees exactly the job that was interrupted |
+| 2026-09-24 | A screen's own mockup errors hold back only its UI; the slice is planned and its backend goes (14.7b) | Warn, not block: a drawing mistake must not stop the backend or anything depending on it |
+| 2026-09-24 | Queue entries without `concerns` run the old loop path (the agent picks and claims) (14.7b) | The other kits share `ralph.js`; their exports and prompts are untouched |
 | 2026-09-24 | Contract-first (the model writes the API contract) is a future step (14.10, Gary) | It removes the UI's wait on its slice's backend, for full parallelism, and builds on 14.7b |
 | 2026-09-24 | Planning a slice again after the loop blocked it re-queues it (`plannedAt` later than the loop's `blockedAt`) (14.7) | The loop's Blocked was otherwise permanent, which forced hand edits to index.json; timestamps stop a stale plan from re-queuing a fresh block |
 
@@ -2049,5 +2107,5 @@ What each `build-*` skill generates and what it verifies:
 | 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 done (stale InProgress recovery in `--local` mode) |
 | 11 — Read Model Types | ✅ Complete | Async, inline and live read models from one fold definition, with an identical data shape across types (ADR-021/022). Proven on course-enrollment t5–t10: inline, a retype to live and back, a new live read model with a lookup |
 | 12 — Query Read Models | 🚧 In progress (top priority) | 12.1–12.3 done: ADR-023 query contract; emcli queries + `SPEC_QUERY` + `addQueries` re-queue; kit runtime (stored SQL + live, one semantics). Named queries on the read model element, the spec *when* references them, `{ data, cursor? }` pages; live needs a tag parameter |
-| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.3 done: native wireframes pushed and pulled (board links work in Connect), design system as a synced snippet. 14.4 done: the `event-model` skill's screen mode (contract → draft → edit → check → push → show); screen problems warn, one set of field exceptions. 14.4b done: manual §13, t13 on course-enrollment (five screens, board wireframes, snippet restyle). 14.4c done: hand-off gate, only information-complete slices reach the loop. 14.5 done: `web/` scaffold in the DCB kit (typed client from `/openapi.json`, opt-in read-your-writes for async read models, MSW mock mode, shell, one Tailwind design system for app and board snippet); entity-oriented routing recorded as an open decision. 14.5b done: API routes named after the model (ADR-025; emcli derives them, `POST /<command>`, `GET /<read-model>/:id`, `GET /<read-model>/<query>`), kit, course-enrollment and manual migrated; page routes decided (entity-based, derived at export) and `session:` from a stub current user. 14.6 done: `build-screen` (a form per command, a view per read model, MSW handlers and tests from the scenarios, pages from `screens[].page`), page routes derived by emcli (entity-shaped, session keys never in URLs), web commit checks, a reference frontend, and course-enrollment's five screens built one commit each, walked through live and in mock mode. 14.7 done: the loop builds a slice's screen after its backend, a mockup added or changed on a built slice re-queues the screen alone, `gen:api` needs no backend, a blocked slice planned again is re-queued, manual §13.9. Next: 14.7b a build status per concern (backend, UI), then 14.8 deploy; 14.10 contract-first later. 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
+| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.3 done: native wireframes pushed and pulled (board links work in Connect), design system as a synced snippet. 14.4 done: the `event-model` skill's screen mode (contract → draft → edit → check → push → show); screen problems warn, one set of field exceptions. 14.4b done: manual §13, t13 on course-enrollment (five screens, board wireframes, snippet restyle). 14.4c done: hand-off gate, only information-complete slices reach the loop. 14.5 done: `web/` scaffold in the DCB kit (typed client from `/openapi.json`, opt-in read-your-writes for async read models, MSW mock mode, shell, one Tailwind design system for app and board snippet); entity-oriented routing recorded as an open decision. 14.5b done: API routes named after the model (ADR-025; emcli derives them, `POST /<command>`, `GET /<read-model>/:id`, `GET /<read-model>/<query>`), kit, course-enrollment and manual migrated; page routes decided (entity-based, derived at export) and `session:` from a stub current user. 14.6 done: `build-screen` (a form per command, a view per read model, MSW handlers and tests from the scenarios, pages from `screens[].page`), page routes derived by emcli (entity-shaped, session keys never in URLs), web commit checks, a reference frontend, and course-enrollment's five screens built one commit each, walked through live and in mock mode. 14.7 done: the loop builds a slice's screen after its backend, a mockup added or changed on a built slice re-queues the screen alone, `gen:api` needs no backend, a blocked slice planned again is re-queued, manual §13.9. 14.7b done: a build status per concern (backend, UI), the slice's status derived, one loop with a routine per concern, a blocked UI holds up nothing (ADR-027). Next: 14.8 deploy; 14.10 contract-first later. 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
 | 7 — Board Re-pointing | ⛔ Dropped | eventmodelers board retired; prooph board via emcli is the only board |
