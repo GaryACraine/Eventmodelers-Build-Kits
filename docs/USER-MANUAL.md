@@ -492,20 +492,21 @@ eventmodelers run --local 2>&1 | tee ralph.log
 ```text
 Ralph — kit: …/course-enrollment/.build-kit
          mode: local-only (no platform sync) — forced by --local
-[ralph] onPlannedSlice: building slice "register course"...
+[ralph] onPlannedSlice: building the backend of slice "register course"...
 → Skill: build-state-change
 → Bash
 …
 done (117221ms, $0.9378)
-[ralph] onPlannedSlice: building slice "course details"...
+[ralph] onPlannedSlice: building the backend of slice "course details"...
 → Skill: build-state-view
 …
 done (68798ms, $0.5815)
 [ralph] No planned slices in current context "enrollment" — waiting.
 ```
 
-For each slice the loop starts a fresh Claude agent. The agent reads `slice.json`, runs the matching skill,
-builds, runs the slice's tests, runs the commit checks, and commits:
+The loop works in **jobs**: a slice's backend, and its UI when the slice has a screen with a mockup (from t13,
+§13.9). t0 has no screens, so each slice is one job. For each job the loop starts a fresh Claude agent. The agent
+reads `slice.json`, runs the matching skill, builds, runs the slice's tests, runs the commit checks, and commits:
 
 ```bash
 git log --oneline -4          # in terminal 1, once the loop says "waiting"
@@ -530,8 +531,8 @@ next `git add -A` picks them up.
 
 ### 5.6 Show progress on the board
 
-The loop records each slice's status (InProgress / Done / Blocked) in `.build-kit/.slices`. Bring that back
-into the model and push it:
+The loop records each slice's status (InProgress / Done / Blocked) in `.build-kit/.slices`: per job (backend,
+UI) under `concerns`, and for the slice as a whole. Bring that back into the model and push it:
 
 ```bash
 emcli workspace import-status --build-kit .build-kit
@@ -543,6 +544,9 @@ git add -A && git commit -m "model(t0): built"
   register course: planned → ready
   course details: planned → ready
 ```
+
+A slice with a UI also gets a line in its board details saying how each job stands, and `import-status` lists
+it: *Build status per concern: register course: backend Done, UI Done* (§13.9).
 
 ![Board after t0 is built](images/diagram-t0-built.svg)
 ![Both t0 slices with status Ready on the board](images/SS4.png)
@@ -2003,7 +2007,7 @@ what will happen. What happens in each situation:
 | a slice with no screen (an automation, the event feed) | builds the backend only | nothing |
 | a new slice with a screen and a mockup | builds the backend, then the UI: two jobs, two commits | plan it as usual (*"Plan register course for the loop."*) |
 | a new slice whose screen has no mockup yet | builds the backend only. The skill (and the export) tell you the screen waits for a mockup; nothing is held back | nothing now. Ask for the mockup whenever you're ready (*"Draft the Course Form."*) |
-| a mockup with an error (a binding that names nothing in the model) | builds the backend; the UI waits. The export says *"its UI only; the backend is queued"* | the skill tells you what's wrong and fixes the mockup; the UI is handed over then |
+| a mockup with an error (a binding that names nothing in the model) | builds the backend; the UI waits. The export says *"its UI only; the backend isn't held back"* | the skill tells you what's wrong and fixes the mockup; the UI is handed over then |
 | a built slice gets its mockup later | builds that UI only. The backend stays as built | ask the skill for the mockup. It pushes, commits the model and hands it over, and says *"the loop will build Course Form's UI only"* |
 | a built screen's mockup changes, or its page route | rebuilds that UI only, to the new mockup | ask for the change (*"Put help text under the capacity field."*). The skill hands it over the same way |
 | a page made of several slices' cards (Course Page) | each slice's UI adds its own part to the page | nothing |
@@ -2106,6 +2110,7 @@ d7ca76c  loop   feat: course details capacity                                   
 | `model(tN): …` | you | `workspace.json`, and the loop's notes (`progress.txt`, `.build-kit/AGENTS.md`) | no (touches no slice folder) |
 | `feat: <slice>` | loop | the slice's folder: code and tests. For an extension, the origin's folder | **yes**: all eight checks, including the slice's tests |
 | `chore: wire <slice> …` | loop | `src/index.ts` only (registering the route and projection) | no (kept separate on purpose; `blocked-paths` forbids it in a slice commit) |
+| `feat: <slice> screen` | loop (the slice's UI job, §13.9) | the slice's `web/src/slices/<slice>/`, the pages it's on, and the regenerated `web/src/lib/api-types.ts` | **yes**: `blocked-paths`, `web-scope`, `web-tests` |
 | `chore: progress + learnings …` | loop, sometimes | `progress.txt`, `.build-kit/AGENTS.md` | no |
 
 The loop doesn't always commit its notes. If `git status` shows `progress.txt` or `.build-kit/AGENTS.md`
@@ -2315,7 +2320,7 @@ instantaneous in this example, and it grows with your event store.
 | `slice status … planned` sets it **blocked** instead | the slice isn't information complete (a `completeness` error), or waits on a slice that's blocked or not built or planned | fix what it lists (also in the slice's board details after `sync push`), then plan it again. `--force` plans it anyway |
 | the export says **Held back … planned slice(s)** | a planned slice stopped passing the check after it was planned, or was planned on the board | fix what it lists and export again. The slice stays planned in the model; it just isn't queued. `--force` queues it anyway |
 | a slice goes **Blocked** | a check failed in one of its jobs, and the agent couldn't fix it | ask the skill *"Why is <slice> blocked?"*: it says which job (backend or UI) and why (`blockedReason` under `concerns` in `.build-kit/.slices/<ctx>/index.json`; also in the slice's board details), fixes the model or mockup, and plans it again. The next export queues only that job (`Re-queued … the loop had blocked`) |
-| the export says *"its UI only; the backend is queued"* | the slice's mockup has an error (a binding that names nothing) | nothing blocks the backend. Ask the skill to fix the mockup, then export: the UI is queued |
+| the export says *"its UI only; the backend isn't held back"* | the slice's mockup has an error (a binding that names nothing) | nothing blocks the backend. Ask the skill to fix the mockup, then export: the UI is queued |
 | a slice planned again after a block stays **Blocked** on export | it was planned before the loop blocked it, or the entry has no `blockedAt` (a loop from before 14.7) | plan it again now (`slice status … planned`) and export |
 | the export warns *"… have no mockup: the loop builds their backend only"* | a planned slice's screen card has no mockup | nothing, if that's intended. Ask the skill for the mockup later; the export then queues the screen alone (§13.9) |
 | a screen is **Blocked** with `npm run openapi` output | a route can't be configured without a database, so the API types would be incomplete | fix the route so configuring it doesn't need a live database, or generate from a running backend: `API_URL=http://localhost:3000 npm --prefix web run gen:api` |

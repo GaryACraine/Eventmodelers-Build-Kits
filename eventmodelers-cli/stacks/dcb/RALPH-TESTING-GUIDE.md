@@ -18,11 +18,11 @@ Ralph processes slices in two phases:
 
 1. **Board sync** (`prompt.md`) — Reacts to `slice:changed` events from the board. Loads credentials via `/connect`, fetches the slice definition via `/load-slice`, and determines the action based on `sliceStatus` (Planned → build, InProgress → skip, Done → summarise).
 
-2. **Build** (`backend-prompt.md`) — For "Planned" slices, reads `slice.json` from `.build-kit/.slices/<context>/<slicename>/`, determines the slice type, and dispatches to the matching skill.
+2. **Build** — the loop takes the next **job**: one concern of one slice (ADR-027). Each slice's `index.json` entry has `concerns` (`backend`, and `ui` when its screen has a mockup), each with its own status; the slice's `status` is derived from them. A Planned backend runs `backend-prompt.md`; a Planned UI whose backend is Done runs `screen-prompt.md` (`/build-screen`). The loop claims the job and names it in a "Your task" header above the routine; the agent sets its concern Done or Blocked.
 
 ### Slice type routing
 
-`backend-prompt.md` step 2 determines the slice type:
+For a backend job, `backend-prompt.md` determines the slice type:
 
 | Condition | Type | Skill |
 |-----------|------|-------|
@@ -41,7 +41,7 @@ This means end-to-end Ralph execution cannot be tested from within a Claude Code
 
 ### Dispatch simulation workaround
 
-To validate skill templates without a live board or nested sessions, manually follow `backend-prompt.md` steps as a substitute:
+To validate skill templates without a live board or nested sessions, manually follow `backend-prompt.md` (or, for a UI job, `screen-prompt.md`) steps as a substitute:
 
 1. Read the target `slice.json`
 2. Determine the slice type using the routing table above

@@ -40,12 +40,13 @@ export function deriveStatus(concerns, fallback) {
 
 /**
  * The next job, in timeline order: a slice's Planned backend, or its Planned UI once its backend is Done (a UI
- * needs its own slice's routes and types). Returns { id, title, concern } or null.
+ * needs its own slice's routes and types). Returns { id, title, concern, tracked } or null; `tracked` is false for
+ * an entry without concerns (another kit's export), whose agent picks and claims its slice itself, as before.
  */
 export function nextWork(entries) {
   for (const entry of entries ?? []) {
     const concerns = concernsOf(entry);
-    const job = (concern) => ({ id: entry.id ?? null, title: entry.slice || entry.id || null, concern });
+    const job = (concern) => ({ id: entry.id ?? null, title: entry.slice || entry.id || null, concern, tracked: hasConcerns(entry) });
     if (concerns.backend && norm(concerns.backend.status) === 'planned') return job('backend');
     if (concerns.ui && norm(concerns.ui.status) === 'planned'
       && (!concerns.backend || norm(concerns.backend.status) === 'done')) return job('ui');

@@ -828,11 +828,30 @@ async function ralphLoop(kitDir, projectDir, cfg, onTask, onPlannedSlice, localO
       const ui = planned.concern === 'ui' && existsSync(screenPromptFile);
       const routine = readFileSync(ui ? screenPromptFile : backendPromptFile, 'utf-8');
       const what = planned.concern === 'ui' ? 'the UI' : 'the backend';
-      await runWithRetry(`onPlannedSlice: building ${what} of slice "${planned.title}"...`, async () => {
-        if (credentialed) return onPlannedSlice(taskHeader(planned, false) + routine, { concern: planned.concern });
+      const label = planned.tracked ? `${what} of slice "${planned.title}"` : `slice "${planned.title}"`;
+      await runWithRetry(`onPlannedSlice: building ${label}...`, async () => {
+        if (credentialed) {
+          return onPlannedSlice(planned.tracked ? taskHeader(planned, false) + routine : routine, { concern: planned.concern });
+        }
+        // A kit whose export has no concerns: its routine picks and claims the slice itself, exactly as before.
+        if (!planned.tracked) {
+          const run = beginRun(kitDir, projectDir, planned.ctx);
+          try {
+            await onPlannedSlice(routine, { concern: planned.concern });
+          } finally {
+            try {
+              recoverInterruptedRun(kitDir, projectDir, run);
+            } catch (err) {
+              console.error(`[ralph] Interrupted-slice recovery failed:`, err.message);
+            }
+            settleIndex(kitDir, planned.ctx);
+            endRun(kitDir);
+          }
+          return;
+        }
         // Recovered before a retry, too: a retried job runs only while its concern is still Planned.
         if (!isStillPlanned(kitDir, planned)) {
-          console.log(`[ralph] ${what} of "${planned.title}" is no longer Planned — skipping.`);
+          console.log(`[ralph] ${label} is no longer Planned — skipping.`);
           return;
         }
         const run = beginRun(kitDir, projectDir, planned.ctx);
@@ -850,7 +869,7 @@ async function ralphLoop(kitDir, projectDir, cfg, onTask, onPlannedSlice, localO
           endRun(kitDir);
         }
       });
-      console.log(`[ralph] Build of ${what} of "${planned.title}" complete — waiting for next slice`);
+      console.log(`[ralph] Build of ${label} complete — waiting for next slice`);
       if (credentialed) await fetchAndPersistSlices(cfg, kitDir).catch(() => {});
       didWork = true;
     }

@@ -23,16 +23,16 @@ test('the next job: a Planned backend, or a Planned UI once its backend is Done,
     entry('b', { backend: { status: 'Planned' }, ui: { status: 'Planned' } }),
     entry('c', { backend: { status: 'Done' }, ui: { status: 'Planned' } }),
   ];
-  assert.deepEqual(nextWork(entries), { id: 'b', title: 'b', concern: 'backend' });
+  assert.deepEqual(nextWork(entries), { id: 'b', title: 'b', concern: 'backend', tracked: true });
   entries[1].concerns.backend.status = 'Done';
-  assert.deepEqual(nextWork(entries), { id: 'b', title: 'b', concern: 'ui' });
+  assert.deepEqual(nextWork(entries), { id: 'b', title: 'b', concern: 'ui', tracked: true });
   // a UI never goes before its backend; a blocked backend leaves its UI waiting, and the loop moves on
   entries[1].concerns.backend.status = 'Blocked';
-  assert.deepEqual(nextWork(entries), { id: 'c', title: 'c', concern: 'ui' });
+  assert.deepEqual(nextWork(entries), { id: 'c', title: 'c', concern: 'ui', tracked: true });
   // a UI-only slice (no backend concern) can go
-  assert.deepEqual(nextWork([entry('d', { ui: { status: 'Planned' } })]), { id: 'd', title: 'd', concern: 'ui' });
-  // an entry from before concerns: the whole slice
-  assert.deepEqual(nextWork([{ id: 'e', slice: 'e', status: 'Planned' }]), { id: 'e', title: 'e', concern: 'backend' });
+  assert.deepEqual(nextWork([entry('d', { ui: { status: 'Planned' } })]), { id: 'd', title: 'd', concern: 'ui', tracked: true });
+  // an entry without concerns (another kit): the whole slice, and the agent picks and claims it itself
+  assert.deepEqual(nextWork([{ id: 'e', slice: 'e', status: 'Planned' }]), { id: 'e', title: 'e', concern: 'backend', tracked: false });
   assert.equal(nextWork([entry('f', { backend: { status: 'Done' } })]), null);
 });
 
