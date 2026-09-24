@@ -628,15 +628,57 @@ routes and queries, the examples, and the scenarios. Use it to:
       - a bad binding plus a missing button gave 1 ERROR and 2 WARNs;
       - the export still exported;
       - `completeness --slice "subscribe student"` exited 1.
-- [ ] **14.4b Manual: screens in the model (increment t13 on course-enrollment).** A new manual section, verified by
-  replaying it:
-  - give the Enrollment chapter's slices screens and wire their dependencies;
-  - draft and check the mockups, or describe them to the `event-model` skill;
-  - push, see native wireframes on the board, and restyle every screen through one design-system snippet.
-  - It's usable before any frontend exists. Also update §1 (a slice now includes its screen), §2 (tools) and §18
-    (commands).
+- [x] **14.4b Manual: screens in the model (increment t13 on course-enrollment).** *Done 2026-09-24: manual §13,
+  course-enrollment `d288b0c` (Merge increment t13), emcli `a4150c3` / `36712ed` / `d454e84`.*
+  - A new manual section, verified by replaying it:
+    - give the chapter's slices screens and wire their dependencies;
+    - draft and check the mockups, or describe them to the `event-model` skill;
+    - push, see native wireframes on the board, and restyle every screen through one design-system snippet.
+  - It's usable before any frontend exists. Also update §1 (a slice now includes its screen), §2 (tools) and the
+    command reference.
   - Run `completeness` on the chapter first and say which errors were already there: the manual should show screen
     problems only, with the chapter's own lineage gaps named as such.
+  - **What was modeled** (on **Course Enrollment**, the manual's chapter, not *Enrollment*; Gary, 2026-09-24):
+    - an **Admin** lane (registering a course is an admin's job), put on top with `lane reorder`;
+    - five screen cards with their contracts:
+      - Course Form (register course, submits `registerCourse`);
+      - Available Courses (course seats capacity, displays `CourseSeats`, lists the `availableCourses` query);
+      - Course Page ×2: the subscribe student card submits `subscribeStudent` with the course title as
+        `data-slice` context; the course details subscriptions card displays `CourseDetails` with the students;
+      - My Courses (student subscriptions, displays `StudentSubscriptions`).
+    - `subscribeStudent.studentId` is mapped `session:studentId`, so the page needs no input for it.
+    - Drafted, edited, all five checks clean. `completeness` went from 21 errors to 16: the five cleared were the
+      two commands' fields, now sourced from the mockups; the 16 left were already there (commands with no screen,
+      computed read model fields not mapped `derived:`).
+    - Pushed with `plain`, then restyled to `sketch` by pushing only the snippet. The board shows all five
+      wireframes; the Course Form preview's **Connect** outlines the Register course button linked to
+      `registerCourse` (manual SS8). Every card's `data-pb-element-id` resolves to the right element (read back
+      through the API). SS9 shows the Course Page cards on the board.
+  - **Found and fixed (emcli):**
+    - **A query's rows couldn't be bound.** A student's list of available courses is the `availableCourses`
+      query's result. `data-list="<query>"` now binds a displayed read model's query (a copy answers its
+      origin's), each row has the read model's fields, and `--draft` adds a table per query. (`a4150c3`)
+    - **Drafts ignored the new field exceptions.** `--draft` drafted an input for the session-mapped `studentId`.
+      It now uses `needsScreenInput`, and query tables leave nested List fields out instead of printing JSON in a
+      cell. (`36712ed`)
+    - **A query list had no board link.** `withBoardIds` didn't count a query `data-list` as the read model's, so
+      Available Courses went up unlinked (found reading the chapter back). (`d454e84`)
+    - Tests: 252/252.
+  - **Findings (not fixed):**
+    - **`sync push` doesn't resend a description when only emcli's rendering changes** (a fix like `d454e84`
+      changes what the board should hold, but the model and baseline are the same). Worked round with a real
+      edit: Available Courses got a one-line description. A `sync push --resend-mockups` (or a render version in
+      the baseline) would cover it.
+    - **The board draws its own arrows from the layout,** e.g. a Course Page card to `unsubscribeStudent` in the
+      next column, which no screen submits. The manual says the contract is the dependencies.
+    - **An "Untitled" ui card** sits on the board in the Student lane of *register course* (`42132674-…`), not in
+      the model and not pushed by emcli. Its origin is unknown (the changelog shows nothing). Left for Gary.
+    - Sketching found a model gap: `CourseSeats` has no title, so Available Courses shows course codes. The manual
+      names it as a later increment (a copy that looks the title up).
+  - **Manual:** §13 "Increment t13: screens in the model" (13.1 contract, 13.2 screens and contracts, 13.3 draft
+    and edit, 13.4 check, 13.5 push and see, 13.6 restyle, 13.7 commit, 13.8 say it). The old §13–§19 are now
+    §14–§20. §1 has the Screen sticky, §2 the board's wireframes, §18 screen prompts, §19 the mockup, snippet,
+    `field set --mapping`, `lane reorder` and `submits` commands, §20 four limits.
 - [ ] **14.5 Frontend scaffold (DCB kit, `templates/root/web/`).**
   - The stack above.
   - `src/lib/api.ts` (the generated client, plus position → `Prefer: wait`); `npm run gen:api` from the backend's
@@ -669,7 +711,7 @@ routes and queries, the examples, and the scenarios. Use it to:
 - [ ] **14.9 Prove and document (increment t14 on course-enrollment).**
   - One increment end to end on a real project: the dependencies and a mockup → a board wireframe → the loop builds
     backend and UI → the app works against the live backend.
-  - Manual: "The loop builds the UI" (t14), and a deploy section from 14.8. §14 (how the loop builds a slice) and
+  - Manual: "The loop builds the UI" (t14), and a deploy section from 14.8. §15 (how the loop builds a slice) and
     §19 (known limits) updated. Results here.
 - [x] **14.A ADR-024 "Screens as bound HTML"** in the DCB kit's ADR.md *(2026-09-23)*: mockups as full HTML
   documents with checked bindings, the dependency contract, native board wireframes in the description, the
@@ -1618,6 +1660,9 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-24 | Element names that match in several chapters resolve to the context chapter (emcli `preferChapterId`) | Projects keep a legacy chapter beside the current one (Enrollment and Course Enrollment share slice names), and the skill must use names, not IDs |
 | 2026-09-24 | Screen contract problems never block rendering; only a name that doesn't exist is an ERROR (fails `completeness`, so the hand-off); a missing button or input is a WARN (supersedes 14.2b's "every field of a submitted command must have an input") | Gary: the checks should inform, not be rigid. The build can't write code for a name that isn't in the model, but it can add a missing button or input |
 | 2026-09-24 | Field lineage and the screen check share one set of field exceptions (`isSourceDeclared` / `needsScreenInput`): no input for generated, technical, `session:`, `derived:` or `webhook:` fields | A field the owning element generates, or that never comes from the page, shouldn't need an input; one list keeps the two checks from drifting |
+| 2026-09-24 | t13 models screens on **Course Enrollment** (the manual's chapter), adding them from scratch, not wiring the 24 screens of the *Enrollment* chapter | The manual tells one story, t0–t12 were built on Course Enrollment, and it had no screens |
+| 2026-09-24 | A query's rows are a `data-list` (`data-list="availableCourses"`) | A list page shows a query's result, and a query is part of the read model's contract (ADR-023) |
+| 2026-09-24 | The manual's t13 section is §13; the reference sections move to §14–§20 | Increments come before the reference sections, in the order they're built |
 
 ## Progress
 
@@ -1635,5 +1680,5 @@ What each `build-*` skill generates and what it verifies:
 | 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 done (stale InProgress recovery in `--local` mode) |
 | 11 — Read Model Types | ✅ Complete | Async, inline and live read models from one fold definition, with an identical data shape across types (ADR-021/022). Proven on course-enrollment t5–t10: inline, a retype to live and back, a new live read model with a lookup |
 | 12 — Query Read Models | 🚧 In progress (top priority) | 12.1–12.3 done: ADR-023 query contract; emcli queries + `SPEC_QUERY` + `addQueries` re-queue; kit runtime (stored SQL + live, one semantics). Named queries on the read model element, the spec *when* references them, `{ data, cursor? }` pages; live needs a tag parameter |
-| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.3 done: native wireframes pushed and pulled (board links work in Connect), design system as a synced snippet. 14.4 done: the `event-model` skill's screen mode (contract → draft → edit → check → push → show). 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
+| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.3 done: native wireframes pushed and pulled (board links work in Connect), design system as a synced snippet. 14.4 done: the `event-model` skill's screen mode (contract → draft → edit → check → push → show); screen problems warn, one set of field exceptions. 14.4b done: manual §13, t13 on course-enrollment (five screens, board wireframes, snippet restyle). 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
 | 7 — Board Re-pointing | ⛔ Dropped | eventmodelers board retired; prooph board via emcli is the only board |

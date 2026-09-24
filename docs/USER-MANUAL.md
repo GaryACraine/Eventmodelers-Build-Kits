@@ -31,13 +31,14 @@ data already in your database when you do.
 10. [Increments t5 and t6: a read model that's never stale](#10-increments-t5-and-t6-a-read-model-thats-never-stale)
 11. [Increments t7–t10: switching read model types](#11-increments-t7t10-switching-read-model-types)
 12. [Increments t11 and t12: querying read models](#12-increments-t11-and-t12-querying-read-models)
-13. [Working with git: branches, commits and merges](#13-working-with-git-branches-commits-and-merges)
-14. [How the Ralph loop builds a slice](#14-how-the-ralph-loop-builds-a-slice)
-15. [Rebuilds in depth](#15-rebuilds-in-depth)
-16. [Troubleshooting](#16-troubleshooting)
-17. [Model by talking](#17-model-by-talking)
-18. [Command reference](#18-command-reference)
-19. [Known limits](#19-known-limits)
+13. [Increment t13: screens in the model](#13-increment-t13-screens-in-the-model)
+14. [Working with git: branches, commits and merges](#14-working-with-git-branches-commits-and-merges)
+15. [How the Ralph loop builds a slice](#15-how-the-ralph-loop-builds-a-slice)
+16. [Rebuilds in depth](#16-rebuilds-in-depth)
+17. [Troubleshooting](#17-troubleshooting)
+18. [Model by talking](#18-model-by-talking)
+19. [Command reference](#19-command-reference)
+20. [Known limits](#20-known-limits)
 
 ---
 
@@ -101,11 +102,15 @@ a read model can answer **queries** such as "the courses with free seats" (§12)
 | Command | blue | "someone asks for this" |
 | Event | orange | "this happened" |
 | Read model | green | "this is what someone can see" |
+| Screen | white | "this is the page where a person sees it and asks for it" |
 
 The timeline is cut into vertical **slices**. Each slice is one small feature you can build and ship on its own:
 
 - a **state-change slice**: command → event (e.g. *register course*)
 - a **state-view slice**: events → read model (e.g. *course details*)
+
+A slice can also hold the **screen** for its step: the form that submits its command, or the page that displays
+its read model. A screen's mockup is a small HTML page, checked against the model and drawn on the board (§13).
 
 Slices are the unit of work. The build loop builds one slice at a time.
 
@@ -135,7 +140,7 @@ have to design them yourself.
 | Tool | What it does | You use it to |
 |---|---|---|
 | **emcli** | A command-line editor for your event model. The model lives in a local `workspace.json` | create slices, stickies, fields, links and example scenarios |
-| **prooph board** | A shared visual board (web) | show the model to your team or client; receive their notes |
+| **prooph board** | A shared visual board (web) | show the model, and each screen's mockup as a wireframe, to your team or client; receive their notes |
 | **DCB build kit** | Skills, checks and templates installed into your project | turn a slice into TypeScript code, tests and wiring |
 | **Ralph loop** (`eventmodelers run`) | Runs in a terminal and builds every slice marked **planned**, one at a time, with Claude | build without writing the code by hand |
 | **Postgres** (Docker) | Stores the events and the read models | run the app |
@@ -211,7 +216,7 @@ Empty enrollment context ready: event-feed
 ```
 
 Install dependencies. `--hooks` above installed the **pre-commit hook** (`.githooks/pre-commit`), which checks
-every slice commit (see [§14](#14-how-the-ralph-loop-builds-a-slice)). Confirm it's on:
+every slice commit (see [§15](#15-how-the-ralph-loop-builds-a-slice)). Confirm it's on:
 
 ```bash
 npm install
@@ -230,7 +235,7 @@ cp .env.example .env
 
 `init` also links emcli's Claude Code skills into `.claude/skills/`, one link per skill, next to the build kit's
 own `build-*` skills. The one that matters here is **`event-model`**, which turns what you say into emcli commands
-([§17](#17-model-by-talking)). The links point into your emcli checkout, so `init` git-ignores them. After a fresh
+([§18](#18-model-by-talking)). The links point into your emcli checkout, so `init` git-ignores them. After a fresh
 clone, run `emcli skills link` to recreate them.
 
 Open `.env` and add your board credentials under the database settings that are already there:
@@ -290,7 +295,7 @@ out, and `emcli use slice …` / `emcli use spec …` do the same for scenarios.
 Each increment gets its own git branch. The loop builds on whatever branch is checked out, and you merge the
 branch when the increment is done. **Creating, committing your model to, and merging this branch is your job.
 The loop only adds its own code commits to it** (the full split is in
-[§13](#13-working-with-git-branches-commits-and-merges)):
+[§14](#14-working-with-git-branches-commits-and-merges)):
 
 ```bash
 git switch -c increment/t0
@@ -749,7 +754,7 @@ projection's bookmark had moved past that event when it processed c3's registrat
 started handling a new event type would continue from its bookmark and never see the older capacity change.
 On startup, `ensureProjectionsCurrent` compares each projection's list of handled events with the list it ran
 with last time. When the list changes, it truncates the read model and replays every event from the start.
-You don't do anything; §15 has the details.
+You don't do anything; §16 has the details.
 
 Finish the increment:
 
@@ -1363,7 +1368,7 @@ Rebuilding CourseSeatsProjection: live:v2:… → v2:…
 ```
 
 `/courses/c4/seats` now shows 1 subscription and 11 seats from storage, the same body as the live read gave.
-While a read model is live, its fingerprint is recorded as `live:…` (§15), so switching back always rebuilds.
+While a read model is live, its fingerprint is recorded as `live:…` (§16), so switching back always rebuilds.
 
 ### 11.5 A new read model, live from the start (t10)
 
@@ -1571,7 +1576,7 @@ stored types or an in-memory filter for live ones, and mounts the route:
 Each scenario becomes a test in a `describe.each(queryTypes(courseDetails, "coursesForStudent"))` block, which
 runs it on every type that can serve the query: all three for `coursesForStudent`, and only the two stored types
 for `availableCourses`. The only existing line that changes is the tests' import, which gains `queryTypes`. The
-**query-additive** commit check (§14) holds the loop to that. For an extension, **extension-additive** does.
+**query-additive** commit check (§15) holds the loop to that. For an extension, **extension-additive** does.
 
 ### 12.4 Verify it yourself
 
@@ -1626,7 +1631,7 @@ page limit 50:
   those is a fold: 22 event-store reads per request, so it's about 35 times the stored cost. It returned the same
   pages as the stored copy in all 50 comparisons.
 
-> **After a rebuild, run `VACUUM ANALYZE`.** A rebuild (§15) rewrites every document. Until autovacuum catches
+> **After a rebuild, run `VACUUM ANALYZE`.** A rebuild (§16) rewrites every document. Until autovacuum catches
 > up, the leftover dead rows, and a GIN index's backlog of pending entries, can make Postgres skip an index. On
 > 2,000 courses right after the load, `coursesForStudent` took 1.26 ms instead of 0.36 ms, until
 > `VACUUM ANALYZE course_details`.
@@ -1641,7 +1646,320 @@ page limit 50:
 
 ---
 
-## 13. Working with git: branches, commits and merges
+## 13. Increment t13: screens in the model
+
+Every slice so far has been about the back end: commands, events, read models. The people who use the system
+have been missing. A **screen** is where they meet it. It's the page an admin fills in, or the list a student
+picks from.
+
+In this toolkit a screen is a white sticky in a people lane. It carries an **HTML mockup**, a small static web
+page that shows what the person sees and does. The mockup isn't just a picture. It's bound to the model, so emcli
+can check it, prooph board draws it on the card as a **wireframe**, and later (t14) the loop builds the frontend
+from it.
+
+This increment builds nothing, because no slice is planned. You only change the model and the board, so it
+works before any frontend exists.
+
+### 13.1 A screen's contract
+
+A screen does two kinds of thing, and each is a dependency:
+
+- it **displays** read models: `emcli dependency add <read model> <screen> displays`;
+- it **submits** commands: `emcli dependency add <screen> <command> submits`.
+
+Those links are the screen's **contract**. They decide what the frontend fetches and what it sends. The mockup is
+checked against them, not against whatever happens to sit in the same column. A screen can show a read model from
+another slice.
+
+The mockup names what it shows with four attributes, each checked against the contract:
+
+| Attribute | On | Names |
+|---|---|---|
+| `data-field` | an input (`input`, `select`, `textarea`) | a field of a command the screen submits |
+| `data-field` | anything else (a shown value) | a field of a read model it displays; inside a `data-list`, a field of one row |
+| `data-list` | the repeated part (`table`, `ul`) | a List field, a list read model, or a **query** of a displayed read model (its rows) |
+| `data-command` | the button | a command the screen submits |
+| `data-slice` | a region | another slice whose read model the screen also displays, shown as context |
+
+Two rules keep screens buildable one slice at a time:
+
+- **One screen card per slice, and at most one command per card.** A page that shows a course and lets a
+  student subscribe is two cards named `Course Page`: one in the read slice, one in the write slice. The same
+  name makes them one page. The loop builds each slice's part from that slice's card.
+- **Every field the page supplies needs an input.** A value the person types gets a visible input. A value the
+  page already holds, such as the course the page is about, gets a hidden one. Fields the page never supplies
+  need nothing: generated fields, technical ones, and fields mapped `session:`, `derived:` or `webhook:`. These
+  are the same exceptions `emcli completeness` uses when it checks that every field has a source.
+
+**Problems never stop you.** A mockup is stored, pushed, drawn and exported whatever state it's in. There are
+two levels:
+- **ERROR:** a name that doesn't exist, such as a binding outside the contract. The loop can't write code for
+  it, so an error keeps the slice from being handed to the loop until it's fixed.
+- **WARN:** everything else, such as a missing button or input, or a read model the page never shows. The builder
+  can fill these in.
+
+### 13.2 Screens and their contracts (t13)
+
+Registering a course is an admin's job, and the chapter only has a Student lane. So first add an **Admin** lane
+and put it at the top:
+
+```bash
+git switch -c increment/t13-screens
+emcli lane add Admin --type user-lane
+emcli lane reorder Admin Student Enrollment "Enrollment Events"
+```
+
+Then add the screen cards, each with its contract. Names that repeat get their slice in front
+(`"<slice>/<name>"`):
+
+```bash
+emcli element add "register course" Admin screen "Course Form"
+emcli dependency add "register course/Course Form" registerCourse submits
+
+emcli element add "course seats capacity" Student screen "Available Courses"
+emcli dependency add "course seats capacity/CourseSeats" "Available Courses" displays
+
+emcli element add "subscribe student" Student screen "Course Page"
+emcli dependency add "subscribe student/Course Page" subscribeStudent submits
+emcli dependency add "course details/CourseDetails" "subscribe student/Course Page" displays
+
+emcli element add "course details subscriptions" Student screen "Course Page"
+emcli dependency add "course details subscriptions/CourseDetails" "course details subscriptions/Course Page" displays
+
+emcli element add "student subscriptions" Student screen "My Courses"
+emcli dependency add StudentSubscriptions "My Courses" displays
+```
+
+```text
+Added dependency: Course Form --[submits]--> registerCourse
+Added dependency: CourseSeats --[displays]--> Available Courses
+Added dependency: Course Page --[submits]--> subscribeStudent
+Added dependency: CourseDetails --[displays]--> Course Page
+Added dependency: CourseDetails --[displays]--> Course Page
+Added dependency: StudentSubscriptions --[displays]--> My Courses
+```
+
+- **The student comes from the session.** Nobody types the student's id: the signed-in student subscribes. Say
+  so on the command's field, so the page doesn't need an input for it:
+
+  ```bash
+  emcli element field set subscribeStudent studentId --mapping session:studentId
+  ```
+
+- **Why the subscribe card also displays `CourseDetails`.** A Subscribe button on its own means nothing. The
+  student subscribes under the course's title. The details card is the page's view, and the subscribe card borrows
+  the title as context.
+
+> **Screens read forward too.** Like every connection on the timeline (§1), a screen displays a read model from
+> its own slice or an earlier one (the subscribe card, in column 5, shows `CourseDetails` from column 1), not a
+> later one. That's why *Available Courses*
+> sits in the *course seats capacity* slice, next to the `CourseSeats` copy it lists.
+
+### 13.3 Draft, then edit
+
+Give the model a **design system** first: one snippet of CSS that every mockup imports. Then draft each screen
+from its contract:
+
+```bash
+emcli snippet add design-system --starter plain
+emcli element mockup "register course/Course Form" --draft
+```
+
+```text
+Wrote snippets/design-system.html. Mockups import it with <!-- @import design-system --> in their <head>; sync push sends it to the board.
+Drafted a mockup for "Course Form".
+"Course Form" displays: —   submits: registerCourse
+"Course Form": 543 chars, 3 data-field, 0 data-list, 1 data-command, 0 data-slice
+  imports: design-system
+  Every binding names a field, list, command or slice in scope.
+```
+
+What the draft contains:
+- a form for each submitted command, with an input per field it needs and the field examples as values;
+- a card for each displayed read model: a table for a list, a list of values otherwise;
+- a table for each query the read model answers;
+- `<!-- @import design-system -->` in its `<head>`.
+
+`snippets/design-system.html` sits next to `workspace.json` and is committed with it.
+
+A draft is a starting point. Write it out, make it the page the person described, and read it back:
+
+```bash
+emcli element mockup "subscribe student/Course Page" --out page.html
+# edit page.html
+emcli element mockup "subscribe student/Course Page" --html page.html
+```
+
+The subscribe card, edited: the course's title and capacity as context from the *course details* slice, then the
+button. The course id rides along as a hidden input, and the student comes from the session:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+<title>Course Page</title>
+<!-- @import design-system -->
+</head>
+<body>
+  <section class="mock-card" data-slice="course details">
+    <h1 data-field="title">Math</h1>
+    <p><span data-field="capacity">30</span> places</p>
+  </section>
+  <form class="mock-card">
+    <input type="hidden" data-field="courseId" value="c1">
+    <button type="submit" data-command="subscribeStudent">Subscribe</button>
+  </form>
+</body>
+</html>
+```
+
+*Available Courses* lists the rows of the `availableCourses` query from §12, by naming the query in `data-list`:
+
+```html
+<h1>Available courses</h1>
+<section class="mock-card">
+  <table data-list="availableCourses">
+    <thead><tr><th>Course</th><th>Seats left</th></tr></thead>
+    <tbody>
+      <tr><td data-field="courseId">c1</td><td data-field="remainingSeats">30</td></tr>
+    </tbody>
+  </table>
+</section>
+```
+
+> **Sketching finds gaps.** This page shows course *codes*, because `CourseSeats` has no title. A student would
+> want the title. That's a model change for a later increment: a `CourseSeats` copy that looks the title up, as in
+> §7.2. The mockup made the gap visible before anyone wrote a line of frontend code.
+
+The other three edits are shorter:
+- **Course Form** gets friendlier labels ("Course code").
+- **The details card** shows the title, the capacity and a `<ul data-list="subscribedStudents">` of names.
+- **My Courses** shows the student's name and a list of their course titles.
+
+### 13.4 Check
+
+`element mockup <card>` with no options prints the contract, the bindings and every problem. `completeness` does
+the same for every screen:
+
+```bash
+emcli element mockup "subscribe student/Course Page"
+emcli completeness "Course Enrollment"
+```
+
+```text
+"Course Page" displays: CourseDetails   submits: subscribeStudent
+"Course Page": 456 chars, 3 data-field, 0 data-list, 1 data-command, 1 data-slice
+  imports: design-system
+  Every binding names a field, list, command or slice in scope.
+
+Summary: 16 error(s), 0 warning(s) across 10 slice(s)
+```
+
+Before t13, `completeness` reported 21 errors. The screens cleared five:
+- `registerCourse` and `subscribeStudent` now take their fields from the screens' inputs;
+- the student id comes from the session.
+
+The 16 that remain were already there, and none is about a screen:
+- commands with no screen yet;
+- read model fields such as `remainingSeats` that are computed and not yet mapped `derived:`.
+
+This is what a problem looks like: a mistyped binding (`Title` for `title`), and a Subscribe button left out.
+
+```text
+  ERROR  data-field="Title" — no field "Title" in the screen's contract in slice "course details". Did you mean "title"?
+  WARN   data-command="subscribeStudent" — the screen submits subscribeStudent, but the mockup has no data-command="subscribeStudent"
+  WARN   (displays CourseDetails) — the screen displays CourseDetails, but the mockup binds none of its fields
+  These don't stop the board drawing it; fix them before the slice is handed to the build loop.
+```
+
+### 13.5 Push, and see the wireframes
+
+```bash
+emcli sync push --safe
+```
+
+```text
+  Create snippet: design-system
+Pushing to board...
+(--safe: deletions skipped)
+  Chapter: "Course Enrollment"
+    Create lane: "Admin" [user-lane]
+    Reorder lanes
+    Create element: [ui] "Course Form"
+    Create element: [ui] "Available Courses"
+    Create element: [ui] "Course Page"
+    Create element: [ui] "Course Page"
+    Create element: [ui] "My Courses"
+Push complete. Baseline updated.
+```
+
+(Each `Create` line is followed by the board id it was given, left out here.)
+
+The push sends the snippet first. Then it puts each mockup in its card's description as an HTML block, and
+prooph board draws it on the card.
+
+![The two Course Page cards in the Student lane, each with its wireframe](images/SS9.png)
+
+> **The board draws its own arrows, from the layout.** Above, it links each Course Page card to the command below
+> or beside it, including `unsubscribeStudent`, which no screen submits yet. The arrows help you read the board,
+> but the contract is the dependencies, and that's what emcli checks and the loop will build from.
+
+Click a wireframe to open it full size. **Connect**, at the top of the preview, shows what each part of the page
+is linked to. emcli writes those links on the way out: the button to its command, and the part that shows a read
+model to that read model. A click on a link's arrow jumps to the sticky on the canvas. Don't click the page itself
+in Connect mode: that would make a new link on the board, which emcli doesn't keep.
+
+![Course Form full size, with Connect on: the Register course button is linked to registerCourse](images/SS8.png)
+
+If someone edits a wireframe in the board's editor, `sync pull` brings it back as the card's mockup. Run
+`element mockup <card>` afterwards, because the board doesn't check bindings.
+
+### 13.6 One snippet restyles every screen
+
+Every mockup imports the design system by name, and the board looks it up each time it draws. So one change
+restyles every screen. Switch to a hand-drawn look:
+
+```bash
+emcli snippet add design-system --starter sketch --force
+emcli sync push --safe
+```
+
+```text
+  Update snippet: design-system
+Pushed 1 snippet(s); the workspace matches baseline.
+```
+
+Only the snippet went up, and every wireframe on the board redraws in the new style. The file is yours to
+change: the starters style a handful of classes (`mock-card`, `mock-list`, `mock-row`, `mock-check`). Keep it
+plain CSS with no scripts or external links, because the board draws mockups in a sandbox. The same CSS will
+style the frontend in t14.
+
+### 13.7 Commit and merge
+
+Nothing is planned, so there's no export and the loop has nothing to do. You can leave it running.
+
+```bash
+git add workspace.json snippets
+git commit -m "model(t13): screens with bound mockups, and a design-system snippet"
+git switch main
+git merge --no-ff increment/t13-screens -m "Merge increment t13 (screens in the model)"
+```
+
+### 13.8 Or say it
+
+With the `event-model` skill (§18), describe the page instead of typing it:
+- *"On the course page the student sees the course's title and capacity, and can subscribe."*
+- *"The student is the signed-in user."*
+- *"Put the title above the button."*
+- *"Make it look hand-drawn."*
+
+The skill's screen mode works in the order above. It asks what the person **sees** (displays) and **does**
+(submits), wires those first, then drafts, edits, checks and pushes, and tells you which card to open on the
+board.
+
+---
+
+## 14. Working with git: branches, commits and merges
 
 Two parties commit to your repository: **you** (the model, and your bookkeeping) and **the loop** (the code).
 They share one working tree, so the order of operations matters. This section brings together the git steps
@@ -1781,7 +2099,7 @@ Then start the next increment from the updated `main`: `git switch -c increment/
 
 ---
 
-## 14. How the Ralph loop builds a slice
+## 15. How the Ralph loop builds a slice
 
 For every slice with status **Planned** in `.build-kit/.slices/<context>/index.json`, the loop starts a fresh
 Claude agent with the kit's build prompt. The agent:
@@ -1824,14 +2142,14 @@ If a check fails, the agent must fix the code, or set the slice to **Blocked** w
 commits over a failure.
 
 **Branches:** the loop never creates, switches or merges branches. It builds on whatever is checked out. That's
-why each increment starts with `git switch -c increment/<name>` (see [§13](#13-working-with-git-branches-commits-and-merges)).
+why each increment starts with `git switch -c increment/<name>` (see [§14](#14-working-with-git-branches-commits-and-merges)).
 
 **Statuses:** only `planned` slices are built. `draft` (exported as `Created`) is ignored, which lets you stage
 work. Once the loop has marked a slice InProgress, Done or Blocked, re-exporting keeps that status.
 
 ---
 
-## 15. Rebuilds in depth
+## 16. Rebuilds in depth
 
 A projection reads only the event types in its `canHandle` list, and only from its bookmark onward. The bookmark
 moves forward with every event the projection handles. So when an extension adds an event type, any events of
@@ -1872,7 +2190,7 @@ instantaneous in this example, and it grows with your event store.
 
 ---
 
-## 16. Troubleshooting
+## 17. Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
@@ -1894,13 +2212,13 @@ instantaneous in this example, and it grows with your event store.
 | export didn't re-queue a type change | the type was changed on a copy, or the slice isn't built yet | change it on the original read model. An unbuilt slice is just built with the new type |
 | slices from other chapters appear in `.build-kit/.slices` | exported without `--chapter` after a `sync pull` | re-export with `--chapter "Course Enrollment"` |
 | `eventmodelers init` crashes with `ERR_USE_AFTER_CLOSE` | no terminal input was available | run it in an interactive terminal and answer the prompts |
-| a slice went back to Planned and `git stash list` shows `ralph: interrupted slice …` | the agent was interrupted mid-slice (Claude usage ran out, a crash, the terminal closed). The loop stashed the partial work and rebuilds the slice (§14). If Claude is still unavailable, the loop retries every 60 s | nothing, once Claude is available again (restart the loop if you closed it). Drop the stash after the rebuilt slice is committed: `git stash drop stash@{N}` |
+| a slice went back to Planned and `git stash list` shows `ralph: interrupted slice …` | the agent was interrupted mid-slice (Claude usage ran out, a crash, the terminal closed). The loop stashed the partial work and rebuilds the slice (§15). If Claude is still unavailable, the loop retries every 60 s | nothing, once Claude is available again (restart the loop if you closed it). Drop the stash after the rebuilt slice is committed: `git stash drop stash@{N}` |
 | a slice is **Blocked** after an interruption | the agent committed part of the slice but was interrupted before marking it Done. `progress.txt` names the commits | check them with `git log`. If the slice is complete, set it to Done. Otherwise `git revert` them and set it back to Planned |
 | a slice stays **InProgress** and the loop says *waiting* | an interrupted agent, with the loop running with board sync (without `--local`). There the loop can't tell an interrupted claim from another agent's, so it only logs a warning | once no agent is building it: `git stash push -u -m "interrupted slice"`, then set the slice back to Planned on the board |
 
 ---
 
-## 17. Model by talking
+## 18. Model by talking
 
 Everything in §5–§12 can be said instead of typed. emcli's **`event-model`** skill (linked into `.claude/skills/` by
 `emcli workspace init`, §4) turns what you tell Claude Code into the same emcli commands, pushes the result to the
@@ -2015,6 +2333,9 @@ board except through `emcli sync push --safe`, and never commits or exports whil
 | a rejection scenario | *"You can't subscribe to a full course: 'Course is full'."* |
 | a different example | *"In that scenario the capacity is 40."* |
 | a query | *"List the courses with at least N free seats, at /available-courses."* |
+| a screen | *"On the course page the student sees the title and capacity, and can subscribe."* |
+| a mockup change | *"Put the title above the button."* / *"The student is the signed-in user."* |
+| a new look for every screen | *"Make the screens look hand-drawn."* |
 | a read model type | *"Seat counts must never be stale."* (inline) / *"Compute it on read."* (live) |
 | an open question | *"Not sure yet whether a course can be cancelled with students in it."* |
 | a review | *"What's missing before t2 can be built?"* |
@@ -2025,7 +2346,7 @@ The skill's own reference, including the phrase-to-command cookbook it works fro
 
 ---
 
-## 18. Command reference
+## 19. Command reference
 
 Every `<chapter>`, `<slice>`, `<lane>`, `<element>` and `<spec>` below is a **name** (or an ID). Leading ones can be
 left out once `emcli use chapter` / `use slice` / `use spec` has set them (§4, *Names, not IDs*).
@@ -2039,22 +2360,27 @@ left out once `emcli use chapter` / `use slice` / `use spec` has set them (§4, 
 | `emcli use chapter\|slice\|spec "<name>"` / `emcli use` | set / show the context |
 | `emcli chapter add "<name>" --context <ctx>` | create a chapter |
 | `emcli lane add [<chapter>] "<label>" --type user-lane\|information-flow\|system` | add a lane |
+| `emcli lane reorder [<chapter>] <lane> <lane> …` | put the lanes in this order (every lane, by name) |
 | `emcli slice add [<chapter>] "<label>" [--after\|--before <slice>]` | add a slice (at the end, or next to another) |
 | `emcli element add [<chapter>] <slice> <lane> command\|event\|information\|ui\|automation\|hotspot "<name>"` | add a sticky (`readmodel`, `screen` also accepted) |
 | `emcli element field add [<chapter>] <element> <name> <Type> [--id] [--optional] [--cardinality List] [--subfields "a:String,b:Int"] [--example v] [--mapping src]` | add a field |
+| `emcli element field set [<chapter>] <element> <field> [--mapping src\|--no-mapping] [--example v] …` | change a field (`--mapping session:studentId`: the value comes from the signed-in user) |
 | `emcli element update [<chapter>] <element> --api-endpoint "/path"` | set the HTTP route |
 | `emcli element update [<chapter>] <element> --read-model-type database-projected\|inline-projected\|live-report` | choose how a read model is kept current (set on the origin; copies follow). On a built read model, the next export re-queues it as a one-line retype |
 | `emcli element query add [<chapter>] <readmodel> <name> --endpoint "/path" [--sort <field>]` | declare a query on the origin read model; `update`, `remove`, `list` too |
 | `emcli element query param add [<chapter>] <readmodel> <query> <param> <Type> [--operator gte] [--field a.b] [--tag <tag>] [--example v]` | add a query parameter (`--tag` lets a live read model serve it) |
 | `emcli element copy [<chapter>] <origin> --slice <slice> --lane <lane>` | place a read-model copy later on the timeline |
 | `emcli element update [<chapter>] <element> --copy-of <origin>` | mark an existing sticky as a copy |
-| `emcli dependency add <from> <to> produces\|hydrates\|displays\|triggers\|reacts-to\|relates-to` | link stickies |
+| `emcli dependency add <from> <to> produces\|hydrates\|displays\|submits\|triggers\|reacts-to\|relates-to` | link stickies (`displays`: read model → screen, `submits`: screen → command, a screen's contract) |
+| `emcli element mockup [<chapter>] <screen> [--draft [--force]\|--out <file>\|--html <file>\|--clear]` | draft a screen's mockup from its contract, write it out to edit, read it back, or remove it; with no option, check it |
+| `emcli snippet add <slug> --starter plain\|sketch\|--file <html> [--force]` | add or replace a snippet, e.g. the `design-system` every mockup imports |
+| `emcli snippet list` / `emcli snippet push\|pull [<slug>…]` | the model's snippets and how each compares with the board (push and pull also run with `sync`) |
 | `emcli spec add [<chapter>] [<slice>] "<title>"` | add a scenario |
 | `emcli spec step add [<chapter> <slice> <spec>] <phase> <type> <name> --link --seed-examples` | add a Given/When/Then step linked to the named element, seeded with its examples (`when query <name> --link <readmodel>` runs a query; `then error "<message>"` is a rejection) |
 | `emcli spec step example [<chapter> <slice> <spec>] <phase> <index> <field> <value>` | change one example value |
 | `emcli spec show [<chapter>] [<slice>] [<spec>]` | show a scenario with its step indexes |
 | `emcli slice status [<chapter>] <slice> draft\|planned\|…` | set a slice's status |
-| `emcli completeness [<chapter>] [--slice <slice>]` | check every field traces to a source |
+| `emcli completeness [<chapter>] [--slice <slice>]` | check every field traces to a source, and every screen's mockup against its contract |
 | `emcli sync push --safe` | push local changes to the board (never deletes) |
 | `emcli sync pull` | pull board changes (notes, names) into the model |
 | `emcli workspace export --build-kit .build-kit --chapter <chapter>` | hand planned slices to the loop |
@@ -2073,7 +2399,7 @@ left out once `emcli use chapter` / `use slice` / `use spec` has set them (§4, 
 
 ---
 
-## 19. Known limits
+## 20. Known limits
 
 - **The node (Emmett) kit has no extension mode.** This manual covers the DCB kit only.
 - **The copy link doesn't survive a pull.** emcli keeps it in `copyOf`, and pushes copies as ordinary stickies.
@@ -2094,3 +2420,11 @@ left out once `emcli use chapter` / `use slice` / `use spec` has set them (§4, 
   handles. The kit doesn't measure it for you. Keep them few, and check write latency when you add one.
 - **Rebuild time grows with the event store.** Fine for development. For large production stores, plan rebuilds
   deliberately.
+- **The loop doesn't build screens yet.** t13's mockups are for people and for checking the model. Building the
+  frontend from them comes in t14.
+- **Mockups are static.** They have no scripts or external links, because the board draws them in a sandbox. The
+  design system is plain CSS in a snippet. Tailwind classes only render once the snippet contains them.
+- **The board doesn't check wireframes edited in its editor,** or links made there with Connect. `sync pull` takes
+  an edited wireframe back as the card's mockup but drops board-made links; run `element mockup <card>` to check
+  it.
+- **The board draws arrows from the layout,** not from a screen's dependencies (§13.5).
