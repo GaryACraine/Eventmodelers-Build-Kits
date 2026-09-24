@@ -38,23 +38,25 @@ export function configureCourseListRoute(deps: SliceDependencies & { waitFn?: Wa
                 if (cursor) {
                     result = await pool.query<{ _id: string; data: CourseDoc }>(
                         "SELECT _id, data FROM courses WHERE _id > $1 ORDER BY _id LIMIT $2",
-                        [cursor, limit]
+                        [cursor, limit + 1]
                     )
                 } else {
                     result = await pool.query<{ _id: string; data: CourseDoc }>(
                         "SELECT _id, data FROM courses ORDER BY _id LIMIT $1",
-                        [limit]
+                        [limit + 1]
                     )
                 }
 
-                const courses = result.rows.map(row => ({
+                // One row more than a page says whether there is a next page: a cursor only when there is (ADR-026)
+                const rows = result.rows.slice(0, limit)
+                const courses = rows.map(row => ({
                     id: row.data.courseId,
                     title: row.data.title,
                     capacity: row.data.capacity,
                     subscribedStudents: row.data.subscribedStudents
                 }))
 
-                const nextCursor = result.rows.length === limit ? result.rows[result.rows.length - 1]._id : undefined
+                const nextCursor = result.rows.length > limit ? rows[rows.length - 1]._id : undefined
 
                 const body: { data: typeof courses; cursor?: string } = {
                     data: courses,

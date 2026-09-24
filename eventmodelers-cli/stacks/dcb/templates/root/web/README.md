@@ -27,6 +27,8 @@ npm run design-system  # compile the design system into ../snippets/design-syste
 | `src/slices/<slice>/` | a slice's part: a form per command, a view per read model, `handlers.ts`, tests |
 | `src/lib/session.tsx` | the signed-in user's IDs (`useSession`), a stub until real sign-in |
 | `src/lib/writes.tsx` | read-your-writes: `recordWrite(position)` after a command, `afterLastWrite()` on async views |
+| `src/lib/paging.ts`, `src/components/LoadMore.tsx` | paged lists: `usePagedList` over the backend's cursor, and the Load more button (ADR-026) |
+| `src/mocks/paging.ts` | `page(rows, request)`: mock rows paged the way the backend pages them |
 | `src/components/ui/` | shadcn/ui components (`npx shadcn@latest add <name>` adds more) |
 | `src/styles/design-system.css` | the design system: tokens, and the `mock-*` classes mockups use |
 
@@ -34,6 +36,10 @@ npm run design-system  # compile the design system into ../snippets/design-syste
 screen's contract: `/courses/:courseId` for one course, `/courses` for a list, `/courses/new` for a create, else
 the title. They're URLs for people and unrelated to the API's paths (ADR-025); code joins them by ID name
 (`:courseId` in the route is the `courseId` a view sends to `/course-details/{courseId}`).
+
+**Lists page with Load more** (ADR-026). A query's rows and a list read model come from the backend a page at a
+time (`?limit=&cursor=` → `{ data, cursor? }`). A list shows its first page (`VITE_PAGE_SIZE`, default 20) and a
+Load more button that adds the next page below it, until the backend sends no cursor.
 
 **The session.** An ID the model maps to `session:` (`page.params` with `from: "session"`) is the signed-in
 user's. A page lists those keys in `page.session`; the app asks for them once (`RequireSession`, a stub until real
