@@ -21,7 +21,7 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
    **Claim conflict**: the board rejects the update if the slice is already `InProgress` — another agent claimed it. Pick the next "Planned" slice instead.
 5. Read the slice definition from `.build-kit/.slices/<contextName>/<folder>/slice.json`.
    **Is its backend already built?** Yes when slice.json has `buildScreen` (the model changed only its screen), or
-   when `git log --oneline -i --grep="^feat: <slice title>$"` finds the slice's backend commit and its folder under
+   when `git log --oneline -i -E --grep="^feat: \[?<slice title>\]?$"` (with or without brackets; not the `… screen` commit) finds the slice's backend commit and its folder under
    `src/contexts/` exists (an earlier run committed the backend, then stopped or was blocked at the screen). Then
    skip steps 6–9: don't rebuild the backend on top of itself. Go to step 10.
 6. Determine the slice type and invoke the matching skill as defined in `.build-kit/CLAUDE.md`. Do NOT implement manually.

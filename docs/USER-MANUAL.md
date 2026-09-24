@@ -2018,11 +2018,14 @@ The skill edits the mockup, checks it, pushes it to the board, commits the model
 ```text
 Course Form (register course): help text added under Capacity. Checks clean. Board updated.
 Handed to the loop: register course is queued for its screen only (the backend stays as built).
-Start the loop, or leave it running: it rebuilds Course Form and commits "feat: register course screen".
+Start the loop, or leave it running: it rebuilds Course Form's part and commits it as the slice's screen.
 ```
 
-The loop's log shows only `build-screen` for that slice, then *waiting*. Open `/courses/new` to see the help
-text.
+The loop's log shows `update-slice-status`, then only `build-screen` for that slice (no backend skill), then
+*waiting*, in about a minute. Its one commit, `feat: [register course] screen`, changes two files: the help line
+in `web/src/slices/registercourse/RegisterCourseForm.tsx`, and a check for it in that form's test. Open
+`/courses/new` to see the help text. After the loop, the skill brings the status back (§5.6) and the slice is
+Done again, with nothing left queued.
 
 **What's queued:** the export's output lists it (`Re-queued … for their screen only`), and
 `.build-kit/.slices/<context>/index.json` shows the slice `Planned`, its `slice.json` with `"buildScreen":
