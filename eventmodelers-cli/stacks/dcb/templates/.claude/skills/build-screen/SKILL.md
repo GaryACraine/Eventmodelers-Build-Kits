@@ -43,7 +43,7 @@ mockup, a `data-slice="…"` region): that slice builds it, and the page shows i
 ## Files
 
 ```
-web/src/slices/{slicename}/          ← same folder name as src/contexts/{context}/slices/{slicename}/
+web/src/slices/{slicename}/          ← the slice's folder name in .build-kit/.slices/{context}/{slicename}/
 ├── {Command}Form.tsx                  one per submitted command
 ├── {ReadModel}View.tsx                one per displayed read model (a list: {ReadModel}.tsx / {Query}List.tsx)
 ├── handlers.ts                        MSW handlers for every API path the slice's components call
@@ -52,6 +52,9 @@ web/src/pages/{PageTitle}.tsx          the page (PascalCase of page.title), crea
 web/src/pages/{PageTitle}.test.tsx     the page put together
 web/src/lib/api-types.ts               regenerated, never edited
 ```
+
+An **extension** slice (`extends` in slice.json) builds its backend in its origin's folder, but its screen is its
+own: `web/src/slices/{its own slicename}/`.
 
 Nothing else changes: not `App.tsx`, `Layout.tsx`, `routes.tsx` (it finds pages itself), `src/lib/*` (but
 `api-types.ts`), `src/mocks/*` (they find `handlers.ts` themselves), `src/components/ui/*`, config or any
@@ -132,6 +135,8 @@ if (course.isError) return <p role="alert">{course.error.message}</p>
   `inline-projected` and `live-report` are current when the command returns: **no headers**.
 - The key (`/{courseId}`) is a prop: the page passes its route param or the session value, whichever
   `page.params` names.
+- A query parameter the mockup has no input for is fixed at its slice.json example (`minRemainingSeats: 1` for
+  "available courses"), as a named constant with a comment saying so.
 - A `data-list` naming a **query** of the read model: `GET` that query's `apiEndpoint`, its parameters in
   `params.query`, rows in `data.data`. A `data-list` naming a list read model (`listElement`): rows in `data.data`.
   A `data-list` naming a `List` field: `.map` over that field of the document.
@@ -165,7 +170,8 @@ export const handlers = [
 
 - One handler per API path the slice's components call (MSW path syntax: `:param`), answered with the **happy
   path** of the specifications: the examples of the first success scenario, in the response shape of
-  `api-types.ts`. A keyed read answers its example key; any other key gets the 404 its scenario names.
+  `api-types.ts` (a field the scenario leaves out takes its field example). A keyed read answers its example key;
+  any other key gets the backend's 404 (the route's `notFound` message).
 - A command answers 204 with an `ETag` (201 with the generated fields when it has any).
 - Rejections are not in `handlers.ts` (mock mode shows the happy path); the tests answer them.
 - Values come only from slice.json examples. `src/mocks/handlers.ts` finds the file itself.
@@ -204,12 +210,18 @@ A test file per component, `describe("{slice title}")`, rendered with `renderWit
   ```
   `path` = `page.route`; `session` = the `page.params` with `from: "session"` (omit if none); `nav: true` when the
   route has no `:param`.
-- **Existing page:** add this slice's part where `page.slices` puts it, leave the other parts alone, and bring
-  `page` in line with slice.json if the route or params changed.
+- **Existing page:** add this slice's part, leave the other parts alone, and bring `page` in line with slice.json
+  if the route or params changed.
+- **Order of the parts:** as the mockups show them. A card whose mockup wraps a neighbouring slice's region
+  (`data-slice`) around its own part puts that neighbour where the region is (Course Page: the course details
+  above the Subscribe button). Otherwise, `page.slices` order.
 - The page wires things together: route params (`useParams`) and session values (`useSession`) become props;
   callbacks go where people expect (a create form navigates to the new entity's page, if a page with that `:id`
   exists; a list's `linkTo` points at it). A page's own heading from the mockup (`<h1>` outside any part) lives
   here.
+- **A new page with `:id`:** the pages already built that list or create that entity now lead to it: give their
+  list a `linkTo` and their create form an `onCreated` navigation (`generatePath(route, { id })`), and update their
+  page tests. Only page files change for this, never another slice's folder.
 - `{PageTitle}.test.tsx`: `render(<App initialPath="…" session={…} />)` shows the page at its route with this
   slice's part, and the flow the page exists for (submit → the view updates, a row → its page).
 
