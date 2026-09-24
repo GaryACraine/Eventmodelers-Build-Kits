@@ -30,7 +30,7 @@ emcli spec step example when 0 courseId c9 >/dev/null
 emcli slice add "course details title" >/dev/null
 emcli element copy CourseDetails \
   --slice "course details title" --lane Enrollment >/dev/null
-emcli element field add "course details title/CourseDetails" subscribedStudents Custom --cardinality List --subfields "studentId:String,name:String" >/dev/null
+emcli element field add "course details title/CourseDetails" subscribedStudents Custom --cardinality List --subfields "studentId:String,name:String" --mapping "derived:studentWasSubscribed less studentWasUnsubscribed, name from studentWasRegistered" >/dev/null
 for e in courseWasRegistered courseCapacityWasChanged studentWasRegistered studentWasSubscribed studentWasUnsubscribed courseTitleWasChanged; do emcli dependency add "$e" "course details title/CourseDetails" hydrates >/dev/null; done
 
 emcli use slice "course details title" >/dev/null

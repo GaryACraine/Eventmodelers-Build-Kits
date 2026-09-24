@@ -687,6 +687,47 @@ routes and queries, the examples, and the scenarios. Use it to:
     and edit, 13.4 check, 13.5 push and see, 13.6 restyle, 13.7 commit, 13.8 say it). The old §13–§19 are now
     §14–§20. §1 has the Screen sticky, §2 the board's wireframes, §18 screen prompts, §19 the mockup, snippet,
     `field set --mapping`, `lane reorder` and `submits` commands, §20 four limits.
+- [x] **14.4c Hand-off gate: only information-complete slices reach the loop.** *Done 2026-09-24 (emcli
+  `9a683cd`, course-enrollment `a486ec8`).* Gary runs the loop unattended; a slice that isn't information complete
+  wastes its cycles. Modeling stays free (problems are warnings on the board); emcli now enforces the hand-off,
+  per slice.
+  - **`cli/model/handoff.ts`:** `handOffCheck` holds back a slice with `completeness` ERRORs (never warnings).
+    It also holds back a slice whose prerequisite is held back, blocked, or neither built nor queued, to a
+    fixpoint:
+    - an extension's origin slice;
+    - the slices recording the events it folds or reacts to;
+    - an automation's command slice.
+
+    A held slice lists its own errors and what it waits on.
+  - **`slice status <slice> planned`** runs it. A slice that can't go becomes `blocked`, with `slice.handOff`
+    (local-only), which `sync push` renders into the slice's board details as a *Hand-off check (CLI-managed)*
+    block. Re-planning clears it. `--force` skips.
+  - **`workspace export --build-kit`** runs it again as the safety net. It writes held-back slices as `Created`
+    (not queued), lists why, and never edits workspace.json. `--force` queues them anyway.
+  - **Fixes on the way:**
+    - model `blocked` exports as `Created`, so a gate-blocked slice never becomes the loop's sticky `Blocked`;
+    - `completeness` skips event copies (an automation's trigger has no inbound links, so every automation slice
+      would have been held back).
+  - **Tests** 266/266.
+  - **Walked on a scratch copy of course-enrollment:**
+    - a broken mockup binding blocked *subscribe student*, with the reason;
+    - *course details subscriptions* then waited on it ("subscribe student (blocked)");
+    - *change course title*, broken after planning, was held back at export as `Created` while the model still
+      said planned;
+    - `--force` queued it;
+    - fixing and re-planning cleared the block and queued all three.
+  - **course-enrollment:** the computed read model fields got `--mapping derived:…` on each element and copy:
+    - `subscribedStudents` ×3, `subscriptionCount` ×2, `remainingSeats` ×2, `courses`.
+
+    `completeness` shows 0 errors and 4 warnings. The real export re-queued nothing, `ralph.log` stayed *waiting*,
+    and the board had nothing to update (mappings are model-only).
+  - **Manual:**
+    - §5.4 explains the gate;
+    - §7.2, §10.2, t10 and `examples/t3.sh` / `t4.sh` add the `derived:` mappings, so a fresh replay isn't held
+      back;
+    - §13.4 shows 0 errors;
+    - §17 has two troubleshooting rows;
+    - §19 has `--force`.
 - [ ] **14.5 Frontend scaffold (DCB kit, `templates/root/web/`).**
   - The stack above.
   - `src/lib/api.ts` (the generated client, plus position → `Prefer: wait`); `npm run gen:api` from the backend's
@@ -715,9 +756,8 @@ routes and queries, the examples, and the scenarios. Use it to:
       the way 5.5 proved the backend skills.
 - [ ] **14.7 Loop and export wiring.** Screens and mockups are exported; the loop runs `build-screen` after the
   backend step; the hand-off ready check includes "the screen has a mockup".
-  - Today the only gate on screen contract errors is the `event-model` skill's hand-off check (`completeness
-    --slice` exits 1). `slice status planned`, the export and the loop enforce nothing. Decide here whether the
-    export or the loop should refuse a slice whose screen has errors (errors only, never warnings).
+  - ~~Decide whether the export or the loop should refuse a slice with errors.~~ Done in 14.4c: planning blocks
+    it, and the export holds it back.
 - [ ] **14.8 Deploy.** The `web/` build goes to S3 + CloudFront (SPA fallback to `index.html`), with `VITE_API_BASE`
   per environment. A script first; CDK later if wanted.
 - [ ] **14.9 Prove and document (increment t14 on course-enrollment).**
@@ -1676,6 +1716,9 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-24 | A query's rows are a `data-list` (`data-list="availableCourses"`) | A list page shows a query's result, and a query is part of the read model's contract (ADR-023) |
 | 2026-09-24 | The manual's t13 section is §13; the reference sections move to §14–§20 | Increments come before the reference sections, in the order they're built |
 | 2026-09-24 | `completeness` checks a command's issuer (a screen or an automation) before its fields; no issuer is one WARN, not an ERROR per field; the automation link stays `relates-to` | Gary: commands come from a screen or an automation. A missing issuer is one gap, not one per field; renaming the automation link would change the kit's automation export, so it waits until an automation first goes through the loop |
+| 2026-09-24 | emcli enforces the hand-off gate per slice: `slice status planned` blocks an incomplete slice (reasons in its board details), and `workspace export --build-kit` holds back any that fail without editing the model; errors block, warnings never; `--force` overrides (14.4c) | The loop runs unattended, so it must only get what it can build. Per slice, because slices are isolated: one incomplete slice shouldn't stop the rest. The export is the single choke point: only it writes the loop's queue |
+| 2026-09-24 | A slice waits on its prerequisites (an extension's origin, the slices recording its events, an automation's command slice) when they're held back, blocked, or not built or queued | Slices are isolated in the model but not in code; building a dependent first wastes the cycle the gate exists to save |
+| 2026-09-24 | No new status: `planned` = passed the gate, `blocked` + the hand-off block = failed it; model `blocked` exports as `Created` | prooph board's statuses are a fixed set; the loop's own `Blocked` is sticky on disk, so a gate block must not become one |
 
 ## Progress
 
@@ -1693,5 +1736,5 @@ What each `build-*` skill generates and what it verifies:
 | 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 done (stale InProgress recovery in `--local` mode) |
 | 11 — Read Model Types | ✅ Complete | Async, inline and live read models from one fold definition, with an identical data shape across types (ADR-021/022). Proven on course-enrollment t5–t10: inline, a retype to live and back, a new live read model with a lookup |
 | 12 — Query Read Models | 🚧 In progress (top priority) | 12.1–12.3 done: ADR-023 query contract; emcli queries + `SPEC_QUERY` + `addQueries` re-queue; kit runtime (stored SQL + live, one semantics). Named queries on the read model element, the spec *when* references them, `{ data, cursor? }` pages; live needs a tag parameter |
-| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.3 done: native wireframes pushed and pulled (board links work in Connect), design system as a synced snippet. 14.4 done: the `event-model` skill's screen mode (contract → draft → edit → check → push → show); screen problems warn, one set of field exceptions. 14.4b done: manual §13, t13 on course-enrollment (five screens, board wireframes, snippet restyle). 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
+| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.3 done: native wireframes pushed and pulled (board links work in Connect), design system as a synced snippet. 14.4 done: the `event-model` skill's screen mode (contract → draft → edit → check → push → show); screen problems warn, one set of field exceptions. 14.4b done: manual §13, t13 on course-enrollment (five screens, board wireframes, snippet restyle). 14.4c done: hand-off gate, only information-complete slices reach the loop. 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
 | 7 — Board Re-pointing | ⛔ Dropped | eventmodelers board retired; prooph board via emcli is the only board |
