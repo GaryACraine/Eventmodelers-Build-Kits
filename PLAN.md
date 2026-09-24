@@ -604,6 +604,30 @@ routes and queries, the examples, and the scenarios. Use it to:
     - `completeness` dropped from 21 to 19 errors: the command's fields now come from the mockup's inputs. The
       other 19 are lineage gaps already in that chapter.
   - Board push isn't repeated here: 14.3 proved it live, and 14.4b replays the whole flow on the board.
+  - **Follow-up, Gary's review (emcli `44ecd56`): warn, don't block; one set of field exceptions.**
+    - Only a name that doesn't exist is an ERROR:
+      - a binding outside the contract;
+      - a `data-slice` region with no dependency in its slice;
+      - a mockup on a screen with no contract.
+    - A missing button or input is now a WARN (it was an ERROR).
+    - Nothing blocks drawing, pushing or exporting:
+      - `element mockup` says so when there are errors;
+      - `sync push` lists screen errors after pushing, as `workspace export` does.
+    - ERRORs only fail `completeness`, which is the skill's hand-off gate.
+    - The field exceptions are shared (`domain/field.ts`):
+      - lineage skips generated, technical and mapped fields;
+      - a mockup needs an input only when the page supplies the value: `user-input`, `<event>.<field>`, or no
+        mapping. A field mapped `session:studentId` needs no hidden input.
+    - `element field set` gains `--mapping` / `--no-mapping`.
+    - **Bug fixed:** a problem inside a `data-slice` region was filed under the region's slice, so
+      `completeness --slice` on the card's own slice missed it. Every problem is now filed under the screen's
+      slice.
+    - Tests 248/248.
+    - Checked on a scratch copy:
+      - the session mapping cleared the `studentId` input;
+      - a bad binding plus a missing button gave 1 ERROR and 2 WARNs;
+      - the export still exported;
+      - `completeness --slice "subscribe student"` exited 1.
 - [ ] **14.4b Manual: screens in the model (increment t13 on course-enrollment).** A new manual section, verified by
   replaying it:
   - give the Enrollment chapter's slices screens and wire their dependencies;
@@ -637,6 +661,9 @@ routes and queries, the examples, and the scenarios. Use it to:
       the way 5.5 proved the backend skills.
 - [ ] **14.7 Loop and export wiring.** Screens and mockups are exported; the loop runs `build-screen` after the
   backend step; the hand-off ready check includes "the screen has a mockup".
+  - Today the only gate on screen contract errors is the `event-model` skill's hand-off check (`completeness
+    --slice` exits 1). `slice status planned`, the export and the loop enforce nothing. Decide here whether the
+    export or the loop should refuse a slice whose screen has errors (errors only, never warnings).
 - [ ] **14.8 Deploy.** The `web/` build goes to S3 + CloudFront (SPA fallback to `index.html`), with `VITE_API_BASE`
   per environment. A script first; CDK later if wanted.
 - [ ] **14.9 Prove and document (increment t14 on course-enrollment).**
@@ -1589,6 +1616,8 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-24 | One screen card per slice, at most one command per card; a page is the cards sharing a name, and `data-slice` regions only show another slice's read model as context (14.4) | The loop builds slice by slice, and the export carries each slice's own screens. A whole-page mockup on one card would hold other slices' parts where their builds can't see them, and would break the "one command per screen" rule |
 | 2026-09-24 | Mockups are styled with the design-system snippet's classes, not Tailwind utilities, until 14.5 ships a precompiled Tailwind design system (14.4) | The board draws mockups sandboxed with no scripts, so utility classes render only if the snippet's CSS contains them |
 | 2026-09-24 | Element names that match in several chapters resolve to the context chapter (emcli `preferChapterId`) | Projects keep a legacy chapter beside the current one (Enrollment and Course Enrollment share slice names), and the skill must use names, not IDs |
+| 2026-09-24 | Screen contract problems never block rendering; only a name that doesn't exist is an ERROR (fails `completeness`, so the hand-off); a missing button or input is a WARN (supersedes 14.2b's "every field of a submitted command must have an input") | Gary: the checks should inform, not be rigid. The build can't write code for a name that isn't in the model, but it can add a missing button or input |
+| 2026-09-24 | Field lineage and the screen check share one set of field exceptions (`isSourceDeclared` / `needsScreenInput`): no input for generated, technical, `session:`, `derived:` or `webhook:` fields | A field the owning element generates, or that never comes from the page, shouldn't need an input; one list keeps the two checks from drifting |
 
 ## Progress
 

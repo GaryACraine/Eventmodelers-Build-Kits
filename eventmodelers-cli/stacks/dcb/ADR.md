@@ -632,9 +632,16 @@ The backend already exposes every route in `/openapi.json` (14.1).
   - `data-list` (a repeated region);
   - `data-command` (what submits);
   - `data-slice` (a region of a shared screen owned by another slice).
-- **The screen's dependencies are the contract.** It `displays` read models and `submits` commands. Every binding
-  must come from those dependencies, every dependency must be bound, and every field of a submitted command must
-  have an input. emcli's completeness enforces it, in the same way it enforces the backend's field flow.
+- **The screen's dependencies are the contract.** It `displays` read models and `submits` commands.
+  - **Every binding must come from those dependencies.** A name that doesn't exist is an error, which fails
+    `completeness` and so the hand-off to the loop: the build can't write code for it.
+  - **Coverage gaps are warnings the builder fills:**
+    - a submitted command with no button;
+    - a command field the page supplies but has no input for;
+    - a displayed read model never shown.
+  - **Field exceptions are shared with the backend's field-flow check.** A field needs no input when it's
+    generated, technical, or mapped `session:`, `derived:` or `webhook:`.
+  - **Nothing blocks drawing, pushing or exporting a mockup** (PLAN 14.4).
 - **On the board:** the mockup is pushed into the screen's description as a fenced HTML block, never as an image.
   It goes in the description because details are shared between an element and its copies. The design system is
   a board snippet, pushed by emcli with an explicit slug. Mockups import it by slug and never expand it, since the
