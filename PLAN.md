@@ -1037,7 +1037,7 @@ routes and queries, the examples, and the scenarios. Use it to:
   - **Manual:** §13.9 and §15, plus a situation row: "a blocked screen no longer holds up other slices".
   - **Proof:** on course-enrollment, a screen made to fail leaves the backend Done. A dependent slice still passes
     the gate, and planning the slice again rebuilds only the UI.
-  - Detailed plan (files, tests, proof) for Gary's approval before building.
+  - Detailed plan approved 2026-09-24; ADR-027.
 - [ ] **14.8 Deploy.** The `web/` build goes to S3 + CloudFront (SPA fallback to `index.html`), with `VITE_API_BASE`
   per environment. A script first; CDK later if wanted.
 - [ ] **14.9 Prove and document (increment t14 on course-enrollment).**

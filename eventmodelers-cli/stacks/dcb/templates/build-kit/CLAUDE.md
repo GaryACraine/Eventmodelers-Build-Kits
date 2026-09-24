@@ -19,10 +19,14 @@ Read `src/contexts/` to understand the global structure. Events for each context
 TanStack Query, React Hook Form + Zod, openapi-fetch (types generated from `/openapi.json`), Vitest + Testing
 Library + MSW. See `web/README.md`.
 
-- Backend slice work never touches `web/`. Only a slice's UI step does: `/build-screen`, when slice.json has a
-  `screens[]` entry with a `mockup`, after the backend is committed (the loop runs it; see "Building a Slice").
-  It builds `web/src/slices/{slicename}/` and the page the screen is on (`web/src/pages/`), and commits it on its own.
-  A screen with no mockup isn't built: the model adds the mockup later, and the export queues the screen then.
+- A slice's work has two **concerns**, each a job of its own with its own status (`concerns` in its
+  `index.json` entry; the slice's `status` is derived from them): the **backend** (`src/`, the backend skills,
+  `lib/backend-prompt.md`) and the **UI** (`web/`, `/build-screen`, `lib/screen-prompt.md`). The loop picks the
+  job and names it in "Your task". A slice's UI is built once its backend is Done; nothing waits for a UI. A
+  backend job never touches `web/`, and a UI job never touches `src/`.
+- The UI job exists when slice.json has a `screens[]` entry with a `mockup`. It builds `web/src/slices/{slicename}/`
+  and the page the screen is on (`web/src/pages/`), and commits it on its own. A screen with no mockup isn't built:
+  the model adds the mockup later, and the export queues the UI then.
 - The UI calls the backend only through `web/src/lib/api.ts`, on slice.json's `apiEndpoint` paths.
   `web/src/lib/api-types.ts` is regenerated (`npm run gen:api`), never edited.
 - A page's URL is slice.json's `screens[].page.route` (entity-shaped, for people). It is never an API path, and
@@ -52,7 +56,7 @@ Do not change files with tests unless explicitly instructed, or the change bring
 
 At the start of every session, read `.build-kit/AGENTS.md` if it exists to load accumulated project learnings.
 
-When starting to work on a slice, invoke the `update-slice-status` skill with `InProgress` status before doing anything else.
+The loop claims each job (its concern's status InProgress) before the agent starts. Finish it by setting that concern's status in `index.json`: `Done`, or `Blocked` with `blockedReason` and `blockedAt`.
 
 ## Building a Slice
 
@@ -81,17 +85,15 @@ When asked to build a slice, always follow this flow:
    - **Extension** — a state-view slice whose slice.json has an `extends` block. It grows a read model an
      earlier slice built (its read model is a board copy, `linkedTo` the origin) → `/build-state-view`,
      which edits the **origin** slice's projection, route and tests in place (its Step 0 decides this).
-   - **Screen only** — slice.json has `buildScreen` (`"added"` or `"changed"`): the model added or changed the
-     screen of a slice that is already built. Skip the backend entirely → invoke `/build-screen` (its "A screen
-     added or changed" section). So does a slice whose backend commit (`feat: [Slice Name]`) is already in
-     `git log`: an earlier run stopped or was blocked at the screen.
+   - **UI** — the job is the slice's UI (`concerns.ui`): invoke `/build-screen`, whatever the slice type. With
+     `buildScreen` in slice.json (`"added"` or `"changed"`), the model added or changed the screen of a slice
+     already built: its "A screen added or changed" section.
 3. Invoke the matching skill and follow its instructions completely. Do not deviate.
 4. **Verify against slice.json**: After the skill completes, diff slice.json against the code field by field. No invented fields — if it is not in slice.json, it must not be in the code.
-5. Run quality checks (`npm run build`, then the slice tests only).
-6. If checks pass, commit with `feat: [Slice Name]`.
-7. **Screen** — if slice.json's `screens[]` has an entry with a `mockup`, invoke `/build-screen`: it builds the
-   slice's UI and commits it on its own (`feat: [Slice Name] screen`).
-8. Set slice status to `Done`. When blocked instead, record `blockedReason` and `blockedAt` with the status.
+5. Run quality checks (backend: `npm run build`, then the slice tests only; UI: the `web/` checks in `build-screen`).
+6. If checks pass, commit with `feat: [Slice Name]` (backend) or `feat: [Slice Name] screen` (UI).
+7. Set the job's concern to `Done` in `index.json` (`concerns.backend` or `concerns.ui`). When blocked instead,
+   `Blocked` with `blockedReason` and `blockedAt`. The loop derives the slice's status.
 
 After you are done, automatically run the tests for the slice that was edited.
 

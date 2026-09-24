@@ -26,7 +26,9 @@ const inlineHeader = !localOnly && cfg.boardId
 const verbose = process.env.RALPH_VERBOSE === '1';
 
 const claudeArgs = ['--dangerously-skip-permissions', '--output-format', 'stream-json', '--verbose'];
-if (cfg.model) claudeArgs.push('--model', cfg.model);
+// A model per routine (PLAN 14.7b): `"models": { "ui": "…", "backend": "…" }` in .eventmodelers/config.json picks
+// the model for that concern's jobs; `"model"` is the default for everything else.
+const modelFor = (concern) => (concern && cfg.models?.[concern]) || cfg.model;
 const claudeEnv = {
   ...process.env,
   ...(cfg.anthropicBaseUrl ? { ANTHROPIC_BASE_URL: cfg.anthropicBaseUrl } : {}),
@@ -60,9 +62,10 @@ function describeToolUse(block) {
   }
 }
 
-function runClaude(prompt) {
+function runClaude(prompt, { concern } = {}) {
+  const model = modelFor(concern);
   return new Promise((resolve, reject) => {
-    const proc = spawn('claude', [...claudeArgs, '-p', inlineHeader + prompt], {
+    const proc = spawn('claude', [...claudeArgs, ...(model ? ['--model', model] : []), '-p', inlineHeader + prompt], {
       cwd: projectDir,
       stdio: ['inherit', 'pipe', 'inherit'],
       env: claudeEnv,
