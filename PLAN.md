@@ -503,7 +503,8 @@ routes and queries, the examples, and the scenarios. Use it to:
       warning;
     - slice.json carries `[INBOUND READMODEL Courses displays]` and `[OUTBOUND COMMAND SubscribeStudentToCourse
       submits]`.
-- [ ] **14.3 Show mockups on the board (emcli).** *Native wireframes (14.0 experiment); no PNG.*
+- [x] **14.3 Show mockups on the board (emcli).** *Native wireframes (14.0 experiment); no PNG. Done 2026-09-24
+  (emcli `4bf1268`).*
   - `sync push` appends the mockup to the ui element's description as a fenced ` ```html ` block, after the prose.
   - `sync pull` takes it back out into `mockup`, so the round trip is lossless. It also adopts a mockup that
     someone drew in the board editor.
@@ -519,6 +520,51 @@ routes and queries, the examples, and the scenarios. Use it to:
     need appears that native wireframes can't meet.
   - Mockups stay script-free, although the board may allow JS. They're blueprints for components, and static
     HTML maps 1:1 to JSX. Live HTML (charts from production data) is a separate idea, outside Phase 14.
+  - **What landed:**
+    - `mockup.ts`:
+      - `renderMockupDescription` / `splitMockup`: prose, then the fenced block. Split rejoins the prose around
+        a block found mid-text;
+      - `withBoardIds` / `stripBoardIds`. A command links on its `data-command` element. A displayed read model
+        links on the innermost element holding all its bindings (a list read model on its `data-list`), never
+        the whole page. Idempotent;
+      - the tokenizer now also reports element positions.
+    - `sync push`:
+      - sends snippets first;
+      - renders each screen's description with its mockup;
+      - resends screens whose linked elements only got board ids later in the same push ("Update mockup
+        links");
+      - a snippet-only change pushes just the snippet.
+    - `sync pull`:
+      - splits the block back out;
+      - the board wins when it has one (a board-editor wireframe is adopted);
+      - a mockup in the baseline but gone from the board is dropped;
+      - an unpushed local one is kept;
+      - snippets are written to `snippets/`.
+    - `cli/snippets.ts` + `emcli snippet list|add|push|pull|remove`: files `snippets/<slug>.html`, explicit
+      slugs, name = slug, and list-before-act (a missing slug answers 500, not 404).
+    - Starters `plain` and `sketch` (`STARTER_SNIPPETS`). Drafts import `design-system` when it exists
+      (`--import <slug>` otherwise). `completeness`, `element mockup` and the export warn about an import with
+      no snippet.
+    - **Fix (emcli ISSUES):** a new chapter keeps the default lanes it has no local lane for. The test found a
+      second board rule: at least one **system** lane, as well as exactly one information-flow lane.
+  - **Tests:** 232/232 (9 new: round trip, a board-editor block, link placement and idempotence, starters,
+    import warning).
+  - **Proven live** on the course-enrollment board: throwaway chapters and a snippet pushed from a scratch emcli
+    workspace, all deleted afterwards.
+    - One push created the snippet (sketch), the chapter (all three default lanes adopted) and the four
+      elements, then fixed both screens' links. Every `data-pb-element-id` in the stored descriptions resolves to
+      the right board element.
+    - The board drew both wireframes with the sketch design system. In the full-screen preview, **Connect**
+      outlined the Courses table (information) and the Register button (command) with the board's own
+      navigate/disconnect badges: emcli's contract shows up in prooph board's native linking UI.
+    - `snippet add design-system --starter plain --force` + `sync push` sent only the snippet, and both cards
+      restyled.
+    - Round trip: after `sync pull`, prose and mockups were byte-identical, with no ids locally and `sync diff`
+      clean.
+    - A board-side edit of one wireframe was adopted, a board-side deletion of the other was dropped, and an
+      unpushed local draft survived a pull.
+    - A chapter with only a user lane pushed cleanly (first run found the system-lane rule; fixed, re-run clean).
+  - **For Alexander:** a missing snippet slug answers 500 rather than 404.
 - [ ] **14.4 The `event-model` skill: screen mode.**
   - Ask what the person sees (which read models it displays) and does (which commands it submits). Wire those as
     dependencies first (14.2b), then draft, edit (Tailwind classes, bindings), check, push, and show the board
@@ -1522,5 +1568,5 @@ What each `build-*` skill generates and what it verifies:
 | 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 done (stale InProgress recovery in `--local` mode) |
 | 11 — Read Model Types | ✅ Complete | Async, inline and live read models from one fold definition, with an identical data shape across types (ADR-021/022). Proven on course-enrollment t5–t10: inline, a retype to live and back, a new live read model with a lookup |
 | 12 — Query Read Models | 🚧 In progress (top priority) | 12.1–12.3 done: ADR-023 query contract; emcli queries + `SPEC_QUERY` + `addQueries` re-queue; kit runtime (stored SQL + live, one semantics). Named queries on the read model element, the spec *when* references them, `{ data, cursor? }` pages; live needs a tag parameter |
-| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
+| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.3 done: native wireframes pushed and pulled (board links work in Connect), design system as a synced snippet 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
 | 7 — Board Re-pointing | ⛔ Dropped | eventmodelers board retired; prooph board via emcli is the only board |
