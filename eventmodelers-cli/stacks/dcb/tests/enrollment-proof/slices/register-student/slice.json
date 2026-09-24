@@ -19,7 +19,7 @@
       "tags": [],
       "aggregateDependencies": [],
       "createsAggregate": true,
-      "apiEndpoint": "POST /students",
+      "apiEndpoint": "/register-student",
       "context": "INTERNAL",
       "modelContext": "enrollment",
       "domain": "Enrollment",

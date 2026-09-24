@@ -306,20 +306,20 @@ describe("runtime guards", () => {
         expect((await agent.get("/available-courses?min=1")).status).toBe(500)
     })
 
-    test("readModelRoute serves every query that declares a path, next to the keyed GET", async () => {
+    test("readModelRoute serves every query that declares a path beside the keyed GET, which doesn't swallow them (ADR-025)", async () => {
         const withPaths = defineReadModel<CourseDoc>({
             ...courses,
             queries: {
                 ...queries,
-                withSeats: { ...queries.withSeats, path: "/available-courses" },
-                forStudent: { ...queries.forStudent, path: "/students/:studentId/courses" }
+                withSeats: { ...queries.withSeats, path: "/courses/with-seats" },
+                forStudent: { ...queries.forStudent, path: "/courses/for-student" }
             }
         })
         const { runtime } = await started("inline-projected")
         const agent = supertest(getApplication({ apis: [readModelRoute(withPaths, runtime, "/courses/:courseId", { schema: CourseDocSchema })] }))
         expect((await agent.get("/courses/c1")).body).toMatchObject({ courseId: "c1" })
-        expect(ids((await agent.get("/available-courses?min=9")).body)).toEqual(["c3"])
-        expect(ids((await agent.get("/students/s1/courses")).body)).toEqual(ids(await runtime.querier(courses, "forStudent")({ studentId: "s1" }, { limit: 50 })))
+        expect(ids((await agent.get("/courses/with-seats?min=9")).body)).toEqual(["c3"])
+        expect(ids((await agent.get("/courses/for-student?studentId=s1")).body)).toEqual(ids(await runtime.querier(courses, "forStudent")({ studentId: "s1" }, { limit: 50 })))
     })
 
     test("invalid query definitions are rejected when the read model is defined", () => {

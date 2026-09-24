@@ -17,11 +17,11 @@ export function configureCourseDetailsRoute(deps: SliceDependencies & { waitFn?:
 
     return router => {
         if (waitFn) {
-            router.get("/courses/:courseId", preferWait({ waitFn }))
+            router.get("/course-details/:courseId", preferWait({ waitFn }))
         }
 
         router.get(
-            "/courses/:courseId",
+            "/course-details/:courseId",
             on(async req => {
                 const courseId = req.params["courseId"] as string
                 const result = await pool.query<{ data: CourseDoc }>("SELECT data FROM courses WHERE _id = $1", [

@@ -9,11 +9,11 @@ const spec = ApiSpecification.for({
     configureApi: (store: EventStore) => configureChangeCourseCapacityRoute({ store, pool: {} as Pool })
 })
 
-describe("PUT /courses/:courseId/capacity — change course capacity", () => {
+describe("POST /change-course-capacity — change course capacity", () => {
     test("changes capacity and returns 204", async () => {
         await spec
             .existingEvents(courseWasRegistered({ courseId: "c1", title: "Math", capacity: 30 }))
-            .when(agent => agent.put("/courses/c1/capacity").send({ newCapacity: 50 }))
+            .when(agent => agent.post("/change-course-capacity").send({ courseId: "c1", newCapacity: 50 }))
             .then(
                 expectResponse(204),
                 courseCapacityWasChanged({ courseId: "c1", newCapacity: 50 })
@@ -22,20 +22,20 @@ describe("PUT /courses/:courseId/capacity — change course capacity", () => {
 
     test("returns 404 when course does not exist", async () => {
         await spec
-            .when(agent => agent.put("/courses/nonexistent/capacity").send({ newCapacity: 50 }))
+            .when(agent => agent.post("/change-course-capacity").send({ courseId: "nonexistent", newCapacity: 50 }))
             .then(expectError(404))
     })
 
     test("returns 422 when new capacity is the same as current", async () => {
         await spec
             .existingEvents(courseWasRegistered({ courseId: "c1", title: "Math", capacity: 30 }))
-            .when(agent => agent.put("/courses/c1/capacity").send({ newCapacity: 30 }))
+            .when(agent => agent.post("/change-course-capacity").send({ courseId: "c1", newCapacity: 30 }))
             .then(expectError(422))
     })
 
     test("returns 400 when newCapacity is missing", async () => {
         await spec
-            .when(agent => agent.put("/courses/c1/capacity").send({}))
+            .when(agent => agent.post("/change-course-capacity").send({ courseId: "c1" }))
             .then(expectError(400))
     })
 })

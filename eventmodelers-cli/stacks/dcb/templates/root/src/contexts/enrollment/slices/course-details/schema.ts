@@ -13,7 +13,7 @@ export const CourseSchema = z
     .openapi("Course")
 
 registerRead({
-    path: "/courses/:courseId",
+    path: "/course-details/:courseId",
     summary: "Get a course",
     response: CourseSchema,
     notFound: "Course not found",

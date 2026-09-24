@@ -3,7 +3,7 @@ import { registerRead } from "../../../../shared/openapi.js"
 import { CourseSchema } from "../course-details/schema.js"
 
 registerRead({
-    path: "/courses",
+    path: "/course-list",
     summary: "List courses (keyset-paginated)",
     query: z.object({
         limit: z.string().optional().openapi({ example: "20", description: "Page size (max 200)" }),

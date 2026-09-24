@@ -1,5 +1,5 @@
 import { handle } from "@dcb-es/event-store"
-import { on, Created, withETag, getIdempotencyKey, validateBody, type WebApiSetup } from "@dcb-es/event-store-express"
+import { on, NoContent, withETag, getIdempotencyKey, validateBody, type WebApiSetup } from "@dcb-es/event-store-express"
 import type { SliceDependencies } from "../../../../shared/dependencies.js"
 import { findExistingPosition } from "../../../../shared/idempotency.js"
 import { subscribeStudentToCourse } from "./decider.js"
@@ -10,11 +10,10 @@ export function configureSubscribeStudentRoute(deps: SliceDependencies): WebApiS
 
     return router => {
         router.post(
-            "/courses/:courseId/subscriptions",
+            "/subscribe-student-to-course",
             validateBody(SubscribeStudentSchema),
             on(async req => {
-                const courseId = req.params["courseId"] as string
-                const { studentId } = req.body
+                const { courseId, studentId } = req.body
                 const idempotencyKey = getIdempotencyKey(req)
                 const existingPosition = await findExistingPosition(pool, idempotencyKey)
                 const position =
@@ -27,7 +26,7 @@ export function configureSubscribeStudentRoute(deps: SliceDependencies): WebApiS
                     ))
                 return res => {
                     withETag(position)(res)
-                    Created({ url: `/courses/${courseId}/subscriptions/${studentId}` })(res)
+                    NoContent()(res)
                 }
             })
         )

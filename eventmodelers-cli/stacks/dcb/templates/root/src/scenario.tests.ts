@@ -96,54 +96,54 @@ describe("Scenario: course enrollment lifecycle", () => {
         const agent = supertest(app)
 
         // Register course
-        const step1 = await agent.post("/courses").send({ id: "ts101", title: "TypeScript 101", capacity: 2 })
-        expect(step1.status).toBe(201)
+        const step1 = await agent.post("/register-course").send({ id: "ts101", title: "TypeScript 101", capacity: 2 })
+        expect(step1.status).toBe(204)
         const courseETag = step1.headers["etag"] as string
 
         // Register students
-        const step2 = await agent.post("/students").send({ id: "alice", name: "Alice" })
-        expect(step2.status).toBe(201)
-        const step3 = await agent.post("/students").send({ id: "bob", name: "Bob" })
-        expect(step3.status).toBe(201)
-        const step4 = await agent.post("/students").send({ id: "charlie", name: "Charlie" })
-        expect(step4.status).toBe(201)
+        const step2 = await agent.post("/register-student").send({ id: "alice", name: "Alice" })
+        expect(step2.status).toBe(204)
+        const step3 = await agent.post("/register-student").send({ id: "bob", name: "Bob" })
+        expect(step3.status).toBe(204)
+        const step4 = await agent.post("/register-student").send({ id: "charlie", name: "Charlie" })
+        expect(step4.status).toBe(204)
 
         // Read course with Prefer: wait
-        const step5 = await agent.get("/courses/ts101").set("Prefer", "wait=5").set("If-None-Match", courseETag)
+        const step5 = await agent.get("/course-details/ts101").set("Prefer", "wait=5").set("If-None-Match", courseETag)
         expect(step5.status).toBe(200)
         expect(step5.body.subscribedStudents).toHaveLength(0)
 
         // Subscribe Alice
-        const step6 = await agent.post("/courses/ts101/subscriptions").send({ studentId: "alice" })
-        expect(step6.status).toBe(201)
+        const step6 = await agent.post("/subscribe-student-to-course").send({ courseId: "ts101", studentId: "alice" })
+        expect(step6.status).toBe(204)
         const subETag = step6.headers["etag"] as string
 
         // Read-your-writes: verify Alice is enrolled
-        const step7 = await agent.get("/courses/ts101").set("Prefer", "wait=5").set("If-None-Match", subETag)
+        const step7 = await agent.get("/course-details/ts101").set("Prefer", "wait=5").set("If-None-Match", subETag)
         expect(step7.status).toBe(200)
         expect(step7.body.subscribedStudents).toHaveLength(1)
         expect(step7.body.subscribedStudents[0].studentId).toBe("alice")
 
         // Subscribe Bob (fills the course)
-        const step8 = await agent.post("/courses/ts101/subscriptions").send({ studentId: "bob" })
-        expect(step8.status).toBe(201)
+        const step8 = await agent.post("/subscribe-student-to-course").send({ courseId: "ts101", studentId: "bob" })
+        expect(step8.status).toBe(204)
 
         // Charlie can't subscribe — course is full
-        const step9 = await agent.post("/courses/ts101/subscriptions").send({ studentId: "charlie" })
+        const step9 = await agent.post("/subscribe-student-to-course").send({ courseId: "ts101", studentId: "charlie" })
         expect(step9.status).toBe(422)
         expect(step9.body.detail).toBe("Course ts101 is full.")
 
         // Unsubscribe Alice
-        const step10 = await agent.delete("/courses/ts101/subscriptions/alice")
+        const step10 = await agent.post("/unsubscribe-student-from-course").send({ courseId: "ts101", studentId: "alice" })
         expect(step10.status).toBe(204)
 
         // Charlie can now subscribe
-        const step11 = await agent.post("/courses/ts101/subscriptions").send({ studentId: "charlie" })
-        expect(step11.status).toBe(201)
+        const step11 = await agent.post("/subscribe-student-to-course").send({ courseId: "ts101", studentId: "charlie" })
+        expect(step11.status).toBe(204)
         const charlieETag = step11.headers["etag"] as string
 
         // Verify Charlie's student details include ts101
-        const step12 = await agent.get("/students/charlie").set("Prefer", "wait=5").set("If-None-Match", charlieETag)
+        const step12 = await agent.get("/student-details/charlie").set("Prefer", "wait=5").set("If-None-Match", charlieETag)
         expect(step12.status).toBe(200)
         const courseIds = step12.body.subscribedCourses.map((c: { courseId: string }) => c.courseId)
         expect(courseIds).toContain("ts101")
@@ -191,8 +191,8 @@ describe("Scenario: course enrollment lifecycle", () => {
             })
 
             await new Promise<void>(resolve => setTimeout(resolve, 100))
-            const postRes = await agent.post("/courses").send({ id: "go101", title: "Go 101", capacity: 20 })
-            expect(postRes.status).toBe(201)
+            const postRes = await agent.post("/register-course").send({ id: "go101", title: "Go 101", capacity: 20 })
+            expect(postRes.status).toBe(204)
 
             const message = await messagePromise
             const data = message.data as { event: { type: string } }
@@ -205,34 +205,34 @@ describe("Scenario: course enrollment lifecycle", () => {
         }
 
         // Pagination
-        const step14 = await agent.post("/courses").send({ id: "rust101", title: "Rust 101", capacity: 10 })
-        expect(step14.status).toBe(201)
+        const step14 = await agent.post("/register-course").send({ id: "rust101", title: "Rust 101", capacity: 10 })
+        expect(step14.status).toBe(204)
         const rustETag = step14.headers["etag"] as string
 
-        const step15 = await agent.get("/courses?limit=2").set("Prefer", "wait=5").set("If-None-Match", rustETag)
+        const step15 = await agent.get("/course-list?limit=2").set("Prefer", "wait=5").set("If-None-Match", rustETag)
         expect(step15.status).toBe(200)
         expect(step15.body.data).toHaveLength(2)
         expect(step15.body.cursor).toBeDefined()
 
         const pageCursor = step15.body.cursor as string
-        const step16 = await agent.get(`/courses?cursor=${pageCursor}&limit=2`)
+        const step16 = await agent.get(`/course-list?cursor=${pageCursor}&limit=2`)
         expect(step16.status).toBe(200)
         expect(step16.body.data.length).toBeGreaterThan(0)
 
         // Idempotency key
         const idempotencyKey = "f47ac10b-58cc-4372-a567-0e02b2c3d479"
         const step17 = await agent
-            .post("/courses")
+            .post("/register-course")
             .set("Idempotency-Key", idempotencyKey)
             .send({ id: "idem101", title: "Idempotent Course", capacity: 10 })
-        expect(step17.status).toBe(201)
+        expect(step17.status).toBe(204)
         const idemETag = step17.headers["etag"] as string
 
         const step18 = await agent
-            .post("/courses")
+            .post("/register-course")
             .set("Idempotency-Key", idempotencyKey)
             .send({ id: "idem101", title: "Idempotent Course", capacity: 10 })
-        expect(step18.status).toBe(201)
+        expect(step18.status).toBe(204)
         expect(step18.headers["etag"]).toBe(idemETag)
 
         // OpenAPI document

@@ -19,7 +19,7 @@
       "tags": [],
       "aggregateDependencies": [],
       "createsAggregate": false,
-      "apiEndpoint": "PUT /courses/:courseId/capacity",
+      "apiEndpoint": "/change-course-capacity",
       "context": "INTERNAL",
       "modelContext": "enrollment",
       "domain": "Enrollment",

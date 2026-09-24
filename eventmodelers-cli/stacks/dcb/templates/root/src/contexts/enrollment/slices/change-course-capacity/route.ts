@@ -9,12 +9,11 @@ export function configureChangeCourseCapacityRoute(deps: SliceDependencies): Web
     const { store, pool } = deps
 
     return router => {
-        router.put(
-            "/courses/:courseId/capacity",
+        router.post(
+            "/change-course-capacity",
             validateBody(UpdateCourseCapacitySchema),
             on(async req => {
-                const courseId = req.params["courseId"] as string
-                const { newCapacity } = req.body
+                const { courseId, newCapacity } = req.body
                 const idempotencyKey = getIdempotencyKey(req)
                 const existingPosition = await findExistingPosition(pool, idempotencyKey)
                 const position =

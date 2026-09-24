@@ -135,7 +135,7 @@
       "tags": [],
       "aggregateDependencies": [],
       "createsAggregate": false,
-      "apiEndpoint": "GET /courses/:courseId",
+      "apiEndpoint": "/course-details/{courseId}",
       "context": "INTERNAL",
       "modelContext": "enrollment",
       "domain": "Enrollment",

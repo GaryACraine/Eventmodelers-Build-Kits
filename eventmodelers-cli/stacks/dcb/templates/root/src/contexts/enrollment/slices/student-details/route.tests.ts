@@ -64,7 +64,7 @@ describe("Student details — Postgres integration", () => {
         if (pool) await pool.end()
     })
 
-    test("GET /students/:studentId returns student after Prefer: wait", async () => {
+    test("GET /student-details/:studentId returns student after Prefer: wait", async () => {
         const studentWaitFn = (position: SequencePosition, timeoutMs: number) =>
             waitUntilProcessed(pool, STUDENT_PROJECTION_NAME, position, { timeoutMs })
 
@@ -79,11 +79,11 @@ describe("Student details — Postgres integration", () => {
         const agent = supertest(app)
 
         const postRes = await agent
-            .post("/students")
+            .post("/register-student")
             .send({ id: "s1", name: "Alice" })
-        expect(postRes.status).toBe(201)
+        expect(postRes.status).toBe(204)
 
-        const getRes = await agent.get("/students/s1").set("Prefer", "wait=5").set("If-None-Match", '"1"')
+        const getRes = await agent.get("/student-details/s1").set("Prefer", "wait=5").set("If-None-Match", '"1"')
 
         expect(getRes.status).toBe(200)
         expect(getRes.body).toMatchObject({
@@ -95,7 +95,7 @@ describe("Student details — Postgres integration", () => {
         expect(getRes.headers["etag"]).toBe('"1"')
     })
 
-    test("GET /students/:studentId shows subscribed courses after Prefer: wait", async () => {
+    test("GET /student-details/:studentId shows subscribed courses after Prefer: wait", async () => {
         const studentWaitFn = (position: SequencePosition, timeoutMs: number) =>
             waitUntilProcessed(pool, STUDENT_PROJECTION_NAME, position, { timeoutMs })
 
@@ -111,13 +111,13 @@ describe("Student details — Postgres integration", () => {
 
         const agent = supertest(app)
 
-        await agent.post("/courses").send({ id: "c1", title: "Math", capacity: 30 })
-        await agent.post("/students").send({ id: "s1", name: "Alice" })
+        await agent.post("/register-course").send({ id: "c1", title: "Math", capacity: 30 })
+        await agent.post("/register-student").send({ id: "s1", name: "Alice" })
 
-        const subRes = await agent.post("/courses/c1/subscriptions").send({ studentId: "s1" })
-        expect(subRes.status).toBe(201)
+        const subRes = await agent.post("/subscribe-student-to-course").send({ courseId: "c1", studentId: "s1" })
+        expect(subRes.status).toBe(204)
 
-        const getRes = await agent.get("/students/s1").set("Prefer", "wait=5").set("If-None-Match", '"3"')
+        const getRes = await agent.get("/student-details/s1").set("Prefer", "wait=5").set("If-None-Match", '"3"')
 
         expect(getRes.status).toBe(200)
         expect(getRes.body.subscribedCourses).toHaveLength(1)
@@ -125,7 +125,7 @@ describe("Student details — Postgres integration", () => {
         expect(getRes.body.subscribedCourses[0].title).toBe("Math")
     })
 
-    test("GET /students/:studentId removes course after unsubscribe with Prefer: wait", async () => {
+    test("GET /student-details/:studentId removes course after unsubscribe with Prefer: wait", async () => {
         const studentWaitFn = (position: SequencePosition, timeoutMs: number) =>
             waitUntilProcessed(pool, STUDENT_PROJECTION_NAME, position, { timeoutMs })
 
@@ -142,27 +142,27 @@ describe("Student details — Postgres integration", () => {
 
         const agent = supertest(app)
 
-        await agent.post("/courses").send({ id: "c1", title: "Math", capacity: 30 })
-        await agent.post("/students").send({ id: "s1", name: "Alice" })
-        await agent.post("/courses/c1/subscriptions").send({ studentId: "s1" })
+        await agent.post("/register-course").send({ id: "c1", title: "Math", capacity: 30 })
+        await agent.post("/register-student").send({ id: "s1", name: "Alice" })
+        await agent.post("/subscribe-student-to-course").send({ courseId: "c1", studentId: "s1" })
 
-        const delRes = await agent.delete("/courses/c1/subscriptions/s1")
+        const delRes = await agent.post("/unsubscribe-student-from-course").send({ courseId: "c1", studentId: "s1" })
         expect(delRes.status).toBe(204)
 
-        const getRes = await agent.get("/students/s1").set("Prefer", "wait=5").set("If-None-Match", '"4"')
+        const getRes = await agent.get("/student-details/s1").set("Prefer", "wait=5").set("If-None-Match", '"4"')
 
         expect(getRes.status).toBe(200)
         expect(getRes.body.subscribedCourses).toHaveLength(0)
     })
 
-    test("GET /students/:studentId returns 404 for unknown student", async () => {
+    test("GET /student-details/:studentId returns 404 for unknown student", async () => {
         const deps = { store: eventStore, pool }
         const app = getApplication({
             apis: [configureStudentDetailsRoute({ ...deps })]
         })
 
         const agent = supertest(app)
-        const getRes = await agent.get("/students/unknown")
+        const getRes = await agent.get("/student-details/unknown")
         expect(getRes.status).toBe(404)
     })
 })

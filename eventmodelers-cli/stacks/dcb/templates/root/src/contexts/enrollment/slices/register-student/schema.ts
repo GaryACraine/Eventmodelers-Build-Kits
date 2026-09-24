@@ -13,9 +13,9 @@ export const RegisterStudentSchema = z
 
 registerCommand({
     method: "post",
-    path: "/students",
+    path: "/register-student",
     summary: "Register a student",
     body: RegisterStudentSchema,
-    success: "createdId",
+    success: "noContent",
     errors: { 422: "Student already exists" }
 })

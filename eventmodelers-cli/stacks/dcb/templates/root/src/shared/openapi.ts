@@ -78,14 +78,19 @@ export function problemResponse(description: string) {
 // ─── Commands ────────────────────────────────────────────────────────────────
 
 export interface CommandPath {
+    /** Always "post" by the API standard (ADR-025); another method only for an override in the model */
     method: "post" | "put" | "patch" | "delete"
-    /** The route's path, exactly as `route.ts` registers it ("/courses/:courseId/capacity") */
+    /** The route's path, exactly as `route.ts` registers it: "/<command>" ("/change-course-capacity", ADR-025) */
     path: string
     summary: string
-    /** The body schema from this `schema.ts`; leave out for a command without a body */
+    /** The body schema from this `schema.ts`: every command field; leave out only for a command without fields */
     body?: ZodTypeAny
-    /** What the route answers with: `Created({ createdId })`, `Created({ url })` or `NoContent()` */
-    success: "createdId" | "createdUrl" | "noContent"
+    /**
+     * What the route answers with (ADR-025): `NoContent()` (204), or 201 with the command's generated fields
+     * as the body (`res.status(201).json({ … })`, no Location); `created` is that body's schema
+     */
+    success: "noContent" | "created"
+    created?: ZodTypeAny
     /** The rejections the slice's specifications name, by status: `{ 422: "Course is full" }` */
     errors?: Partial<Record<404 | 409 | 422, string>>
 }
@@ -94,14 +99,12 @@ export interface CommandPath {
 export function registerCommand(command: CommandPath): void {
     const params = pathParamsOf(command.path)
     const responses: RouteConfig["responses"] = {}
-    if (command.success === "createdId") {
+    if (command.success === "created") {
         responses[201] = {
-            description: "Created",
+            description: "Created: the generated fields",
             headers: z.object({ ETag: ETagResponseHeader }),
-            content: { "application/json": { schema: z.object({ id: z.string() }) } }
+            ...(command.created && { content: { "application/json": { schema: command.created } } })
         }
-    } else if (command.success === "createdUrl") {
-        responses[201] = { description: "Created", headers: z.object({ ETag: ETagResponseHeader, Location: z.string() }) }
     } else {
         responses[204] = { description: "Done", headers: z.object({ ETag: ETagResponseHeader }) }
     }

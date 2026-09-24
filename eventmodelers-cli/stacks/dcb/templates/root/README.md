@@ -60,16 +60,20 @@ own routes (`src/shared/openapi.ts`), so the document grows as slices are built.
 A browser app on another origin (the `web/` frontend, Vite's dev server on `:5173`) needs `CORS_ORIGIN`: a
 comma-separated list of allowed origins, or `*`. Unset, the API sends no CORS headers.
 
+Routes are named after the model (ADR-025): a command is `POST /<command>` with every field in the body
+(204 + `ETag`, or 201 with the generated fields), a read model `GET /<read-model>/:<id>`, a query
+`GET /<read-model>/<query>?<parameters>`. The app's page routes are separate and entity-shaped.
+
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/courses` | Register a course |
-| `POST` | `/students` | Register a student |
-| `POST` | `/courses/:courseId/subscriptions` | Subscribe a student |
-| `DELETE` | `/courses/:courseId/subscriptions/:studentId` | Unsubscribe a student |
-| `PUT` | `/courses/:courseId/capacity` | Change course capacity |
-| `GET` | `/courses` | List courses (paginated) |
-| `GET` | `/courses/:courseId` | Get course details |
-| `GET` | `/students/:studentId` | Get student details |
+| `POST` | `/register-course` | Register a course |
+| `POST` | `/register-student` | Register a student |
+| `POST` | `/subscribe-student-to-course` | Subscribe a student |
+| `POST` | `/unsubscribe-student-from-course` | Unsubscribe a student |
+| `POST` | `/change-course-capacity` | Change course capacity |
+| `GET` | `/course-list` | List courses (paginated) |
+| `GET` | `/course-details/:courseId` | Get course details |
+| `GET` | `/student-details/:studentId` | Get student details |
 | `GET` | `/events` | SSE event feed |
 | `GET` | `/openapi.json` | OpenAPI document |
 

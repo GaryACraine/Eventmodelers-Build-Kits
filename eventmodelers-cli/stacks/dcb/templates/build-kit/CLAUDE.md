@@ -35,6 +35,9 @@ Library + MSW. See `web/README.md`.
 4. OpenAPI is programmatic: each slice documents its routes (`registerCommand` / `registerRead` in its
    `schema.ts`, or `readModelRoute`'s `schema`) through `src/shared/openapi.ts`, and the `openapi` slice serves
    them all at `/openapi.json`. The frontend's client is generated from it, so every route must be there
+5. Routes are slice.json's `apiEndpoint`, named after the model (ADR-025): a command is `POST /<command>` with
+   every field in the body, a read model `GET /<read-model>/:<id>`, a query `GET /<read-model>/<query>?…`.
+   Never design a REST path, nest one under an entity, or use PUT/PATCH/DELETE
 
 Only check `src/contexts/{context}/slices/{slicename}/*.ts`, do not check subfolders, unless explicitly tasked to build the UI.
 

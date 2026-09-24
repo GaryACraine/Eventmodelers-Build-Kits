@@ -482,7 +482,7 @@ export async function startReadModels(
 }
 
 /**
- * The one GET route for a read model: `path` (e.g. "/courses/:courseId") → its document, or 404.
+ * The one GET route for a read model: `path` (e.g. "/course-details/:courseId", ADR-025) → its document, or 404.
  * The body is the document itself, so it is the same whichever type serves it (ADR-022).
  * Async read models also honour `Prefer: wait` + `If-None-Match` and send a bookmark ETag — an
  * optional extra, outside the contract.
@@ -508,12 +508,14 @@ export function readModelRoute<TDoc extends ReadModelDoc>(
     })
     const param = path.match(/:(\w+)/)?.[1] ?? readModel.key
     // Every query that declares a path is served next to the keyed GET, so adding a query to a
-    // read model never touches its route or the app's wiring (ADR-023).
+    // read model never touches its route or the app's wiring (ADR-023). They're mounted first:
+    // "/course-seats/available-courses" must not be read as the keyed GET's ":courseId" (ADR-025).
     const queryRoutes = Object.entries(readModel.queries ?? {})
         .filter(([, query]) => query.path)
         .map(([name]) => readQueryRoute(readModel, runtime, name))
 
     return router => {
+        for (const queryRoute of queryRoutes) queryRoute(router)
         if (waitFn) router.get(path, preferWait({ waitFn }))
         router.get(
             path,
@@ -537,13 +539,12 @@ export function readModelRoute<TDoc extends ReadModelDoc>(
                 return OK({ body: doc })
             })
         )
-        for (const queryRoute of queryRoutes) queryRoute(router)
     }
 }
 
 /**
- * The GET route for a named query: `path` (default: the query's own, e.g. "/available-courses" or
- * "/students/:studentId/courses") → `{ data: [...documents], cursor? }`, the same page whichever type
+ * The GET route for a named query: `path` (default: the query's own, e.g. "/course-seats/available-courses",
+ * ADR-025) → `{ data: [...documents], cursor? }`, the same page whichever type
  * serves the read model (ADR-023). 400 for a missing or unparseable parameter; never 404. Async read
  * models also honour `Prefer: wait`. `readModelRoute` mounts these for every query with a path.
  */

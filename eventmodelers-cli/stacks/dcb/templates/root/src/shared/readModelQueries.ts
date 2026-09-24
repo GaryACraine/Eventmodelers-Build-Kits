@@ -7,17 +7,18 @@ import { createHash } from "node:crypto"
  *
  *     queries: {
  *         availableCourses: {
- *             path: "/available-courses",
+ *             path: "/course-seats/available-courses",
  *             params: { minRemainingSeats: { field: "remainingSeats", op: "gte", type: "number" } }
  *         },
  *         coursesForStudent: {
- *             path: "/students/:studentId/courses",
+ *             path: "/course-details/courses-for-student",
  *             params: { studentId: { field: "subscribedStudents.studentId", op: "contains", type: "string", tag: "studentId" } },
  *             sort: { field: "title" }
  *         }
  *     }
  *
- * and served by `readModelRoute` as `GET {path}?{params}` → `{ data: [...documents], cursor? }` by every
+ * (ADR-025: `/<read-model>/<query>`, every parameter in the query string) and served by `readModelRoute` as
+ * `GET {path}?{params}` → `{ data: [...documents], cursor? }` by every
  * read model type.
  * This file holds the parts both runners share, so they can't disagree:
  *
@@ -61,8 +62,9 @@ export interface QueryParamDefinition {
 
 export interface QueryDefinition {
     /**
-     * Where `readModelRoute` serves it, in Express form ("/available-courses", "/students/:studentId/courses"):
-     * the query's apiEndpoint. Each `:param` is a required eq/contains parameter.
+     * Where `readModelRoute` serves it, in Express form: the query's apiEndpoint, by the standard
+     * "/<read-model>/<query>" ("/course-seats/available-courses", ADR-025). An override may still carry a
+     * `:param`, which is a required eq/contains parameter.
      */
     path?: string
     params: Record<string, QueryParamDefinition>

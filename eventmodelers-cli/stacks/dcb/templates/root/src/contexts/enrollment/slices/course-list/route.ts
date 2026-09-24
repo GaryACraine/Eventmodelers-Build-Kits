@@ -25,11 +25,11 @@ export function configureCourseListRoute(deps: SliceDependencies & { waitFn?: Wa
 
     return router => {
         if (waitFn) {
-            router.get("/courses", preferWait({ waitFn }))
+            router.get("/course-list", preferWait({ waitFn }))
         }
 
         router.get(
-            "/courses",
+            "/course-list",
             on(async req => {
                 const { limit } = parsePageParams(req)
                 const cursor = typeof req.query["cursor"] === "string" ? req.query["cursor"] : undefined

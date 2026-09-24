@@ -1,5 +1,5 @@
 import { handle } from "@dcb-es/event-store"
-import { on, Created, withETag, getIdempotencyKey, validateBody, type WebApiSetup } from "@dcb-es/event-store-express"
+import { on, NoContent, withETag, getIdempotencyKey, validateBody, type WebApiSetup } from "@dcb-es/event-store-express"
 import type { SliceDependencies } from "../../../../shared/dependencies.js"
 import { findExistingPosition } from "../../../../shared/idempotency.js"
 import { registerCourse } from "./decider.js"
@@ -10,7 +10,7 @@ export function configureRegisterCourseRoute(deps: SliceDependencies): WebApiSet
 
     return router => {
         router.post(
-            "/courses",
+            "/register-course",
             validateBody(RegisterCourseSchema),
             on(async req => {
                 const { id, title, capacity } = req.body
@@ -26,7 +26,7 @@ export function configureRegisterCourseRoute(deps: SliceDependencies): WebApiSet
                     ))
                 return res => {
                     withETag(position)(res)
-                    Created({ createdId: id })(res)
+                    NoContent()(res)
                 }
             })
         )

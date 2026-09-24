@@ -780,32 +780,93 @@ routes and queries, the examples, and the scenarios. Use it to:
       looks `fetch` up per request.
     - `openapi-typescript` 7.13 needs TypeScript 5 (`web/` pins `~5.9`; TypeScript 7 is current).
     - In course-enrollment, `/courses` is POST-only; the course list is `/available-courses?minRemainingSeats=`.
-    - The backend's routes are already entity-shaped (`/courses/{courseId}`, `/students/{studentId}/…`), which
-      supports the routing decision below.
-- **Open decision: entity-oriented routing** (Gary, 2026-09-24; not decided yet, deliberately not in the scaffold).
-  - People see a system as entities (a course, a student), so the app's routes should read that way
-    (`/courses`, `/courses/:courseId`), even though the backend persists events.
-  - DCB has no aggregate streams, but ID attributes map to DCB **tags**, which are an entity's identity. The
-    backend's read routes already follow them.
-  - **When:** once a model's entities are known, and before 14.6 composes pages from screens. The scaffold
-    can't know them, so it ships `src/routes.tsx` with no entity routes and a comment pointing here.
-  - **Questions to settle then:**
-    - do tags / ID attributes become route params mechanically, or does the model name its entities;
-    - is it one page per entity, with lists as index routes;
-    - where does a screen that isn't about one entity (a dashboard) go;
-    - how does the screen title map to a route.
+    - The backend's routes looked entity-shaped (`/courses/{courseId}`, `/students/{studentId}/…`), but only by
+      hand, and inconsistently. 14.5b replaced them with routes named after the model.
+- **Decided: entity-oriented routing** (Gary, 2026-09-24, at the start of 14.6; recorded as open in 14.5).
+  - People see a system as entities (a course, a student), so the **app's page routes** read that way
+    (`/courses`, `/courses/:courseId`), even though the backend persists events. DCB has no aggregate streams, but
+    ID attributes map to DCB **tags**, which are an entity's identity.
+  - **Derived at export by emcli**, from each screen's contract (14.6 A), not chosen per slice. The loop builds one
+    slice at a time, so two slices on one page must reach the same route independently. A screen can override it
+    in the model.
+  - **The API is not entity-shaped** (14.5b, ADR-025). Page routes and API URLs are separate; code generation
+    joins them through the ID attribute names they share.
+- [x] **14.5b API naming standard (ADR-025).** *(Done 2026-09-24: emcli `7c1ebd3`, course-enrollment `2331161`.)*
+  - **Why:** starting 14.6 showed nothing set API endpoints. Each was typed by the modeler and copied by the
+    skills, so the projects drifted:
+    - the subscription relationship had three names (`/courses/:id/students`, `/courses/:id/subscriptions`,
+      `/students/:id/subscriptions`);
+    - read models sat under entities as if owned (`/courses/:courseId` vs `/courses/:courseId/seats`);
+    - queries had no single home (`/available-courses`, `/students/:studentId/courses`).
+  - **The standard (Gary, after discussing the challenges):**
+    - commands `POST /<command>`, 1:1 with the command name, every field in the body, **always POST**
+      (idempotency comes from the `Idempotency-Key`, not the method); 204 + `ETag`, or 201 with generated fields;
+      no `Location`;
+    - read models `GET /<read-model>/:<id>` (CQRS: not owned by an entity);
+    - queries `GET /<read-model>/<query>?<params>`, every parameter in the query string;
+    - page routes separate and entity-based.
+  - **emcli (`7c1ebd3`):**
+    - `domain/endpoint.ts` derives every route from names;
+    - `apiEndpoint` and a query's endpoint are overrides, and a non-standard one warns (in `element update`,
+      `query add/update`, `completeness` and `workspace export`; never blocks);
+    - a copy is served on its origin's routes;
+    - `query add --endpoint` is optional, with `--clear-endpoint` to go back;
+    - a read model's own queries (or a same-named origin in another chapter) no longer "collide" with its keyed
+      GET;
+    - the board shows `POST /…` / `GET /…`;
+    - docs and the event-model skill say routes are derived, never designed. Tests 274/274.
+  - **Kit:**
+    - ADR-025, and ADR-023's path-parameter text updated;
+    - `readModelRoute` mounts query routes before the keyed GET;
+    - `registerCommand` success is `noContent | created` (with a `created` body schema);
+    - `build-state-change` always POSTs `commands[0].apiEndpoint` with every field from the body;
+      `build-state-view` examples updated;
+    - the example app's 5 commands and 3 reads are migrated, with the tests, scenario, seed and README;
+    - the 7 `enrollment-proof` fixtures carry the derived endpoints;
+    - the loop's CLAUDE.md says routes come from slice.json.
+    - Scratch copy: build clean, 71/71 tests (Postgres included), `start-empty.sh` 42/42; check tests 8 + 18 + 5.
+  - **course-enrollment (`2331161`):**
+    - the model's 9 element overrides and 2 query overrides were cleared, so every route derives, and
+      `completeness` shows no endpoint warnings;
+    - export: all 25 slices still Done (nothing re-queued);
+    - `sync push` sent the 9 elements.
+    - The 11 routes and their unit + integration tests were migrated by hand, and `shared/` was synced from the
+      kit.
+    - Build + tsc + **127/127** tests.
+    - Committed once with `--no-verify`, stated in the commit: the migration spans every slice, and
+      `run:checks --staged` reported only slice-scope.
+    - Checked with curl: 204 + ETag for every command; 400 / 404 / 422 Problem-JSON; the 3 keyed reads, both
+      queries, paging and a bad parameter.
+    - `gen:api` lists the 12 new paths; web build + 4/4 tests. README table rewritten.
+  - **Manual:**
+    - every `--api-endpoint` / `--endpoint` step is gone (a note in §5.2 explains derivation);
+    - the curls, sample outputs (204 instead of `{"id":…}`), the t5 stale-read script and the §11.6 timing
+      table use the new paths;
+    - `docs/examples/t3.sh` / `t4.sh` updated.
+    - The read curls were checked against the migrated backend. The write curls were checked with fresh IDs
+      (a full replay wasn't repeated).
+  - **Findings:**
+    - `Created({ createdId })` in `@dcb-es/event-store-express` sends `Location: /api/<id>`, a path that never
+      existed. The standard drops `Location`; the library isn't changed.
+    - The checks left a test course and student (`api1790264960`, `stu1790264960`) in course-enrollment's dev
+      database, and they show in `available-courses`.
+    - `StudentSubscriptions` keeping the title a course had at subscription time is by design (t10's third
+      scenario), not a bug.
 - [ ] **14.6 Build skills for screens.**
   - `build-screen` runs after `build-state-change` / `build-state-view` when the slice has a screen.
   - One component per command: a form, props = fields, React Hook Form + Zod from the generated types, rejections
     shown from Problem-JSON.
-  - **Decide how `session:` fields are filled.** t13 maps `subscribeStudent.studentId` to `session:studentId`, so
-    its mockup has no input. But the DCB kit has no sign-in and doesn't read mappings, and the route still takes
-    `studentId` in the body. The frontend needs a source for session values: at first a stub "current user"
-    setting in `web/`, later real authentication (and possibly the backend taking the id from the session).
+  - **Decided (Gary, 2026-09-24): `session:` fields come from a stub "current user"** in `web/`
+    (`lib/session.tsx`, remembered in the browser; `RequireSession` asks for the value when it's missing). t13
+    maps `subscribeStudent.studentId` to `session:studentId`, so its mockup has no input; the route still takes
+    `studentId` in the body. Real sign-in (and possibly the backend taking the id from the session) is a later
+    phase.
+  - Page routes come from `screens[].page` in slice.json (the routing decision above); API calls use
+    `apiEndpoint` (ADR-025). The two are never derived from each other.
   - One component per read model: a view or list through TanStack Query. After its own write, a page reads an
     **async** (`database-projected`) read model with `afterWrite(position)`, and any other read model without it
     (the type is in slice.json; 14.5).
-  - Pages and routes follow the entity-routing decision above (settle it first).
+  - Pages and routes follow the entity-routing decision above (decided: derived at export, 14.6 A).
   - Mockup → JSX 1:1; pages composed by screen title.
   - MSW handlers and component tests from the slice's scenarios: the happy path renders, and each rejection shows
     its message.
@@ -1783,6 +1844,12 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-24 | Read-your-writes is opt-in per read in `web/`: `afterWrite(position)` only for async (`database-projected`) read models (14.5) | Gary: inline and live read models are current when the command returns, so waiting is pointless there, and an unconsumed `If-None-Match` risks a 304 |
 | 2026-09-24 | The design-system snippet is compiled from `web/src/styles/design-system.css` (Tailwind v4 CLI, `@source` on `workspace.json`) by `npm run design-system`, on demand (14.5) | One stylesheet for the app and the board; Tailwind reads the mockups' class names from the model file, so no safelist. On demand, because it replaces a hand-picked starter snippet |
 | 2026-09-24 | Entity-oriented routing is deferred from the scaffold and recorded as an open decision before 14.6 composes pages (14.5) | Users think in entities, and ID attributes / DCB tags are their identity. A project's entities aren't known when `web/` is scaffolded |
+| 2026-09-24 | API routes are named after the model, 1:1: `POST /<command>` with every field in the body, `GET /<read-model>/:<id>`, `GET /<read-model>/<query>?…`; derived by emcli, `apiEndpoint` only an override that warns (14.5b, ADR-025) | A DCB command can span several tags, so it has no entity to nest under; in CQRS a read model isn't owned by an entity. Hand-typed routes had drifted three ways for one relationship |
+| 2026-09-24 | Commands are always POST; retries are made safe by the `Idempotency-Key` header, not the method. 204 + `ETag`, or 201 with generated fields; no `Location` (14.5b) | Having an identifier doesn't make a command idempotent (an `addSeats` with a `courseId` isn't), nearly every DCB command carries a tag ID, and every command already dedupes on the key. A command doesn't know which read model shows its result |
+| 2026-09-24 | Named queries keep their name in the path, under the read model (`/course-seats/available-courses`); the kit mounts query routes before the keyed GET (14.5b) | Filters alone (`/course-seats?min=1`) can't tell two queries with overlapping parameters apart |
+| 2026-09-24 | Page routes are entity-based and derived at export from each screen's contract, with a model override; they're unrelated to API URLs, and code generation joins them through the shared ID attribute (tag) names (14.6) | People see entities. The loop builds one slice at a time, so slices sharing a page must reach the same route deterministically |
+| 2026-09-24 | `session:` fields come from a stub current user in `web/` until real sign-in (14.6) | The kit has no authentication yet; the mockups deliberately have no input for these values |
+| 2026-09-24 | Existing routes migrated once before 14.6: model overrides cleared, code rewritten by hand in one `--no-verify` commit (14.5b) | The loop has no "rename a route" slice type, and the per-slice scope check can't pass a change that spans every slice |
 | 2026-09-24 | No new status: `planned` = passed the gate, `blocked` + the hand-off block = failed it; model `blocked` exports as `Created` | prooph board's statuses are a fixed set; the loop's own `Blocked` is sticky on disk, so a gate block must not become one |
 
 ## Progress
@@ -1801,5 +1868,5 @@ What each `build-*` skill generates and what it verifies:
 | 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 done (stale InProgress recovery in `--local` mode) |
 | 11 — Read Model Types | ✅ Complete | Async, inline and live read models from one fold definition, with an identical data shape across types (ADR-021/022). Proven on course-enrollment t5–t10: inline, a retype to live and back, a new live read model with a lookup |
 | 12 — Query Read Models | 🚧 In progress (top priority) | 12.1–12.3 done: ADR-023 query contract; emcli queries + `SPEC_QUERY` + `addQueries` re-queue; kit runtime (stored SQL + live, one semantics). Named queries on the read model element, the spec *when* references them, `{ data, cursor? }` pages; live needs a tag parameter |
-| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.3 done: native wireframes pushed and pulled (board links work in Connect), design system as a synced snippet. 14.4 done: the `event-model` skill's screen mode (contract → draft → edit → check → push → show); screen problems warn, one set of field exceptions. 14.4b done: manual §13, t13 on course-enrollment (five screens, board wireframes, snippet restyle). 14.4c done: hand-off gate, only information-complete slices reach the loop. 14.5 done: `web/` scaffold in the DCB kit (typed client from `/openapi.json`, opt-in read-your-writes for async read models, MSW mock mode, shell, one Tailwind design system for app and board snippet); entity-oriented routing recorded as an open decision. 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
+| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.3 done: native wireframes pushed and pulled (board links work in Connect), design system as a synced snippet. 14.4 done: the `event-model` skill's screen mode (contract → draft → edit → check → push → show); screen problems warn, one set of field exceptions. 14.4b done: manual §13, t13 on course-enrollment (five screens, board wireframes, snippet restyle). 14.4c done: hand-off gate, only information-complete slices reach the loop. 14.5 done: `web/` scaffold in the DCB kit (typed client from `/openapi.json`, opt-in read-your-writes for async read models, MSW mock mode, shell, one Tailwind design system for app and board snippet); entity-oriented routing recorded as an open decision. 14.5b done: API routes named after the model (ADR-025; emcli derives them, `POST /<command>`, `GET /<read-model>/:id`, `GET /<read-model>/<query>`), kit, course-enrollment and manual migrated; page routes decided (entity-based, derived at export) and `session:` from a stub current user. Next: 14.6 `build-screen`. 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
 | 7 — Board Re-pointing | ⛔ Dropped | eventmodelers board retired; prooph board via emcli is the only board |

@@ -168,7 +168,7 @@
       "tags": [],
       "aggregateDependencies": [],
       "createsAggregate": false,
-      "apiEndpoint": "GET /students/:studentId",
+      "apiEndpoint": "/student-details/{studentId}",
       "context": "INTERNAL",
       "modelContext": "enrollment",
       "domain": "Enrollment",

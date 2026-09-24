@@ -254,37 +254,40 @@ extendZodWithOpenApi(z)
 
 export const {CommandName}Schema = z
     .object({
-        // Fields from slice.json commands[].fields, excluding path params
+        // Every field from slice.json commands[].fields, except generated ones
         {field1}: z.string().min(1).openapi({ example: "{example}", description: "{description}" }),
         {field2}: z.number().int().min(1).openapi({ example: 30, description: "{description}" })
     })
     .openapi("{CommandName}Body")
 
 registerCommand({
-    method: "{post|put|patch|delete}",
-    path: "{the route's path, exactly as route.ts writes it, e.g. /courses/:courseId/capacity}",
+    method: "post",
+    path: "{commands[0].apiEndpoint, e.g. /change-course-capacity}",
     summary: "{the command's title from slice.json}",
     body: {CommandName}Schema,
-    success: "{createdId|createdUrl|noContent}",
+    success: "{noContent|created}",
+    // created: z.object({ {generatedField}: z.string() }),   // only with success: "created"
     errors: { {404|409|422}: "{the error text of the specifications that reject}" }
 })
 ```
 
-Only include body fields here. Path parameters (`:id` in the route) come from `req.params`, not the body;
-`registerCommand` documents them from the path.
+**The route is `commands[0].apiEndpoint`, always `POST`, every field in the body** (ADR-025: routes are named
+after the model, e.g. `POST /change-course-capacity {courseId, newCapacity}`). Never design a REST path, never
+put an ID in the path, and never use PUT/PATCH/DELETE: the endpoint in slice.json is the route. (Only if it was
+overridden in the model with `{param}` segments do those come from `req.params`, written `:param`.)
 
-- `success` names what the route answers with (Step 7): `Created({ createdId })` → `"createdId"`,
-  `Created({ url })` → `"createdUrl"`, `NoContent()` → `"noContent"`.
+- `success`: `"noContent"` (204) normally; `"created"` (201) when the command has `generated: true` fields, with
+  `created` the schema of those fields (Step 7).
 - `errors`: one entry per status the specifications' rejections produce (`NotFoundError` → 404,
   `IllegalStateError` / `ValidationError` → 422), described by their error text. Leave it out when no
   specification rejects. 400 for a bad body is added for you.
-- **No body** (a DELETE, or a command whose fields are all path parameters): leave out the Zod object and
-  `body`; `schema.ts` holds only `registerCommand`, and `route.ts` imports it with `import "./schema.js"`.
+- **No fields** (rare): leave out the Zod object and `body`; `schema.ts` holds only `registerCommand`, and
+  `route.ts` imports it with `import "./schema.js"`.
 
 The `openapi-registered` commit check rejects a route whose method and path aren't registered here, or a
 `route.ts` that doesn't import `./schema.js`.
 
-> **Generated fields**: Fields marked `generated: true` in events[] must NOT appear in the Zod schema — they are not user-supplied input.
+> **Generated fields**: Fields marked `generated: true` (in commands[] or events[]) must NOT appear in the Zod schema — they are not user-supplied input. A generated *command* field is made by the route (`crypto.randomUUID()`) and returned in the 201 body.
 
 ---
 
@@ -292,10 +295,12 @@ The `openapi-registered` commit check rejects a route whose method and path aren
 
 File: `src/contexts/{context}/slices/{slicename}/route.ts`
 
-### POST route (create/trigger):
+Every command route has this shape (ADR-025): `POST {commands[0].apiEndpoint}`, all fields from the body,
+`Idempotency-Key` dedupe, the position in `ETag`.
+
 ```typescript
 import { handle } from "@dcb-es/event-store"
-import { on, Created, withETag, getIdempotencyKey, validateBody, type WebApiSetup } from "@dcb-es/event-store-express"
+import { on, NoContent, withETag, getIdempotencyKey, validateBody, type WebApiSetup } from "@dcb-es/event-store-express"
 import type { SliceDependencies } from "../../../../shared/dependencies.js"
 import { findExistingPosition } from "../../../../shared/idempotency.js"
 import { {commandHandlerFn} } from "./decider.js"
@@ -306,7 +311,7 @@ export function configure{SliceName}Route(deps: SliceDependencies): WebApiSetup 
 
     return router => {
         router.post(
-            "/{resource}",
+            "{commands[0].apiEndpoint}",
             validateBody({CommandName}Schema),
             on(async req => {
                 const { {field1}, {field2} } = req.body
@@ -322,7 +327,7 @@ export function configure{SliceName}Route(deps: SliceDependencies): WebApiSetup 
                     ))
                 return res => {
                     withETag(position)(res)
-                    Created({ createdId: {field1} })(res)
+                    NoContent()(res)
                 }
             })
         )
@@ -330,17 +335,14 @@ export function configure{SliceName}Route(deps: SliceDependencies): WebApiSetup 
 }
 ```
 
-### PUT/DELETE route (update/remove):
-Replace `Created(...)` with `NoContent()` and adjust the HTTP method and path parameters accordingly.
-Without a body there's no `validateBody` and no schema import to use, so import the registration for its
-effect: `import "./schema.js"`.
-
-Import `NoContent` from `@dcb-es/event-store-express` for 204 responses.
-
-### Response helpers:
-- `Created({ createdId })` → 201 with `{ id }` body
-- `Created({ url })` → 201 with `Location` header
-- `NoContent()` → 204
+### Responses (ADR-025)
+- **204** `NoContent()`: the normal answer. The client reads the position from `ETag`.
+- **201** with the generated fields, when the command has `generated: true` fields: make them before `handle`
+  (`const {generatedField} = crypto.randomUUID()`, and pass them in `data`), then answer
+  `res.status(201).json({ {generatedField} })` after `withETag`. On an idempotent replay, return the same body
+  (read the generated value back from the recorded event, or derive it from the idempotency key).
+- **Never** `Created({ createdId })` or `Created({ url })`: they send a `Location` header, and a command doesn't
+  know which read model shows its result.
 
 ---
 
@@ -366,33 +368,33 @@ const spec = ApiSpecification.for({
     configureApi: (store: EventStore) => configure{SliceName}Route({ store, pool: {} as Pool })
 })
 
-describe("{HTTP method} /{route} — {slice title}", () => {
-    test("happy path returns {expectedStatus}", async () => {
+describe("POST {commands[0].apiEndpoint} — {slice title}", () => {
+    test("happy path returns 204", async () => {
         await spec
             .existingEvents(/* events that must be present for this command to succeed */)
-            .when(agent => agent.post("/{route}").send({ {field1}: "value", {field2}: 30 }))
+            .when(agent => agent.post("{commands[0].apiEndpoint}").send({ {field1}: "value", {field2}: 30 }))
             .then(
-                expectResponse({expectedStatus}, { body: { id: "value" }, headers: { etag: '"N"' } }),
+                expectResponse(204, { headers: { etag: '"N"' } }),
                 {emittedEventFactory}({ /* expected event data */ })
             )
     })
 
     test("returns 404 when {entity} not found", async () => {
         await spec
-            .when(agent => agent.post("/{route}").send({ {field1}: "nonexistent", {field2}: 30 }))
+            .when(agent => agent.post("{commands[0].apiEndpoint}").send({ {field1}: "nonexistent", {field2}: 30 }))
             .then(expectError(404))
     })
 
     test("returns 422 when business rule violated", async () => {
         await spec
             .existingEvents(/* events that trigger the rule */)
-            .when(agent => agent.post("/{route}").send({ {field1}: "value", {field2}: 30 }))
+            .when(agent => agent.post("{commands[0].apiEndpoint}").send({ {field1}: "value", {field2}: 30 }))
             .then(expectError(422))
     })
 
     test("returns 400 when required field missing", async () => {
         await spec
-            .when(agent => agent.post("/{route}").send({}))
+            .when(agent => agent.post("{commands[0].apiEndpoint}").send({}))
             .then(expectError(400))
     })
 })
@@ -419,7 +421,7 @@ import { getTestPgDatabasePool } from "@test/testPgDbPool"
 import { configure{SliceName}Route } from "./route.js"
 import { {existingEventFactory}, {emittedEventFactory} } from "../../Events.js"
 
-describe("{HTTP method} /{route} — {slice title} (Postgres integration)", () => {
+describe("POST {commands[0].apiEndpoint} — {slice title} (Postgres integration)", () => {
     let pool: Pool
     let eventStore: PostgresEventStore
 
@@ -455,8 +457,8 @@ describe("{HTTP method} /{route} — {slice title} (Postgres integration)", () =
         const app = createApp()
         const agent = supertest(app)
 
-        const res = await agent.post("/{route}").send({ /* command body */ })
-        expect(res.status).toBe({expectedStatus})
+        const res = await agent.post("{commands[0].apiEndpoint}").send({ /* command body */ })
+        expect(res.status).toBe(204) // 201 when the command has generated fields
 
         const newEvents = await streamAllEventsToArray(eventStore.read(Query.all()))
         // If prerequisite events were seeded, use { after: seedPosition } to skip them
@@ -489,7 +491,7 @@ describe("{HTTP method} /{route} — {slice title} (Postgres integration)", () =
         const app = createApp()
         const agent = supertest(app)
 
-        const res = await agent.post("/{route}").send({ /* command body */ })
+        const res = await agent.post("{commands[0].apiEndpoint}").send({ /* command body */ })
         expect(res.status).toBe({errorCode})
 
         const newEvents = await streamAllEventsToArray(
@@ -503,7 +505,7 @@ describe("{HTTP method} /{route} — {slice title} (Postgres integration)", () =
         const app = createApp()
         const agent = supertest(app)
 
-        const res = await agent.post("/{route}").send({ /* invalid body */ })
+        const res = await agent.post("{commands[0].apiEndpoint}").send({ /* invalid body */ })
         expect(res.status).toBe(400)
 
         const newEvents = await streamAllEventsToArray(eventStore.read(Query.all()))
