@@ -1,0 +1,117 @@
+/*
+ * The project's design system: one stylesheet for the app and for the board's wireframes.
+ *
+ * - web/ imports it (src/main.tsx), so components are styled by it.
+ * - `npm run design-system` compiles it (plus board.css) into ../snippets/design-system.html, the snippet every
+ *   mockup imports with <!-- @import design-system -->. After the next `emcli sync push`, the wireframes on the
+ *   board use the same classes and tokens as the app.
+ *
+ * Tailwind only emits the utilities it finds. It scans web/ by default, and the @source line below adds the
+ * model: a Tailwind class written in any mockup (they live in workspace.json) is compiled in, so it renders on
+ * the board as well as in the JSX built from that mockup.
+ */
+@import "tailwindcss";
+@source "../../../workspace.json";
+
+/* Tokens (shadcn/ui names). Change the look here; both the app and the board follow. */
+:root {
+    --radius: 0.625rem;
+    --background: #f6f7f9;
+    --foreground: #1f2937;
+    --card: #ffffff;
+    --card-foreground: #1f2937;
+    --primary: #2563eb;
+    --primary-foreground: #ffffff;
+    --secondary: #e5e7eb;
+    --secondary-foreground: #1f2937;
+    --muted: #f3f4f6;
+    --muted-foreground: #6b7280;
+    --accent: #eff6ff;
+    --accent-foreground: #1e40af;
+    --destructive: #dc2626;
+    --border: #d1d5db;
+    --input: #9ca3af;
+    --ring: #2563eb;
+}
+
+@theme inline {
+    --font-sans: system-ui, sans-serif;
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-destructive: var(--destructive);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+    --radius-sm: calc(var(--radius) - 4px);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+    body {
+        @apply bg-background text-foreground font-sans;
+    }
+}
+
+/*
+ * The classes emcli's drafted mockups use (mock-card, mock-list, mock-row, mock-check), with the look of emcli's
+ * plain starter. Plain elements are styled only inside a mock-card, and with :where(), so any utility class wins.
+ */
+@layer components {
+    .mock-card {
+        max-width: 560px;
+        margin: 0 auto 24px;
+        background: var(--card);
+        color: var(--card-foreground);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 20px 24px;
+    }
+    :where(.mock-card) h1 { font-size: 22px; font-weight: 700; margin: 0 0 12px; }
+    :where(.mock-card) h2 { font-size: 17px; font-weight: 600; margin: 0 0 12px; }
+    :where(.mock-card) p { margin: 0 0 8px; }
+    :where(.mock-card) label { display: block; font-size: 13px; font-weight: 600; margin: 10px 0 4px; }
+    :where(.mock-card) label.mock-check { font-weight: 400; }
+    :where(.mock-card) :is(input:not([type="checkbox"]), select, textarea) {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 7px 9px;
+        border: 1px solid var(--input);
+        border-radius: calc(var(--radius) - 4px);
+        font-size: 14px;
+        background: var(--card);
+    }
+    :where(.mock-card) button {
+        margin-top: 16px;
+        width: 100%;
+        padding: 9px;
+        border: 0;
+        border-radius: calc(var(--radius) - 4px);
+        background: var(--primary);
+        color: var(--primary-foreground);
+        font-size: 15px;
+        font-weight: 600;
+    }
+    :where(.mock-card) fieldset.mock-list { border: 1px dashed var(--input); border-radius: 6px; margin: 10px 0; padding: 6px 10px; }
+    .mock-row { display: flex; gap: 6px; margin: 4px 0; }
+    :where(.mock-card) dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
+    :where(.mock-card) dt { font-weight: 600; font-size: 13px; }
+    :where(.mock-card) dd { margin: 0; }
+    :where(.mock-card) table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    :where(.mock-card) :is(th, td) { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--secondary); }
+    :where(.mock-card) th { font-weight: 600; }
+}

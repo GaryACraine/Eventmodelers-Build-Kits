@@ -13,6 +13,20 @@ Read `src/contexts/` to understand the global structure. Events for each context
 - **Module System**: Use ES modules (import/export) with `.js` extensions in imports
 - **Type Safety**: Ensure all code is properly typed
 
+## Frontend (`web/`)
+
+`web/` is the project's React app: Vite, React 19, TypeScript, Tailwind CSS v4 + shadcn/ui, React Router,
+TanStack Query, React Hook Form + Zod, openapi-fetch (types generated from `/openapi.json`), Vitest + Testing
+Library + MSW. See `web/README.md`.
+
+- Backend slice work never touches `web/`. Only a slice's UI step does, and only when explicitly tasked to build
+  the UI.
+- The UI calls the backend only through `web/src/lib/api.ts`. `web/src/lib/api-types.ts` is regenerated
+  (`npm run gen:api`), never edited.
+- `afterWrite(position)` (read-your-writes) is only for **async** (`database-projected`) read models. Inline and
+  live ones are current when the command returns.
+- Mock data comes from the slice's scenario examples, never invented.
+
 ## Development Guidelines
 
 1. Each slice is self-contained under `src/contexts/{context}/slices/{slicename}/`

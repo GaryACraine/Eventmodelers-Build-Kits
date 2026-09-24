@@ -41,6 +41,17 @@ PG_CONNECTION_STRING=postgresql://dcb:dcb@localhost:5432/dcb npm start
 BASE_URL=http://localhost:3000 node dist/seed.js
 ```
 
+## Frontend (`web/`)
+
+A React app next to the backend, built by the loop from each slice's screen (see [web/README.md](web/README.md)):
+
+```bash
+cd web && npm install
+npm run gen:api     # typed client from the running backend's /openapi.json
+npm run dev         # http://localhost:5173 (start the backend with CORS_ORIGIN=http://localhost:5173)
+npm run dev:mock    # no backend: mock responses from the scenarios
+```
+
 ## API
 
 Once running, visit `http://localhost:3000/openapi.json` for the full OpenAPI document. Each slice registers its
