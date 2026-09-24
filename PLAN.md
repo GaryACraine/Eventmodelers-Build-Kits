@@ -252,7 +252,7 @@ routes and queries, the examples, and the scenarios. Use it to:
 | Bindings | `data-field="<field>"` (an input or shown value), `data-list="<field>"` (a repeated row), `data-command="<command>"` (the submit), `data-slice="<slice>"` (the part of a shared screen that belongs to a slice) | Generation becomes checkable: every binding must name a real field or command (`completeness` can check it), and the build skill can't invent inputs. |
 | ASCII and SVG wireframes | ASCII stays as the quick storm-mode sketch. `wireframe-sketch` isn't ported: a **sketch theme** for the rendered HTML gives the same look from the same source. | One source of truth. |
 | A frontend next to the backend? | **Yes: `web/` in the same repo, built by the same loop.** A slice with a screen gets its backend and then its UI in one pass (the UI step runs once the backend tests pass). The typed client is **generated from the backend's `/openapi.json`**. | The slice is the unit: its fields, route, examples and scenarios drive both halves, so they can't drift. One export, one loop, one PR per increment. Deployed separately (S3), so one repo costs nothing at deploy time. |
-| Frontend stack | **Vite + React 19 + TypeScript, Tailwind CSS + shadcn/ui (Radix), TanStack Query, React Router, React Hook Form + Zod, openapi-typescript + openapi-fetch, Vitest + Testing Library + MSW** | A static SPA build suits S3 + CloudFront, with no server. Code models write shadcn/Tailwind most reliably, and a Tailwind-classed HTML mockup becomes JSX almost mechanically (`class` → `className`). Components are copied into the repo, so there's no version lock-in. TanStack Query fits commands and queries: a mutation passes the returned position to `Prefer: wait`, then refreshes the query. Zod matches the backend's schemas. MSW serves the **scenario examples** as mock responses, replacing supabase-react's samples and adding the tests that stack lacks. Mantine was considered and rejected: it's less common in generated code, and mockups don't map to it as directly. |
+| Frontend stack | **Vite + React 19 + TypeScript, Tailwind CSS + shadcn/ui (Radix), TanStack Query, React Router, React Hook Form + Zod, openapi-typescript + openapi-fetch, Vitest + Testing Library + MSW** | A static SPA build suits S3 + CloudFront, with no server. Code models write shadcn/Tailwind most reliably, and a Tailwind-classed HTML mockup becomes JSX almost mechanically (`class` → `className`). Components are copied into the repo, so there's no version lock-in. TanStack Query fits commands and queries: a mutation passes the returned position to `Prefer: wait` **when the read model is async** (`database-projected`; inline and live ones are already current, 14.5), then refreshes the query. Zod matches the backend's schemas. MSW serves the **scenario examples** as mock responses, replacing supabase-react's samples and adding the tests that stack lacks. Mantine was considered and rejected: it's less common in generated code, and mockups don't map to it as directly. |
 | Cody (`cody-views`, RJSF) | Not adopted; borrow only the **default form from a schema** idea. | Cody is metadata for prooph's own engine, and its forms look generic. Without a mockup, a screen gets a draft form or list generated from its fields, as HTML the user can edit. |
 
 **Tasks**
@@ -728,13 +728,72 @@ routes and queries, the examples, and the scenarios. Use it to:
     - §13.4 shows 0 errors;
     - §17 has two troubleshooting rows;
     - §19 has `--force`.
-- [ ] **14.5 Frontend scaffold (DCB kit, `templates/root/web/`).**
-  - The stack above.
-  - `src/lib/api.ts` (the generated client, plus position → `Prefer: wait`); `npm run gen:api` from the backend's
-    `/openapi.json`.
-  - MSW handlers; an app shell (router, layout from the screen titles); `vite build` output for S3.
-  - `init-style-guide` / `learn-styleguide` ported from supabase-react.
-  - The kit's `CLAUDE.md` names the stack.
+- [x] **14.5 Frontend scaffold (DCB kit, `templates/root/web/`).** *(Done 2026-09-24.)*
+  - **What ships** (`web/`, copied at `init`; `web/README.md` explains it):
+    - the stack above;
+    - `src/lib/api.ts`: an openapi-fetch client typed by `src/lib/api-types.ts` (`npm run gen:api` from the
+      backend's `/openapi.json`) and an `Idempotency-Key` on every mutation;
+    - `command(...)` returns `{ data, position }` (position from `ETag`) and throws `ApiError` with the
+      Problem-JSON's detail;
+    - `read(...)`;
+    - `afterWrite(position)` sends `If-None-Match` + `Prefer: wait=5`. It's opt-in per read, for async read
+      models only (Gary, 2026-09-24): inline and live ones are current when the command returns, and an
+      unconsumed `If-None-Match` could turn a read into a 304;
+    - MSW: `src/mocks/handlers.ts` is empty until slices add theirs from scenario examples. `npm run dev:mock` runs
+      the app on the service worker; tests run on `msw/node` (unhandled requests fail);
+    - an app shell: `Layout` (header, nav, outlet), a home page, and `src/routes.tsx` as the one route list,
+      with no entity routes yet (see "Entity-oriented routing" below);
+    - `src/slices/` for `build-screen`;
+    - shadcn/ui (`components.json`, `cn()`, button, card, input, label, table);
+    - `init-style-guide` / `learn-styleguide` ported, pointing at the design system;
+    - the kit's `CLAUDE.md` names the stack. Backend slice work never touches `web/`.
+  - **How Tailwind reaches the snippet** (decided):
+    - `web/src/styles/design-system.css` holds `@import "tailwindcss"`, `@source "../../../workspace.json"`,
+      shadcn tokens, and the `mock-*` classes (emcli's plain look, plain elements styled only inside a
+      `mock-card` via `:where()` so utilities win);
+    - `npm run design-system` compiles it with the Tailwind CLI, adds `board.css` (page padding), and writes
+      `snippets/design-system.html`. Tailwind reads class names straight out of the model file, so a utility used
+      in any mockup renders on the board.
+  - **Kit wiring:**
+    - the root `vitest.config.ts` excludes `web/**`;
+    - the root README has a Frontend section;
+    - `start-empty.sh` leaves `web/` alone.
+  - **Proof: course-enrollment `3e17e9a`** (`web/` copied in; loop *waiting* before and after):
+    - `npm install`;
+    - `gen:api` from the live backend gave types for all 12 routes;
+    - `npm run build` (tsc -b + vite) is clean;
+    - `npm test` 4/4 (the shell renders; `command` position + Idempotency-Key; `ApiError` from Problem-JSON;
+      `afterWrite` headers);
+    - root tsc is clean and the backend's vitest finds no `web/` tests.
+    - Chrome, live mode (the page on :5173, the backend on :3000 with `CORS_ORIGIN`):
+      - `read(api.GET("/available-courses", …))` returned the 6 courses; a missing query param surfaced as
+        `ApiError("Missing required parameter …")`;
+      - `/courses/c1` with `afterWrite` passed CORS preflight. It sent no ETag and didn't apply the wait:
+        it's a current read model, the case where 14.6 won't send the headers.
+    - Chrome, mock mode: the service worker controls the page, and MSW intercepts API calls (warns on unhandled).
+    - `npm run design-system --out <scratch>` gave 13 KB. The real Course Page and Available Courses mockups
+      rendered with it in plain style. A card's `h1` lost its size under Tailwind's reset until the `mock-card`
+      rules added `h1`/`p`.
+    - The board snippet is untouched: course-enrollment keeps its sketch look until someone runs the script.
+  - **Findings:**
+    - openapi-fetch captures `fetch` when the client is created, before MSW patches it in tests. The client now
+      looks `fetch` up per request.
+    - `openapi-typescript` 7.13 needs TypeScript 5 (`web/` pins `~5.9`; TypeScript 7 is current).
+    - In course-enrollment, `/courses` is POST-only; the course list is `/available-courses?minRemainingSeats=`.
+    - The backend's routes are already entity-shaped (`/courses/{courseId}`, `/students/{studentId}/…`), which
+      supports the routing decision below.
+- **Open decision: entity-oriented routing** (Gary, 2026-09-24; not decided yet, deliberately not in the scaffold).
+  - People see a system as entities (a course, a student), so the app's routes should read that way
+    (`/courses`, `/courses/:courseId`), even though the backend persists events.
+  - DCB has no aggregate streams, but ID attributes map to DCB **tags**, which are an entity's identity. The
+    backend's read routes already follow them.
+  - **When:** once a model's entities are known, and before 14.6 composes pages from screens. The scaffold
+    can't know them, so it ships `src/routes.tsx` with no entity routes and a comment pointing here.
+  - **Questions to settle then:**
+    - do tags / ID attributes become route params mechanically, or does the model name its entities;
+    - is it one page per entity, with lists as index routes;
+    - where does a screen that isn't about one entity (a dashboard) go;
+    - how does the screen title map to a route.
 - [ ] **14.6 Build skills for screens.**
   - `build-screen` runs after `build-state-change` / `build-state-view` when the slice has a screen.
   - One component per command: a form, props = fields, React Hook Form + Zod from the generated types, rejections
@@ -743,7 +802,10 @@ routes and queries, the examples, and the scenarios. Use it to:
     its mockup has no input. But the DCB kit has no sign-in and doesn't read mappings, and the route still takes
     `studentId` in the body. The frontend needs a source for session values: at first a stub "current user"
     setting in `web/`, later real authentication (and possibly the backend taking the id from the session).
-  - One component per read model: a view or list through TanStack Query.
+  - One component per read model: a view or list through TanStack Query. After its own write, a page reads an
+    **async** (`database-projected`) read model with `afterWrite(position)`, and any other read model without it
+    (the type is in slice.json; 14.5).
+  - Pages and routes follow the entity-routing decision above (settle it first).
   - Mockup → JSX 1:1; pages composed by screen title.
   - MSW handlers and component tests from the slice's scenarios: the happy path renders, and each rejection shows
     its message.
@@ -1718,6 +1780,9 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-24 | `completeness` checks a command's issuer (a screen or an automation) before its fields; no issuer is one WARN, not an ERROR per field; the automation link stays `relates-to` | Gary: commands come from a screen or an automation. A missing issuer is one gap, not one per field; renaming the automation link would change the kit's automation export, so it waits until an automation first goes through the loop |
 | 2026-09-24 | emcli enforces the hand-off gate per slice: `slice status planned` blocks an incomplete slice (reasons in its board details), and `workspace export --build-kit` holds back any that fail without editing the model; errors block, warnings never; `--force` overrides (14.4c) | The loop runs unattended, so it must only get what it can build. Per slice, because slices are isolated: one incomplete slice shouldn't stop the rest. The export is the single choke point: only it writes the loop's queue |
 | 2026-09-24 | A slice waits on its prerequisites (an extension's origin, the slices recording its events, an automation's command slice) when they're held back, blocked, or not built or queued | Slices are isolated in the model but not in code; building a dependent first wastes the cycle the gate exists to save |
+| 2026-09-24 | Read-your-writes is opt-in per read in `web/`: `afterWrite(position)` only for async (`database-projected`) read models (14.5) | Gary: inline and live read models are current when the command returns, so waiting is pointless there, and an unconsumed `If-None-Match` risks a 304 |
+| 2026-09-24 | The design-system snippet is compiled from `web/src/styles/design-system.css` (Tailwind v4 CLI, `@source` on `workspace.json`) by `npm run design-system`, on demand (14.5) | One stylesheet for the app and the board; Tailwind reads the mockups' class names from the model file, so no safelist. On demand, because it replaces a hand-picked starter snippet |
+| 2026-09-24 | Entity-oriented routing is deferred from the scaffold and recorded as an open decision before 14.6 composes pages (14.5) | Users think in entities, and ID attributes / DCB tags are their identity. A project's entities aren't known when `web/` is scaffolded |
 | 2026-09-24 | No new status: `planned` = passed the gate, `blocked` + the hand-off block = failed it; model `blocked` exports as `Created` | prooph board's statuses are a fixed set; the loop's own `Blocked` is sticky on disk, so a gate block must not become one |
 
 ## Progress
@@ -1736,5 +1801,5 @@ What each `build-*` skill generates and what it verifies:
 | 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 done (stale InProgress recovery in `--local` mode) |
 | 11 — Read Model Types | ✅ Complete | Async, inline and live read models from one fold definition, with an identical data shape across types (ADR-021/022). Proven on course-enrollment t5–t10: inline, a retype to live and back, a new live read model with a lookup |
 | 12 — Query Read Models | 🚧 In progress (top priority) | 12.1–12.3 done: ADR-023 query contract; emcli queries + `SPEC_QUERY` + `addQueries` re-queue; kit runtime (stored SQL + live, one semantics). Named queries on the read model element, the spec *when* references them, `{ data, cursor? }` pages; live needs a tag parameter |
-| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.3 done: native wireframes pushed and pulled (board links work in Connect), design system as a synced snippet. 14.4 done: the `event-model` skill's screen mode (contract → draft → edit → check → push → show); screen problems warn, one set of field exceptions. 14.4b done: manual §13, t13 on course-enrollment (five screens, board wireframes, snippet restyle). 14.4c done: hand-off gate, only information-complete slices reach the loop. 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
+| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.3 done: native wireframes pushed and pulled (board links work in Connect), design system as a synced snippet. 14.4 done: the `event-model` skill's screen mode (contract → draft → edit → check → push → show); screen problems warn, one set of field exceptions. 14.4b done: manual §13, t13 on course-enrollment (five screens, board wireframes, snippet restyle). 14.4c done: hand-off gate, only information-complete slices reach the loop. 14.5 done: `web/` scaffold in the DCB kit (typed client from `/openapi.json`, opt-in read-your-writes for async read models, MSW mock mode, shell, one Tailwind design system for app and board snippet); entity-oriented routing recorded as an open decision. 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
 | 7 — Board Re-pointing | ⛔ Dropped | eventmodelers board retired; prooph board via emcli is the only board |

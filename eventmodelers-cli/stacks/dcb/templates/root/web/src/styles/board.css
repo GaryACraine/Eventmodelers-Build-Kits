@@ -1,0 +1,6 @@
+/*
+ * Board-only additions to the snippet (`npm run design-system` appends this; the app doesn't load it).
+ * A wireframe is a page on its own, with no app layout around it: give it the page's padding and a heading style.
+ */
+body { margin: 0; padding: 24px; }
+body > h1 { font-size: 22px; font-weight: 700; max-width: 560px; margin: 0 auto 16px; }
