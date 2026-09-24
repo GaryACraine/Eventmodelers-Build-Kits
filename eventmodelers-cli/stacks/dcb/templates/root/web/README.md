@@ -9,7 +9,8 @@ here (`src/slices/<slice>/`), written by the build loop from the screen's mockup
 
 ```bash
 npm install
-npm run gen:api        # types for every backend route, from http://localhost:3000/openapi.json (API_URL=… for another)
+npm run gen:api        # types for every backend route, from ./openapi.json (the root's `npm run gen:api` writes it
+                       # from the code, no backend needed); API_URL=http://localhost:3000 to use a running backend
 npm run dev            # against the backend (VITE_API_BASE in .env; the backend needs CORS_ORIGIN=http://localhost:5173)
 npm run dev:mock       # no backend: MSW answers from src/mocks/handlers.ts (the scenario examples)
 npm test               # component tests, answered by MSW

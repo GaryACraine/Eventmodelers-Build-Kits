@@ -64,7 +64,9 @@ Inspect `sliceStatus`:
 
 6. Stage the slice's changes and run `npm run run:checks -- --staged`. The pre-commit hook runs the same checks, including the slice's tests. **Never commit over a failing check**, and never use `--no-verify`. Fix the code, or if a check itself is wrong, set the slice to Blocked with the check output as the reason and stop. Then commit: `feat: [Slice Name]`. Commit `src/index.ts` wiring separately (blocked-paths). Stay on the current branch.
 
-7. Call `/update-slice-status` to set the slice to `Done`.
+7. **The screen.** If slice.json's `screens[]` has an entry with a `mockup`, invoke `/build-screen` and follow it completely, then commit the screen on its own: `feat: [Slice Name] screen` (same checks, same rules). If slice.json has `buildScreen`, or the slice's backend commit (`feat: [Slice Name]`) is already in `git log`, skip steps 3–6: the backend is built, build only the screen.
+
+8. Call `/update-slice-status` to set the slice to `Done`.
 
 #### `InProgress` — skip
 Another agent is building this slice. Log and skip.

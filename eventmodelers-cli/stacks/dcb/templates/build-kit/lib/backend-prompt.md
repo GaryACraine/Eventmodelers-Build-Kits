@@ -20,6 +20,10 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
    **If no slice has status "Planned"**, reply `<promise>NO_TASKS</promise>` and stop.
    **Claim conflict**: the board rejects the update if the slice is already `InProgress` — another agent claimed it. Pick the next "Planned" slice instead.
 5. Read the slice definition from `.build-kit/.slices/<contextName>/<folder>/slice.json`.
+   **Is its backend already built?** Yes when slice.json has `buildScreen` (the model changed only its screen), or
+   when `git log --oneline -i -E --grep="^feat: \[?<slice title>\]?$"` (with or without brackets; not the `… screen` commit) finds the slice's backend commit and its folder under
+   `src/contexts/` exists (an earlier run committed the backend, then stopped or was blocked at the screen). Then
+   skip steps 6–9: don't rebuild the backend on top of itself. Go to step 10.
 6. Determine the slice type and invoke the matching skill as defined in `.build-kit/CLAUDE.md`. Do NOT implement manually.
 7. Implement the slice using the skill. Make sure:
    - All fields come from slice.json only
@@ -29,10 +33,13 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
    - OpenAPI via each slice's `schema.ts` (`registerCommand` / `registerRead`, or `readModelRoute`'s `schema`), not JSDoc
 8. Run quality checks: `npm run build`, then the slice tests only.
 9. Stage the slice's changes and run the commit checks: `npm run run:checks -- --staged`. The pre-commit hook runs the same checks, including the slice's tests. **Never commit over a failing check.** Don't call a violation a false positive and don't use `--no-verify`. Fix the code, or if the check itself is wrong, set the slice to Blocked with the check output as the reason and stop. Then commit: `feat: [Slice Name]`. Commit `src/index.ts` wiring separately (blocked-paths).
-10. Update the PRD: set `status: Done` in `index.json` **and** update via `update-slice-status` skill.
-11. Append progress to `progress.txt`.
-12. Append new learnings to `.build-kit/AGENTS.md`.
-13. Finish the iteration.
+10. **The screen.** If slice.json's `screens[]` has an entry with a `mockup`, invoke `/build-screen` and follow it completely (it regenerates the API types from the code: no backend needs to run). It commits the screen on its own, `feat: [Slice Name] screen`, through the same hook (`web-scope`, `web-tests`), with the same rule: never commit over a failing check. If the screen can't pass, set the slice to Blocked with the check output as the reason and stop. The backend commit stays; planning the slice again later builds only the screen. A slice with no screen, or a screen with no mockup, has nothing to do here.
+11. Update the PRD: set `status: Done` in `index.json` **and** update via `update-slice-status` skill.
+12. Append progress to `progress.txt`.
+13. Append new learnings to `.build-kit/AGENTS.md`.
+14. Finish the iteration.
+
+**Setting a slice to Blocked** (steps 9, 10 or a skill's escalation): in `index.json`, set `status: "Blocked"`, `blockedReason` (the check output or the question, in short) and `blockedAt` (the current time, ISO 8601). The model plans it again after the fix, and the export queues it again only when that planning came after `blockedAt`.
 
 ## Escalating Ambiguity
 

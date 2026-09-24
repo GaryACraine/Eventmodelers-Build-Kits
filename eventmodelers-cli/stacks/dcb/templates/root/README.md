@@ -46,8 +46,9 @@ BASE_URL=http://localhost:3000 node dist/seed.js
 A React app next to the backend, built by the loop from each slice's screen (see [web/README.md](web/README.md)):
 
 ```bash
-cd web && npm install
-npm run gen:api     # typed client from the running backend's /openapi.json
+cd web && npm install && cd ..
+npm run gen:api     # typed client from the code's routes: no database or running backend needed
+cd web
 npm run dev         # http://localhost:5173 (start the backend with CORS_ORIGIN=http://localhost:5173)
 npm run dev:mock    # no backend: mock responses from the scenarios
 ```

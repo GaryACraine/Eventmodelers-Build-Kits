@@ -19,9 +19,10 @@ Read `src/contexts/` to understand the global structure. Events for each context
 TanStack Query, React Hook Form + Zod, openapi-fetch (types generated from `/openapi.json`), Vitest + Testing
 Library + MSW. See `web/README.md`.
 
-- Backend slice work never touches `web/`. Only a slice's UI step does, and only when explicitly tasked to build
-  the UI: invoke `/build-screen` (slice.json has `screens[]` with a `mockup`), after the backend is committed.
+- Backend slice work never touches `web/`. Only a slice's UI step does: `/build-screen`, when slice.json has a
+  `screens[]` entry with a `mockup`, after the backend is committed (the loop runs it; see "Building a Slice").
   It builds `web/src/slices/{slicename}/` and the page the screen is on (`web/src/pages/`), and commits it on its own.
+  A screen with no mockup isn't built: the model adds the mockup later, and the export queues the screen then.
 - The UI calls the backend only through `web/src/lib/api.ts`, on slice.json's `apiEndpoint` paths.
   `web/src/lib/api-types.ts` is regenerated (`npm run gen:api`), never edited.
 - A page's URL is slice.json's `screens[].page.route` (entity-shaped, for people). It is never an API path, and
@@ -47,7 +48,7 @@ Only check `src/contexts/{context}/slices/{slicename}/*.ts`, do not check subfol
 
 Ignore case for contexts and slices in prompts.
 
-Do not change files with tests unless explicitly instructed, or the change brings the test in line with slice.json: `*.tests.ts`. An extension slice appending its own `describe` block to its origin's `route.tests.ts` is explicitly instructed (build-state-view, E4), and so is a slice with `addQueries` appending one query block per added query (A5); existing tests there stay untouched.
+Do not change files with tests unless explicitly instructed, or the change brings the test in line with slice.json: `*.tests.ts`. An extension slice appending its own `describe` block to its origin's `route.tests.ts` is explicitly instructed (build-state-view, E4), and so is a slice with `addQueries` appending one query block per added query (A5); existing tests there stay untouched. A screen's own `web/src/slices/{slicename}/*.test.tsx` are `build-screen`'s output: a `buildScreen: "changed"` rebuild updates them to the new mockup.
 
 At the start of every session, read `.build-kit/AGENTS.md` if it exists to load accumulated project learnings.
 
@@ -80,10 +81,17 @@ When asked to build a slice, always follow this flow:
    - **Extension** — a state-view slice whose slice.json has an `extends` block. It grows a read model an
      earlier slice built (its read model is a board copy, `linkedTo` the origin) → `/build-state-view`,
      which edits the **origin** slice's projection, route and tests in place (its Step 0 decides this).
+   - **Screen only** — slice.json has `buildScreen` (`"added"` or `"changed"`): the model added or changed the
+     screen of a slice that is already built. Skip the backend entirely → invoke `/build-screen` (its "A screen
+     added or changed" section). So does a slice whose backend commit (`feat: [Slice Name]`) is already in
+     `git log`: an earlier run stopped or was blocked at the screen.
 3. Invoke the matching skill and follow its instructions completely. Do not deviate.
 4. **Verify against slice.json**: After the skill completes, diff slice.json against the code field by field. No invented fields — if it is not in slice.json, it must not be in the code.
 5. Run quality checks (`npm run build`, then the slice tests only).
-6. If checks pass, commit with `feat: [Slice Name]` and set slice status to `Done`.
+6. If checks pass, commit with `feat: [Slice Name]`.
+7. **Screen** — if slice.json's `screens[]` has an entry with a `mockup`, invoke `/build-screen`: it builds the
+   slice's UI and commits it on its own (`feat: [Slice Name] screen`).
+8. Set slice status to `Done`. When blocked instead, record `blockedReason` and `blockedAt` with the status.
 
 After you are done, automatically run the tests for the slice that was edited.
 
