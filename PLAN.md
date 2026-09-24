@@ -565,12 +565,45 @@ routes and queries, the examples, and the scenarios. Use it to:
       unpushed local draft survived a pull.
     - A chapter with only a user lane pushed cleanly (first run found the system-lane rule; fixed, re-run clean).
   - **For Alexander:** a missing snippet slug answers 500 rather than 404.
-- [ ] **14.4 The `event-model` skill: screen mode.**
+- [x] **14.4 The `event-model` skill: screen mode.** *Done 2026-09-24 (emcli `82060b9`).*
   - Ask what the person sees (which read models it displays) and does (which commands it submits). Wire those as
-    dependencies first (14.2b), then draft, edit (Tailwind classes, bindings), check, push, and show the board
+    dependencies first (14.2b), then draft, edit (bindings, design-system classes), check, push, and show the board
     wireframe.
   - A shared screen is one screen title per page, with `data-slice` regions.
   - `ascii-mockups` stays retired once screen mode covers it.
+  - **What landed (emcli skill `event-model`):**
+    - `references/screens.md` rewritten as screen mode: contract → draft → edit → check → push → show.
+      - The contract comes first: ask what the person sees (displays) and does (submits). An answer with no
+        matching element is a slice-mode gap, and a `--draft` suggestion is checked with the person before it runs.
+      - The edit rules: every required command field gets an input (hidden for values from the page or session),
+        field examples are the sample values, styling uses the design system's classes, and there are no scripts.
+        States are slices.
+      - The check table gives each real message and its fix. Push and show: where to look on the board, and
+        **Connect**.
+      - Shared pages: one card per slice with the same name, at most one command per card. A `data-slice` region
+        shows another slice's read model as context, and needs a `displays` dependency.
+    - `SKILL.md` has a **Screen** mode row. The cookbook has a Screens section.
+    - Screen → command is `submits` everywhere; the cookbook and `slicing.md` still said `relates-to`.
+    - `method.md`: a screen displays read models and submits at most one command. `review.md` has a Screens
+      checklist. The retired `ascii-mockups` note points to screen mode.
+  - **Found and fixed while walking it (emcli):**
+    - **Names resolved across chapters:** `dependency add "course details/CourseDetails" …` was ambiguous
+      because the Enrollment chapter has the same slice. The skill then fell back to IDs, breaking its "names,
+      not IDs" rule. `resolveAnyElement` now prefers the context chapter (`preferChapterId`), for both names and
+      `<slice>/` qualifiers. A name that only another chapter has still resolves there. The `--draft`
+      suggestions now print names.
+    - `snippet list` without board credentials threw a stack trace. It now lists the local files.
+  - **Tests:** 246/246 (2 new, on the chapter preference).
+  - **Walked** on scratch copies of course-enrollment's model (the Course Enrollment chapter has no screens yet),
+    running the skill's own commands verbatim:
+    - two `Course Page` cards (course details: displays `CourseDetails`; subscribe student: submits
+      `subscribeStudent`) were drafted;
+    - the subscribe card's part was edited to sit under the course title, as a `data-slice` region with hidden
+      ids;
+    - the check caught the region before its `displays` link existed, then passed.
+    - `completeness` dropped from 21 to 19 errors: the command's fields now come from the mockup's inputs. The
+      other 19 are lineage gaps already in that chapter.
+  - Board push isn't repeated here: 14.3 proved it live, and 14.4b replays the whole flow on the board.
 - [ ] **14.4b Manual: screens in the model (increment t13 on course-enrollment).** A new manual section, verified by
   replaying it:
   - give the Enrollment chapter's slices screens and wire their dependencies;
@@ -578,6 +611,8 @@ routes and queries, the examples, and the scenarios. Use it to:
   - push, see native wireframes on the board, and restyle every screen through one design-system snippet.
   - It's usable before any frontend exists. Also update §1 (a slice now includes its screen), §2 (tools) and §18
     (commands).
+  - Run `completeness` on the chapter first and say which errors were already there: the manual should show screen
+    problems only, with the chapter's own lineage gaps named as such.
 - [ ] **14.5 Frontend scaffold (DCB kit, `templates/root/web/`).**
   - The stack above.
   - `src/lib/api.ts` (the generated client, plus position → `Prefer: wait`); `npm run gen:api` from the backend's
@@ -1551,6 +1586,9 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-23 | DCB gets an `openapi-registered` check after all (supersedes "omit `60-openapi-annotation`") | The client is generated from `/openapi.json`, so a missing route is a frontend bug. The check reads `registerCommand`/`registerRead` and `readModelRoute`'s `schema:`, not JSDoc |
 | 2026-09-23 | `readModelRoute`'s `schema` is optional in the type and required by the check | Required in the type, the kit update breaks tsc in existing projects, and no single per-slice backfill commit can pass tsc-build. The check still covers every slice a commit touches |
 | 2026-09-23 | CORS is a kit middleware reading `CORS_ORIGIN`, not the `cors` package | ~25 lines, no new dependency; it must expose `ETag` for read-your-writes, which a default `cors()` doesn't |
+| 2026-09-24 | One screen card per slice, at most one command per card; a page is the cards sharing a name, and `data-slice` regions only show another slice's read model as context (14.4) | The loop builds slice by slice, and the export carries each slice's own screens. A whole-page mockup on one card would hold other slices' parts where their builds can't see them, and would break the "one command per screen" rule |
+| 2026-09-24 | Mockups are styled with the design-system snippet's classes, not Tailwind utilities, until 14.5 ships a precompiled Tailwind design system (14.4) | The board draws mockups sandboxed with no scripts, so utility classes render only if the snippet's CSS contains them |
+| 2026-09-24 | Element names that match in several chapters resolve to the context chapter (emcli `preferChapterId`) | Projects keep a legacy chapter beside the current one (Enrollment and Course Enrollment share slice names), and the skill must use names, not IDs |
 
 ## Progress
 
@@ -1568,5 +1606,5 @@ What each `build-*` skill generates and what it verifies:
 | 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 done (stale InProgress recovery in `--local` mode) |
 | 11 — Read Model Types | ✅ Complete | Async, inline and live read models from one fold definition, with an identical data shape across types (ADR-021/022). Proven on course-enrollment t5–t10: inline, a retype to live and back, a new live read model with a lookup |
 | 12 — Query Read Models | 🚧 In progress (top priority) | 12.1–12.3 done: ADR-023 query contract; emcli queries + `SPEC_QUERY` + `addQueries` re-queue; kit runtime (stored SQL + live, one semantics). Named queries on the read model element, the spec *when* references them, `{ data, cursor? }` pages; live needs a tag parameter |
-| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.3 done: native wireframes pushed and pulled (board links work in Connect), design system as a synced snippet 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
+| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.3 done: native wireframes pushed and pulled (board links work in Connect), design system as a synced snippet. 14.4 done: the `event-model` skill's screen mode (contract → draft → edit → check → push → show). 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
 | 7 — Board Re-pointing | ⛔ Dropped | eventmodelers board retired; prooph board via emcli is the only board |
