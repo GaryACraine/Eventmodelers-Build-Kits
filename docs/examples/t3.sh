@@ -29,7 +29,7 @@ emcli spec step add then error "Student is not subscribed" >/dev/null
 emcli slice add "course details unsubscriptions" >/dev/null
 emcli element copy CourseDetails \
   --slice "course details unsubscriptions" --lane Enrollment >/dev/null
-emcli element field add "course details unsubscriptions/CourseDetails" subscribedStudents Custom --cardinality List --subfields "studentId:String,name:String" >/dev/null
+emcli element field add "course details unsubscriptions/CourseDetails" subscribedStudents Custom --cardinality List --subfields "studentId:String,name:String" --mapping "derived:studentWasSubscribed less studentWasUnsubscribed, name from studentWasRegistered" >/dev/null
 for e in courseWasRegistered courseCapacityWasChanged studentWasRegistered studentWasSubscribed studentWasUnsubscribed; do emcli dependency add "$e" "course details unsubscriptions/CourseDetails" hydrates >/dev/null; done
 
 emcli use slice "course details unsubscriptions" >/dev/null

@@ -405,6 +405,20 @@ emcli slice status "register course" planned
 emcli slice status "course details" planned
 ```
 
+> **Only complete slices reach the loop.** The loop runs unattended, so planning checks the slice first.
+> - **What blocks a slice:** `emcli completeness` errors, such as a field with no source or a mockup binding
+>   that names nothing. Warnings never block.
+> - **What happens:** the slice becomes **blocked** instead of planned, with the reasons printed. `sync push`
+>   shows them in the slice's details on the board.
+> - **Slices wait for each other.** A slice also waits when a slice it builds on is blocked, or isn't built or
+>   planned. For example, a read model waits for the slice that records its events.
+> - **The fix:** fix the model and plan it again.
+> - **The export checks too.** It holds back any planned slice that has since stopped passing, and never edits
+>   the model.
+>
+> Both t0 slices pass. `emcli completeness` does warn that nothing issues `registerCourse` yet (no screen), but
+> warnings never block.
+
 **Push to the board** so your team or client can see it:
 
 ```bash
@@ -839,12 +853,14 @@ emcli slice add "course details subscriptions"
 emcli element copy CourseDetails \
   --slice "course details subscriptions" --lane Enrollment
 emcli element field add "course details subscriptions/CourseDetails" subscribedStudents Custom --cardinality List \
-  --subfields "studentId:String,name:String" --example '[{"studentId":"s1","name":"Ada"}]'
+  --subfields "studentId:String,name:String" --example '[{"studentId":"s1","name":"Ada"}]' \
+  --mapping "derived:studentWasSubscribed, name from studentWasRegistered"
 for e in courseWasRegistered courseCapacityWasChanged studentWasRegistered studentWasSubscribed; do emcli dependency add "$e" "course details subscriptions/CourseDetails" hydrates; done
 ```
 
-`Custom` + `--cardinality List` + `--subfields` describes a list of `{ studentId, name }` objects. All four
-events are wired (cumulative). emcli will report `studentWasRegistered` and `studentWasSubscribed` as added,
+`Custom` + `--cardinality List` + `--subfields` describes a list of `{ studentId, name }` objects. No event
+carries the list itself, since it's built up from them, so `--mapping derived:…` says where it comes from.
+Without a source, planning would block the slice (§5.4). All four events are wired (cumulative). emcli will report `studentWasRegistered` and `studentWasSubscribed` as added,
 measured against the *previous copy*, not the origin.
 
 ```bash
@@ -1100,8 +1116,9 @@ emcli slice add "course seats"
 emcli element add "course seats" Enrollment information CourseSeats
 emcli element field add CourseSeats courseId String --id --example c1
 emcli element field add CourseSeats capacity Int --example 30
-emcli element field add CourseSeats subscriptionCount Int --example 0
-emcli element field add CourseSeats remainingSeats Int --example 30
+emcli element field add CourseSeats subscriptionCount Int --example 0 \
+  --mapping "derived:count(studentWasSubscribed) - count(studentWasUnsubscribed)"
+emcli element field add CourseSeats remainingSeats Int --example 30 --mapping "derived:capacity - subscriptionCount"
 for e in courseWasRegistered studentWasSubscribed studentWasUnsubscribed; do emcli dependency add "$e" CourseSeats hydrates; done
 emcli element update CourseSeats --api-endpoint "/courses/{courseId}/seats" \
   --read-model-type inline-projected
@@ -1382,7 +1399,8 @@ emcli element add "student subscriptions" Enrollment information StudentSubscrip
 emcli element field add StudentSubscriptions studentId String --id --example s1
 emcli element field add StudentSubscriptions name String --example Ada
 emcli element field add StudentSubscriptions courses Custom --cardinality List \
-  --subfields "courseId:String,title:String" --example '[{"courseId":"c1","title":"Math"}]'
+  --subfields "courseId:String,title:String" --example '[{"courseId":"c1","title":"Math"}]' \
+  --mapping "derived:studentWasSubscribed less studentWasUnsubscribed, title from courseWasRegistered/courseTitleWasChanged"
 for e in courseWasRegistered courseTitleWasChanged studentWasRegistered studentWasSubscribed studentWasUnsubscribed; do emcli dependency add "$e" StudentSubscriptions hydrates; done
 emcli element update StudentSubscriptions --api-endpoint "/students/{studentId}/subscriptions" --read-model-type live-report
 ```
@@ -1852,17 +1870,15 @@ emcli completeness "Course Enrollment"
   imports: design-system
   Every binding names a field, list, command or slice in scope.
 
-Summary: 8 error(s), 4 warning(s) across 10 slice(s)
+Summary: 0 error(s), 4 warning(s) across 4 slice(s)
 ```
 
-None of what's left is about a screen:
+There are no errors, and none of the warnings is about a screen:
 - **4 warnings: commands that nothing issues yet.** A command comes from a screen that submits it, or an
   automation that issues it. `changeCourseCapacity`, `registerStudent`, `unsubscribeStudent` and
   `changeCourseTitle` have neither yet, so each gets one warning. Before t13, `registerCourse` and
   `subscribeStudent` had the same warning. Now their screens' inputs are their fields, and the student comes from
   the session.
-- **8 errors: read model fields with no source.** Fields such as `remainingSeats` are computed from events, and
-  aren't marked `--mapping derived:…` yet. They were there before t13.
 
 A command that a screen submits, before the screen has a mockup, gets one warning as well: its fields will come
 from the mockup's inputs. A command an automation issues is checked against the automation's fields.
@@ -2206,6 +2222,8 @@ instantaneous in this example, and it grows with your event store.
 | the loop builds nothing | no `planned` slices in the current context, or the export was skipped | set status `planned`, `sync push`, commit, then `workspace export --build-kit … --chapter …` |
 | a slice stays `Created` | it's `draft` in the model | `emcli slice status … planned`, then re-export |
 | a Done slice doesn't rebuild after re-planning | loop-owned statuses win on export | model the change as a new copy/extension slice |
+| `slice status … planned` sets it **blocked** instead | the slice isn't information complete (a `completeness` error), or waits on a slice that's blocked or not built or planned | fix what it lists (also in the slice's board details after `sync push`), then plan it again. `--force` plans it anyway |
+| the export says **Held back … planned slice(s)** | a planned slice stopped passing the check after it was planned, or was planned on the board | fix what it lists and export again. The slice stays planned in the model; it just isn't queued. `--force` queues it anyway |
 | a slice goes **Blocked** | a check failed and the agent couldn't fix it | read the reason in `.build-kit/.slices/<ctx>/index.json`, fix the model or code, set it back to `planned` |
 | commit rejected: `[slice-tests]` | a test fails | fix it. The message names the failing scenario |
 | commit rejected: `[extension-additive]` | an extension changed existing projection code | keep extensions to additions only |
@@ -2383,11 +2401,11 @@ left out once `emcli use chapter` / `use slice` / `use spec` has set them (§4, 
 | `emcli spec step add [<chapter> <slice> <spec>] <phase> <type> <name> --link --seed-examples` | add a Given/When/Then step linked to the named element, seeded with its examples (`when query <name> --link <readmodel>` runs a query; `then error "<message>"` is a rejection) |
 | `emcli spec step example [<chapter> <slice> <spec>] <phase> <index> <field> <value>` | change one example value |
 | `emcli spec show [<chapter>] [<slice>] [<spec>]` | show a scenario with its step indexes |
-| `emcli slice status [<chapter>] <slice> draft\|planned\|…` | set a slice's status |
+| `emcli slice status [<chapter>] <slice> draft\|planned\|… [--force]` | set a slice's status. `planned` checks the slice first, and blocks it with the reasons if it isn't information complete (`--force` skips the check) |
 | `emcli completeness [<chapter>] [--slice <slice>]` | check every field traces to a source, and every screen's mockup against its contract |
 | `emcli sync push --safe` | push local changes to the board (never deletes) |
 | `emcli sync pull` | pull board changes (notes, names) into the model |
-| `emcli workspace export --build-kit .build-kit --chapter <chapter>` | hand planned slices to the loop |
+| `emcli workspace export --build-kit .build-kit --chapter <chapter> [--force]` | hand planned slices to the loop, holding back any that aren't information complete (`--force` queues them anyway) |
 | `emcli workspace import-status --build-kit .build-kit` | bring the loop's statuses back into the model |
 
 ### Build loop and project
