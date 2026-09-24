@@ -13,7 +13,6 @@ for el in changeCourseTitle courseTitleWasChanged; do
   emcli element field add "$el" newTitle String --example "Advanced Math" >/dev/null
 done
 emcli dependency add changeCourseTitle courseTitleWasChanged produces >/dev/null
-emcli element update changeCourseTitle --api-endpoint "/courses/{courseId}/title" >/dev/null
 
 emcli use slice "change course title" >/dev/null
 emcli spec add "renames a registered course" >/dev/null

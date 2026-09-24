@@ -339,12 +339,17 @@ done
 
 `--id` marks `courseId` as the identity. The kit turns it into the event's tag (`courseId=c1`).
 
-Link command → event (*"registerCourse produces courseWasRegistered"*), and give the command its HTTP route:
+Link command → event (*"registerCourse produces courseWasRegistered"*):
 
 ```bash
 emcli dependency add registerCourse courseWasRegistered produces
-emcli element update registerCourse --api-endpoint "/courses"
 ```
+
+You don't type an HTTP route. emcli derives one from the name (the kit's ADR-025): a command is
+`POST /<command>` with every field in the body, so this one is `POST /register-course`. A read model is
+`GET /<read-model>/<id>`, so `CourseDetails` below is `GET /course-details/{courseId}`. The app's page routes,
+which people see, are a separate thing: they're shaped around entities (`/courses/c1`) and derived from the
+screens.
 
 #### Scenarios: the slice's specification
 
@@ -385,7 +390,6 @@ emcli element field add CourseDetails courseId String --id --example c1
 emcli element field add CourseDetails title String --example Math
 emcli element field add CourseDetails capacity Int --example 30
 emcli dependency add courseWasRegistered CourseDetails hydrates                       # the event feeds the read model
-emcli element update CourseDetails --api-endpoint "/courses/{courseId}"
 
 emcli use slice "course details"
 emcli spec add "shows a registered course"
@@ -555,18 +559,21 @@ npm run build && node --env-file=.env dist/index.js
 In **terminal 1**:
 
 ```bash
-curl -s -X POST localhost:3000/courses -H 'content-type: application/json' -d '{"courseId":"c1","title":"Math","capacity":30}' -w '\n'
-curl -s -X POST localhost:3000/courses -H 'content-type: application/json' -d '{"courseId":"c2","title":"History","capacity":20}' -w '\n'
-curl -s -X POST localhost:3000/courses -H 'content-type: application/json' -d '{"courseId":"c1","title":"Math","capacity":30}' -w '\n'
-curl -s localhost:3000/courses/c1 -w '\n'
+curl -s -X POST localhost:3000/register-course -H 'content-type: application/json' -d '{"courseId":"c1","title":"Math","capacity":30}' -w '%{http_code}\n'
+curl -s -X POST localhost:3000/register-course -H 'content-type: application/json' -d '{"courseId":"c2","title":"History","capacity":20}' -w '%{http_code}\n'
+curl -s -X POST localhost:3000/register-course -H 'content-type: application/json' -d '{"courseId":"c1","title":"Math","capacity":30}' -w '%{http_code}\n'
+curl -s localhost:3000/course-details/c1 -w '\n'
 ```
 
 ```text
-{"id":"c1"}
-{"id":"c2"}
-{"type":"about:blank","title":"Unprocessable Entity","status":422,"detail":"Course already exists","instance":"/courses"}
+204
+204
+{"type":"about:blank","title":"Unprocessable Entity","status":422,"detail":"Course already exists","instance":"/register-course"}422
 {"courseId":"c1","title":"Math","capacity":30}
 ```
+
+A command answers 204 with its position in the `ETag` header (or 201 with any fields it generated), and a
+rejection answers Problem-JSON.
 
 The duplicate was rejected: the decider found `courseWasRegistered` for c1 among past events.
 Stop the app (Ctrl-C in terminal 3). **Keep this data.** The next increments depend on it.
@@ -604,7 +611,6 @@ for el in changeCourseCapacity courseCapacityWasChanged; do
   emcli element field add "$el" newCapacity Int --example 40
 done
 emcli dependency add changeCourseCapacity courseCapacityWasChanged produces
-emcli element update changeCourseCapacity --api-endpoint "/courses/{courseId}/capacity"
 
 emcli use slice "change course capacity"
 emcli spec add "changes the capacity of a registered course"
@@ -676,14 +682,14 @@ git add -A && git commit -m "model(t1): capacity command built"
 Terminal 3: `npm run build && node --env-file=.env dist/index.js`. Then in terminal 1:
 
 ```bash
-curl -s -X PUT localhost:3000/courses/c1/capacity -H 'content-type: application/json' -d '{"newCapacity":45}' -w '%{http_code}\n'
-curl -s -X POST localhost:3000/courses -H 'content-type: application/json' -d '{"courseId":"c3","title":"Physics","capacity":15}' -w '\n'
-curl -s localhost:3000/courses/c1 -w '\n'
+curl -s -X POST localhost:3000/change-course-capacity -H 'content-type: application/json' -d '{"courseId":"c1","newCapacity":45}' -w '%{http_code}\n'
+curl -s -X POST localhost:3000/register-course -H 'content-type: application/json' -d '{"courseId":"c3","title":"Physics","capacity":15}' -w '%{http_code}\n'
+curl -s localhost:3000/course-details/c1 -w '\n'
 ```
 
 ```text
 204
-{"id":"c3"}
+204
 {"courseId":"c1","title":"Math","capacity":30}
 ```
 
@@ -756,7 +762,7 @@ Rebuilding CourseDetailsProjection: v1:courseWasRegistered → v1:courseCapacity
 ```
 
 ```bash
-curl -s localhost:3000/courses/c1 -w '\n'
+curl -s localhost:3000/course-details/c1 -w '\n'
 ```
 
 ```text
@@ -803,7 +809,6 @@ for el in registerStudent studentWasRegistered; do
   emcli element field add "$el" name String --example Ada
 done
 emcli dependency add registerStudent studentWasRegistered produces
-emcli element update registerStudent --api-endpoint "/students"
 emcli use slice "register student"
 emcli spec add "registers a new student"
 emcli use spec "registers a new student"
@@ -824,7 +829,6 @@ for el in subscribeStudent studentWasSubscribed; do
   emcli element field add "$el" studentId String --id --example s1
 done
 emcli dependency add subscribeStudent studentWasSubscribed produces
-emcli element update subscribeStudent --api-endpoint "/courses/{courseId}/students"
 emcli use slice "subscribe student"
 emcli spec add "subscribes a registered student to a registered course"
 emcli use spec "subscribes a registered student to a registered course"
@@ -895,12 +899,12 @@ students and subscriptions. Then register a new course, which moves the projecti
 
 ```bash
 post() { curl -s -X POST "localhost:3000$1" -H 'content-type: application/json' -d "$2" -w ' %{http_code}\n'; }
-post /students '{"studentId":"s1","name":"Ada"}'
-post /students '{"studentId":"s2","name":"Grace"}'
-post /courses/c1/students '{"studentId":"s1"}'
-post /courses/c1/students '{"studentId":"s2"}'
-post /courses/c2/students '{"studentId":"s2"}'
-post /courses '{"courseId":"c4","title":"Chemistry","capacity":12}'
+post /register-student '{"studentId":"s1","name":"Ada"}'
+post /register-student '{"studentId":"s2","name":"Grace"}'
+post /subscribe-student '{"courseId":"c1","studentId":"s1"}'
+post /subscribe-student '{"courseId":"c1","studentId":"s2"}'
+post /subscribe-student '{"courseId":"c2","studentId":"s2"}'
+post /register-course '{"courseId":"c4","title":"Chemistry","capacity":12}'
 ```
 
 Stop the app, then plan the extension:
@@ -925,8 +929,8 @@ this step still answer correctly.
 After the loop finishes, restart the app and check:
 
 ```bash
-curl -s localhost:3000/courses/c1 -w '\n'
-curl -s localhost:3000/courses/c3 -w '\n'
+curl -s localhost:3000/course-details/c1 -w '\n'
+curl -s localhost:3000/course-details/c3 -w '\n'
 ```
 
 ```text
@@ -990,14 +994,14 @@ These repeat the t1/t2 pattern: a write slice, then a `CourseDetails` copy stage
 write slice.
 
 **t3: students unsubscribe.** The slice is `unsubscribe student`: command `unsubscribeStudent`, event
-`studentWasUnsubscribed { courseId, studentId }`, route `DELETE /courses/{courseId}/students/{studentId}`.
+`studentWasUnsubscribed { courseId, studentId }`, route `POST /unsubscribe-student` (derived).
 The error scenario is *"Student is not subscribed"*. Copy 3 goes in slice `course details unsubscriptions`,
 wired to all five events so far, with the scenario *"an unsubscribed student is no longer listed"*. It adds no
 field, so `addedEvents` is `["studentWasUnsubscribed"]` and `addedFields` is `[]`.
 
 **t4: courses are renamed.** This is your answer to the client's note. The slice is `change course title`:
 command `changeCourseTitle`, event `courseTitleWasChanged { courseId, newTitle }`, route
-`PUT /courses/{courseId}/title`. The error scenario is *"Course not found"*. Copy 4 goes in slice
+`POST /change-course-title` (derived). The error scenario is *"Course not found"*. Copy 4 goes in slice
 `course details title`, wired to all six events, with the scenario *"shows the new title"*.
 
 The modeling commands for each are in two scripts in the kit repo:
@@ -1026,8 +1030,8 @@ Start the app (terminal 3). Grace leaves Math, then a new course is registered (
 unsubscribe):
 
 ```bash
-curl -s -X DELETE localhost:3000/courses/c1/students/s2 -w '%{http_code}\n'
-curl -s -X POST localhost:3000/courses -H 'content-type: application/json' -d '{"courseId":"c5","title":"Biology","capacity":18}' -w '\n'
+curl -s -X POST localhost:3000/unsubscribe-student -H 'content-type: application/json' -d '{"courseId":"c1","studentId":"s2"}' -w '%{http_code}\n'
+curl -s -X POST localhost:3000/register-course -H 'content-type: application/json' -d '{"courseId":"c5","title":"Biology","capacity":18}' -w '%{http_code}\n'
 ```
 
 Stop the app, then plan the extension:
@@ -1042,7 +1046,7 @@ emcli workspace export --build-kit .build-kit --chapter "Course Enrollment"
 When the loop is *waiting*, restart the app. It rebuilds, and Grace is gone from Math:
 
 ```bash
-curl -s localhost:3000/courses/c1 -w '\n'
+curl -s localhost:3000/course-details/c1 -w '\n'
 ```
 
 ```text
@@ -1061,11 +1065,11 @@ git switch main && git merge --no-ff increment/t3 -m "Merge increment t3"
 `change course title` and planning `course details title`:
 
 ```bash
-curl -s -X PUT localhost:3000/courses/c3/title -H 'content-type: application/json' -d '{"newTitle":"Quantum Physics"}' -w '%{http_code}\n'
-curl -s -X POST localhost:3000/courses -H 'content-type: application/json' -d '{"courseId":"c6","title":"Art","capacity":10}' -w '\n'
+curl -s -X POST localhost:3000/change-course-title -H 'content-type: application/json' -d '{"courseId":"c3","newTitle":"Quantum Physics"}' -w '%{http_code}\n'
+curl -s -X POST localhost:3000/register-course -H 'content-type: application/json' -d '{"courseId":"c6","title":"Art","capacity":10}' -w '%{http_code}\n'
 ```
 
-After the extension is built and the app restarted, `curl -s localhost:3000/courses/c3 -w '\n'` shows
+After the extension is built and the app restarted, `curl -s localhost:3000/course-details/c3 -w '\n'` shows
 `"title":"Quantum Physics"`: the rename the client asked for, recorded before the read model could show it.
 
 After t4 the model is complete:
@@ -1120,8 +1124,7 @@ emcli element field add CourseSeats subscriptionCount Int --example 0 \
   --mapping "derived:count(studentWasSubscribed) - count(studentWasUnsubscribed)"
 emcli element field add CourseSeats remainingSeats Int --example 30 --mapping "derived:capacity - subscriptionCount"
 for e in courseWasRegistered studentWasSubscribed studentWasUnsubscribed; do emcli dependency add "$e" CourseSeats hydrates; done
-emcli element update CourseSeats --api-endpoint "/courses/{courseId}/seats" \
-  --read-model-type inline-projected
+emcli element update CourseSeats --read-model-type inline-projected
 ```
 
 `--read-model-type inline-projected` is the only new step. It goes on the origin. Every copy of it follows
@@ -1184,8 +1187,8 @@ enrollment listening on http://localhost:3000
 ```
 
 ```bash
-curl -s localhost:3000/courses/c1/seats -w '\n'
-curl -s localhost:3000/courses/c2/seats -w '\n'
+curl -s localhost:3000/course-seats/c1 -w '\n'
+curl -s localhost:3000/course-seats/c2 -w '\n'
 ```
 
 ```json
@@ -1202,12 +1205,13 @@ each command returns, without `Prefer: wait`:
 ```bash
 node --input-type=module -e '
 const B = "http://localhost:3000"; let seats = 0, details = 0
+const post = path => fetch(B + path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ courseId: "c3", studentId: "s1" }) })
 for (let i = 0; i < 100; i++) {
-  await fetch(`${B}/courses/c3/students`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ studentId: "s1" }) })
-  const [s, d] = await Promise.all([fetch(`${B}/courses/c3/seats`).then(r => r.json()), fetch(`${B}/courses/c3`).then(r => r.json())])
+  await post("/subscribe-student")
+  const [s, d] = await Promise.all([fetch(`${B}/course-seats/c3`).then(r => r.json()), fetch(`${B}/course-details/c3`).then(r => r.json())])
   if (s.subscriptionCount !== 1) seats++
   if (!d.subscribedStudents.some(x => x.studentId === "s1")) details++
-  await fetch(`${B}/courses/c3/students/s1`, { method: "DELETE" })
+  await post("/unsubscribe-student")
 }
 console.log(`stale reads: CourseSeats ${seats}, CourseDetails ${details}`)'
 ```
@@ -1222,8 +1226,8 @@ time, because the read arrives before its consumer has caught up. `CourseSeats` 
 Before closing t5, make one more change that `CourseSeats` can't see yet:
 
 ```bash
-curl -s -X PUT localhost:3000/courses/c2/capacity -H 'content-type: application/json' -d '{"newCapacity":25}' -w '%{http_code}\n'
-curl -s localhost:3000/courses/c2/seats -w '\n'      # still capacity 20
+curl -s -X POST localhost:3000/change-course-capacity -H 'content-type: application/json' -d '{"courseId":"c2","newCapacity":25}' -w '%{http_code}\n'
+curl -s localhost:3000/course-seats/c2 -w '\n'      # still capacity 20
 ```
 
 Import statuses, push, commit and merge the increment (§5.6, §5.8).
@@ -1335,7 +1339,7 @@ Rebuilding CourseDetailsProjection: v1:… → v2:…
 ```
 
 Before and after, all 14 read-model URLs returned identical bodies and statuses. Those are
-`/courses/{c1…c6, nope}` and `/courses/{…}/seats`, with key order ignored. The 10 existing scenarios now run as
+`/course-details/{c1…c6, nope}` and `/course-seats/{…}`, with key order ignored. The 10 existing scenarios now run as
 30 contract tests.
 
 ### 11.3 Switch two read models to live (t8)
@@ -1384,7 +1388,7 @@ After the loop's one-line retype, restart:
 Rebuilding CourseSeatsProjection: live:v2:… → v2:…
 ```
 
-`/courses/c4/seats` now shows 1 subscription and 11 seats from storage, the same body as the live read gave.
+`/course-seats/c4` now shows 1 subscription and 11 seats from storage, the same body as the live read gave.
 While a read model is live, its fingerprint is recorded as `live:…` (§16), so switching back always rebuilds.
 
 ### 11.5 A new read model, live from the start (t10)
@@ -1402,7 +1406,7 @@ emcli element field add StudentSubscriptions courses Custom --cardinality List \
   --subfields "courseId:String,title:String" --example '[{"courseId":"c1","title":"Math"}]' \
   --mapping "derived:studentWasSubscribed less studentWasUnsubscribed, title from courseWasRegistered/courseTitleWasChanged"
 for e in courseWasRegistered courseTitleWasChanged studentWasRegistered studentWasSubscribed studentWasUnsubscribed; do emcli dependency add "$e" StudentSubscriptions hydrates; done
-emcli element update StudentSubscriptions --api-endpoint "/students/{studentId}/subscriptions" --read-model-type live-report
+emcli element update StudentSubscriptions --read-model-type live-report
 ```
 
 Add the scenarios as usual:
@@ -1415,7 +1419,7 @@ Then plan, push, commit and export. From the event tags, the loop worked out tha
 `courseTitleWasChanged` are a `courses` lookup joined by the `courseId` tag.
 
 ```bash
-curl -s localhost:3000/students/s1/subscriptions -w '\n'
+curl -s localhost:3000/student-subscriptions/s1 -w '\n'
 ```
 
 ```json
@@ -1429,11 +1433,11 @@ A live read replays one entity's events, plus its lookups' events, on every GET.
 
 | Read | Events folded | Stored (median) | Live (median / p95) |
 |---|---|---|---|
-| `/courses/c1` (with the students lookup) | 5 + lookups | 2.1 ms | 4.2 / 5.1 ms |
-| `/courses/c3` | 612 | 2.5 ms | 7.1 / 10.3 ms |
-| `/courses/c1/seats` (no lookup) | 5 | 2.1 ms | 3.0 / 4.1 ms |
-| `/courses/c3/seats` | 612 | 2.0 ms | 4.1 / 5.9 ms |
-| `/students/s1/subscriptions` (courses lookup) | 813 | — | 9.4 / 12.9 ms |
+| `/course-details/c1` (with the students lookup) | 5 + lookups | 2.1 ms | 4.2 / 5.1 ms |
+| `/course-details/c3` | 612 | 2.5 ms | 7.1 / 10.3 ms |
+| `/course-seats/c1` (no lookup) | 5 | 2.1 ms | 3.0 / 4.1 ms |
+| `/course-seats/c3` | 612 | 2.0 ms | 4.1 / 5.9 ms |
+| `/student-subscriptions/s1` (courses lookup) | 813 | — | 9.4 / 12.9 ms |
 
 - **Choose live** when a read model must never be stale, and each entity's history stays modest. Live costs
   nothing on writes (unlike inline) and stores nothing, so there's nothing to rebuild.
@@ -1451,7 +1455,7 @@ Live read models have two limits:
 
 ## 12. Increments t11 and t12: querying read models
 
-So far every read model answers one question: *the document for this key* (`/courses/c1`). Screens also ask
+So far every read model answers one question: *the document for this key* (`/course-details/c1`). Screens also ask
 *which ones*: the courses that still have free seats, the courses a student takes. A **query** answers that. It
 filters a read model's documents on their fields and returns a page of them.
 
@@ -1467,7 +1471,8 @@ rebuilds anything. The rule from §11 still holds, per query:
 You declare a query once, on the **original** read model; copies inherit it, as they inherit the type. It has:
 
 - a **name** in camelCase, such as `availableCourses`;
-- its own **GET route**, such as `/available-courses`. A `{param}` in the route is a path parameter;
+- its own **GET route**, derived from the names: `/<read-model>/<query>`, such as
+  `/course-seats/available-courses`. Every parameter goes in the query string;
 - **named parameters.** Each has a type, an **operator** (`eq`, the default, or `ne gt gte lt lte in contains`)
   and the document **field** it compares (a dot path such as `subscribedStudents.studentId`). There's no
   general filter language, so the client contract stays small and stable;
@@ -1495,24 +1500,24 @@ live since §11.3.
 
 ```bash
 git switch -c increment/t11-queries
-emcli element query add CourseSeats availableCourses --endpoint /available-courses
+emcli element query add CourseSeats availableCourses
 emcli element query param add CourseSeats availableCourses minRemainingSeats Int \
   --operator gte --field remainingSeats --example 1
-emcli element query add CourseDetails coursesForStudent \
-  --endpoint '/students/{studentId}/courses' --sort title
+emcli element query add CourseDetails coursesForStudent --sort title
 emcli element query param add CourseDetails coursesForStudent studentId String \
   --operator contains --field subscribedStudents.studentId --tag studentId
 ```
 
 ```text
-Added query "availableCourses" to "CourseSeats": GET /available-courses
+Added query "availableCourses" to "CourseSeats": GET /course-seats/available-courses
 Added parameter "minRemainingSeats" to query "availableCourses": remainingSeats gte
-Added query "coursesForStudent" to "CourseDetails": GET /students/{studentId}/courses
+Added query "coursesForStudent" to "CourseDetails": GET /course-details/courses-for-student
 Added parameter "studentId" to query "coursesForStudent": subscribedStudents.studentId contains, tag studentId
 ```
 
-> **Pick a route that doesn't collide.** `/courses/available` would be swallowed by `/courses/{courseId}`, so
-> emcli rejects it.
+> **A query sits beside its read model's keyed GET.** `/course-seats/available-courses` and
+> `/course-seats/{courseId}` share a prefix; the kit mounts query routes first, so a query name is never read as
+> a key.
 
 **Where the scenarios go.** `availableCourses` filters on `remainingSeats`, which the *course seats* slice
 builds, so its scenarios go there. `coursesForStudent` filters on `subscribedStudents`, which only exists from
@@ -1582,7 +1587,7 @@ stored types or an in-memory filter for live ones, and mounts the route:
 ```typescript
     queries: {
         coursesForStudent: {
-            path: "/students/:studentId/courses",
+            path: "/course-details/courses-for-student",
             params: {
                 studentId: { field: "subscribedStudents.studentId", op: "contains", type: "string", tag: "studentId" }
             },
@@ -1602,8 +1607,8 @@ Restart the app. `CourseSeats` is async and `CourseDetails` is live, so these tw
 from the event store respectively:
 
 ```bash
-curl -s 'localhost:3000/available-courses?minRemainingSeats=1' -w '\n'
-curl -s localhost:3000/students/s1/courses -w '\n'
+curl -s 'localhost:3000/course-seats/available-courses?minRemainingSeats=1' -w '\n'
+curl -s 'localhost:3000/course-details/courses-for-student?studentId=s1' -w '\n'
 ```
 
 ```json
@@ -1614,9 +1619,9 @@ curl -s localhost:3000/students/s1/courses -w '\n'
 Paging, and a bad parameter:
 
 ```bash
-curl -s 'localhost:3000/available-courses?minRemainingSeats=1&limit=2' -w '\n'
-curl -s 'localhost:3000/available-courses?minRemainingSeats=1&limit=2&cursor=WzAsMCwiIiwiYzIiXQ' -w '\n'
-curl -s 'localhost:3000/available-courses?minRemainingSeats=abc' -w ' %{http_code}\n'
+curl -s 'localhost:3000/course-seats/available-courses?minRemainingSeats=1&limit=2' -w '\n'
+curl -s 'localhost:3000/course-seats/available-courses?minRemainingSeats=1&limit=2&cursor=WzAsMCwiIiwiYzIiXQ' -w '\n'
+curl -s 'localhost:3000/course-seats/available-courses?minRemainingSeats=abc' -w ' %{http_code}\n'
 ```
 
 ```text
@@ -2336,8 +2341,7 @@ board except through `emcli sync push --safe`, and never commits or exports whil
 | *"New chapter: Course Enrollment, context enrollment. Students take part, the system is Enrollment."* | `chapter add`, `use chapter`, three `lane add` (§5.1) |
 | *"First, a course gets registered with an id, a title and a capacity."* | `slice add "register course"`, the `courseWasRegistered` event, then the `registerCourse` command that produces it, fields with examples (§5.2) |
 | *"Registering works, and registering the same course twice fails with 'Course already exists'."* | two scenarios with `--link --seed-examples` and an error step |
-| *"POST to /courses."* | `element update registerCourse --api-endpoint /courses` |
-| *"Anyone can look a course up by id."* | the `course details` slice: `CourseDetails` fed by `courseWasRegistered`, route `/courses/{courseId}`, a view scenario (§5.3) |
+| *"Anyone can look a course up by id."* | the `course details` slice: `CourseDetails` fed by `courseWasRegistered`, its route derived (`/course-details/{courseId}`), a view scenario (§5.3) |
 | *"Plan both for the loop."* | `slice status … planned` ×2, `sync push --safe`, commit, `workspace export --build-kit` (§5.4) |
 
 ### Prompt cookbook
@@ -2354,7 +2358,7 @@ board except through `emcli sync push --safe`, and never commits or exports whil
 | fields | *"A subscription has the course id and the student id."* |
 | a rejection scenario | *"You can't subscribe to a full course: 'Course is full'."* |
 | a different example | *"In that scenario the capacity is 40."* |
-| a query | *"List the courses with at least N free seats, at /available-courses."* |
+| a query | *"List the courses with at least N free seats."* |
 | a screen | *"On the course page the student sees the title and capacity, and can subscribe."* |
 | a mockup change | *"Put the title above the button."* / *"The student is the signed-in user."* |
 | a new look for every screen | *"Make the screens look hand-drawn."* |
@@ -2387,9 +2391,9 @@ left out once `emcli use chapter` / `use slice` / `use spec` has set them (§4, 
 | `emcli element add [<chapter>] <slice> <lane> command\|event\|information\|ui\|automation\|hotspot "<name>"` | add a sticky (`readmodel`, `screen` also accepted) |
 | `emcli element field add [<chapter>] <element> <name> <Type> [--id] [--optional] [--cardinality List] [--subfields "a:String,b:Int"] [--example v] [--mapping src]` | add a field |
 | `emcli element field set [<chapter>] <element> <field> [--mapping src\|--no-mapping] [--example v] …` | change a field (`--mapping session:studentId`: the value comes from the signed-in user) |
-| `emcli element update [<chapter>] <element> --api-endpoint "/path"` | set the HTTP route |
+| `emcli element update [<chapter>] <element> --api-endpoint "/path"` | override the derived HTTP route (warns when it breaks ADR-025; `--clear-api-endpoint` goes back) |
 | `emcli element update [<chapter>] <element> --read-model-type database-projected\|inline-projected\|live-report` | choose how a read model is kept current (set on the origin; copies follow). On a built read model, the next export re-queues it as a one-line retype |
-| `emcli element query add [<chapter>] <readmodel> <name> --endpoint "/path" [--sort <field>]` | declare a query on the origin read model; `update`, `remove`, `list` too |
+| `emcli element query add [<chapter>] <readmodel> <name> [--sort <field>]` | declare a query on the origin read model (route `/<read-model>/<query>`; `--endpoint` overrides it); `update`, `remove`, `list` too |
 | `emcli element query param add [<chapter>] <readmodel> <query> <param> <Type> [--operator gte] [--field a.b] [--tag <tag>] [--example v]` | add a query parameter (`--tag` lets a live read model serve it) |
 | `emcli element copy [<chapter>] <origin> --slice <slice> --lane <lane>` | place a read-model copy later on the timeline |
 | `emcli element update [<chapter>] <element> --copy-of <origin>` | mark an existing sticky as a copy |

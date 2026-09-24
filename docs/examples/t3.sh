@@ -13,7 +13,6 @@ for el in unsubscribeStudent studentWasUnsubscribed; do
   emcli element field add "$el" studentId String --id --example s1 >/dev/null
 done
 emcli dependency add unsubscribeStudent studentWasUnsubscribed produces >/dev/null
-emcli element update unsubscribeStudent --api-endpoint "/courses/{courseId}/students/{studentId}" >/dev/null
 
 emcli use slice "unsubscribe student" >/dev/null
 emcli spec add "unsubscribes a subscribed student" >/dev/null
