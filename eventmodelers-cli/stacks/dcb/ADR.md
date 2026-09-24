@@ -779,3 +779,53 @@ pages are there?".
   the trade for simplicity, and the reason Next / Previous stays an option.
 - A list has no page in its URL: a shared link opens the first page.
 
+
+### ADR-027: A build status per concern: backend and UI
+
+**Status:** Accepted
+**Date:** 2026-09-24
+
+**Context:** Since PLAN 14.7 the loop builds a slice's UI (its screen, in `web/`) after its backend, but it tracked
+one status per slice. A screen that failed its checks set the whole slice to Blocked, and the hand-off gate then
+held back every slice depending on it, although the backend they needed was built and committed. The status also
+hid what was true ("Blocked" said nothing about the working backend), and the loop inferred the split instead of
+recording it (a screen fingerprint, a pending `buildScreen`, and a search of `git log` for the backend commit).
+
+**Decision (Gary, 2026-09-24):** each slice has a build status per **concern**, and one loop runs a routine per
+concern.
+
+- **Concerns:** `backend` (the slice's commands, events, read models, processors) and `ui` (its screen, once it
+  has a mockup). The loop's queue entry (`index.json`) carries `concerns: { backend: { status, blockedReason?,
+  blockedAt? }, ui: { … } }`; emcli's export writes them, the loop claims one, and its agent finishes it.
+- **The slice's status is derived:** Blocked if any concern is, else InProgress, else Planned, else Created, else
+  Done. Everything that read the one status keeps working; the model and the board keep one status each, and the
+  slice's board details show both ("Backend ✓ built · UI ✗ blocked: …").
+- **Order:** a slice's UI is built once its backend is Done (it calls the backend's routes and its types are
+  generated from the backend's code). The backend never waits for a UI, and a prerequisite counts as built once
+  its backend is Done. A mockup's own errors hold back only the UI.
+- **Re-queues per concern:** a retype or added queries queue the backend; a screen added or changed queues the
+  UI; planning a slice again after the loop blocked it frees only the blocked concern.
+- **One loop, a routine per concern:** `lib/backend-prompt.md` and `lib/screen-prompt.md`, each smaller and
+  tuned to its job, optionally with its own model (`models` in the project's config). Entries without concerns
+  (other kits, older exports) are one backend concern: the whole slice.
+
+**Why:**
+- **A UI must not hold up a backend.** Other slices build on a slice's events and commands, never on its screen.
+- **The status should say what's true.** Full-stack teams track a story's backend and frontend tasks separately,
+  and the story is done when both are.
+- **Explicit over inferred.** The concern statuses replace the `git log` search and make recovery, the stuck
+  guard and re-planning precise to the job that failed.
+
+**Alternatives considered:**
+- **One status per slice (as in 14.7).** Rejected for the reasons above.
+- **Two loops running at once, one per concern.** They would share one working tree, so two agents would collide
+  on git's index and on the pre-commit hook, and "never commit while the loop builds" would apply to two loops.
+  Doing it properly needs a worktree per loop and merging between them. It adds only throughput, and the UI would
+  still wait for its backend. Rejected for now; worth revisiting with contract-first (below).
+- **A new board status per concern.** Rejected: the board keeps one status (PLAN 14.4c); the details show both.
+
+**Consequences:**
+- A blocked UI shows its slice as Blocked, but nothing else waits; re-planning rebuilds only the UI.
+- The UI still waits for its own slice's backend. **Contract-first** (PLAN 14.10, future) removes that: emcli
+  writes the API contract from the model, so the UI and the backend can be built in parallel, each against the
+  contract, with a check that the code's `/openapi.json` matches it.

@@ -3,7 +3,8 @@
 //
 // startRalph({ kitDir, projectDir, onTask, onPlannedSlice })
 //   onTask(prompt) — called when tasks.json has entries
-//   onPlannedSlice(prompt) — called when .slices/ has a "Planned" entry (omit to skip)
+//   onPlannedSlice(prompt, { concern }) — called when .slices/ has Planned work (omit to skip). The work is one
+//     concern of one slice (concerns.js): its backend (lib/backend-prompt.md) or its UI (lib/screen-prompt.md).
 
 import { readFileSync, mkdirSync, writeFileSync, existsSync, readdirSync, unlinkSync } from 'fs';
 import { join, dirname, relative } from 'path';
@@ -11,6 +12,7 @@ import { homedir } from 'os';
 import { randomUUID } from 'crypto';
 import { execFileSync } from 'child_process';
 import { createRealtimeAdapter } from './adapters/realtime-adapter.js';
+import { concernsOf, inProgressConcerns, nextWork, setConcernStatus, settleEntries } from './concerns.js';
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 
@@ -418,9 +420,9 @@ function readCurrentContext(kitDir) {
   try { return JSON.parse(readFileSync(ctxPath, 'utf-8')).name || null; } catch { return null; }
 }
 
-// Returns the first Planned slice IN THE CURRENT CONTEXT ONLY. If the current
-// context has no planned work, returns null so the loop waits — it must NEVER
-// cross into another context to find something to build.
+// Returns the next job IN THE CURRENT CONTEXT ONLY: one concern of one slice (concerns.js), a Planned backend or
+// a Planned UI whose backend is Done. If the current context has no planned work, returns null so the loop
+// waits — it must NEVER cross into another context to find something to build.
 function getFirstPlannedSlice(kitDir) {
   const currentCtx = readCurrentContext(kitDir);
   if (!currentCtx) return null;
@@ -428,8 +430,8 @@ function getFirstPlannedSlice(kitDir) {
   if (!existsSync(indexPath)) return null;
   try {
     const { slices } = JSON.parse(readFileSync(indexPath, 'utf-8'));
-    const planned = slices && slices.find((s) => (s.status || '').toLowerCase() === 'planned');
-    if (planned) return { id: planned.id ?? null, title: planned.slice || planned.id || null, ctx: currentCtx };
+    const work = nextWork(slices);
+    if (work) return { ...work, ctx: currentCtx };
   } catch {}
   return null;
 }
@@ -444,17 +446,18 @@ function getFirstPlannedSlice(kitDir) {
 // a stall. Configurable for teams that want more slack.
 const MAX_PLANNED_ATTEMPTS = Number(process.env.RALPH_MAX_PLANNED_ATTEMPTS) || 2;
 
-// Writes a slice's status into its context's index.json (entry + definition) and its
-// slice.json, merging `extra` fields alongside. Returns false if the slice isn't found.
-function setLocalSliceStatus(kitDir, ctx, id, status, extra = {}) {
+// Writes one concern's status (and `extra` fields, e.g. blockedReason) into its context's index.json, then the
+// slice's derived status into the entry, its definition and its slice.json. Without concerns (another kit, an
+// older export), the whole slice's status. Returns false if the slice isn't found.
+function setLocalSliceStatus(kitDir, ctx, id, status, extra = {}, concern = 'backend') {
   const indexPath = join(kitDir, '.slices', ctx, 'index.json');
   let folder;
+  let derived;
   try {
     const indexData = JSON.parse(readFileSync(indexPath, 'utf-8'));
     const entry = (indexData.slices ?? []).find((s) => s.id === id);
     if (!entry) return false;
-    Object.assign(entry, { status, ...extra });
-    if (entry.definition) entry.definition.status = status;
+    derived = setConcernStatus(entry, concern, status, extra);
     folder = entry.folder;
     writeFileSync(indexPath, JSON.stringify(indexData, null, 2), 'utf-8');
   } catch (err) {
@@ -467,7 +470,7 @@ function setLocalSliceStatus(kitDir, ctx, id, status, extra = {}) {
     try {
       if (existsSync(sliceJsonPath)) {
         const sliceData = JSON.parse(readFileSync(sliceJsonPath, 'utf-8'));
-        Object.assign(sliceData, { status, ...extra });
+        sliceData.status = derived;
         writeFileSync(sliceJsonPath, JSON.stringify(sliceData, null, 2), 'utf-8');
       }
     } catch (err) {
@@ -477,21 +480,27 @@ function setLocalSliceStatus(kitDir, ctx, id, status, extra = {}) {
   return true;
 }
 
-// A slice the loop blocked goes back in the queue when the model plans it again after the fix: emcli's export
-// compares its planning time with the entry's `blockedAt`. The agent records one when it blocks a slice; this
-// stamps any Blocked entry that has none, right after the run, so the comparison is always possible.
-function stampBlocked(kitDir, ctx) {
+// After each run: a Blocked concern without a `blockedAt` gets one (planning the slice again is compared with it:
+// emcli's export re-queues a concern planned after its block), and every entry's status is derived again from
+// its concerns, since an agent sets only the concern it built (concerns.js settleEntries).
+function settleIndex(kitDir, ctx) {
   const indexPath = join(kitDir, '.slices', ctx, 'index.json');
   if (!existsSync(indexPath)) return;
   try {
     const indexData = JSON.parse(readFileSync(indexPath, 'utf-8'));
-    const now = new Date().toISOString();
-    const unstamped = (indexData.slices ?? []).filter((s) => (s.status || '').toLowerCase() === 'blocked' && !s.blockedAt);
-    if (unstamped.length === 0) return;
-    for (const s of unstamped) s.blockedAt = now;
+    const changed = settleEntries(indexData.slices ?? []);
+    if (changed.length === 0) return;
     writeFileSync(indexPath, JSON.stringify(indexData, null, 2), 'utf-8');
+    for (const entry of (indexData.slices ?? []).filter((s) => changed.includes(s.id) && s.folder)) {
+      const sliceJsonPath = join(kitDir, '.slices', ctx, entry.folder, 'slice.json');
+      if (!existsSync(sliceJsonPath)) continue;
+      const sliceData = JSON.parse(readFileSync(sliceJsonPath, 'utf-8'));
+      if (sliceData.status === entry.status) continue;
+      sliceData.status = entry.status;
+      writeFileSync(sliceJsonPath, JSON.stringify(sliceData, null, 2), 'utf-8');
+    }
   } catch (err) {
-    console.error(`[ralph] Failed to stamp blockedAt in ${indexPath}:`, err.message);
+    console.error(`[ralph] Failed to settle ${indexPath}:`, err.message);
   }
 }
 
@@ -536,8 +545,8 @@ async function blockStuckSlice(kitDir, cfg, credentialed, planned, attempts) {
     `"Planned" — the build agent kept declining to build it, or kept building it but its own status change kept ` +
     `getting reverted (e.g. a failed check). Auto-blocked to stop the loop from retrying it forever.`;
 
-  setLocalSliceStatus(kitDir, planned.ctx, planned.id, 'Blocked', { blockedReason: reason, blockedAt: new Date().toISOString() });
-  appendProgressNote(kitDir, 'Slice auto-blocked', [`Slice: ${planned.title} (id=${planned.id}, context=${planned.ctx})`, '', `- ${reason}`]);
+  setLocalSliceStatus(kitDir, planned.ctx, planned.id, 'Blocked', { blockedReason: reason, blockedAt: new Date().toISOString() }, planned.concern);
+  appendProgressNote(kitDir, 'Slice auto-blocked', [`Slice: ${planned.title} (id=${planned.id}, context=${planned.ctx}, concern=${planned.concern})`, '', `- ${reason}`]);
   if (credentialed) await syncSliceStatusToBoard(cfg, planned.id, 'Blocked');
 
   console.error(`[ralph] ${reason} Marked "${planned.title}" (id=${planned.id}) as Blocked — moving on.`);
@@ -566,12 +575,13 @@ function isInProgress(status) {
   return (status || '').toLowerCase().replace(/[\s_-]/g, '') === 'inprogress';
 }
 
+// Every concern InProgress in a context: [{ id, title, concern, key }], `key` = "<id>:<concern>".
 function inProgressSlices(kitDir, ctx) {
   const indexPath = join(kitDir, '.slices', ctx, 'index.json');
   if (!existsSync(indexPath)) return [];
   try {
     const { slices } = JSON.parse(readFileSync(indexPath, 'utf-8'));
-    return (slices ?? []).filter((s) => isInProgress(s.status)).map((s) => ({ id: s.id, title: s.slice || s.id }));
+    return inProgressConcerns(slices).map((s) => ({ ...s, key: `${s.id}:${s.concern}` }));
   } catch {
     return [];
   }
@@ -617,7 +627,7 @@ function beginRun(kitDir, projectDir, ctx) {
     pid: process.pid,
     startedAt: new Date().toISOString(),
     ctx,
-    inProgress: inProgressSlices(kitDir, ctx).map((s) => s.id),
+    inProgress: inProgressSlices(kitDir, ctx).map((s) => s.key),
     worktree: snapshotWorktree(projectDir),
   };
   try {
@@ -643,9 +653,10 @@ function isAlive(pid) {
 
 // Recovers the slices `run` claimed and left InProgress. Returns true if it recovered any.
 function recoverInterruptedRun(kitDir, projectDir, run) {
-  const stale = inProgressSlices(kitDir, run.ctx).filter((s) => !run.inProgress.includes(s.id));
+  // A marker from before concerns lists slice ids; one from now, "<id>:<concern>" keys.
+  const stale = inProgressSlices(kitDir, run.ctx).filter((s) => !run.inProgress.includes(s.key) && !run.inProgress.includes(s.id));
   if (!stale.length) return false;
-  const names = stale.map((s) => `"${s.title}"`).join(', ');
+  const names = stale.map((s) => `"${s.title}"${s.concern === 'ui' ? ' (UI)' : ''}`).join(', ');
   const before = run.worktree;
   const now = before && snapshotWorktree(projectDir);
   if (before && !now) {
@@ -660,7 +671,7 @@ function recoverInterruptedRun(kitDir, projectDir, run) {
     const reason = `The build agent was interrupted after committing (HEAD moved from ${before.head?.slice(0, 7) ?? 'none'} ` +
       `to ${now.head?.slice(0, 7) ?? 'none'}) but before marking the slice Done. Check those commits and the working tree, ` +
       `then set the slice to Done, or revert them and set it to Planned.`;
-    for (const s of stale) setLocalSliceStatus(kitDir, run.ctx, s.id, 'Blocked', { blockedReason: reason, blockedAt: new Date().toISOString() });
+    for (const s of stale) setLocalSliceStatus(kitDir, run.ctx, s.id, 'Blocked', { blockedReason: reason, blockedAt: new Date().toISOString() }, s.concern);
     appendProgressNote(kitDir, 'Interrupted slice blocked', [`Slice(s): ${names} (context=${run.ctx})`, '', `- ${reason}`]);
     console.error(`[ralph] ${names} left InProgress by an interrupted agent. ${reason} Marked Blocked.`);
     return true;
@@ -693,7 +704,7 @@ function recoverInterruptedRun(kitDir, projectDir, run) {
       console.warn(`[ralph] Left in place (already modified before the agent started, changed since): ${overlapping.join(', ')}`);
     }
   }
-  for (const s of stale) setLocalSliceStatus(kitDir, run.ctx, s.id, 'Planned');
+  for (const s of stale) setLocalSliceStatus(kitDir, run.ctx, s.id, 'Planned', {}, s.concern);
   appendProgressNote(kitDir, 'Interrupted slice reset to Planned', lines);
   console.log(`[ralph] ${names} left InProgress by an interrupted agent — reset to Planned.`);
   return true;
@@ -723,8 +734,8 @@ function recoverPreviousRun(kitDir, projectDir) {
 const reportedStale = new Set();
 function reportStaleClaims(kitDir, ctx) {
   for (const s of inProgressSlices(kitDir, ctx)) {
-    if (reportedStale.has(s.id)) continue;
-    reportedStale.add(s.id);
+    if (reportedStale.has(s.key)) continue;
+    reportedStale.add(s.key);
     console.warn(`[ralph] "${s.title}" is InProgress. If no agent is building it (an interrupted run), stash its partial ` +
       `work and set it back to Planned on the board — with board sync on, the loop can't tell an interrupted claim ` +
       `from another agent's.`);
@@ -744,15 +755,47 @@ async function runWithRetry(label, fn) {
   }
 }
 
+// What the agent is to build, above its routine: the loop has chosen the job (one concern of one slice).
+function taskHeader(planned, claimed) {
+  const concern = planned.concern ?? 'backend';
+  return [
+    '## Your task (set by the loop)',
+    '',
+    `Build the **${concern === 'ui' ? 'UI' : 'backend'}** of slice "${planned.title}" (id \`${planned.id}\`) in context ` +
+      `"${planned.ctx}". Build nothing else, and don't pick another slice.`,
+    claimed
+      ? `The loop has claimed it: \`concerns.${concern}.status\` is "InProgress" in \`.build-kit/.slices/${planned.ctx}/index.json\`.`
+      : `Claim it first: set \`concerns.${concern}.status\` to "InProgress" in \`.build-kit/.slices/${planned.ctx}/index.json\`.`,
+    `When you finish, set \`concerns.${concern}.status\` there to "Done", or to "Blocked" with \`blockedReason\` and ` +
+      '`blockedAt` (ISO 8601). The loop derives the slice\'s `status` from its concerns.',
+    '',
+    '---',
+    '',
+    '',
+  ].join('\n');
+}
+
+function isStillPlanned(kitDir, planned) {
+  try {
+    const { slices } = JSON.parse(readFileSync(join(kitDir, '.slices', planned.ctx, 'index.json'), 'utf-8'));
+    const entry = (slices ?? []).find((s) => s.id === planned.id);
+    return (concernsOf(entry)[planned.concern ?? 'backend']?.status ?? '').toLowerCase() === 'planned';
+  } catch {
+    return false;
+  }
+}
+
 async function ralphLoop(kitDir, projectDir, cfg, onTask, onPlannedSlice, localOnly = false) {
   const promptFile = join(kitDir, 'lib', 'prompt.md');
   const backendPromptFile = join(kitDir, 'lib', 'backend-prompt.md');
+  // The UI's own routine (PLAN 14.7b); a kit without one builds everything with the backend prompt.
+  const screenPromptFile = join(kitDir, 'lib', 'screen-prompt.md');
   // --local must mean zero board contact even when .eventmodelers/config.json
   // happens to hold valid credentials — never let a locally-present token flip
   // this back on.
   const credentialed = !localOnly && hasCredentials(cfg);
   let lastIdleCtx;
-  // Tracks consecutive sightings of the same Planned slice id — see
+  // Tracks consecutive sightings of the same Planned job (slice id + concern) — see
   // MAX_PLANNED_ATTEMPTS above.
   let stuckSlice = { id: null, count: 0 };
 
@@ -770,9 +813,10 @@ async function ralphLoop(kitDir, projectDir, cfg, onTask, onPlannedSlice, localO
 
     const planned = onPlannedSlice && getFirstPlannedSlice(kitDir);
     if (planned) {
-      stuckSlice = planned.id !== null && planned.id === stuckSlice.id
+      const job = planned.id === null ? null : `${planned.id}:${planned.concern}`;
+      stuckSlice = job !== null && job === stuckSlice.id
         ? { id: stuckSlice.id, count: stuckSlice.count + 1 }
-        : { id: planned.id, count: 1 };
+        : { id: job, count: 1 };
 
       if (stuckSlice.count > MAX_PLANNED_ATTEMPTS) {
         await blockStuckSlice(kitDir, cfg, credentialed, planned, stuckSlice.count);
@@ -781,24 +825,51 @@ async function ralphLoop(kitDir, projectDir, cfg, onTask, onPlannedSlice, localO
         continue;
       }
 
-      const prompt = readFileSync(backendPromptFile, 'utf-8');
-      await runWithRetry(`onPlannedSlice: building slice "${planned.title}"...`, async () => {
-        if (credentialed) return onPlannedSlice(prompt);
-        // Recovered before a retry, too: a retried agent only builds Planned slices.
+      const ui = planned.concern === 'ui' && existsSync(screenPromptFile);
+      const routine = readFileSync(ui ? screenPromptFile : backendPromptFile, 'utf-8');
+      const what = planned.concern === 'ui' ? 'the UI' : 'the backend';
+      const label = planned.tracked ? `${what} of slice "${planned.title}"` : `slice "${planned.title}"`;
+      await runWithRetry(`onPlannedSlice: building ${label}...`, async () => {
+        if (credentialed) {
+          return onPlannedSlice(planned.tracked ? taskHeader(planned, false) + routine : routine, { concern: planned.concern });
+        }
+        // A kit whose export has no concerns: its routine picks and claims the slice itself, exactly as before.
+        if (!planned.tracked) {
+          const run = beginRun(kitDir, projectDir, planned.ctx);
+          try {
+            await onPlannedSlice(routine, { concern: planned.concern });
+          } finally {
+            try {
+              recoverInterruptedRun(kitDir, projectDir, run);
+            } catch (err) {
+              console.error(`[ralph] Interrupted-slice recovery failed:`, err.message);
+            }
+            settleIndex(kitDir, planned.ctx);
+            endRun(kitDir);
+          }
+          return;
+        }
+        // Recovered before a retry, too: a retried job runs only while its concern is still Planned.
+        if (!isStillPlanned(kitDir, planned)) {
+          console.log(`[ralph] ${label} is no longer Planned — skipping.`);
+          return;
+        }
         const run = beginRun(kitDir, projectDir, planned.ctx);
         try {
-          await onPlannedSlice(prompt);
+          // The loop claims the job (after the run marker, so an interrupted claim is recovered).
+          setLocalSliceStatus(kitDir, planned.ctx, planned.id, 'InProgress', {}, planned.concern);
+          await onPlannedSlice(taskHeader(planned, true) + routine, { concern: planned.concern });
         } finally {
           try {
             recoverInterruptedRun(kitDir, projectDir, run);
           } catch (err) {
             console.error(`[ralph] Interrupted-slice recovery failed:`, err.message);
           }
-          stampBlocked(kitDir, planned.ctx);
+          settleIndex(kitDir, planned.ctx);
           endRun(kitDir);
         }
       });
-      console.log(`[ralph] Slice build complete — waiting for next slice`);
+      console.log(`[ralph] Build of ${label} complete — waiting for next slice`);
       if (credentialed) await fetchAndPersistSlices(cfg, kitDir).catch(() => {});
       didWork = true;
     }

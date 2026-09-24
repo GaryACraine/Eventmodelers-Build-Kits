@@ -10,9 +10,10 @@ description: Builds a slice's screen in web/ (React) from slice.json's screens[]
 > come from it. Never invent a field, a value, a message or a page.
 
 A slice with a screen gets its UI **after** its backend: the slice's routes exist, are in `/openapi.json`, and
-their tests pass. This skill touches `web/` only, and one slice at a time. The loop runs it right after the
-backend's commit, or on its own when slice.json has `buildScreen` (the backend is already built; see "A screen
-added or changed" at the end).
+their tests pass. This skill touches `web/` only, and one slice at a time. The loop runs it as the slice's **UI
+job** (`concerns.ui`, `lib/screen-prompt.md`), once the slice's backend job is Done. With `buildScreen` in
+slice.json, the screen of a built slice was added or changed (see "A screen added or changed" at the end). When
+the job ends, its concern's status is set in `index.json`: `concerns.ui` Done, or Blocked with the reason.
 
 The reference is the kit's example app: `web/src/slices/{register-course,course-list,course-details,
 subscribe-student,student-details}/` and `web/src/pages/` (Course Form, Courses, Course Page, My Courses), built

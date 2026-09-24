@@ -38,7 +38,9 @@ node .build-kit/ralph-claude.js /path/to/project
 | `lib/local-ai-agent.js` | Local-AI executor — called by `ralph-local-ai.js`, can also run manually |
 | `lib/agent.sh` | Thin shell wrapper around `claude` — called by `ralph.sh` |
 | `lib/prompt.md` | Phase 1 prompt: tells Claude how to load a slice from the board |
-| `lib/backend-prompt.md` | Phase 2 prompt: tells Claude how to build a planned slice |
+| `lib/backend-prompt.md` | Phase 2 prompt: tells Claude how to build a planned slice (with concerns: its backend) |
+| `lib/screen-prompt.md` | Phase 2 prompt for a slice's UI job (kits that build a frontend, e.g. DCB) |
+| `lib/concerns.js` | A slice's work per concern (backend, UI): the next job, the derived status (`node --test lib/concerns.test.js`) |
 | `lib/AGENT.md` | Agent instructions included in Claude's context |
 
 ## How it works
@@ -52,6 +54,16 @@ node .build-kit/ralph-claude.js /path/to/project
 - The loop runs Claude with `backend-prompt.md`
 - Claude implements the slice in the project
 - Phase 2 is Claude-only; local-AI mode skips it (local-ai-agent handles its own queue)
+
+**Jobs per concern** (when the export writes `concerns` into the index entries, as emcli does for the DCB kit;
+ADR-027): a slice's work is two jobs, its **backend** and its **UI**, each with its own status
+(`concerns: { backend: { status, blockedReason?, blockedAt? }, ui: {…} }`); the entry's `status` is derived from
+them. The loop picks the next job (`lib/concerns.js` `nextWork`: a Planned backend, or a Planned UI whose backend
+is Done), claims it (InProgress), and runs that job's routine (`backend-prompt.md` or `screen-prompt.md`) with
+the job named in a "Your task" header; the agent sets its concern Done or Blocked, and the loop derives the
+slice's status after each run. `models: { ui, backend }` in `.eventmodelers/config.json` gives a routine its own
+model (`ralph-claude.js`). Entries without `concerns` (other kits' exports) run exactly as before: the agent
+picks and claims the slice itself.
 
 Both phases run in a continuous loop with a 3-second idle sleep. The realtime agent runs concurrently in the same process.
 
