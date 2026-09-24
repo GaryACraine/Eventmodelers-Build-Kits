@@ -724,3 +724,58 @@ could be generated.
 - Existing projects migrate once: overrides cleared in the model (emcli warns about each), the routes and their
   tests rewritten, and the frontend's client regenerated.
 
+### ADR-026: Lists in the UI page with "Load more" over the backend's cursor
+
+**Status:** Accepted
+**Date:** 2026-09-24
+
+**Context:** Every list the backend serves is cursor-paginated: a query route (ADR-023) and a list read model take
+`?limit=` (default 50, at most 200) and `?cursor=`, and answer `{ data, cursor? }`. The cursor is an opaque
+bookmark meaning "the next page starts after this row"; it is present only when there are more rows. The
+frontend (PLAN 14.6) showed only the first page. It needed one way of paging that `build-screen` applies to every
+list.
+
+A cursor only moves forward. It answers "what comes after this row?", never "what is on page 7?" or "how many
+pages are there?".
+
+**Decision (Gary, 2026-09-24):** a list shows its first page (20 rows) with a **Load more** button under it.
+
+- The page opens and asks for `?limit=20`. The backend returns those rows and, if there are more, a cursor.
+- While there is a cursor, **Load more** is shown. Clicking it asks for `?limit=20&cursor=<bookmark>`, and the next
+  20 rows are **added below** the ones already shown: the list grows from 20 to 40, and so on.
+- When the backend returns no cursor, the button goes (the list is complete).
+- The person never leaves the list; it gets longer, like "Show more comments" on a website.
+- Built on TanStack Query's `useInfiniteQuery`, with the cursor as its page parameter. After a write
+  (`recordWrite`), the loaded pages are refetched in order, each with `afterLastWrite()` for an async read model.
+- Only lists that are pages from the backend are paged: a query's rows or a list read model. A `List` field inside
+  one document (a course's students) comes whole with its document and isn't.
+
+**Why:**
+- **It is what a cursor does.** Load more only ever asks "what comes after the last row I have?", the one
+  question a cursor answers, so it maps onto the backend exactly.
+- **It stays right when the data changes.** After a write (subscribing to a course while looking at the list),
+  the list refetches and every loaded row stays in place, updated. With pages, a refetch can shift rows between
+  pages, so an item can slip onto the page already left behind, or show on two.
+- **It is the least code.** TanStack Query, already in `web/`, has it built in; the skill's pattern and its
+  tests stay simple.
+
+**Alternatives considered:**
+- **Next / Previous pages.** One page at a time. The backend can't page backwards, so the UI has to remember
+  every cursor it used (a stack) to offer Previous, and there can still be no page numbers, no "page 3 of 10" and
+  no jump to page 7, because a cursor can't count or seek. Rows can shift between pages when data changes.
+  Better for very long lists (one tidy page on screen instead of every loaded row), for table-style admin
+  screens where people expect a pager, and for linking to "page 3" (though a cursor in a URL goes stale as data
+  changes). Rejected as the default for the kinds of lists these apps have (courses, a student's courses, query
+  results); it can be added per list later if a screen needs it.
+- **Infinite scroll.** Load more, triggered by scrolling to the bottom. Harder to test, less accessible (keyboard
+  and screen-reader users, and the page footer can't be reached). Rejected; it can be layered on Load more later.
+- **Both, chosen per list in the model.** Rejected for now: two components to build and test, and a per-list
+  setting in emcli, before any screen has needed the second one.
+
+**Consequences:**
+- `build-screen` gives every paged list the same shape: the rows, then Load more. Its mock handlers page the
+  scenario rows the way the backend does, and each list gets a test that loads the next page.
+- Loaded rows stay in memory and on screen; a list someone pages through hundreds of times grows long. That's
+  the trade for simplicity, and the reason Next / Previous stays an option.
+- A list has no page in its URL: a shared link opens the first page.
+
