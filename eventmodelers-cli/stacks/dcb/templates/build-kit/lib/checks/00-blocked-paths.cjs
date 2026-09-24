@@ -1,11 +1,12 @@
 'use strict';
 
-// Rejects a slice commit that touches shared infra which must never change from
-// slice work: the package manifest/lockfiles and the application bootstrap (index.ts).
+// Rejects a slice commit (backend or screen) that touches shared infra which must never
+// change from slice work: the package manifests/lockfiles (the backend's and web/'s) and the
+// application bootstrap (index.ts).
 
 const BLOCKED = [
   {
-    pattern: /^(package(-lock)?\.json|pnpm-lock\.yaml|yarn\.lock|npm-shrinkwrap\.json)$/,
+    pattern: /^(web\/)?(package(-lock)?\.json|pnpm-lock\.yaml|yarn\.lock|npm-shrinkwrap\.json)$/,
     reason: 'dependency/package manifest changes are not allowed from a slice commit',
   },
   {
@@ -16,6 +17,7 @@ const BLOCKED = [
 
 module.exports = {
   name: 'blocked-paths',
+  scope: 'any',
   run(ctx) {
     const violations = [];
     for (const { path: p } of ctx.changes) {

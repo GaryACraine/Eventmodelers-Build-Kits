@@ -180,7 +180,53 @@
       "service": null
     }
   ],
-  "screens": [],
+  "screens": [
+    {
+      "id": "screen-my-courses",
+      "title": "My Courses",
+      "type": "SCREEN",
+      "fields": [],
+      "dependencies": [
+        {
+          "id": "StudentDetails",
+          "type": "INBOUND",
+          "title": "StudentDetails",
+          "elementType": "READMODEL",
+          "connectionType": "displays"
+        }
+      ],
+      "tags": [],
+      "aggregateDependencies": [],
+      "createsAggregate": false,
+      "context": "INTERNAL",
+      "modelContext": "enrollment",
+      "domain": "Enrollment",
+      "slice": "Student Details",
+      "description": "",
+      "triggers": [],
+      "sketched": false,
+      "prototype": {
+        "activeByDefault": false
+      },
+      "service": null,
+      "mockup": {
+        "html": "<!DOCTYPE html>\n<html>\n<head>\n<title>My Courses</title>\n<!-- @import design-system -->\n</head>\n<body>\n  <h1>My courses</h1>\n  <section class=\"mock-card\">\n    <p>Signed in as <strong data-field=\"name\">Alice</strong></p>\n    <ul data-list=\"subscribedCourses\">\n      <li data-field=\"title\">Math</li>\n    </ul>\n  </section>\n</body>\n</html>\n"
+      },
+      "page": {
+        "title": "My Courses",
+        "route": "/my-courses",
+        "params": [
+          {
+            "name": "studentId",
+            "from": "session"
+          }
+        ],
+        "slices": [
+          "Student Details"
+        ]
+      }
+    }
+  ],
   "processors": [],
   "tables": [],
   "specifications": [

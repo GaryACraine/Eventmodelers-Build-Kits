@@ -1,0 +1,284 @@
+{
+  "id": "course-list",
+  "title": "Course List",
+  "index": 6,
+  "context": "enrollment",
+  "contextPackage": null,
+  "sliceType": "STATE_VIEW",
+  "status": "planned",
+  "commands": [],
+  "events": [
+    {
+      "id": "courseWasRegistered-ref",
+      "title": "courseWasRegistered",
+      "type": "EVENT",
+      "fields": [
+        {
+          "name": "courseId",
+          "type": "String",
+          "idAttribute": true,
+          "example": "c1"
+        },
+        {
+          "name": "title",
+          "type": "String",
+          "example": "Math"
+        },
+        {
+          "name": "capacity",
+          "type": "Int",
+          "example": "30"
+        }
+      ],
+      "dependencies": [],
+      "tags": [],
+      "aggregateDependencies": [],
+      "createsAggregate": false,
+      "context": "INTERNAL",
+      "modelContext": "enrollment",
+      "domain": "Enrollment",
+      "slice": "Course List",
+      "description": "",
+      "triggers": [],
+      "sketched": false,
+      "prototype": {
+        "activeByDefault": false
+      },
+      "service": null
+    },
+    {
+      "id": "courseTitleWasChanged-ref",
+      "title": "courseTitleWasChanged",
+      "type": "EVENT",
+      "fields": [
+        {
+          "name": "courseId",
+          "type": "String",
+          "idAttribute": true,
+          "example": "c1"
+        },
+        {
+          "name": "newTitle",
+          "type": "String",
+          "example": "Advanced Math"
+        }
+      ],
+      "dependencies": [],
+      "tags": [],
+      "aggregateDependencies": [],
+      "createsAggregate": false,
+      "context": "INTERNAL",
+      "modelContext": "enrollment",
+      "domain": "Enrollment",
+      "slice": "Course List",
+      "description": "",
+      "triggers": [],
+      "sketched": false,
+      "prototype": {
+        "activeByDefault": false
+      },
+      "service": null
+    },
+    {
+      "id": "courseCapacityWasChanged-ref",
+      "title": "courseCapacityWasChanged",
+      "type": "EVENT",
+      "fields": [
+        {
+          "name": "courseId",
+          "type": "String",
+          "idAttribute": true,
+          "example": "c1"
+        },
+        {
+          "name": "newCapacity",
+          "type": "Int",
+          "example": "50"
+        }
+      ],
+      "dependencies": [],
+      "tags": [],
+      "aggregateDependencies": [],
+      "createsAggregate": false,
+      "context": "INTERNAL",
+      "modelContext": "enrollment",
+      "domain": "Enrollment",
+      "slice": "Course List",
+      "description": "",
+      "triggers": [],
+      "sketched": false,
+      "prototype": {
+        "activeByDefault": false
+      },
+      "service": null
+    }
+  ],
+  "readmodels": [
+    {
+      "id": "CourseList",
+      "title": "CourseList",
+      "type": "READMODEL",
+      "fields": [
+        {
+          "name": "id",
+          "type": "String",
+          "idAttribute": true,
+          "example": "c1"
+        },
+        {
+          "name": "title",
+          "type": "String",
+          "example": "Math"
+        },
+        {
+          "name": "capacity",
+          "type": "Int",
+          "example": "30"
+        }
+      ],
+      "dependencies": [],
+      "tags": [],
+      "aggregateDependencies": [],
+      "createsAggregate": false,
+      "apiEndpoint": "/course-list",
+      "context": "INTERNAL",
+      "modelContext": "enrollment",
+      "domain": "Enrollment",
+      "slice": "Course List",
+      "description": "Every registered course, keyset-paginated.",
+      "triggers": [],
+      "sketched": false,
+      "prototype": {
+        "activeByDefault": false
+      },
+      "service": null,
+      "listElement": true
+    }
+  ],
+  "screens": [
+    {
+      "id": "screen-courses",
+      "title": "Courses",
+      "type": "SCREEN",
+      "fields": [],
+      "dependencies": [
+        {
+          "id": "CourseList",
+          "type": "INBOUND",
+          "title": "CourseList",
+          "elementType": "READMODEL",
+          "connectionType": "displays"
+        }
+      ],
+      "tags": [],
+      "aggregateDependencies": [],
+      "createsAggregate": false,
+      "context": "INTERNAL",
+      "modelContext": "enrollment",
+      "domain": "Enrollment",
+      "slice": "Course List",
+      "description": "",
+      "triggers": [],
+      "sketched": false,
+      "prototype": {
+        "activeByDefault": false
+      },
+      "service": null,
+      "mockup": {
+        "html": "<!DOCTYPE html>\n<html>\n<head>\n<title>Courses</title>\n<!-- @import design-system -->\n</head>\n<body>\n  <h1>Courses</h1>\n  <section class=\"mock-card\">\n    <table data-list=\"CourseList\">\n      <thead><tr><th>Course</th><th>Capacity</th></tr></thead>\n      <tbody>\n        <tr><td data-field=\"title\">Math</td><td data-field=\"capacity\">30</td></tr>\n      </tbody>\n    </table>\n  </section>\n</body>\n</html>\n"
+      },
+      "page": {
+        "title": "Courses",
+        "route": "/courses",
+        "params": [],
+        "slices": [
+          "Course List"
+        ]
+      }
+    }
+  ],
+  "processors": [],
+  "tables": [],
+  "specifications": [
+    {
+      "id": "spec-course-list-registered",
+      "title": "lists a course after courseWasRegistered",
+      "given": [
+        {
+          "id": "given-course-reg-details",
+          "title": "courseWasRegistered",
+          "type": "SPEC_EVENT",
+          "fields": [
+            {
+              "name": "courseId",
+              "type": "String",
+              "example": "c1"
+            },
+            {
+              "name": "title",
+              "type": "String",
+              "example": "Math"
+            },
+            {
+              "name": "capacity",
+              "type": "Int",
+              "example": "30"
+            }
+          ],
+          "linkedId": "courseWasRegistered-ref",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "when": [
+        {
+          "id": "when-get-course-list",
+          "title": "CourseList",
+          "type": "SPEC_READMODEL",
+          "fields": [],
+          "linkedId": "CourseList",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "then": [
+        {
+          "id": "then-course-list-result",
+          "title": "CourseList",
+          "type": "SPEC_READMODEL",
+          "fields": [
+            {
+              "name": "id",
+              "type": "String",
+              "example": "c1"
+            },
+            {
+              "name": "title",
+              "type": "String",
+              "example": "Math"
+            },
+            {
+              "name": "capacity",
+              "type": "Int",
+              "example": "30"
+            }
+          ],
+          "linkedId": "CourseList",
+          "tags": [],
+          "examples": [],
+          "index": 0,
+          "specRow": 0
+        }
+      ],
+      "linkedId": "CourseList"
+    }
+  ],
+  "actors": [],
+  "aggregates": [],
+  "screenImages": [],
+  "implementationNotes": null
+}

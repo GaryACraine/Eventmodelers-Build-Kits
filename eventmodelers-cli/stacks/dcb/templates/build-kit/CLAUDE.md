@@ -20,11 +20,15 @@ TanStack Query, React Hook Form + Zod, openapi-fetch (types generated from `/ope
 Library + MSW. See `web/README.md`.
 
 - Backend slice work never touches `web/`. Only a slice's UI step does, and only when explicitly tasked to build
-  the UI.
-- The UI calls the backend only through `web/src/lib/api.ts`. `web/src/lib/api-types.ts` is regenerated
-  (`npm run gen:api`), never edited.
-- `afterWrite(position)` (read-your-writes) is only for **async** (`database-projected`) read models. Inline and
+  the UI: invoke `/build-screen` (slice.json has `screens[]` with a `mockup`), after the backend is committed.
+  It builds `web/src/slices/{slicename}/` and the page the screen is on (`web/src/pages/`), and commits it on its own.
+- The UI calls the backend only through `web/src/lib/api.ts`, on slice.json's `apiEndpoint` paths.
+  `web/src/lib/api-types.ts` is regenerated (`npm run gen:api`), never edited.
+- A page's URL is slice.json's `screens[].page.route` (entity-shaped, for people). It is never an API path, and
+  never the other way round.
+- Read-your-writes (`afterLastWrite()`) is only for **async** (`database-projected`) read models. Inline and
   live ones are current when the command returns.
+- A `session:` field comes from `useSession()` (a stub signed-in user), never from a form input or the URL.
 - Mock data comes from the slice's scenario examples, never invented.
 
 ## Development Guidelines
@@ -117,9 +121,17 @@ It loads every check under `.build-kit/lib/checks/` and rejects the commit if an
 - **slice-tests** — the tests of every slice folder the commit touches must pass (for an extension, that is
   the origin's full test file, earlier scenarios included)
 
+A commit that touches `web/src/slices/{slicename}/` (a screen, from `build-screen`) gets its own checks instead,
+plus blocked-paths (which also covers `web/package.json` and its lockfile):
+
+- **web-scope** — everything staged is in that one slice's `web/src/slices/{slicename}/`, a page in
+  `web/src/pages/*.tsx`, or the regenerated `web/src/lib/api-types.ts`; no backend file, nothing else in `web/`;
+  and the slice's folder has a `*.test.tsx`
+- **web-tests** — `web/` typechecks (`tsc -b`) and the slice's and the pages' tests pass (MSW, no backend)
+
 The hook lives in `.githooks/`, added by `eventmodelers init --hooks` (or `eventmodelers init-hooks` later); `npm install`'s
 `prepare` then keeps `core.hooksPath` pointing at it (and leaves it alone when `.githooks/` is absent). It only acts on commits
-that touch a slice folder, so model, docs and `index.ts` wiring commits pass straight through.
+that touch a slice folder (backend or `web/`), so model, docs and `index.ts` wiring commits pass straight through.
 
 ## Branching
 

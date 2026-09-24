@@ -13,7 +13,7 @@
       "type": "COMMAND",
       "fields": [
         { "name": "courseId", "type": "String", "idAttribute": true, "example": "c1" },
-        { "name": "studentId", "type": "String", "idAttribute": true, "example": "s1" }
+        { "name": "studentId", "type": "String", "idAttribute": true, "example": "s1", "mapping": "session:studentId" }
       ],
       "dependencies": [],
       "tags": [],
@@ -56,7 +56,58 @@
     }
   ],
   "readmodels": [],
-  "screens": [],
+  "screens": [
+    {
+      "id": "screen-course-page-subscribe",
+      "title": "Course Page",
+      "type": "SCREEN",
+      "fields": [],
+      "dependencies": [
+        {
+          "id": "subscribeStudentToCourse",
+          "type": "OUTBOUND",
+          "title": "subscribeStudentToCourse",
+          "elementType": "COMMAND",
+          "connectionType": "submits"
+        }
+      ],
+      "tags": [],
+      "aggregateDependencies": [],
+      "createsAggregate": false,
+      "context": "INTERNAL",
+      "modelContext": "enrollment",
+      "domain": "Enrollment",
+      "slice": "Subscribe Student",
+      "description": "",
+      "triggers": [],
+      "sketched": false,
+      "prototype": {
+        "activeByDefault": false
+      },
+      "service": null,
+      "mockup": {
+        "html": "<!DOCTYPE html>\n<html>\n<head>\n<title>Course Page</title>\n<!-- @import design-system -->\n</head>\n<body>\n  <form class=\"mock-card\">\n    <input type=\"hidden\" data-field=\"courseId\" value=\"c1\">\n    <button type=\"submit\" data-command=\"subscribeStudentToCourse\">Subscribe</button>\n  </form>\n</body>\n</html>\n"
+      },
+      "page": {
+        "title": "Course Page",
+        "route": "/courses/:courseId",
+        "params": [
+          {
+            "name": "courseId",
+            "from": "route"
+          },
+          {
+            "name": "studentId",
+            "from": "session"
+          }
+        ],
+        "slices": [
+          "Course Details",
+          "Subscribe Student"
+        ]
+      }
+    }
+  ],
   "processors": [],
   "tables": [],
   "specifications": [

@@ -8,7 +8,8 @@ describe("the app shell", () => {
     it("finds the pages in src/pages/: the start page, linked from the header", async () => {
         render(<App initialPath="/" />)
         expect(await screen.findByRole("navigation")).toHaveTextContent("Home")
-        expect(screen.getByRole("heading", { name: "Nothing here yet" })).toBeInTheDocument()
+        // "Pages" lists the built pages; an app with none yet says so
+        expect(screen.getByRole("heading", { name: /^(Pages|Nothing here yet)$/ })).toBeInTheDocument()
     })
 
     it("shows who is signed in", async () => {

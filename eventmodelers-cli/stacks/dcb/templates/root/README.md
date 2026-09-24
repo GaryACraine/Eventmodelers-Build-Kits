@@ -52,6 +52,10 @@ npm run dev         # http://localhost:5173 (start the backend with CORS_ORIGIN=
 npm run dev:mock    # no backend: mock responses from the scenarios
 ```
 
+The example app has a frontend too: Course Form (`/courses/new`), Courses (`/courses`), Course Page
+(`/courses/:courseId`) and My Courses (`/my-courses`), in `web/src/pages/` and `web/src/slices/`. It's the pattern
+the `build-screen` skill copies. `scripts/start-empty.sh` removes it with the example backend.
+
 ## API
 
 Once running, visit `http://localhost:3000/openapi.json` for the full OpenAPI document. Each slice registers its

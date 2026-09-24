@@ -6,6 +6,7 @@
 # slices, keeps the generic event feed and the OpenAPI document (/openapi.json, filled by each
 # slice as it's built), and resets Events.ts and src/index.ts to empty wiring (`readModels` and
 # `imperative` arrays started by startReadModels, CORS, and no routes but those two).
+# The example's frontend goes too: web/'s pages (all but Home), its slices, and the generated API types.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -17,4 +18,8 @@ done
 rm -f src/scenario.tests.ts src/seed.ts
 cp scripts/empty/Events.ts src/contexts/enrollment/Events.ts
 cp scripts/empty/index.ts src/index.ts
+
+find web/src/pages -type f ! -name Home.tsx -delete
+rm -rf web/src/slices && mkdir -p web/src/slices && touch web/src/slices/.gitkeep
+cp scripts/empty/api-types.ts web/src/lib/api-types.ts
 echo "Empty enrollment context ready: $(ls "$slices" | tr '\n' ' ')"
