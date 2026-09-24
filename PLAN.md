@@ -650,6 +650,14 @@ routes and queries, the examples, and the scenarios. Use it to:
     - Drafted, edited, all five checks clean. `completeness` went from 21 errors to 16: the five cleared were the
       two commands' fields, now sourced from the mockups; the 16 left were already there (commands with no screen,
       computed read model fields not mapped `derived:`).
+    - **Follow-up, Gary's review (emcli `b9bbf47`): a command's origin is checked first.** A command is issued by a
+      screen (`submits`) or an automation (`relates-to`).
+      - Nothing issues it → one WARN, "nothing issues <command>", instead of an ERROR per field.
+      - Only screens, none with a mockup yet → one WARN.
+      - A screen with a mockup → the screen check owns the fields.
+      - An automation → the fields are checked against the automation's.
+      - Course Enrollment now reports 8 errors (computed read model fields not mapped `derived:`) and 4 warnings
+        (the four commands with no screen). Manual §13.4 updated. Tests 254/254.
     - Pushed with `plain`, then restyled to `sketch` by pushing only the snippet. The board shows all five
       wireframes; the Course Form preview's **Connect** outlines the Register course button linked to
       `registerCourse` (manual SS8). Every card's `data-pb-element-id` resolves to the right element (read back
@@ -690,6 +698,10 @@ routes and queries, the examples, and the scenarios. Use it to:
   - `build-screen` runs after `build-state-change` / `build-state-view` when the slice has a screen.
   - One component per command: a form, props = fields, React Hook Form + Zod from the generated types, rejections
     shown from Problem-JSON.
+  - **Decide how `session:` fields are filled.** t13 maps `subscribeStudent.studentId` to `session:studentId`, so
+    its mockup has no input. But the DCB kit has no sign-in and doesn't read mappings, and the route still takes
+    `studentId` in the body. The frontend needs a source for session values: at first a stub "current user"
+    setting in `web/`, later real authentication (and possibly the backend taking the id from the session).
   - One component per read model: a view or list through TanStack Query.
   - Mockup → JSX 1:1; pages composed by screen title.
   - MSW handlers and component tests from the slice's scenarios: the happy path renders, and each rejection shows
@@ -1663,6 +1675,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-24 | t13 models screens on **Course Enrollment** (the manual's chapter), adding them from scratch, not wiring the 24 screens of the *Enrollment* chapter | The manual tells one story, t0–t12 were built on Course Enrollment, and it had no screens |
 | 2026-09-24 | A query's rows are a `data-list` (`data-list="availableCourses"`) | A list page shows a query's result, and a query is part of the read model's contract (ADR-023) |
 | 2026-09-24 | The manual's t13 section is §13; the reference sections move to §14–§20 | Increments come before the reference sections, in the order they're built |
+| 2026-09-24 | `completeness` checks a command's issuer (a screen or an automation) before its fields; no issuer is one WARN, not an ERROR per field; the automation link stays `relates-to` | Gary: commands come from a screen or an automation. A missing issuer is one gap, not one per field; renaming the automation link would change the kit's automation export, so it waits until an automation first goes through the loop |
 
 ## Progress
 

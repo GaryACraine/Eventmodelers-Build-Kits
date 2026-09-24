@@ -1852,16 +1852,20 @@ emcli completeness "Course Enrollment"
   imports: design-system
   Every binding names a field, list, command or slice in scope.
 
-Summary: 16 error(s), 0 warning(s) across 10 slice(s)
+Summary: 8 error(s), 4 warning(s) across 10 slice(s)
 ```
 
-Before t13, `completeness` reported 21 errors. The screens cleared five:
-- `registerCourse` and `subscribeStudent` now take their fields from the screens' inputs;
-- the student id comes from the session.
+None of what's left is about a screen:
+- **4 warnings: commands that nothing issues yet.** A command comes from a screen that submits it, or an
+  automation that issues it. `changeCourseCapacity`, `registerStudent`, `unsubscribeStudent` and
+  `changeCourseTitle` have neither yet, so each gets one warning. Before t13, `registerCourse` and
+  `subscribeStudent` had the same warning. Now their screens' inputs are their fields, and the student comes from
+  the session.
+- **8 errors: read model fields with no source.** Fields such as `remainingSeats` are computed from events, and
+  aren't marked `--mapping derived:…` yet. They were there before t13.
 
-The 16 that remain were already there, and none is about a screen:
-- commands with no screen yet;
-- read model fields such as `remainingSeats` that are computed and not yet mapped `derived:`.
+A command that a screen submits, before the screen has a mockup, gets one warning as well: its fields will come
+from the mockup's inputs. A command an automation issues is checked against the automation's fields.
 
 This is what a problem looks like: a mistyped binding (`Title` for `title`), and a Subscribe button left out.
 
