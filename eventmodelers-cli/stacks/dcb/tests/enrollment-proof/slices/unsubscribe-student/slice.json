@@ -19,7 +19,7 @@
       "tags": [],
       "aggregateDependencies": [],
       "createsAggregate": false,
-      "apiEndpoint": "DELETE /courses/:courseId/subscriptions/:studentId",
+      "apiEndpoint": "/unsubscribe-student-from-course",
       "context": "INTERNAL",
       "modelContext": "enrollment",
       "domain": "Enrollment",

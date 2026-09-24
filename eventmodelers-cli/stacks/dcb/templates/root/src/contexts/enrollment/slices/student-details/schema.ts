@@ -11,7 +11,7 @@ export const StudentSchema = z
     .openapi("Student")
 
 registerRead({
-    path: "/students/:studentId",
+    path: "/student-details/:studentId",
     summary: "Get a student",
     response: StudentSchema,
     notFound: "Student not found",

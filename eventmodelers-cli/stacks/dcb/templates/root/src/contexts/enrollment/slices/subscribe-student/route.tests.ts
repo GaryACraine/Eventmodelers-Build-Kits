@@ -9,23 +9,23 @@ const spec = ApiSpecification.for({
     configureApi: (store: EventStore) => configureSubscribeStudentRoute({ store, pool: {} as Pool })
 })
 
-describe("POST /courses/:courseId/subscriptions — subscribe student", () => {
-    test("subscribes student and returns 201", async () => {
+describe("POST /subscribe-student-to-course — subscribe student", () => {
+    test("subscribes student and returns 204", async () => {
         await spec
             .existingEvents(
                 courseWasRegistered({ courseId: "c1", title: "Math", capacity: 30 }),
                 studentWasRegistered({ studentId: "s1", name: "Alice", studentNumber: 1 })
             )
-            .when(agent => agent.post("/courses/c1/subscriptions").send({ studentId: "s1" }))
+            .when(agent => agent.post("/subscribe-student-to-course").send({ courseId: "c1", studentId: "s1" }))
             .then(
-                expectResponse(201),
+                expectResponse(204),
                 studentWasSubscribed({ courseId: "c1", studentId: "s1" })
             )
     })
 
     test("returns 404 when course does not exist", async () => {
         await spec
-            .when(agent => agent.post("/courses/nonexistent/subscriptions").send({ studentId: "s1" }))
+            .when(agent => agent.post("/subscribe-student-to-course").send({ courseId: "nonexistent", studentId: "s1" }))
             .then(expectError(404))
     })
 
@@ -37,7 +37,7 @@ describe("POST /courses/:courseId/subscriptions — subscribe student", () => {
                 studentWasRegistered({ studentId: "s2", name: "Bob", studentNumber: 2 }),
                 studentWasSubscribed({ courseId: "c1", studentId: "s1" })
             )
-            .when(agent => agent.post("/courses/c1/subscriptions").send({ studentId: "s2" }))
+            .when(agent => agent.post("/subscribe-student-to-course").send({ courseId: "c1", studentId: "s2" }))
             .then(expectError(422))
     })
 
@@ -48,13 +48,13 @@ describe("POST /courses/:courseId/subscriptions — subscribe student", () => {
                 studentWasRegistered({ studentId: "s1", name: "Alice", studentNumber: 1 }),
                 studentWasSubscribed({ courseId: "c1", studentId: "s1" })
             )
-            .when(agent => agent.post("/courses/c1/subscriptions").send({ studentId: "s1" }))
+            .when(agent => agent.post("/subscribe-student-to-course").send({ courseId: "c1", studentId: "s1" }))
             .then(expectError(422))
     })
 
     test("returns 400 when studentId is missing", async () => {
         await spec
-            .when(agent => agent.post("/courses/c1/subscriptions").send({}))
+            .when(agent => agent.post("/subscribe-student-to-course").send({ courseId: "c1" }))
             .then(expectError(400))
     })
 })

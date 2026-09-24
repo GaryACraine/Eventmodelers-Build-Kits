@@ -16,16 +16,16 @@ async function post(path: string, body: unknown, expectedStatus = 201): Promise<
     }
 }
 
-await post("/courses", { id: "ts101", title: "Introduction to TypeScript", capacity: 2 })
-await post("/courses", { id: "go101", title: "Introduction to Go", capacity: 20 })
-await post("/courses", { id: "extra101", title: "Bonus Course", capacity: 5 })
+await post("/register-course", { id: "ts101", title: "Introduction to TypeScript", capacity: 2 })
+await post("/register-course", { id: "go101", title: "Introduction to Go", capacity: 20 })
+await post("/register-course", { id: "extra101", title: "Bonus Course", capacity: 5 })
 
-await post("/students", { id: "alice", name: "Alice" })
-await post("/students", { id: "bob", name: "Bob" })
-await post("/students", { id: "charlie", name: "Charlie" })
+await post("/register-student", { id: "alice", name: "Alice" })
+await post("/register-student", { id: "bob", name: "Bob" })
+await post("/register-student", { id: "charlie", name: "Charlie" })
 
-await post("/courses/ts101/subscriptions", { studentId: "alice" })
-await post("/courses/ts101/subscriptions", { studentId: "bob" })
-await post("/courses/go101/subscriptions", { studentId: "charlie" })
+await post("/subscribe-student-to-course", { courseId: "ts101", studentId: "alice" })
+await post("/subscribe-student-to-course", { courseId: "ts101", studentId: "bob" })
+await post("/subscribe-student-to-course", { courseId: "go101", studentId: "charlie" })
 
 console.log("Seed complete.")

@@ -10,32 +10,40 @@ import { configureCors } from "./cors.js"
 const doc = (): any => buildOpenApiDocument({ title: "test", version: "1" })
 
 describe("OpenAPI registry", () => {
-    test("a command documents its body, path parameters, success and rejections", () => {
-        const Body = z.object({ newCapacity: z.number().int() }).openapi("OaChangeCapacityBody")
+    test("a command documents its body, success and rejections", () => {
+        const Body = z.object({ courseId: z.string(), newCapacity: z.number().int() }).openapi("OaChangeCapacityBody")
         registerCommand({
-            method: "put",
-            path: "/oa/courses/:courseId/capacity",
+            method: "post",
+            path: "/oa-change-course-capacity",
             summary: "Change capacity",
             body: Body,
             success: "noContent",
             errors: { 404: "Course not found", 422: "Same capacity" }
         })
-        const op = doc().paths["/oa/courses/{courseId}/capacity"].put
+        const op = doc().paths["/oa-change-course-capacity"].post
         expect(op.summary).toBe("Change capacity")
-        expect(op.parameters.map((p: any) => [p.in, p.name])).toEqual(
-            expect.arrayContaining([["path", "courseId"], ["header", "Idempotency-Key"]])
-        )
+        expect(op.parameters.map((p: any) => [p.in, p.name])).toEqual([["header", "Idempotency-Key"]])
         expect(op.requestBody.content["application/json"].schema).toEqual({ $ref: "#/components/schemas/OaChangeCapacityBody" })
         expect(Object.keys(op.responses).sort()).toEqual(["204", "400", "404", "422"])
         expect(op.responses["422"].description).toBe("Same capacity")
     })
 
-    test("a command without a body has no 400, and createdId returns { id }", () => {
+    test("an override with path parameters documents them; a command without a body has no 400; created returns the generated fields", () => {
         registerCommand({ method: "delete", path: "/oa/things/:thingId", summary: "Remove", success: "noContent" })
-        registerCommand({ method: "post", path: "/oa/things", summary: "Add", body: z.object({ name: z.string() }), success: "createdId" })
+        registerCommand({
+            method: "post",
+            path: "/oa-add-thing",
+            summary: "Add",
+            body: z.object({ name: z.string() }),
+            success: "created",
+            created: z.object({ thingId: z.string() })
+        })
         const paths = doc().paths
+        expect(paths["/oa/things/{thingId}"].delete.parameters.map((p: any) => [p.in, p.name])).toContainEqual(["path", "thingId"])
         expect(Object.keys(paths["/oa/things/{thingId}"].delete.responses)).toEqual(["204"])
-        expect(paths["/oa/things"].post.responses["201"].content["application/json"].schema.properties).toHaveProperty("id")
+        const created = paths["/oa-add-thing"].post.responses["201"]
+        expect(created.content["application/json"].schema.properties).toHaveProperty("thingId")
+        expect(created.headers).not.toHaveProperty("Location")
     })
 
     test("registering the same method and path again replaces it", () => {

@@ -80,7 +80,7 @@ server.on("listening", () => {
     const addr = server.address() as { port: number }
     console.log(`course-manager listening on http://localhost:${addr.port}`)
     console.log(`  GET  http://localhost:${addr.port}/health/live`)
-    console.log(`  GET  http://localhost:${addr.port}/courses`)
+    console.log(`  GET  http://localhost:${addr.port}/course-list`)
     console.log(`  GET  http://localhost:${addr.port}/openapi.json`)
     console.log(`  GET  http://localhost:${addr.port}/events   (SSE)`)
 })

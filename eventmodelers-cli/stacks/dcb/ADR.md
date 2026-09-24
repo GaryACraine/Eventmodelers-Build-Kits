@@ -487,9 +487,9 @@ query can also generate and test it.
 - **Each parameter is a `Field`** (name, type, `optional`, `example`) with two additions:
   - `operator`: `eq` (the default), `ne`, `gt`, `gte`, `lt`, `lte`, `in` or `contains`;
   - `mapping`: the document field it compares, as a dot path. It defaults to the parameter's name.
-- **Path parameters:** a parameter named in the endpoint's `{…}` is a path parameter, so it is required and
-  matched by equality: `eq`, or `contains` when its field is an array (`/students/{studentId}/courses` matches
-  `subscribedStudents.studentId`). Every other parameter is a query-string parameter.
+- **Every parameter is a query-string parameter** at the standard route `/<read-model>/<query>` (ADR-025, e.g.
+  `/course-details/courses-for-student?studentId=s1`). Only an overridden endpoint can name a path parameter
+  in `{…}`: it is then required and matched by equality (`eq`, or `contains` for an array field).
 - **The spec's *when* is one `SPEC_QUERY` step** (emcli type alias `query`):
   - its title is the query name, and it links to the read model element;
   - its fields give the example values for this scenario.
@@ -502,8 +502,9 @@ query can also generate and test it.
   breaking them.
   - `limit` and `cursor` are reserved names.
   - `in` takes a comma-separated list.
-  - emcli rejects a query endpoint that another read endpoint's pattern also matches. For example,
-    `/courses/{courseId}` would swallow `/courses/available`, so pick `/available-courses` instead.
+  - A query sits beside its read model's keyed GET (`/course-seats/available-courses` next to
+    `/course-seats/{courseId}`), so `readModelRoute` mounts the query routes first. emcli rejects a query
+    endpoint that another read model's route also matches.
 - **Body:** always a page, `{ "data": [ …documents… ], "cursor"?: "…" }`.
   - Each document has the same shape as the keyed GET body.
   - `cursor` is opaque, and present only when there are more rows (the runner fetches `limit + 1`). `limit`
@@ -669,4 +670,57 @@ The backend already exposes every route in `/openapi.json` (14.1).
   in `web/`.
 - The board shows mockups only as long as emcli pushes the description: `sync push` owns it, and a board-side edit
   is taken back into the model on pull (14.3).
+
+---
+
+### ADR-025: API routes are named after the model, 1:1
+
+**Status:** Accepted
+**Date:** 2026-09-24
+
+**Context:** Nothing set API endpoints. Each route was whatever the modeler typed, and the build skills copied
+it, so projects drifted apart. course-enrollment and this kit's example app gave the subscription relationship
+three names (`/courses/:id/students`, `/courses/:id/subscriptions`, `/students/:id/subscriptions`), placed read
+models as if an entity owned them (`/courses/:courseId` vs `/courses/:courseId/seats`), and gave queries no single
+home (`/available-courses`, `/students/:studentId/courses`). The frontend (PLAN 14.6) needed a rule before it
+could be generated.
+
+**Decision (Gary, PLAN 14.5b):**
+
+| Element | Route | Example |
+|---|---|---|
+| Command | `POST /<command>`, every field in the body, no IDs in the path | `POST /change-course-capacity {courseId, newCapacity}` |
+| Read model | `GET /<read-model>/:<ID attribute>` (none: `GET /<read-model>`) | `GET /course-details/c1` |
+| Query | `GET /<read-model>/<query>?<parameters>`, every parameter in the query string | `GET /course-seats/available-courses?minRemainingSeats=1` |
+| Infra | unchanged | `/events`, `/openapi.json` |
+
+- Names are kebab-cased from the model. emcli derives every route at export; `apiEndpoint` is only an override,
+  and one that differs from the standard is a warning (never a block).
+- **Commands are always POST.** Retries are safe because every command dedupes on its `Idempotency-Key`, not
+  because of the method. A command answers 204 + `ETag`, or 201 with its generated fields as the body. There is
+  no `Location` header: a command doesn't know which read model will show its result. Rejections stay
+  Problem-JSON.
+- `readModelRoute` mounts a read model's query routes before its keyed GET, so a query name isn't read as a key.
+- **The app's page routes are a separate concern**, entity-shaped for people (`/courses/:courseId`, PLAN 14.6).
+  Code generation joins the two through the ID attribute (DCB tag) names they share, which must be the same
+  everywhere: the route param `:courseId`, the command field `courseId`, the read model key `courseId`.
+
+**Alternatives considered:**
+- **Resource-style REST** (`PUT /courses/:courseId/capacity`). Rejected: a DCB command can span several tags
+  (`subscribeStudent` touches a course and a student), so it has no single owner to nest under. Every such
+  command needs a judgement call, and the model already names it.
+- **PUT when the command carries its identifier.** Rejected: having an ID doesn't make a command idempotent (an
+  `addSeats` command with a `courseId` isn't), nearly every DCB command carries a tag ID anyway, and the
+  idempotency key already makes retries safe.
+- **Read models under their entity.** Rejected: in CQRS a read model is its own resource. CourseSeats and
+  CourseDetails both key on `courseId`, and neither owns `/courses/:courseId`.
+- **Queries as filters on the read model** (`GET /course-seats?minRemainingSeats=1`). Rejected: a read model can
+  answer several named queries, and two with overlapping parameters would be ambiguous.
+
+**Consequences:**
+- A route never needs designing: it is the element's name. The build skills copy `apiEndpoint` from slice.json
+  as before; only its shape changed.
+- The API is RPC-shaped, for the project's own frontend. A public, REST-shaped API can be a facade later.
+- Existing projects migrate once: overrides cleared in the model (emcli warns about each), the routes and their
+  tests rewritten, and the frontend's client regenerated.
 

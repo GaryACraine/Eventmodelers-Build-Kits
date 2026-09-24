@@ -5,8 +5,10 @@ import type { paths } from "./api-types"
  * The only place that talks to the backend. Components never call `fetch`: they call `api` (typed from
  * /openapi.json by `npm run gen:api`) and pass the result through `command` or `read`.
  *
- *   const { position } = await command(api.POST("/courses/{courseId}/subscriptions", { params, body }))
- *   const course = await read(api.GET("/courses/{courseId}", { params, headers: afterWrite(position) }))
+ *   const { position } = await command(api.POST("/subscribe-student", { body }))
+ *   const course = await read(api.GET("/course-details/{courseId}", { params, headers: afterWrite(position) }))
+ *
+ * API paths are named after the model (ADR-025) and have nothing to do with the app's page routes.
  *
  * In mock mode (`npm run dev:mock`, and in tests) MSW answers these same requests from src/mocks/handlers.ts.
  */
@@ -14,7 +16,7 @@ import type { paths } from "./api-types"
 /** The backend's origin: VITE_API_BASE, or this page's own origin (a proxy, or the backend serving web/dist). */
 export const API_BASE: string = import.meta.env.VITE_API_BASE || globalThis.location?.origin || ""
 
-/** The full URL of an API path, for MSW handlers: `http.get(apiUrl("/courses/:courseId"), …)`. */
+/** The full URL of an API path, for MSW handlers: `http.get(apiUrl("/course-details/:courseId"), …)`. */
 export const apiUrl = (path: string): string => `${API_BASE}${path}`
 
 /** Every mutation carries an Idempotency-Key, so a retried request isn't applied twice. */

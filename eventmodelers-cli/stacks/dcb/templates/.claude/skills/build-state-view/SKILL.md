@@ -73,7 +73,8 @@ From the slice definition, extract:
 - **context** — bounded context
 - **type** — `readmodels[0].readModelType`, or `"database-projected"` when absent
 - **key** — the readmodel field with `idAttribute: true` (e.g. `courseId`)
-- **path** — `readmodels[0].apiEndpoint` with `{param}` written as `:param` (`/courses/{courseId}` → `/courses/:courseId`)
+- **path** — `readmodels[0].apiEndpoint` with `{param}` written as `:param` (`/course-details/{courseId}` →
+  `/course-details/:courseId`). Routes are named after the model (ADR-025): copy it, never design one
 - **events[]** — the events this read model handles
 - **readModel.fields** — the shape of the document, which is the response body
 - **queries[]** — `readmodels[0].queries` (optional): each `{ name, apiEndpoint, parameters, sort? }`. See Step 3b.
@@ -207,7 +208,7 @@ has settled every choice here. Transcribe it and don't invent parameters, operat
 | slice.json (`queries[]`) | `readModel.ts` |
 |---|---|
 | `name` | the key in `queries` |
-| `apiEndpoint` `/students/{studentId}/courses` | `path: "/students/:studentId/courses"` |
+| `apiEndpoint` `/course-details/courses-for-student` | `path: "/course-details/courses-for-student"` (an override's `{param}` is written `:param`) |
 | parameter `name` | the key in `params` |
 | parameter `mapping` (a dot path into the document) | `field` |
 | parameter `operator` | `op`: leave it out when it's `eq` |
@@ -218,8 +219,9 @@ has settled every choice here. Transcribe it and don't invent parameters, operat
 | parameter `tag` | `tag` (the tag key on the events, e.g. `"studentId"`) |
 | `sort: { field, direction }` | `sort: { field }`, adding `direction: "desc"` only when it's `desc` |
 
-- `pathParameter: true` marks a parameter named in the endpoint. It needs nothing of its own, because
-  `defineReadModel` checks that each `:param` in `path` is a required `eq`/`contains` parameter.
+- By the standard every parameter is a query-string parameter. `pathParameter: true` appears only when the
+  model overrode the endpoint with a `{param}`; it needs nothing of its own, because `defineReadModel` checks
+  that each `:param` in `path` is a required `eq`/`contains` parameter.
 - Write each query's `params` **one parameter per line**, and end every query entry with `},` except the last,
   as with `canHandle`.
 - `field` must be a field the document actually has, because `evolve` writes it. A `mapping` into a field this
@@ -332,13 +334,13 @@ describe.each(READ_MODEL_TYPES)("{slice title} (%s)", type => {
 
     test("{specification title}", async () => {
         // Given — through the write routes
-        const postRes = await app.agent().post("/{resource}").send({ /* command body */ })
-        expect(postRes.status).toBe(201)
+        const postRes = await app.agent().post("/{command}").send({ /* command body */ })
+        expect(postRes.status).toBe(204)
 
         await app.settle()
 
         // Then
-        const getRes = await app.agent().get("/{resource}/test-id")
+        const getRes = await app.agent().get("/{read-model}/test-id")
         expect(getRes.status).toBe(200)
         expect(getRes.body).toMatchObject({ /* the read model fields this specification asserts */ })
     })
@@ -373,11 +375,11 @@ describe.each(queryTypes({sliceName}, "{queryName}"))("{slice title}: {queryName
 
     test("{specification title}", async () => {
         // Given: every event in the specification's given, through the write routes
-        expect((await app.agent().post("/{resource}").send({ /* command body */ })).status).toBe(201)
+        expect((await app.agent().post("/{command}").send({ /* command body */ })).status).toBe(204)
         await app.settle()
 
         // When: the query, with the when step's example values
-        const res = await app.agent().get("{query path with path parameters filled in}").query({ {param}: "{example}" })
+        const res = await app.agent().get("{query path}").query({ {param}: "{example}" })
 
         // Then: the rows, in order
         expect(res.status).toBe(200)
@@ -390,8 +392,8 @@ describe.each(queryTypes({sliceName}, "{queryName}"))("{slice title}: {queryName
 ```
 
 - **When:** each *when* field is a parameter, and its `example` is the value.
-  - A path parameter goes into the URL (`/students/s1/courses`). The others go in `.query({ … })`, always as
-    strings.
+  - Parameters go in `.query({ … })`, always as strings (an overridden endpoint's path parameter goes into
+    the URL instead).
   - An `in` parameter's values are joined with commas (`{ courseIds: "c1,c2" }`).
   - Leave out an optional parameter that has no example. A required one with no example on the *when* field
     uses the parameter's own `example` from `queries[]`.
@@ -575,7 +577,7 @@ export const {SliceName}Schema = z
     .openapi("{SliceName}")
 
 registerRead({
-    path: "/{resource}/:id",            // exactly as route.ts writes it
+    path: "/{read-model}/:{key}",       // exactly as route.ts writes it: the apiEndpoint (ADR-025)
     summary: "{the read model's title}",
     response: {SliceName}Schema,        // a list: z.object({ data: z.array({SliceName}Schema), cursor: z.string().optional() })
     notFound: "{Entity} not found",     // keyed reads only
@@ -608,11 +610,11 @@ export function configure{SliceName}Route(deps: SliceDependencies & { waitFn?: W
 
     return router => {
         if (waitFn) {
-            router.get("/{resource}/:id", preferWait({ waitFn }))
+            router.get("/{read-model}/:{key}", preferWait({ waitFn }))
         }
 
         router.get(
-            "/{resource}/:id",
+            "/{read-model}/:{key}",
             on(async req => {
                 const id = req.params["id"] as string
                 const result = await pool.query<{ data: {SliceName}Doc }>(
@@ -776,12 +778,12 @@ describe("{slice title}", () => {
         )
 
         // Perform write
-        const postRes = await agent.post("/{resource}").send({ /* command body */ })
-        expect(postRes.status).toBe(201)
+        const postRes = await agent.post("/{command}").send({ /* command body */ })
+        expect(postRes.status).toBe(204)
 
         // Read with Prefer: wait
         const getRes = await agent
-            .get("/{resource}/test-id")
+            .get("/{read-model}/test-id")
             .set("Prefer", "wait=5")
             .set("If-None-Match", postRes.headers["etag"] as string)
         expect(getRes.status).toBe(200)
@@ -838,7 +840,7 @@ export function configure{SliceName}Route(deps: SliceDependencies): WebApiSetup 
 
     return router => {
         router.get(
-            "/{resource}/:id",
+            "/{read-model}/:{key}",
             on(async req => {
                 const id = req.params["id"] as string
                 const result = await pool.query<{ data: {SliceName}Doc }>(
@@ -913,11 +915,11 @@ describe("{slice title}", () => {
             getApplication({ apis: [configure{WriteSlice}Route(deps), configure{SliceName}Route(deps)] })
         )
 
-        const postRes = await agent.post("/{resource}").send({ /* command body */ })
-        expect(postRes.status).toBe(201)
+        const postRes = await agent.post("/{command}").send({ /* command body */ })
+        expect(postRes.status).toBe(204)
 
         // No Prefer: wait — the append that returned 201 already updated the read model.
-        const getRes = await agent.get("/{resource}/test-id")
+        const getRes = await agent.get("/{read-model}/test-id")
         expect(getRes.status).toBe(200)
         expect(getRes.body).toMatchObject({ /* the read model fields this specification asserts */ })
     })

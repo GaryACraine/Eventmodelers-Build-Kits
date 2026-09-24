@@ -19,7 +19,7 @@
       "tags": [],
       "aggregateDependencies": [],
       "createsAggregate": false,
-      "apiEndpoint": "POST /courses/:courseId/subscriptions",
+      "apiEndpoint": "/subscribe-student-to-course",
       "context": "INTERNAL",
       "modelContext": "enrollment",
       "domain": "Enrollment",
