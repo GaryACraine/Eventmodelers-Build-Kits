@@ -7,6 +7,8 @@
 // Check interface:
 //   module.exports = {
 //     name: 'my-check',
+//     scope: 'backend',           // 'backend' (default): runs when the commit touches a backend slice folder;
+//                                 // 'web': when it touches web/src/slices/{slice}/; 'any': either
 //     skipIfAlreadyFailing: false,
 //     run(ctx) {
 //       return [{ path: 'some/file.ts', reason: 'why this is a problem' }];
@@ -16,8 +18,10 @@
 // `ctx` passed to every check:
 //   changes        [{status, path}] — changed files
 //   touchesSlice    true when this commit touches src/contexts/{context}/slices/{slicename}/**
+//   touchesWebSlice true when it touches web/src/slices/{slicename}/** (a screen, built by build-screen)
 //   repoRoot        absolute path to this project's own root
 //   SLICE_PATTERN   RegExp matching a path inside a DCB slice's own folder
+//   WEB_SLICE_PATTERN RegExp matching a path inside a slice's web/ folder
 //
 // Invoked as: node .build-kit/lib/check-commit-scope.cjs [--staged]
 
@@ -26,6 +30,7 @@ const fs = require('fs');
 const path = require('path');
 
 const SLICE_PATTERN = /^src\/contexts\/[^/]+\/slices\/[^/]+\//;
+const WEB_SLICE_PATTERN = /^web\/src\/slices\/[^/]+\//;
 
 function parseNameStatus(out) {
   return out
@@ -69,7 +74,7 @@ function loadChecks() {
         console.error(`check-commit-scope: skipping checks/${f} — does not export { name, run(ctx) }`);
         return null;
       }
-      return { file: f, name: mod.name || f, run: mod.run, skipIfAlreadyFailing: !!mod.skipIfAlreadyFailing };
+      return { file: f, name: mod.name || f, scope: mod.scope || 'backend', run: mod.run, skipIfAlreadyFailing: !!mod.skipIfAlreadyFailing };
     })
     .filter(Boolean);
 }
@@ -87,20 +92,26 @@ function main() {
   if (changes.length === 0) process.exit(0);
 
   const touchesSlice = changes.some((c) => SLICE_PATTERN.test(c.path));
-  if (!touchesSlice) process.exit(0);
+  const touchesWebSlice = changes.some((c) => WEB_SLICE_PATTERN.test(c.path));
+  if (!touchesSlice && !touchesWebSlice) process.exit(0);
 
   const ctx = {
     changes,
     touchesSlice,
+    touchesWebSlice,
     repoRoot: process.cwd(),
     SLICE_PATTERN,
+    WEB_SLICE_PATTERN,
   };
+  const applies = (check) =>
+    check.scope === 'any' || (check.scope === 'web' ? touchesWebSlice : touchesSlice);
 
   const checks = loadChecks();
   const violations = [];
   const claimedPaths = new Set();
 
   for (const check of checks) {
+    if (!applies(check)) continue;
     if (check.skipIfAlreadyFailing && violations.length > 0) continue;
 
     let result;

@@ -114,4 +114,7 @@
     :where(.mock-card) table { width: 100%; border-collapse: collapse; font-size: 14px; }
     :where(.mock-card) :is(th, td) { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--secondary); }
     :where(.mock-card) th { font-weight: 600; }
+    :where(.mock-card) a { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
+    /* A page's own heading, above its cards: in the app, the page is inside <main> (on the board: board.css). */
+    :where(main) > h1 { font-size: 22px; font-weight: 700; max-width: 560px; margin: 0 auto 16px; }
 }

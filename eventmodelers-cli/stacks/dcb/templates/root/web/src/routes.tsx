@@ -1,20 +1,44 @@
+import type { ComponentType } from "react"
 import type { RouteObject } from "react-router"
 import { Layout } from "./Layout"
-import { Home } from "./pages/Home"
+import type { PageInfo } from "./lib/page"
+import { RequireSession } from "./lib/session"
 
 /**
- * Every page of the app, in one place. `build-screen` adds a page per screen title (a screen shared by several
- * slices is one page, composed from each slice's part in src/slices/).
+ * Every page of the app, found in `src/pages/`: one file per page, each exporting `page` (its route and title,
+ * src/lib/page.ts) and a default component. `build-screen` adds a page per screen title, composed from the parts
+ * each slice builds in `src/slices/<slice>/`. Nothing is listed by hand here.
  *
- * Open decision (Build-Kits PLAN, "Entity-oriented routing"): people see a system as entities, and in a DCB
- * model an entity's identity is its ID attribute, the tag its events carry (courseId, studentId). The routes
- * should read that way (/courses, /courses/:courseId) even though the backend stores events. Until that's
- * decided, don't invent an entity structure here: add only the pages the screens ask for.
+ * Routes are entity-shaped, for people (/courses, /courses/:courseId), and derived by emcli from the screens'
+ * contracts (slice.json `screens[].page.route`). They are unrelated to the API's paths (ADR-025).
  */
+interface PageModule {
+    page?: PageInfo
+    default?: ComponentType
+}
+
+const modules = import.meta.glob<PageModule>(["./pages/*.tsx", "!./pages/*.test.tsx"], { eager: true })
+
+export const pages: (PageInfo & { Component: ComponentType })[] = Object.entries(modules)
+    .map(([file, module]) => {
+        if (!module.page || !module.default) throw new Error(`${file} must export \`page\` and a default component`)
+        return { ...module.page, Component: module.default }
+    })
+    .sort((a, b) => a.path.localeCompare(b.path))
+
 export const routes: RouteObject[] = [
     {
         path: "/",
-        element: <Layout />,
-        children: [{ index: true, element: <Home /> }]
+        element: <Layout nav={pages.filter((p) => p.nav)} />,
+        children: pages.map(({ path, session, Component }) => ({
+            ...(path === "/" ? { index: true } : { path: path.slice(1) }),
+            element: session?.length ? (
+                <RequireSession keys={session}>
+                    <Component />
+                </RequireSession>
+            ) : (
+                <Component />
+            )
+        }))
     }
 ]

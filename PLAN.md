@@ -852,31 +852,77 @@ routes and queries, the examples, and the scenarios. Use it to:
       database, and they show in `available-courses`.
     - `StudentSubscriptions` keeping the title a course had at subscription time is by design (t10's third
       scenario), not a bug.
-- [ ] **14.6 Build skills for screens.**
-  - `build-screen` runs after `build-state-change` / `build-state-view` when the slice has a screen.
-  - One component per command: a form, props = fields, React Hook Form + Zod from the generated types, rejections
-    shown from Problem-JSON.
+- [x] **14.6 Build skills for screens.** *(Done 2026-09-24: emcli `37d381a`, course-enrollment `cd1bac7`.)*
+  - `build-screen` runs after `build-state-change` / `build-state-view` when the slice has a screen (by hand in
+    14.6; the loop runs it from 14.7).
   - **Decided (Gary, 2026-09-24): `session:` fields come from a stub "current user"** in `web/`
-    (`lib/session.tsx`, remembered in the browser; `RequireSession` asks for the value when it's missing). t13
-    maps `subscribeStudent.studentId` to `session:studentId`, so its mockup has no input; the route still takes
-    `studentId` in the body. Real sign-in (and possibly the backend taking the id from the session) is a later
-    phase.
-  - Page routes come from `screens[].page` in slice.json (the routing decision above); API calls use
-    `apiEndpoint` (ADR-025). The two are never derived from each other.
-  - One component per read model: a view or list through TanStack Query. After its own write, a page reads an
-    **async** (`database-projected`) read model with `afterWrite(position)`, and any other read model without it
-    (the type is in slice.json; 14.5).
-  - Pages and routes follow the entity-routing decision above (decided: derived at export, 14.6 A).
-  - Mockup → JSX 1:1; pages composed by screen title.
-  - MSW handlers and component tests from the slice's scenarios: the happy path renders, and each rejection shows
-    its message.
-  - Commit checks cover `web/src/slices/<slice>/`.
-  - **Reference frontend:**
-    - the kit's example app (the reference the backend skills were written from) gets screens, mockups and
-      dependencies for its slices, plus a built `web/` for them, as the pattern `build-screen` copies.
-      `start-empty.sh` removes it with the example backend;
-    - `tests/enrollment-proof` fixtures gain screens with mockups and dependencies, so `build-screen` is proven
-      the way 5.5 proved the backend skills.
+    (`lib/session.tsx`, remembered in the browser; `RequireSession` asks for the value when it's missing). Real
+    sign-in (and possibly the backend taking the id from the session) is a later phase.
+  - **A. emcli: page routes (`37d381a`).**
+    - `model/domain/page.ts`: a page is every screen card with one title in a context; its route is derived
+      from the page's contract: a keyed read → `/<entities>/:<id>`, rows (a query's `data-list`, a list read
+      model) → `/<entities>`, a create (an ID typed in a visible input, or generated) → `/<entities>/new`, else
+      `/<title>`. The entity is the ID attribute's name (`courseId` → `courses`).
+    - An ID attribute a command maps to `session:` is a session key: never a route segment. A command ID bound
+      by `<input type="hidden">` is held by the page (from its route); mockup bindings now mark hidden inputs.
+    - `Element.route` overrides (local-only, kept on pull): `emcli element route <screen> </path/:id> | --clear`,
+      `--all` lists every page. Setting it on one card clears the page's other cards.
+    - The export adds `screens[].page = { title, route, params[{name, from}], slices }` (schema updated).
+    - WARNs (completeness, export; never errors): cards of one page that disagree (the first decides), a route
+      two pages share (a derived one falls back to its title, then context + title), an ID the page needs that
+      neither route nor session supplies.
+    - course-enrollment derives exactly `/courses/new`, `/courses`, `/courses/:courseId` (courseId from the
+      route, studentId from the session) and `/my-courses`. Tests 271/271 (9 new).
+  - **B. Kit `web/`:**
+    - pages are found by `import.meta.glob("./pages/*.tsx")`: each exports `page = { path, title, nav?,
+      session? }` (`lib/page.ts`) and a default component; `routes.tsx` is never edited; the header links the
+      `nav` pages and shows who is signed in;
+    - `mocks/handlers.ts` collects every `slices/*/handlers.ts`;
+    - `lib/session.tsx` (the stub) and `lib/writes.tsx` (`recordWrite(position)` refetches the views;
+      `afterLastWrite()` for async read models only, read from a ref at fetch time);
+    - `App({ initialPath, session })`; `test/render.tsx` (`renderWithProviders`); reads never retry a 4xx.
+  - **C. `build-screen` skill** (`templates/.claude/skills/build-screen/SKILL.md`):
+    - a form per submitted command (RHF + Zod checked against the generated body type; typed / hidden / session /
+      generated fields), a view per displayed read model (TanStack Query; `afterLastWrite()` by
+      `readModelType`), mockup → JSX 1:1, `handlers.ts` and a test per specification from slice.json, the page
+      from `screens[].page`;
+    - commit guard: checks declare a scope (`backend` / `web` / `any`); a commit touching
+      `web/src/slices/{slice}/` runs `12-web-scope` (one slice folder, its pages, `api-types.ts`; a test present)
+      and `96-web-tests` (`tsc -b`, the slice's and the pages' tests); `blocked-paths` also covers the `web/`
+      manifests. `tests/checks/web-scope.test.cjs` (5); all check tests 8 + 18 + 5 + 5.
+  - **D. Reference frontend:** the example app gets Course Form (`/courses/new`), Courses (`/courses`), Course
+    Page (`/courses/:courseId`) and My Courses (`/my-courses`) in `web/src/{pages,slices}/`, with its generated
+    `api-types.ts` (28 tests); `start-empty.sh` resets `web/` (`scripts/empty/api-types.ts`), and the empty app
+    builds with 8/8. The `enrollment-proof` fixtures gain screens (mockup, dependencies, `page`), plus a
+    `course-list` fixture.
+  - **E. Proof on course-enrollment (`cd1bac7`; loop *waiting* throughout):**
+    - kit update, export (all 25 slices stay Done; the 5 screen slices carry `page`), then the five screens
+      built by following the skill, **one commit each through the hook**: register course, course seats
+      capacity, subscribe student, course details subscriptions, student subscriptions. A staged out-of-scope
+      change (`web/src/App.tsx`) was blocked by `web-scope`. `web/` 29/29 tests, build clean.
+    - Chrome, live backend: Available Courses → c3 → the session prompt → Subscribe (the student list updates)
+      → Available Courses shows c3's seats down by one at once (CourseSeats is async: the GET sent the wait
+      headers, its CORS preflight shows it; the live-report CourseDetails read sent none); an unknown course and
+      a duplicate course show the backend's messages; Course Form registers and opens the new Course Page; My
+      Courses lists the student's courses; the session survives a reload.
+    - Chrome, mock mode: the service worker serves the scenario data; the same flow works.
+    - Not done: regenerating a reference slice with the skill on its own (both were written in this session, so
+      it would prove little); the loop running the skill is 14.7.
+  - **Findings:**
+    - The skill had five gaps, now written in: an extension slice's screen gets its own `web/` folder (its backend
+      lives in the origin's); a query parameter without an input takes its slice.json example; the parts of a page
+      follow the mockups (a `data-slice` region places its neighbour), not only timeline order; a new page with
+      `:id` makes the list and create pages lead to it; a mock 404 uses the backend's message.
+    - Live mode retried a 404 once, and TanStack pauses retries in a hidden tab, so an unknown course sat on
+      "Loading…". Reads now retry only network errors and 5xx.
+    - The page heading (`<h1>` outside a card) and links in cards were unstyled in the app: `design-system.css`
+      now styles `main > h1` (the board has `body > h1`) and `.mock-card a`.
+    - `gen:api` needs a running backend (so Postgres). A DB-free way to write `/openapi.json` would help the loop
+      (14.7).
+    - Chrome's network log reported the successful subscribe POST as 503; the UI, the backend and the read
+      model all show it succeeded.
+    - The walkthrough left `ui-proof-1` (a course) and s1's subscription to c3 in course-enrollment's dev
+      database.
 - [ ] **14.7 Loop and export wiring.** Screens and mockups are exported; the loop runs `build-screen` after the
   backend step; the hand-off ready check includes "the screen has a mockup".
   - ~~Decide whether the export or the loop should refuse a slice with errors.~~ Done in 14.4c: planning blocks
@@ -1851,6 +1897,10 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-24 | `session:` fields come from a stub current user in `web/` until real sign-in (14.6) | The kit has no authentication yet; the mockups deliberately have no input for these values |
 | 2026-09-24 | Existing routes migrated once before 14.6: model overrides cleared, code rewritten by hand in one `--no-verify` commit (14.5b) | The loop has no "rename a route" slice type, and the per-slice scope check can't pass a change that spans every slice |
 | 2026-09-24 | No new status: `planned` = passed the gate, `blocked` + the hand-off block = failed it; model `blocked` exports as `Created` | prooph board's statuses are a fixed set; the loop's own `Blocked` is sticky on disk, so a gate block must not become one |
+| 2026-09-24 | A page is every screen card with one title in a context; its route is derived from the page's contract (keyed read / list / create / title), the entity named by the ID attribute, with a per-page override (`element route`) (14.6 A) | Slices built one at a time must land on the same page and URL without talking to each other; the contract already says what the page shows |
+| 2026-09-24 | A `session:`-mapped ID attribute is never a route segment; a hidden input marks an ID the page holds from its route (14.6 A) | Who is signed in isn't part of a URL people share; the mockup already distinguishes typed from held values |
+| 2026-09-24 | `web/` finds pages and mock handlers by glob; a screen commit may touch only its slice's `web/` folder, the pages and `api-types.ts` (14.6 B, C) | No shared list to edit means no cross-slice conflicts, which keeps screen commits as scoped as backend ones |
+| 2026-09-24 | Read-your-writes in the UI is one app-wide last position (`recordWrite` / `afterLastWrite`), sent only by views of async read models (14.6 B) | A page's views don't know which form wrote last; inline and live read models never need to wait |
 
 ## Progress
 
@@ -1868,5 +1918,5 @@ What each `build-*` skill generates and what it verifies:
 | 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 done (stale InProgress recovery in `--local` mode) |
 | 11 — Read Model Types | ✅ Complete | Async, inline and live read models from one fold definition, with an identical data shape across types (ADR-021/022). Proven on course-enrollment t5–t10: inline, a retype to live and back, a new live read model with a lookup |
 | 12 — Query Read Models | 🚧 In progress (top priority) | 12.1–12.3 done: ADR-023 query contract; emcli queries + `SPEC_QUERY` + `addQueries` re-queue; kit runtime (stored SQL + live, one semantics). Named queries on the read model element, the spec *when* references them, `{ data, cursor? }` pages; live needs a tag parameter |
-| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.3 done: native wireframes pushed and pulled (board links work in Connect), design system as a synced snippet. 14.4 done: the `event-model` skill's screen mode (contract → draft → edit → check → push → show); screen problems warn, one set of field exceptions. 14.4b done: manual §13, t13 on course-enrollment (five screens, board wireframes, snippet restyle). 14.4c done: hand-off gate, only information-complete slices reach the loop. 14.5 done: `web/` scaffold in the DCB kit (typed client from `/openapi.json`, opt-in read-your-writes for async read models, MSW mock mode, shell, one Tailwind design system for app and board snippet); entity-oriented routing recorded as an open decision. 14.5b done: API routes named after the model (ADR-025; emcli derives them, `POST /<command>`, `GET /<read-model>/:id`, `GET /<read-model>/<query>`), kit, course-enrollment and manual migrated; page routes decided (entity-based, derived at export) and `session:` from a stub current user. Next: 14.6 `build-screen`. 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
+| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.3 done: native wireframes pushed and pulled (board links work in Connect), design system as a synced snippet. 14.4 done: the `event-model` skill's screen mode (contract → draft → edit → check → push → show); screen problems warn, one set of field exceptions. 14.4b done: manual §13, t13 on course-enrollment (five screens, board wireframes, snippet restyle). 14.4c done: hand-off gate, only information-complete slices reach the loop. 14.5 done: `web/` scaffold in the DCB kit (typed client from `/openapi.json`, opt-in read-your-writes for async read models, MSW mock mode, shell, one Tailwind design system for app and board snippet); entity-oriented routing recorded as an open decision. 14.5b done: API routes named after the model (ADR-025; emcli derives them, `POST /<command>`, `GET /<read-model>/:id`, `GET /<read-model>/<query>`), kit, course-enrollment and manual migrated; page routes decided (entity-based, derived at export) and `session:` from a stub current user. 14.6 done: `build-screen` (a form per command, a view per read model, MSW handlers and tests from the scenarios, pages from `screens[].page`), page routes derived by emcli (entity-shaped, session keys never in URLs), web commit checks, a reference frontend, and course-enrollment's five screens built one commit each, walked through live and in mock mode. Next: 14.7 loop wiring. 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
 | 7 — Board Re-pointing | ⛔ Dropped | eventmodelers board retired; prooph board via emcli is the only board |

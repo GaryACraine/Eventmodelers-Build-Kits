@@ -147,7 +147,58 @@
       "service": null
     }
   ],
-  "screens": [],
+  "screens": [
+    {
+      "id": "screen-course-page-details",
+      "title": "Course Page",
+      "type": "SCREEN",
+      "fields": [],
+      "dependencies": [
+        {
+          "id": "CourseDetails",
+          "type": "INBOUND",
+          "title": "CourseDetails",
+          "elementType": "READMODEL",
+          "connectionType": "displays"
+        }
+      ],
+      "tags": [],
+      "aggregateDependencies": [],
+      "createsAggregate": false,
+      "context": "INTERNAL",
+      "modelContext": "enrollment",
+      "domain": "Enrollment",
+      "slice": "Course Details",
+      "description": "",
+      "triggers": [],
+      "sketched": false,
+      "prototype": {
+        "activeByDefault": false
+      },
+      "service": null,
+      "mockup": {
+        "html": "<!DOCTYPE html>\n<html>\n<head>\n<title>Course Page</title>\n<!-- @import design-system -->\n</head>\n<body>\n  <section class=\"mock-card\">\n    <h1 data-field=\"title\">Math</h1>\n    <p><span data-field=\"capacity\">30</span> places</p>\n  </section>\n</body>\n</html>\n"
+      },
+      "page": {
+        "title": "Course Page",
+        "route": "/courses/:courseId",
+        "params": [
+          {
+            "name": "courseId",
+            "from": "route"
+          },
+          {
+            "name": "studentId",
+            "from": "session"
+          }
+        ],
+        "slices": [
+          "Course Details",
+          "Subscribe Student"
+        ]
+      }
+    }
+  ],
   "processors": [],
   "tables": [],
   "specifications": [

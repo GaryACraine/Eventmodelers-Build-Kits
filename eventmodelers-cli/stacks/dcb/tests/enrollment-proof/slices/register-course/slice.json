@@ -58,7 +58,48 @@
     }
   ],
   "readmodels": [],
-  "screens": [],
+  "screens": [
+    {
+      "id": "screen-course-form",
+      "title": "Course Form",
+      "type": "SCREEN",
+      "fields": [],
+      "dependencies": [
+        {
+          "id": "registerCourse",
+          "type": "OUTBOUND",
+          "title": "registerCourse",
+          "elementType": "COMMAND",
+          "connectionType": "submits"
+        }
+      ],
+      "tags": [],
+      "aggregateDependencies": [],
+      "createsAggregate": false,
+      "context": "INTERNAL",
+      "modelContext": "enrollment",
+      "domain": "Enrollment",
+      "slice": "Register Course",
+      "description": "",
+      "triggers": [],
+      "sketched": false,
+      "prototype": {
+        "activeByDefault": false
+      },
+      "service": null,
+      "mockup": {
+        "html": "<!DOCTYPE html>\n<html>\n<head>\n<title>Course Form</title>\n<!-- @import design-system -->\n</head>\n<body>\n  <h1>New course</h1>\n  <form class=\"mock-card\">\n    <label>Course ID</label>\n    <input type=\"text\" data-field=\"id\" value=\"c1\">\n    <label>Title</label>\n    <input type=\"text\" data-field=\"title\" value=\"Math\">\n    <label>Capacity</label>\n    <input type=\"number\" data-field=\"capacity\" value=\"30\">\n    <button type=\"submit\" data-command=\"registerCourse\">Register course</button>\n  </form>\n</body>\n</html>\n"
+      },
+      "page": {
+        "title": "Course Form",
+        "route": "/courses/new",
+        "params": [],
+        "slices": [
+          "Register Course"
+        ]
+      }
+    }
+  ],
   "processors": [],
   "tables": [],
   "specifications": [
