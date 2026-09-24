@@ -5,10 +5,15 @@ import { afterWrite, api, apiUrl, command, positionOf, read, ApiError } from "./
 import { server } from "./mocks/server"
 
 describe("the app shell", () => {
-    it("renders the layout and the start page", async () => {
+    it("finds the pages in src/pages/: the start page, linked from the header", async () => {
         render(<App initialPath="/" />)
         expect(await screen.findByRole("navigation")).toHaveTextContent("Home")
         expect(screen.getByRole("heading", { name: "Nothing here yet" })).toBeInTheDocument()
+    })
+
+    it("shows who is signed in", async () => {
+        render(<App initialPath="/" session={{ studentId: "s1" }} />)
+        expect(await screen.findByRole("navigation")).toHaveTextContent("studentId s1")
     })
 })
 
