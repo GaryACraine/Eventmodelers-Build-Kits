@@ -1982,6 +1982,52 @@ The skill's screen mode works in the order above. It asks what the person **sees
 (submits), wires those first, then drafts, edits, checks and pushes, and tells you which card to open on the
 board.
 
+### 13.9 When the loop builds your screens
+
+The loop builds a slice's UI in `web/` from its mockup, right after the slice's backend: a form per command the
+screen submits, a view per read model it displays, and the page the card is on (its route from §13's page
+routes). Backend and screen are two commits, `feat: <slice>` and `feat: <slice> screen`, in one loop iteration.
+The screen has its own commit checks (§15).
+
+You don't ask for the screen separately. A screen is built when its card has a **mockup**. The `event-model`
+skill keeps track of the rest: whenever you add or change a mockup, it makes sure the loop gets it, and tells you
+what will happen. What happens in each situation:
+
+| Situation | What the loop does | What you do |
+|---|---|---|
+| a slice with no screen (an automation, the event feed) | builds the backend only | nothing |
+| a new slice with a screen and a mockup | builds the backend, then the screen: two commits, one iteration | plan it as usual (*"Plan register course for the loop."*) |
+| a new slice whose screen has no mockup yet | builds the backend only. The skill (and the export) tell you the screen waits for a mockup; nothing is held back | nothing now. Ask for the mockup whenever you're ready (*"Draft the Course Form."*) |
+| a built slice gets its mockup later | builds that screen only, in the next iteration. The backend stays as built | ask the skill for the mockup. It pushes, commits the model and hands it over, and says *"the loop will build Course Form's screen only"* |
+| a built screen's mockup changes, or its page route | rebuilds that screen only, to the new mockup | ask for the change (*"Put help text under the capacity field."*). The skill hands it over the same way |
+| a page made of several slices' cards (Course Page) | each slice's screen adds its own part to the page | nothing |
+| the screen step fails its checks | stops with the slice **Blocked**. The backend commit stays | ask *"Why is register course blocked?"* The skill reads the reason, fixes the mockup or the model (or tells you what's wrong), and plans it again. The loop then builds only the screen |
+| the loop is interrupted during the screen step | marks the slice **Blocked** (a commit had already landed, §15) | the same: ask the skill to plan it again. The loop sees the backend is committed and builds only the screen |
+| a mockup is removed | deletes nothing: the UI stays in `web/` | remove it from `web/` yourself, if it should go (§20) |
+
+Start the loop (or leave it running) after the skill says it has handed something over, as for any slice. If
+the loop is building when you ask for a mockup change, the skill makes the change in the model and waits to hand
+it over until the loop says *waiting* (§5.4).
+
+**An example (course enrollment).** Register Course was built in t13 with its Course Form. Later:
+
+> *"On the Course Form, add help text under the capacity: 'How many students can take the course'."*
+
+The skill edits the mockup, checks it, pushes it to the board, commits the model and hands it over. It reports:
+
+```text
+Course Form (register course): help text added under Capacity. Checks clean. Board updated.
+Handed to the loop: register course is queued for its screen only (the backend stays as built).
+Start the loop, or leave it running: it rebuilds Course Form and commits "feat: register course screen".
+```
+
+The loop's log shows only `build-screen` for that slice, then *waiting*. Open `/courses/new` to see the help
+text.
+
+**What's queued:** the export's output lists it (`Re-queued … for their screen only`), and
+`.build-kit/.slices/<context>/index.json` shows the slice `Planned`, its `slice.json` with `"buildScreen":
+"changed"` (or `"added"`).
+
 ---
 
 ## 14. Working with git: branches, commits and merges
@@ -2136,7 +2182,15 @@ Claude agent with the kit's build prompt. The agent:
 4. Runs `npm run build` and the slice's tests.
 5. Stages and runs `npm run run:checks -- --staged`, then commits `feat: <slice>`, with the `src/index.ts`
    wiring as a separate commit.
-6. Sets the slice to **Done**, and appends to `progress.txt` and `.build-kit/AGENTS.md`.
+6. **The screen,** when the slice has a screen with a mockup (§13.9): `build-screen` regenerates the frontend's
+   API types from the code (`npm run gen:api`, no database or running backend needed), builds the slice's forms,
+   views and page in `web/`, and commits them as `feat: <slice> screen`.
+7. Sets the slice to **Done**, and appends to `progress.txt` and `.build-kit/AGENTS.md`.
+
+**A slice whose backend is already built** gets only step 6: one re-queued for its screen (`"buildScreen"` in
+its `slice.json`, when a mockup was added or changed after the build), and one whose `feat: <slice>` commit is
+already in the history (an earlier run stopped or was blocked at the screen). The backend is never rebuilt on
+top of itself.
 
 **If the agent is interrupted** (Claude usage ran out, a crash, the terminal closed), the slice is left
 InProgress. With `--local`, the loop cleans up after its own agent: when the agent's run ends, or when the loop
@@ -2163,14 +2217,26 @@ folder, so nothing can skip them:
 | tsc-build | TypeScript errors (including a read model's `schema` that doesn't match its document) |
 | slice-tests | failing tests in any slice folder the commit touches |
 
-If a check fails, the agent must fix the code, or set the slice to **Blocked** with the reason. It never
-commits over a failure.
+A screen commit (it touches `web/src/slices/<slice>/`) runs blocked-paths, which also covers `web/package.json`,
+and two checks of its own instead:
+
+| Check | Rejects |
+|---|---|
+| web-scope | anything outside the slice's `web/src/slices/<slice>/`, the pages it's on (`web/src/pages/*.tsx`) and the generated `web/src/lib/api-types.ts`; a slice folder with no `*.test.tsx` |
+| web-tests | TypeScript errors in `web/`, and failing tests of the slice or its pages |
+
+If a check fails, the agent must fix the code, or set the slice to **Blocked** with the reason (and the time,
+`blockedAt`). It never commits over a failure.
 
 **Branches:** the loop never creates, switches or merges branches. It builds on whatever is checked out. That's
 why each increment starts with `git switch -c increment/<name>` (see [§14](#14-working-with-git-branches-commits-and-merges)).
 
 **Statuses:** only `planned` slices are built. `draft` (exported as `Created`) is ignored, which lets you stage
-work. Once the loop has marked a slice InProgress, Done or Blocked, re-exporting keeps that status.
+work. Once the loop has marked a slice InProgress, Done or Blocked, re-exporting keeps that status, with these
+exceptions:
+- a Done slice is queued again for a retype (§11), added queries (§12) or a screen added or changed (§13.9);
+- a Blocked slice is queued again once you plan it again after the fix (`slice status … planned` later than the
+  block). The skill does this when you ask it to fix a blocked slice.
 
 ---
 
@@ -2229,7 +2295,10 @@ instantaneous in this example, and it grows with your event store.
 | a Done slice doesn't rebuild after re-planning | loop-owned statuses win on export | model the change as a new copy/extension slice |
 | `slice status … planned` sets it **blocked** instead | the slice isn't information complete (a `completeness` error), or waits on a slice that's blocked or not built or planned | fix what it lists (also in the slice's board details after `sync push`), then plan it again. `--force` plans it anyway |
 | the export says **Held back … planned slice(s)** | a planned slice stopped passing the check after it was planned, or was planned on the board | fix what it lists and export again. The slice stays planned in the model; it just isn't queued. `--force` queues it anyway |
-| a slice goes **Blocked** | a check failed and the agent couldn't fix it | read the reason in `.build-kit/.slices/<ctx>/index.json`, fix the model or code, set it back to `planned` |
+| a slice goes **Blocked** | a check failed and the agent couldn't fix it | ask the skill *"Why is <slice> blocked?"*: it reads the reason (`blockedReason` in `.build-kit/.slices/<ctx>/index.json`), fixes the model or mockup, and plans it again. The next export queues it (`Re-queued … the loop had blocked`); a slice whose backend was committed gets only its screen built |
+| a slice planned again after a block stays **Blocked** on export | it was planned before the loop blocked it, or the entry has no `blockedAt` (a loop from before 14.7) | plan it again now (`slice status … planned`) and export |
+| the export warns *"… have no mockup: the loop builds their backend only"* | a planned slice's screen card has no mockup | nothing, if that's intended. Ask the skill for the mockup later; the export then queues the screen alone (§13.9) |
+| a screen is **Blocked** with `npm run openapi` output | a route can't be configured without a database, so the API types would be incomplete | fix the route so configuring it doesn't need a live database, or generate from a running backend: `API_URL=http://localhost:3000 npm --prefix web run gen:api` |
 | commit rejected: `[slice-tests]` | a test fails | fix it. The message names the failing scenario |
 | commit rejected: `[extension-additive]` | an extension changed existing projection code | keep extensions to additions only |
 | a read model is missing older data after an extension | the app wasn't restarted, so no rebuild | restart the app and look for `Rebuilding …` |
@@ -2330,6 +2399,8 @@ usual, once the skill has planned and exported the first slices.
 | **adding detail** | *"A course has an id, a title and a capacity. You can't register it twice."* | adds fields with examples, happy-path and rejection scenarios, routes, queries, read model types |
 | **reviewing** | *"Is t1 complete? What's missing?"* | runs `emcli completeness` and the method's checklist, and lists the gaps before changing anything |
 | **handing off** | *"Plan these for the loop."* | checks the loop is idle (*waiting*), then plans, pushes, commits and exports, in §5.4's order |
+| **drawing screens** | *"Draft the Course Form."* / *"Add help text under the capacity."* | on a built slice, also hands the mockup to the loop (screen only), and says so (§13.9) |
+| **fixing a blocked slice** | *"Why is register course blocked?"* | reads the loop's reason, fixes the model or mockup, and plans it again |
 
 Open questions become **hotspots** on the board (red stickies) instead of guesses. The skill never writes to the
 board except through `emcli sync push --safe`, and never commits or exports while the loop is building.
@@ -2409,7 +2480,7 @@ left out once `emcli use chapter` / `use slice` / `use spec` has set them (§4, 
 | `emcli completeness [<chapter>] [--slice <slice>]` | check every field traces to a source, and every screen's mockup against its contract |
 | `emcli sync push --safe` | push local changes to the board (never deletes) |
 | `emcli sync pull` | pull board changes (notes, names) into the model |
-| `emcli workspace export --build-kit .build-kit --chapter <chapter> [--force]` | hand planned slices to the loop, holding back any that aren't information complete (`--force` queues them anyway) |
+| `emcli workspace export --build-kit .build-kit --chapter <chapter> [--force]` | hand planned slices to the loop, holding back any that aren't information complete (`--force` queues them anyway). Also queues built slices again: a retype, added queries, a screen added or changed (`buildScreen`), and a blocked slice planned again since |
 | `emcli workspace import-status --build-kit .build-kit` | bring the loop's statuses back into the model |
 
 ### Build loop and project
@@ -2420,6 +2491,7 @@ left out once `emcli use chapter` / `use slice` / `use spec` has set them (§4, 
 | `bash scripts/start-empty.sh` | remove the bundled example and start empty |
 | `eventmodelers run --local 2>&1 \| tee ralph.log` | run the build loop |
 | `npm run run:checks -- --staged` | run the commit checks by hand |
+| `npm run gen:api` | regenerate the frontend's API types from the code (`npm run openapi` writes `web/openapi.json`; no database or running backend) |
 | `npm run build && node --env-file=.env dist/index.js` | run the service |
 | `npx vitest run src/contexts/enrollment/slices/<slice>` | run one slice's tests |
 
@@ -2433,8 +2505,8 @@ left out once `emcli use chapter` / `use slice` / `use spec` has set them (§4, 
   expose that link. So a copy someone makes on the board arrives as an unrelated sticky. Mark it with
   `element update --copy-of <origin>` before exporting, or the loop builds it as a new read model instead of an
   extension.
-- **Export re-queues a Done slice only for a retype (§11.3) or added queries (§12.2).** Change a built read model
-  in any other way with a new copy, as shown.
+- **Export re-queues a Done slice only for a retype (§11.3), added queries (§12.2) or a screen added or changed
+  (§13.9).** Change a built read model in any other way with a new copy, as shown.
 - **Live read models serve keyed GETs and tagged queries only**, and need their events and lookups reachable by
   tags (§11.6, §12.1). Their cost grows with one entity's history, times the candidates a query folds.
 - **Queries are named, parameterised filters.** No OR conditions, full-text search, aggregates or joins across
@@ -2446,8 +2518,10 @@ left out once `emcli use chapter` / `use slice` / `use spec` has set them (§4, 
   handles. The kit doesn't measure it for you. Keep them few, and check write latency when you add one.
 - **Rebuild time grows with the event store.** Fine for development. For large production stores, plan rebuilds
   deliberately.
-- **The loop doesn't build screens yet.** t13's mockups are for people and for checking the model. Building the
-  frontend from them comes in t14.
+- **A removed mockup isn't removed from `web/`.** The loop only adds and rebuilds screens. Delete the slice's
+  `web/src/slices/<slice>/` folder and its part of the page by hand.
+- **Screens built before the loop built screens (14.7) count as built.** The first export after upgrading
+  records them as they are. Change their mockup to have the loop rebuild one.
 - **Mockups are static.** They have no scripts or external links, because the board draws them in a sandbox. The
   design system is plain CSS in a snippet. Tailwind classes only render once the snippet contains them.
 - **The board doesn't check wireframes edited in its editor,** or links made there with Connect. `sync pull` takes

@@ -2,3 +2,5 @@ node_modules/
 dist/
 .env
 *.js.map
+# written by `npm run openapi` for gen:api
+web/openapi.json

@@ -10,7 +10,9 @@ description: Builds a slice's screen in web/ (React) from slice.json's screens[]
 > come from it. Never invent a field, a value, a message or a page.
 
 A slice with a screen gets its UI **after** its backend: the slice's routes exist, are in `/openapi.json`, and
-their tests pass. This skill touches `web/` only, and one slice at a time.
+their tests pass. This skill touches `web/` only, and one slice at a time. The loop runs it right after the
+backend's commit, or on its own when slice.json has `buildScreen` (the backend is already built; see "A screen
+added or changed" at the end).
 
 The reference is the kit's example app: `web/src/slices/{register-course,course-list,course-details,
 subscribe-student,student-details}/` and `web/src/pages/` (Course Form, Courses, Course Page, My Courses), built
@@ -65,15 +67,16 @@ missing shadcn component, a library), invoke `request-feedback` and stop.
 
 ## Step 1 — Types
 
-The client is typed from the backend's `/openapi.json`. Regenerate it so this slice's new paths are in it:
+The client is typed from the backend's `/openapi.json`. Regenerate it from the code, so this slice's new paths
+are in it. No database or running backend is needed (and don't use one: a backend started earlier serves the old
+routes):
 
 ```bash
-curl -sf http://localhost:${PORT:-3000}/openapi.json > /dev/null   # is the backend up?
-cd web && npm run gen:api                                          # API_URL=… for another address
+npm run gen:api        # from the project root: build, write web/openapi.json from the code, generate the types
 ```
 
-If the backend isn't running: `npm run db:start`, `npm run build`, start it in the background with `npm start`,
-run `gen:api`, then stop it. Check that `web/src/lib/api-types.ts` now has every `apiEndpoint` of this slice. Body
+Check that `web/src/lib/api-types.ts` now has every `apiEndpoint` of this slice. If `npm run openapi` says a route
+couldn't be documented without a database, stop and set the slice to Blocked with its output. Body
 and response types come from it: `components["schemas"]["<name>"]`, the name the slice's `schema.ts` gave its
 Zod object with `.openapi("…")`.
 
@@ -256,3 +259,18 @@ Load more, sees both rows, and sees the button gone.
    ```
    The pre-commit guard runs `blocked-paths`, `web-scope` (only these paths, one slice, tests present) and
    `web-tests` (typecheck, the slice's and the pages' tests).
+
+## A screen added or changed (`buildScreen`)
+
+The loop re-queues a slice it has built when its screen changed in the model: slice.json has `buildScreen`. The
+backend is built and committed. Don't touch it; build only the screen.
+
+- **`"added"`:** the slice had no mockup when it was built, so it has no `web/src/slices/{slicename}/` yet. Build it
+  as new, Steps 1–8.
+- **`"changed"`:** its mockup, or its page's route, changed. Rebuild the slice's folder to match slice.json as it
+  is now, Steps 1–8. Read what's there first, and keep what still matches:
+  - markup, labels and fields follow the new mockup 1:1 (Step 4); drop what it no longer has;
+  - the slice's own `*.test.tsx` are this skill's output, not a contract: update them to the new mockup, still a
+    test per specification (the rule against editing tests is about the backend's `*.tests.ts`);
+  - a changed `page.route`: the page's `page.path`, and the links other pages make to it (Step 7).
+- Commit as in Step 8: `feat: [Slice Name] screen`.

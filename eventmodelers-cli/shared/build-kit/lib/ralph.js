@@ -477,6 +477,24 @@ function setLocalSliceStatus(kitDir, ctx, id, status, extra = {}) {
   return true;
 }
 
+// A slice the loop blocked goes back in the queue when the model plans it again after the fix: emcli's export
+// compares its planning time with the entry's `blockedAt`. The agent records one when it blocks a slice; this
+// stamps any Blocked entry that has none, right after the run, so the comparison is always possible.
+function stampBlocked(kitDir, ctx) {
+  const indexPath = join(kitDir, '.slices', ctx, 'index.json');
+  if (!existsSync(indexPath)) return;
+  try {
+    const indexData = JSON.parse(readFileSync(indexPath, 'utf-8'));
+    const now = new Date().toISOString();
+    const unstamped = (indexData.slices ?? []).filter((s) => (s.status || '').toLowerCase() === 'blocked' && !s.blockedAt);
+    if (unstamped.length === 0) return;
+    for (const s of unstamped) s.blockedAt = now;
+    writeFileSync(indexPath, JSON.stringify(indexData, null, 2), 'utf-8');
+  } catch (err) {
+    console.error(`[ralph] Failed to stamp blockedAt in ${indexPath}:`, err.message);
+  }
+}
+
 function appendProgressNote(kitDir, heading, lines) {
   try {
     const progressPath = join(dirname(kitDir), 'progress.txt');
@@ -776,6 +794,7 @@ async function ralphLoop(kitDir, projectDir, cfg, onTask, onPlannedSlice, localO
           } catch (err) {
             console.error(`[ralph] Interrupted-slice recovery failed:`, err.message);
           }
+          stampBlocked(kitDir, planned.ctx);
           endRun(kitDir);
         }
       });
