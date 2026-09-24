@@ -137,9 +137,22 @@ if (course.isError) return <p role="alert">{course.error.message}</p>
   `page.params` names.
 - A query parameter the mockup has no input for is fixed at its slice.json example (`minRemainingSeats: 1` for
   "available courses"), as a named constant with a comment saying so.
-- A `data-list` naming a **query** of the read model: `GET` that query's `apiEndpoint`, its parameters in
-  `params.query`, rows in `data.data`. A `data-list` naming a list read model (`listElement`): rows in `data.data`.
-  A `data-list` naming a `List` field: `.map` over that field of the document.
+- A `data-list` naming a **query** of the read model, or a list read model (`listElement`), is a **paged list**
+  (ADR-026): `usePagedList` (`src/lib/paging.ts`) fetches a page at a time with `limit` and `cursor` beside the
+  query's own parameters in `params.query`, `rows` are the pages so far, and `<LoadMore list={…} />`
+  (`src/components/LoadMore.tsx`) goes under them:
+  ```tsx
+  const courses = usePagedList({
+      queryKey: ["course-seats", "available-courses", minRemainingSeats],
+      fetchPage: ({ limit, cursor }) =>
+          read(api.GET("/course-seats/available-courses", {
+              params: { query: { minRemainingSeats, limit, cursor } },
+              headers: afterLastWrite()          // async read models only, as for any view
+          }))
+  })
+  // … {courses.rows.map(…)} … <LoadMore list={courses} />
+  ```
+  A `data-list` naming a `List` field comes whole with its document: `.map` over that field, no paging.
 - A list row that should open another page gets a `linkTo` prop (`(row) => string`) from the page. The view never
   knows page routes.
 - `queryKey`: the read model's kebab name, then its key or query name and parameters.
@@ -172,6 +185,8 @@ export const handlers = [
   path** of the specifications: the examples of the first success scenario, in the response shape of
   `api-types.ts` (a field the scenario leaves out takes its field example). A keyed read answers its example key;
   any other key gets the backend's 404 (the route's `notFound` message).
+- A paged list answers through `page(rows, request)` (`src/mocks/paging.ts`), which pages the scenario rows the
+  way the backend does: `HttpResponse.json(page(rows, request))`.
 - A command answers 204 with an `ETag` (201 with the generated fields when it has any).
 - Rejections are not in `handlers.ts` (mock mode shows the happy path); the tests answer them.
 - Values come only from slice.json examples. `src/mocks/handlers.ts` finds the file itself.
@@ -187,6 +202,10 @@ A test file per component, `describe("{slice title}")`, rendered with `renderWit
 | a rejection (`then` `SPEC_ERROR` 404/409/422) | `server.use(...)` answers the Problem-JSON with the backend's **own message** (read it in the slice's `decider.ts` / route), and the alert shows it |
 | a 400 for a typed field | fill the form without it (or with the invalid value): the field's message shows, and nothing is sent |
 | one the screen can't produce (a 400 for a session or route value) | no test; a comment naming the specification and why |
+
+Every paged list also gets **"Load more adds the next page"**: `server.use(...)` answers the first request (no
+`cursor`) with a row and a cursor, and the request with that cursor with another row and none; the test clicks
+Load more, sees both rows, and sees the button gone.
 
 ## Step 7 — The page
 

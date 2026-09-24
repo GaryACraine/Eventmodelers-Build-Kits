@@ -923,6 +923,27 @@ routes and queries, the examples, and the scenarios. Use it to:
       model all show it succeeded.
     - The walkthrough left `ui-proof-1` (a course) and s1's subscription to c3 in course-enrollment's dev
       database.
+- [x] **14.6b Lists page with Load more (ADR-026).** *(Done 2026-09-24, at Gary's request; course-enrollment
+  `10d6709`.)*
+  - **Why:** the backend pages every list (`?limit=&cursor=` → `{ data, cursor? }`, ADR-023), but the UI showed
+    only the first page.
+  - **Decided (Gary):** Load more, not Next / Previous: a cursor only moves forward, loaded rows stay put after a
+    write, and TanStack has it built in. The reasoning and the alternatives are in ADR-026.
+  - **Kit:**
+    - `web/src/lib/paging.ts`: `usePagedList` (`useInfiniteQuery`, the cursor as the page parameter,
+      `VITE_PAGE_SIZE`, default 20);
+    - `components/LoadMore.tsx`; `mocks/paging.ts` `page(rows, request)` (tested);
+    - the reference Course List pages;
+    - `build-screen`: a query's rows or a list read model are paged, the handler pages its scenario rows, and a
+      "Load more adds the next page" test per list. A `List` field in a document isn't paged.
+    - The example `/course-list` answered a cursor for an exactly full last page (an empty page followed): it now
+      fetches `limit + 1`; the scenario test pages to the end. Backend 71/71, reference web 30/30, empty app 9/9.
+  - **course-enrollment:** kit update, then Available Courses rebuilt by the skill as a screen commit through
+    the hook (web 31/31). Chrome, live, `VITE_PAGE_SIZE=3`: 3 → 6 → 8 rows and the button goes; after
+    subscribing to c5 (on the second page), all three loaded pages were fetched again with the wait headers and
+    c5 showed one seat fewer.
+  - **Finding:** an outline button inside a `mock-card` had white text on white (the card's plain-button rule
+    sets the colour, the variant didn't). The `outline` variant now sets `text-foreground`.
 - [ ] **14.7 Loop and export wiring.** Screens and mockups are exported; the loop runs `build-screen` after the
   backend step; the hand-off ready check includes "the screen has a mockup".
   - ~~Decide whether the export or the loop should refuse a slice with errors.~~ Done in 14.4c: planning blocks
@@ -1901,6 +1922,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-24 | A `session:`-mapped ID attribute is never a route segment; a hidden input marks an ID the page holds from its route (14.6 A) | Who is signed in isn't part of a URL people share; the mockup already distinguishes typed from held values |
 | 2026-09-24 | `web/` finds pages and mock handlers by glob; a screen commit may touch only its slice's `web/` folder, the pages and `api-types.ts` (14.6 B, C) | No shared list to edit means no cross-slice conflicts, which keeps screen commits as scoped as backend ones |
 | 2026-09-24 | Read-your-writes in the UI is one app-wide last position (`recordWrite` / `afterLastWrite`), sent only by views of async read models (14.6 B) | A page's views don't know which form wrote last; inline and live read models never need to wait |
+| 2026-09-24 | UI lists page with Load more over the backend's cursor, 20 rows a page; only a query's rows or a list read model are paged (14.6b, ADR-026) | A cursor only moves forward; loaded rows stay in place after a write; built into TanStack Query. Next / Previous stays an option per list if a screen needs it |
 
 ## Progress
 

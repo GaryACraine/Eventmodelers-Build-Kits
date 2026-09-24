@@ -218,6 +218,10 @@ describe("Scenario: course enrollment lifecycle", () => {
         const step16 = await agent.get(`/course-list?cursor=${pageCursor}&limit=2`)
         expect(step16.status).toBe(200)
         expect(step16.body.data.length).toBeGreaterThan(0)
+        // Paging on reaches a last page that has rows and no cursor
+        let lastPage = step16
+        while (lastPage.body.cursor) lastPage = await agent.get(`/course-list?cursor=${lastPage.body.cursor}&limit=2`)
+        expect(lastPage.body.data.length).toBeGreaterThan(0)
 
         // Idempotency key
         const idempotencyKey = "f47ac10b-58cc-4372-a567-0e02b2c3d479"
