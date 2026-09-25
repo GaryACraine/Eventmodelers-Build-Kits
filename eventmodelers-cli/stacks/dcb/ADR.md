@@ -829,3 +829,79 @@ concern.
 - The UI still waits for its own slice's backend. **Contract-first** (PLAN 14.10, future) removes that: emcli
   writes the API contract from the model, so the UI and the backend can be built in parallel, each against the
   contract, with a check that the code's `/openapi.json` matches it.
+
+
+### ADR-028: The loop's memory by concern, with git as the record
+
+**Status:** Accepted (implementation: PLAN 14.10a)
+**Date:** 2026-09-25
+
+**Context:** The loop keeps two memory files, and both routines (ADR-027) read and append to both:
+- `progress.txt`: append-only, one entry per job, each ending in "Learnings for future iterations";
+- `.build-kit/AGENTS.md`: "Project Learnings".
+
+It isn't a pipeline: in one run the agent writes its progress entry and appends the same lessons to AGENTS.md,
+and nothing reads `progress.txt` later to distil it.
+
+On course-enrollment after t14:
+- `progress.txt` was 25 entries (30 KB), read in full by every job. 22 entries repeated one environment line.
+- AGENTS.md held 44 bullets: about 31 backend, 4 UI and 9 shared.
+- Five bullets contradicted the kit (PUT/DELETE routes after ADR-025; "a screen job skips the backend" after
+  ADR-027). Several more repeated what the skills now say.
+
+The lessons were applied: t14's backend reused the project's patterns, and jobs passed first time. But time and
+cost per job stayed flat from t0 to t14. Where knowledge really crystallised was outside the loop: lessons we
+promoted into the skills.
+
+**Decision (Gary, 2026-09-25):**
+- **Learnings by concern.** Three files: `.build-kit/learnings/shared.md` (environment, git, checks, conventions),
+  `backend.md` and `ui.md`. The loop puts the shared file and the job's concern's file into the prompt, under
+  "Your task". Agents don't go looking, and a routine never reads the other discipline's lessons.
+- **Git is the record of completed work.** A job that ends in a commit writes its summary into the commit body:
+  - what it built;
+  - the rules and patterns it applied;
+  - the tests it ran;
+  - what the other concern needs to know.
+
+  It writes no progress entry. A UI job gets its backend's commit body in its prompt; contract-first (PLAN 14.10)
+  later replaces even that.
+- **`progress.txt` is the journal of what has no commit:** blocked or interrupted jobs, escalated questions, and
+  the loop's own notes, each naming its slice and concern.
+  - **Retention:** an entry is kept while its concern isn't Done, and the loop's settle step removes it once the
+    concern is Done.
+  - The file is committed with the model (`model(…)` commits), so history keeps every version:
+    `git log -p -- progress.txt`.
+- **Pruning.** A lesson is written, used, then promoted, kept or deleted, at three triggers:
+  1. a kit update removes the lessons its change supersedes;
+  2. a cap of about 40 bullets per file makes the agent merge before adding;
+  3. at phase close, lessons true for every project are promoted into the skills (a kit change the user
+     approves) and removed. Lessons the kit covers, or that are wrong, are deleted.
+
+  Writing rules: project-specific and non-obvious only; no environment status lines; correct a wrong bullet,
+  never append a contradicting one.
+- **Other kits:** entries without `concerns` keep AGENTS.md and `progress.txt` as before (as in ADR-027).
+
+**Why:**
+- **Relevance.** Backend and UI are different disciplines. A routine that reads only its own lessons has less to
+  disregard, and less chance of applying the wrong one.
+- **Correctness.** Stale lessons contradicting the kit are the real risk today. Small files with owners can be
+  capped and pruned, and a kit update knows which lessons it supersedes.
+- **Bounded context.** Nothing an agent reads grows with the project. The full `progress.txt` was about 8k
+  tokens after 25 jobs, and would be about 60k after 100.
+- **One record, not three.** The commit already holds the diff. Its body adds the why, so a separate log of
+  completed work duplicates git.
+- **Ready for independence.** Two loops, one per concern, would collide appending to shared files. Separate
+  memory is a prerequisite, and contract-first removes the last cross-concern read.
+
+**Alternatives considered:**
+- **Keep one AGENTS.md and label bullets by concern.** Rejected: every routine still reads all of it, and caps
+  and pruning are per discipline anyway.
+- **Keep `progress.txt` as the full audit log, and have agents read only its tail.** Rejected: it would still
+  duplicate git, and the useful part of an entry (the why) belongs with the commit it explains.
+- **Distil `progress.txt` into the learnings later** (a two-stage pipeline). Rejected: the agent that did the
+  work knows the lesson at the time. Curation is better spent on promoting lessons into the skills.
+
+**Consequences:**
+- The loop's commits gain a body, and the commit checks must accept one.
+- A blocked job's narrative lives in the journal until it's fixed, then only in history.
+- Keeping the learnings accurate becomes part of every kit update and every phase close.
