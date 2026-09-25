@@ -109,7 +109,10 @@ const RegisterCourseSchema = z.object({
 - One Zod entry per **typed** field: `String` → `z.string().trim().min(1, "Required")`, `Int`/`Long` →
   `z.number({ error: "Required" }).int()` with `register(name, { valueAsNumber: true })`, `Boolean` → a checkbox,
   `optional: true` → `.optional()`. Add the constraints the slice's backend `schema.ts` enforces (`.min(1)`), so a
-  400 scenario is caught before anything is sent. `satisfies z.ZodType<Body>` when every body field is typed.
+  400 scenario is caught before anything is sent. `satisfies z.ZodType<Body>` when every body field is typed;
+  when some come from props or the session, `satisfies z.ZodType<Pick<Body, "rating">>` over the typed ones.
+- A mockup `<select>` is a native `<select>` (`.mock-card` styles it; there's no shadcn Select), with
+  `register(name, { valueAsNumber: true })` for a number and `defaultValues` for the mockup's `selected` option.
 - `useForm({ resolver: zodResolver(Schema) })`. A form with nothing typed (only props and session) is a plain
   `<form onSubmit>` with `useState` for sending / done / error.
 - Submit:
@@ -134,6 +137,10 @@ const course = useQuery({
 if (course.isPending) return <p className="text-sm text-muted-foreground">Loading…</p>
 if (course.isError) return <p role="alert">{course.error.message}</p>
 ```
+
+- A read model whose document is created by its first event (an aggregate, e.g. ratings) answers 404 until
+  then. For such a view a 404 (`error instanceof ApiError && error.status === 404`) is the empty state, one line
+  in the card ("No ratings yet."), not an alert. Any other error is still the alert.
 
 - **Read-your-writes, by `readModelType`:** absent or `database-projected` (async) → `headers: afterLastWrite()`.
   `inline-projected` and `live-report` are current when the command returns: **no headers**.
@@ -205,7 +212,7 @@ A test file per component, `describe("{slice title}")`, rendered with `renderWit
 | a success (`then` an event, or a read model) | the form sends exactly the example body (capture it in `server.use`), or the view shows the example values |
 | a rejection (`then` `SPEC_ERROR` 404/409/422) | `server.use(...)` answers the Problem-JSON with the backend's **own message** (read it in the slice's `decider.ts` / route), and the alert shows it |
 | a 400 for a typed field | fill the form without it (or with the invalid value): the field's message shows, and nothing is sent |
-| one the screen can't produce (a 400 for a session or route value) | no test; a comment naming the specification and why |
+| one the screen can't produce (a 400 for a session or route value, or a range the `<select>` can't send) | no test; a comment naming the specification and why |
 
 Every paged list also gets **"Load more adds the next page"**: `server.use(...)` answers the first request (no
 `cursor`) with a row and a cursor, and the request with that cursor with another row and none; the test clicks

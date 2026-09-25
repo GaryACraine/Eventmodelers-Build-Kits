@@ -41,6 +41,7 @@ node .build-kit/ralph-claude.js /path/to/project
 | `lib/backend-prompt.md` | Phase 2 prompt: tells Claude how to build a planned slice (with concerns: its backend) |
 | `lib/screen-prompt.md` | Phase 2 prompt for a slice's UI job (kits that build a frontend, e.g. DCB) |
 | `lib/concerns.js` | A slice's work per concern (backend, UI): the next job, the derived status (`node --test lib/concerns.test.js`) |
+| `lib/memory.js` | The loop's memory by concern, for kits that ship `learnings/` (`node --test lib/memory.test.js`) |
 | `lib/AGENT.md` | Agent instructions included in Claude's context |
 
 ## How it works
@@ -64,6 +65,23 @@ the job named in a "Your task" header; the agent sets its concern Done or Blocke
 slice's status after each run. `models: { ui, backend }` in `.eventmodelers/config.json` gives a routine its own
 model (`ralph-claude.js`). Entries without `concerns` (other kits' exports) run exactly as before: the agent
 picks and claims the slice itself.
+
+**The loop's memory** (kits that ship `learnings/`, e.g. DCB; ADR-028 in the DCB kit):
+- **Lessons by concern:** `learnings/shared.md`, `backend.md` and `ui.md`. The loop puts the shared file and the
+  job's concern's file into the prompt ("What the loop remembers", under "Your task"), so a backend job never
+  reads UI lessons and vice versa. Agents don't read memory files themselves.
+- **Git is the record:** a job that commits describes its work in the commit's body. A UI job's memory includes
+  its backend's commit body (what it built, status codes, messages).
+- **`progress.txt` is a journal of open problems:** a blocked or interrupted job gets an entry tagged
+  `[slice:<id> concern:<backend|ui>]`, which is in that job's memory when it runs again, and the loop removes it
+  once the job is Done (`[ralph] journal: removed …`). The file is committed with the model, so history keeps it.
+- **Pruning:** each file is capped at 40 lessons (the loop warns, and the agent must merge before adding). Every
+  kit update lists the lessons its change supersedes, and its migration removes them. At each phase close, lessons
+  true for every project are promoted into the kit's skills and removed from the files.
+- `[ralph] memory: <n> chars (…)` logs what a job was given; `done (…, in <n>k tok, out <n>k tok)` what it read.
+
+A kit without `learnings/` keeps its own prompts, `progress.txt` and `AGENTS.md` exactly as before, and re-running
+`init` never overwrites a project's `learnings/` (it only seeds missing files).
 
 Both phases run in a continuous loop with a 3-second idle sleep. The realtime agent runs concurrently in the same process.
 

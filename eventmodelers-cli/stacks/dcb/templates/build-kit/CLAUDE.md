@@ -54,7 +54,11 @@ Ignore case for contexts and slices in prompts.
 
 Do not change files with tests unless explicitly instructed, or the change brings the test in line with slice.json: `*.tests.ts`. An extension slice appending its own `describe` block to its origin's `route.tests.ts` is explicitly instructed (build-state-view, E4), and so is a slice with `addQueries` appending one query block per added query (A5); existing tests there stay untouched. A screen's own `web/src/slices/{slicename}/*.test.tsx` are `build-screen`'s output: a `buildScreen: "changed"` rebuild updates them to the new mockup.
 
-At the start of every session, read `.build-kit/AGENTS.md` if it exists to load accumulated project learnings.
+**Memory (ADR-028).** Project lessons live in `.build-kit/learnings/`: `shared.md`, `backend.md` and `ui.md`. The loop
+gives each job its own in the prompt ("What the loop remembers"), so a loop job reads no memory files itself. Outside
+the loop, read `learnings/shared.md` and the file for the concern you're working on. Completed work is recorded in
+git (each slice commit's body); `progress.txt` is a journal of open problems only (blocked or interrupted jobs), and
+the loop removes an entry once its job is Done.
 
 The loop claims each job (its concern's status InProgress) before the agent starts. Finish it by setting that concern's status in `index.json`: `Done`, or `Blocked` with `blockedReason` and `blockedAt`.
 

@@ -833,7 +833,7 @@ concern.
 
 ### ADR-028: The loop's memory by concern, with git as the record
 
-**Status:** Accepted (implementation: PLAN 14.10a)
+**Status:** Accepted; implemented in PLAN 14.10a (kit: `lib/memory.js`, the DCB prompts and `learnings/`)
 **Date:** 2026-09-25
 
 **Context:** The loop keeps two memory files, and both routines (ADR-027) read and append to both:
@@ -845,7 +845,7 @@ and nothing reads `progress.txt` later to distil it.
 
 On course-enrollment after t14:
 - `progress.txt` was 25 entries (30 KB), read in full by every job. 22 entries repeated one environment line.
-- AGENTS.md held 44 bullets: about 31 backend, 4 UI and 9 shared.
+- AGENTS.md held 42 bullets: 32 backend, 4 UI and 6 shared (environment, git, checks).
 - Five bullets contradicted the kit (PUT/DELETE routes after ADR-025; "a screen job skips the backend" after
   ADR-027). Several more repeated what the skills now say.
 

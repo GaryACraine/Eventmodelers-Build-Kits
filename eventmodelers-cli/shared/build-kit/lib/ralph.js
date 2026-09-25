@@ -13,6 +13,7 @@ import { randomUUID } from 'crypto';
 import { execFileSync } from 'child_process';
 import { createRealtimeAdapter } from './adapters/realtime-adapter.js';
 import { concernsOf, inProgressConcerns, nextWork, setConcernStatus, settleEntries } from './concerns.js';
+import { LEARNINGS_CAP, journalPath, journalTag, memoryBlock, pruneJournal, usesLearnings } from './memory.js';
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 
@@ -489,6 +490,11 @@ function settleIndex(kitDir, ctx) {
   try {
     const indexData = JSON.parse(readFileSync(indexPath, 'utf-8'));
     const changed = settleEntries(indexData.slices ?? []);
+    // The journal keeps only open problems: a note on a job that is now Done goes (its outcome is in git).
+    if (usesLearnings(kitDir)) {
+      const removed = pruneJournal(journalPath(kitDir), indexData.slices ?? []);
+      if (removed) console.log(`[ralph] journal: removed ${removed} note(s) on Done jobs`);
+    }
     if (changed.length === 0) return;
     writeFileSync(indexPath, JSON.stringify(indexData, null, 2), 'utf-8');
     for (const entry of (indexData.slices ?? []).filter((s) => changed.includes(s.id) && s.folder)) {
@@ -504,11 +510,14 @@ function settleIndex(kitDir, ctx) {
   }
 }
 
-function appendProgressNote(kitDir, heading, lines) {
+// In a kit with learnings/, `ref` ({ id, concern }) tags the note with its job, so it's removed once that job is
+// Done (memory.js, ADR-028): progress.txt is then a journal of open problems only. Other kits' notes are unchanged.
+function appendProgressNote(kitDir, heading, lines, ref) {
   try {
-    const progressPath = join(dirname(kitDir), 'progress.txt');
+    const progressPath = journalPath(kitDir);
     const existing = existsSync(progressPath) ? readFileSync(progressPath, 'utf-8') : '';
-    const note = `\n## ${new Date().toISOString()} — ${heading}\n\n${lines.join('\n')}\n---\n`;
+    const tag = ref && usesLearnings(kitDir) ? ` ${journalTag(ref)}` : '';
+    const note = `\n## ${new Date().toISOString()} — ${heading}${tag}\n\n${lines.join('\n')}\n---\n`;
     writeFileSync(progressPath, existing + note, 'utf-8');
   } catch (err) {
     console.error('[ralph] Failed to append progress.txt note:', err.message);
@@ -546,7 +555,7 @@ async function blockStuckSlice(kitDir, cfg, credentialed, planned, attempts) {
     `getting reverted (e.g. a failed check). Auto-blocked to stop the loop from retrying it forever.`;
 
   setLocalSliceStatus(kitDir, planned.ctx, planned.id, 'Blocked', { blockedReason: reason, blockedAt: new Date().toISOString() }, planned.concern);
-  appendProgressNote(kitDir, 'Slice auto-blocked', [`Slice: ${planned.title} (id=${planned.id}, context=${planned.ctx}, concern=${planned.concern})`, '', `- ${reason}`]);
+  appendProgressNote(kitDir, 'Slice auto-blocked', [`Slice: ${planned.title} (id=${planned.id}, context=${planned.ctx}, concern=${planned.concern})`, '', `- ${reason}`], planned);
   if (credentialed) await syncSliceStatusToBoard(cfg, planned.id, 'Blocked');
 
   console.error(`[ralph] ${reason} Marked "${planned.title}" (id=${planned.id}) as Blocked — moving on.`);
@@ -672,7 +681,7 @@ function recoverInterruptedRun(kitDir, projectDir, run) {
       `to ${now.head?.slice(0, 7) ?? 'none'}) but before marking the slice Done. Check those commits and the working tree, ` +
       `then set the slice to Done, or revert them and set it to Planned.`;
     for (const s of stale) setLocalSliceStatus(kitDir, run.ctx, s.id, 'Blocked', { blockedReason: reason, blockedAt: new Date().toISOString() }, s.concern);
-    appendProgressNote(kitDir, 'Interrupted slice blocked', [`Slice(s): ${names} (context=${run.ctx})`, '', `- ${reason}`]);
+    noteInterrupted(kitDir, run, stale, names, 'Interrupted slice blocked', ['', `- ${reason}`]);
     console.error(`[ralph] ${names} left InProgress by an interrupted agent. ${reason} Marked Blocked.`);
     return true;
   }
@@ -705,9 +714,21 @@ function recoverInterruptedRun(kitDir, projectDir, run) {
     }
   }
   for (const s of stale) setLocalSliceStatus(kitDir, run.ctx, s.id, 'Planned', {}, s.concern);
-  appendProgressNote(kitDir, 'Interrupted slice reset to Planned', lines);
+  noteInterrupted(kitDir, run, stale, names, 'Interrupted slice reset to Planned', lines.slice(1));
   console.log(`[ralph] ${names} left InProgress by an interrupted agent — reset to Planned.`);
   return true;
+}
+
+// The progress note for interrupted jobs: one per job in a kit with learnings/ (each is removed from the journal on
+// its own once that job is Done, ADR-028), one for them all otherwise, as before.
+function noteInterrupted(kitDir, run, stale, names, heading, rest) {
+  if (!usesLearnings(kitDir)) {
+    appendProgressNote(kitDir, heading, [`Slice(s): ${names} (context=${run.ctx})`, ...rest]);
+    return;
+  }
+  for (const s of stale) {
+    appendProgressNote(kitDir, heading, [`Slice: "${s.title}"${s.concern === 'ui' ? ' (UI)' : ''} (context=${run.ctx})`, ...rest], s);
+  }
 }
 
 // On startup: a marker whose loop is gone means the previous loop died mid-run.
@@ -775,6 +796,19 @@ function taskHeader(planned, claimed) {
   ].join('\n');
 }
 
+// A tracked job's prompt: the task header, then (in a kit with learnings/) the memory the loop gives it (memory.js:
+// its concern's lessons, its open journal notes, a UI's backend commit body), then its routine.
+function jobPrompt(kitDir, projectDir, planned, claimed, routine) {
+  const header = taskHeader(planned, claimed);
+  if (!usesLearnings(kitDir)) return header + routine;
+  const memory = memoryBlock({ kitDir, projectDir, planned });
+  console.log(`[ralph] memory: ${memory.text.length} chars (${memory.summary || 'nothing yet'})`);
+  if (memory.overCap.length) {
+    console.warn(`[ralph] learnings over the cap of ${LEARNINGS_CAP}: ${memory.overCap.join(', ')}. The agent is asked to merge them.`);
+  }
+  return header + memory.text + routine;
+}
+
 function isStillPlanned(kitDir, planned) {
   try {
     const { slices } = JSON.parse(readFileSync(join(kitDir, '.slices', planned.ctx, 'index.json'), 'utf-8'));
@@ -831,7 +865,7 @@ async function ralphLoop(kitDir, projectDir, cfg, onTask, onPlannedSlice, localO
       const label = planned.tracked ? `${what} of slice "${planned.title}"` : `slice "${planned.title}"`;
       await runWithRetry(`onPlannedSlice: building ${label}...`, async () => {
         if (credentialed) {
-          return onPlannedSlice(planned.tracked ? taskHeader(planned, false) + routine : routine, { concern: planned.concern });
+          return onPlannedSlice(planned.tracked ? jobPrompt(kitDir, projectDir, planned, false, routine) : routine, { concern: planned.concern });
         }
         // A kit whose export has no concerns: its routine picks and claims the slice itself, exactly as before.
         if (!planned.tracked) {
@@ -858,7 +892,7 @@ async function ralphLoop(kitDir, projectDir, cfg, onTask, onPlannedSlice, localO
         try {
           // The loop claims the job (after the run marker, so an interrupted claim is recovered).
           setLocalSliceStatus(kitDir, planned.ctx, planned.id, 'InProgress', {}, planned.concern);
-          await onPlannedSlice(taskHeader(planned, true) + routine, { concern: planned.concern });
+          await onPlannedSlice(jobPrompt(kitDir, projectDir, planned, true, routine), { concern: planned.concern });
         } finally {
           try {
             recoverInterruptedRun(kitDir, projectDir, run);

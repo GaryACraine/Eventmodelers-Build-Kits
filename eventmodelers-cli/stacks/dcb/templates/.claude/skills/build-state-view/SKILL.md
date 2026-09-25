@@ -197,6 +197,10 @@ Rules for `evolve`. They are what make the three types produce the same data:
   the related data at the event that brings the entity in (`studentWasSubscribed`), and copy what the document
   shows. A missing entry is `undefined`: store `null`, don't throw.
 - **Ignored events:** end the `switch` with `return doc`.
+- **Aggregates** (fields mapped `derived: count of …` / `average of ….field`): the first event creates the
+  document from `doc?.… ?? 0`. Keep only the fields slice.json declares: update an average incrementally,
+  `(average * (count - 1) + value) / count`, rather than storing a hidden sum. Such a document doesn't exist
+  until its first event, so its keyed GET answers 404 until then (the UI shows that as empty, not as an error).
 - Write `canHandle` (and each lookup's `canHandle`) **one event per line**, each followed by a comma except the
   last. Extension slices append to these arrays.
 
