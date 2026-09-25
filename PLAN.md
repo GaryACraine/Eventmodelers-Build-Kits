@@ -1102,6 +1102,142 @@ routes and queries, the examples, and the scenarios. Use it to:
   Contract-first isn't done now: with one loop it changes the order jobs run, not the throughput. The UI already
   waits only for its own backend. The full pipeline for a new slice is still unproven, and contract-first is
   about 14.6's size.
+- **Order changed (Gary, 2026-09-25), after 14.9's live run:**
+  1. **14.10a** Loop memory by concern, with git as the record;
+  2. **14.10** Contract-first;
+  3. **14.8** Deploy;
+  4. the t14 chapter (14.9).
+
+  Gary wants contract-first now, as the way to a backend and a UI developed independently. 14.10a comes first
+  because it's small, doesn't need contract-first, and fixes stale knowledge the loop reads today. Contract-first
+  then removes the UI's last dependency on the backend's notes. See ADR-028.
+- [ ] **14.10a Loop memory by concern; git as the record.** *(Decided with Gary 2026-09-25; ADR-028. Next: a
+  detailed plan, then kit code.)*
+  - **How it works today (checked on course-enrollment after t14):**
+    - Two memory files, shared by both routines:
+      - `progress.txt`: append-only, one entry per job, each ending in "Learnings for future iterations". It's
+        25 entries, 270 lines and 30 KB, growing about 1.2 KB per job.
+      - `.build-kit/AGENTS.md`: "Project Learnings", 44 bullets, 9.7 KB.
+    - Reading:
+      - `screen-prompt.md` step 1 reads both;
+      - `backend-prompt.md` step 1 reads `progress.txt`, and gets `AGENTS.md` through the project CLAUDE.md →
+        `.build-kit/CLAUDE.md` ("At the start of every session, read `.build-kit/AGENTS.md`").
+    - Writing: both routines append to both files. `ralph.js` also appends to `progress.txt` itself
+      (`appendProgressNote`: a slice auto-blocked, an interrupted slice blocked or reset).
+    - **It isn't a pipeline.** In one run, the agent writes its progress entry, with its own Learnings block, and
+      appends the same lessons to `AGENTS.md`. Nothing reads `progress.txt` later to distil it, so its Learnings
+      blocks are duplicates.
+    - **The mix:** of the 44 bullets, about 31 are backend, about 4 UI, and about 9 environment, git or checks. A
+      UI job reads about 7 KB of backend lessons it can't use.
+  - **Has AGENTS.md made the loop better?**
+    - **Applied, yes.** t14's `rate course` backend followed project lessons:
+      - `IsSubscribed` tagged with both ids;
+      - SPEC_ERROR titles verbatim, `IllegalStateError` → 422;
+      - the wiring in its own commit;
+      - an existing slice used as a template (*"unsubscribestudent/route.ts is a good sed template"*).
+
+      Every recent job passed its checks on the first commit (t12, t14).
+    - **Some lessons are genuinely project-specific:** a range rule as `ValidationError` so the 400's detail
+      matches the spec; an aggregate read model that 404s until its first event, so its view shows an empty state.
+    - **No measurable speed-up.** Time and cost per job are flat:
+      - t0–t4: about 79 s / $0.71 per slice (11 slices, 14.4 min, $7.83);
+      - t12: 68–80 s / $0.78–0.83;
+      - t14: backend 72–94 s / $0.73–0.80, UI 94–107 s / $0.78–0.86.
+
+      Cost is dominated by the skills and reading code. Kit improvements over the same period confound any
+      attribution.
+    - **Crystallising has worked outside the loop.** Many early bullets were promoted into the skills in our
+      kit-maintenance sessions (`IllegalStateError`, `ValidationError`, `waitFn`, `inlineProjections`, the
+      wiring commit, `valueAsNumber`). Their copies in `AGENTS.md` are now redundant.
+    - **The harms come from no curation:**
+      - **5 stale bullets contradict the kit:**
+        - `router.put` for update commands;
+        - DELETE with path-param ids;
+        - chaining a PUT or DELETE ETag (two bullets);
+        - "a `buildScreen` slice skips the backend".
+
+        ADR-025 made routes `POST /<command>`, and ADR-027 split the routines. `.build-kit/CLAUDE.md` says "never
+        PUT/PATCH/DELETE", so the agent reads contradictions.
+      - 22 of 25 progress entries repeat "Board sync still unavailable".
+      - `progress.txt` is read in full every job: about 8k tokens now, about 60k after 100 slices.
+  - **Why split by concern:** mainly relevance and correctness, not speed. Splitting alone saves a UI job about 2k
+    tokens today.
+    1. Each routine reads only its discipline plus a small shared core.
+    2. Small files with owners can be capped, pruned and promoted.
+    3. Nothing the agent reads grows with the project.
+    4. Two loops at once (14.7b's "not now") would collide on shared files, so this is a prerequisite.
+
+    It doesn't need contract-first, because 14.7b's routines already know their concern. Contract-first then
+    removes the UI's one remaining need for backend notes.
+  - **The design (ADR-028):**
+    - **Learnings by concern.** The project gets:
+      - `.build-kit/learnings/shared.md`: the environment, git, checks and conventions both disciplines need;
+      - `.build-kit/learnings/backend.md`;
+      - `.build-kit/learnings/ui.md`.
+
+      Entries without `concerns` (the other kits) keep `AGENTS.md`, as in 14.7b.
+    - **The loop injects the memory; the agent doesn't go looking.** Under the "Your task" header, `ralph.js`
+      adds:
+      - `shared.md` plus the concern's file;
+      - the slice's open journal entries;
+      - for a UI job, its backend's commit body (`git log -E --grep "^feat: \[?<slice>\]?$" -1 --format=%B`).
+
+      The prompts stop saying "read progress.txt", and the `AGENTS.md` line in `.build-kit/CLAUDE.md` goes.
+    - **Git is the record of completed work.**
+      - A job that ends in a commit writes its summary into the **commit body**:
+        - what it built;
+        - the rules and patterns it applied;
+        - the tests it ran;
+        - anything the other concern needs (e.g. "GET 404s until the first rating").
+      - It writes no progress entry. The commit checks and hook must accept a body. The loop's commits have none
+        today (`feat: [rate course]` plus the co-author line).
+    - **`progress.txt` becomes the journal of what has no commit:** blocked jobs, interrupted runs, escalated
+      questions, the stuck guard, and the loop's own notes. Each entry names its slice and concern.
+  - **Retention policy (`progress.txt`):**
+
+    | An entry about… | Keep while | Then |
+    |---|---|---|
+    | a job that ended in a commit | never written: the commit body holds it | — |
+    | a blocked or interrupted job, or an open question | its concern isn't Done (the next attempt needs it) | removed by the loop's settle step (`settleEntries`) once the concern is Done |
+    | the loop's own notes (stuck guard, a reset) | the concern isn't Done | removed the same way |
+
+    - Nothing is lost: `progress.txt` goes into the user's `model(…)` commits, so git history holds every version.
+      Old entries are read with `git log -p -- progress.txt`.
+    - The file holds only open problems, so it stays small.
+    - `index.json`'s `blockedReason` stays the structured field. The journal is the narrative (what was tried),
+      which `index.json` drops once the block clears.
+  - **Pruning the learnings files.** A lesson's life: **written → used → promoted, kept or deleted.**
+    - **Writing rules** (both prompts):
+      - only project-specific, non-obvious lessons that no skill already states;
+      - no environment status lines;
+      - correct or delete a bullet that's become wrong; never append one that contradicts it;
+      - one lesson per bullet, with an example from the project.
+    - **Triggers:**
+      1. **A kit update.** Its notes list what the change supersedes (e.g. "routes are `POST /<command>`: drop
+         PUT/DELETE lessons"), and the migration removes those bullets.
+      2. **The size cap:** about 40 bullets per file. When a file is full, the agent merges or drops bullets
+         before adding one, in the same job.
+      3. **Phase close.** In the kit-maintenance session, each bullet is sorted:
+         - true for every project → **promote** it into the skill (a kit change Gary approves), then delete it
+           here;
+         - true only for this project → **keep** it;
+         - covered by the kit, or wrong → **delete** it.
+    - **A repeated mistake** is traced to its lesson and corrected (a manual §17 row).
+  - **Migration (course-enrollment, a kit update):**
+    - split `AGENTS.md` into the three files;
+    - drop the 5 stale bullets and those the skills now cover;
+    - clear `progress.txt`: all 25 entries are about Done concerns, and history keeps them at `3a9a8e5`.
+  - **Proof:**
+    - `node:test`s for the prompt built per concern and for the journal's settle;
+    - a fake-agent simulation (as in 14.7b): a Done job leaves no entry, a blocked one keeps its entry until
+      Done;
+    - a live job on course-enrollment (a small new slice with a screen). Compare prompt size, time, cost and the
+      first-pass rate with t14's.
+  - **Manual:**
+    - §15: what the loop remembers, and where;
+    - §14: "Who commits what" (commit bodies, the files a `model(…)` commit picks up);
+    - §17: "the loop keeps repeating a mistake → correct the lesson in `learnings/<concern>.md`";
+    - §20: limits.
 - [ ] **14.8 Deploy.** The `web/` build goes to S3 + CloudFront (SPA fallback to `index.html`), with `VITE_API_BASE`
   per environment. A script first; CDK later if wanted.
 - [ ] **14.9 Prove and document (increment t14 on course-enrollment).**
@@ -1169,8 +1305,10 @@ routes and queries, the examples, and the scenarios. Use it to:
         (Dana).
   - [ ] The t14 chapter (after 14.8 and the 14.10 decision): told as what to say to the skill, from this run's
     transcript, with the board and app screenshots, plus the deploy section from 14.8.
-- [ ] **14.10 (future) Contract-first: the UI and the backend built in parallel.** *(Gary, 2026-09-24: to look into
-  later.)*
+- [ ] **14.10 Contract-first: the UI and the backend built in parallel.** *(Gary, 2026-09-24: to look into
+  later. Moved up 2026-09-25: next after 14.10a, before 14.8.)*
+  - With 14.10a in place, the contract replaces the UI's last need for backend notes (the backend's commit
+    body). Each discipline's memory then stands alone, which two independent loops would need.
   - Today the UI waits for its own slice's backend: its API types are generated from the backend's code
     (`gen:api`).
   - The model already knows every path, field and type, so emcli could write the API contract (the OpenAPI
@@ -2161,6 +2299,10 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-24 | Queue entries without `concerns` run the old loop path (the agent picks and claims) (14.7b) | The other kits share `ralph.js`; their exports and prompts are untouched |
 | 2026-09-24 | Before contract-first: 14.9's live end-to-end run, then 14.8 deploy, then decide 14.10, then the t14 chapter (Gary) | With one loop, contract-first changes job order, not throughput; the new-slice pipeline (backend job then UI job) is unproven; evidence first |
 | 2026-09-24 | Contract-first (the model writes the API contract) is a future step (14.10, Gary) | It removes the UI's wait on its slice's backend, for full parallelism, and builds on 14.7b |
+| 2026-09-25 | New order: 14.10a loop memory, then 14.10 contract-first, then 14.8 deploy, then the t14 chapter (Gary) | Gary wants contract-first now, as the way to a backend and UI developed independently. 14.10a doesn't need it, is small, and fixes stale lessons the loop reads today. t14 showed no UI waiting on a failing backend, so contract-first's value is independence, not speed |
+| 2026-09-25 | The loop's learnings are split by concern (`learnings/shared.md`, `backend.md`, `ui.md`), and the loop injects them into the prompt (14.10a, ADR-028) | A shared file mixes disciplines (about 31 backend bullets to 4 UI), and 5 bullets contradict the current kit. Small files with owners can be capped and pruned; two loops would collide on one file |
+| 2026-09-25 | Git is the record of completed work: a job's summary goes in its commit body, and `progress.txt` holds only what has no commit (blocked, interrupted, open questions), removed once its concern is Done (14.10a, ADR-028) | `progress.txt` duplicated git plus the learnings, and every job read all of it (about 8k tokens, growing). Nothing is lost: it's committed with the model, so history keeps it |
+| 2026-09-25 | Learnings are pruned at three triggers (a kit update, a size cap of about 40 bullets, phase close), and lessons true for every project are promoted into the skills (Gary approves) (14.10a, ADR-028) | Promotion into the skills is where knowledge has really crystallised so far. Without pruning, lessons go stale when the kit changes |
 | 2026-09-24 | Planning a slice again after the loop blocked it re-queues it (`plannedAt` later than the loop's `blockedAt`) (14.7) | The loop's Blocked was otherwise permanent, which forced hand edits to index.json; timestamps stop a stale plan from re-queuing a fresh block |
 
 ## Progress
@@ -2179,5 +2321,5 @@ What each `build-*` skill generates and what it verifies:
 | 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 done (stale InProgress recovery in `--local` mode) |
 | 11 — Read Model Types | ✅ Complete | Async, inline and live read models from one fold definition, with an identical data shape across types (ADR-021/022). Proven on course-enrollment t5–t10: inline, a retype to live and back, a new live read model with a lookup |
 | 12 — Query Read Models | 🚧 In progress (top priority) | 12.1–12.3 done: ADR-023 query contract; emcli queries + `SPEC_QUERY` + `addQueries` re-queue; kit runtime (stored SQL + live, one semantics). Named queries on the read model element, the spec *when* references them, `{ data, cursor? }` pages; live needs a tag parameter |
-| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.3 done: native wireframes pushed and pulled (board links work in Connect), design system as a synced snippet. 14.4 done: the `event-model` skill's screen mode (contract → draft → edit → check → push → show); screen problems warn, one set of field exceptions. 14.4b done: manual §13, t13 on course-enrollment (five screens, board wireframes, snippet restyle). 14.4c done: hand-off gate, only information-complete slices reach the loop. 14.5 done: `web/` scaffold in the DCB kit (typed client from `/openapi.json`, opt-in read-your-writes for async read models, MSW mock mode, shell, one Tailwind design system for app and board snippet); entity-oriented routing recorded as an open decision. 14.5b done: API routes named after the model (ADR-025; emcli derives them, `POST /<command>`, `GET /<read-model>/:id`, `GET /<read-model>/<query>`), kit, course-enrollment and manual migrated; page routes decided (entity-based, derived at export) and `session:` from a stub current user. 14.6 done: `build-screen` (a form per command, a view per read model, MSW handlers and tests from the scenarios, pages from `screens[].page`), page routes derived by emcli (entity-shaped, session keys never in URLs), web commit checks, a reference frontend, and course-enrollment's five screens built one commit each, walked through live and in mock mode. 14.7 done: the loop builds a slice's screen after its backend, a mockup added or changed on a built slice re-queues the screen alone, `gen:api` needs no backend, a blocked slice planned again is re-queued, manual §13.9. 14.7b done: a build status per concern (backend, UI), the slice's status derived, one loop with a routine per concern, a blocked UI holds up nothing (ADR-027). 14.9's live run done (t14 "rate a course": four jobs, none blocked, 6 min, $3.17; no UI waited on a failing backend). Next: 14.8 deploy, then decide 14.10 contract-first, then the t14 chapter. 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
+| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.3 done: native wireframes pushed and pulled (board links work in Connect), design system as a synced snippet. 14.4 done: the `event-model` skill's screen mode (contract → draft → edit → check → push → show); screen problems warn, one set of field exceptions. 14.4b done: manual §13, t13 on course-enrollment (five screens, board wireframes, snippet restyle). 14.4c done: hand-off gate, only information-complete slices reach the loop. 14.5 done: `web/` scaffold in the DCB kit (typed client from `/openapi.json`, opt-in read-your-writes for async read models, MSW mock mode, shell, one Tailwind design system for app and board snippet); entity-oriented routing recorded as an open decision. 14.5b done: API routes named after the model (ADR-025; emcli derives them, `POST /<command>`, `GET /<read-model>/:id`, `GET /<read-model>/<query>`), kit, course-enrollment and manual migrated; page routes decided (entity-based, derived at export) and `session:` from a stub current user. 14.6 done: `build-screen` (a form per command, a view per read model, MSW handlers and tests from the scenarios, pages from `screens[].page`), page routes derived by emcli (entity-shaped, session keys never in URLs), web commit checks, a reference frontend, and course-enrollment's five screens built one commit each, walked through live and in mock mode. 14.7 done: the loop builds a slice's screen after its backend, a mockup added or changed on a built slice re-queues the screen alone, `gen:api` needs no backend, a blocked slice planned again is re-queued, manual §13.9. 14.7b done: a build status per concern (backend, UI), the slice's status derived, one loop with a routine per concern, a blocked UI holds up nothing (ADR-027). 14.9's live run done (t14 "rate a course": four jobs, none blocked, 6 min, $3.17; no UI waited on a failing backend). Next (reordered 2026-09-25): 14.10a loop memory by concern with git as the record (ADR-028), then 14.10 contract-first, then 14.8 deploy, then the t14 chapter. 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
 | 7 — Board Re-pointing | ⛔ Dropped | eventmodelers board retired; prooph board via emcli is the only board |
