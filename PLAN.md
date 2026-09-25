@@ -1094,7 +1094,7 @@ routes and queries, the examples, and the scenarios. Use it to:
     - The export's first wording ("the backend is queued") was wrong for a built backend. It now says "the
       backend isn't held back".
 - **Order from here (decided with Gary, 2026-09-24):**
-  1. 14.9's live run first: a new slice with a screen, its backend job then its UI job, end to end.
+  1. 14.9's live run first: a new slice with a screen, its backend job then its UI job, end to end. ✅ 2026-09-25
   2. 14.8 deploy.
   3. Decide 14.10 contract-first with that run's evidence.
   4. Write the manual's t14 chapter last.
@@ -1109,6 +1109,66 @@ routes and queries, the examples, and the scenarios. Use it to:
     backend and UI → the app works against the live backend.
   - Manual: "The loop builds the UI" (t14), and a deploy section from 14.8. §15 (how the loop builds a slice) and
     §19 (known limits) updated. Results here.
+  - [x] **The live run** *(2026-09-25, course-enrollment `8df37ae`, increment `increment/t14-ratings`)*. Gary chose
+    "rate a course": two new slices, each with a screen on the existing Course Page.
+    - **Modelled through the `event-model` skill** (slice, detail, screen, hand-off):
+      - `rate course`: `rateCourse { courseId, studentId ← session:studentId, rating }` → `courseWasRated`, five
+        scenarios (subscribed ✓; not subscribed ✗; after unsubscribing ✗; a second rating ✗; rating 6 ✗);
+      - `course ratings`: `CourseRatings { courseId, ratingCount, averageRating }`, async, two scenarios (one rating;
+        4 and 5 average 4.5);
+      - screens: `rate course/Course Page` submits `rateCourse` and shows the title (`data-slice="course details"`),
+        a 1–5 select and Rate; `course ratings/Course Page` shows "4.5 out of 5, from 2 ratings". Drafted from the
+        contracts, edited, checks clean; the page is `/courses/:courseId` with four cards now;
+      - completeness 0 errors (the 4 warnings were already there: commands with no screen); pushed; the board drew
+        both wireframes.
+    - **Hand-off:** both planned, pushed, committed (`c3941bb`), exported. Both were queued as `{ backend: Planned,
+      ui: Planned }`, and nothing was held back although `course ratings` reads `rate course`'s new event (planned
+      together, built in timeline order).
+    - **The loop** (already running, no restart): four jobs in the expected order, none blocked, 6 min 7 s and
+      $3.17 in all.
+
+      | Job | Routine / skill | Time | Cost | Commits |
+      |---|---|---|---|---|
+      | rate course backend | backend / `build-state-change` | 93.6 s | $0.80 | `feat: [rate course]`, `chore: wire rate course route` |
+      | rate course UI | UI / `build-screen` | 106.9 s | $0.86 | `feat: [rate course] screen` |
+      | course ratings backend | backend / `build-state-view` | 72.2 s | $0.73 | `feat: [course ratings]`, `chore: wire course ratings read model and route` |
+      | course ratings UI | UI / `build-screen` | 94.1 s | $0.78 | `feat: [course ratings] screen` |
+
+      - The backend: two DCB decision models tagged `{ courseId, studentId }` (`IsSubscribed`, `HasRated`), the
+        range check a `ValidationError`; the read model folds a running average.
+      - Each UI job added its own component to the shared `CoursePage.tsx`. The rate form didn't repeat the
+        `data-slice` title, which the page's details view already shows.
+    - **Read back:** `import-status`: "backend Done, UI Done" for both, planned → ready; pushed; `model(t14): built`.
+    - **Verified:**
+      - backend 144/144, web 42/42 (from 31);
+      - curl on the live DB:
+        - a subscribed student rates: 204 + ETag;
+        - a second rating: 422 "Course already rated by this student";
+        - not subscribed, and after unsubscribing: 422 "Student is not subscribed to this course";
+        - rating 6: 400;
+        - `GET /course-ratings/:id` returns `{ ratingCount: 2, averageRating: 4.5 }`;
+      - Chrome, live backend:
+        - the Course Page shows the details, Subscribe, the rate form and the ratings;
+        - an unsubscribed student sees the rejection under the form;
+        - a subscribed one rates 3: "Course rated.", and the average becomes 4 from 3 ratings without a reload
+          (read-your-writes on an async read model);
+      - mock mode: the page renders from the scenario examples (c1, 4.5 from 2);
+      - merged `--no-ff` into course-enrollment's `main`.
+    - **Findings:**
+      - **No UI waited behind a failing backend.** Each UI waited for exactly one backend job (72–94 s), and the
+        UI jobs took about as long as the backend jobs. With one loop, contract-first (14.10) would have saved
+        nothing here, so none of 14.10's revisit triggers has fired.
+      - The loop's backend commits are now bracketed (`feat: [rate course]`), like its screen commits. The manual's
+        "Who commits what" (§14) still shows `feat: <slice>` from older runs. Correct it in the t14 chapter pass;
+        the built-backend check already accepts both.
+      - Two new slices planned together, one reading the other's new event, need no staging. Staging (§6.3) is for
+        extensions of a built read model only. Say so in t14.
+      - `npm start` fails without `PG_CONNECTION_STRING` (it doesn't read `.env`); the manual's
+        `node --env-file=.env dist/index.js` works. A candidate for the scaffold: `start` with `--env-file=.env`.
+      - Test data left in the dev DB: course `ct141790318958`, students `a…`, `b…`, `x…`, `dt141790318958`
+        (Dana).
+  - [ ] The t14 chapter (after 14.8 and the 14.10 decision): told as what to say to the skill, from this run's
+    transcript, with the board and app screenshots, plus the deploy section from 14.8.
 - [ ] **14.10 (future) Contract-first: the UI and the backend built in parallel.** *(Gary, 2026-09-24: to look into
   later.)*
   - Today the UI waits for its own slice's backend: its API types are generated from the backend's code
@@ -2119,5 +2179,5 @@ What each `build-*` skill generates and what it verifies:
 | 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 done (stale InProgress recovery in `--local` mode) |
 | 11 — Read Model Types | ✅ Complete | Async, inline and live read models from one fold definition, with an identical data shape across types (ADR-021/022). Proven on course-enrollment t5–t10: inline, a retype to live and back, a new live read model with a lookup |
 | 12 — Query Read Models | 🚧 In progress (top priority) | 12.1–12.3 done: ADR-023 query contract; emcli queries + `SPEC_QUERY` + `addQueries` re-queue; kit runtime (stored SQL + live, one semantics). Named queries on the read model element, the spec *when* references them, `{ data, cursor? }` pages; live needs a tag parameter |
-| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.3 done: native wireframes pushed and pulled (board links work in Connect), design system as a synced snippet. 14.4 done: the `event-model` skill's screen mode (contract → draft → edit → check → push → show); screen problems warn, one set of field exceptions. 14.4b done: manual §13, t13 on course-enrollment (five screens, board wireframes, snippet restyle). 14.4c done: hand-off gate, only information-complete slices reach the loop. 14.5 done: `web/` scaffold in the DCB kit (typed client from `/openapi.json`, opt-in read-your-writes for async read models, MSW mock mode, shell, one Tailwind design system for app and board snippet); entity-oriented routing recorded as an open decision. 14.5b done: API routes named after the model (ADR-025; emcli derives them, `POST /<command>`, `GET /<read-model>/:id`, `GET /<read-model>/<query>`), kit, course-enrollment and manual migrated; page routes decided (entity-based, derived at export) and `session:` from a stub current user. 14.6 done: `build-screen` (a form per command, a view per read model, MSW handlers and tests from the scenarios, pages from `screens[].page`), page routes derived by emcli (entity-shaped, session keys never in URLs), web commit checks, a reference frontend, and course-enrollment's five screens built one commit each, walked through live and in mock mode. 14.7 done: the loop builds a slice's screen after its backend, a mockup added or changed on a built slice re-queues the screen alone, `gen:api` needs no backend, a blocked slice planned again is re-queued, manual §13.9. 14.7b done: a build status per concern (backend, UI), the slice's status derived, one loop with a routine per concern, a blocked UI holds up nothing (ADR-027). Next: 14.9's live end-to-end run, then 14.8 deploy, then decide 14.10 contract-first, then the t14 chapter. 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
+| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.3 done: native wireframes pushed and pulled (board links work in Connect), design system as a synced snippet. 14.4 done: the `event-model` skill's screen mode (contract → draft → edit → check → push → show); screen problems warn, one set of field exceptions. 14.4b done: manual §13, t13 on course-enrollment (five screens, board wireframes, snippet restyle). 14.4c done: hand-off gate, only information-complete slices reach the loop. 14.5 done: `web/` scaffold in the DCB kit (typed client from `/openapi.json`, opt-in read-your-writes for async read models, MSW mock mode, shell, one Tailwind design system for app and board snippet); entity-oriented routing recorded as an open decision. 14.5b done: API routes named after the model (ADR-025; emcli derives them, `POST /<command>`, `GET /<read-model>/:id`, `GET /<read-model>/<query>`), kit, course-enrollment and manual migrated; page routes decided (entity-based, derived at export) and `session:` from a stub current user. 14.6 done: `build-screen` (a form per command, a view per read model, MSW handlers and tests from the scenarios, pages from `screens[].page`), page routes derived by emcli (entity-shaped, session keys never in URLs), web commit checks, a reference frontend, and course-enrollment's five screens built one commit each, walked through live and in mock mode. 14.7 done: the loop builds a slice's screen after its backend, a mockup added or changed on a built slice re-queues the screen alone, `gen:api` needs no backend, a blocked slice planned again is re-queued, manual §13.9. 14.7b done: a build status per concern (backend, UI), the slice's status derived, one loop with a routine per concern, a blocked UI holds up nothing (ADR-027). 14.9's live run done (t14 "rate a course": four jobs, none blocked, 6 min, $3.17; no UI waited on a failing backend). Next: 14.8 deploy, then decide 14.10 contract-first, then the t14 chapter. 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
 | 7 — Board Re-pointing | ⛔ Dropped | eventmodelers board retired; prooph board via emcli is the only board |
