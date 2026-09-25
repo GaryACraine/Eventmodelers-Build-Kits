@@ -76,7 +76,9 @@ picks and claims the slice itself.
   `[slice:<id> concern:<backend|ui>]`, which is in that job's memory when it runs again, and the loop removes it
   once the job is Done (`[ralph] journal: removed …`). The file is committed with the model, so history keeps it.
 - **Pruning:** each file is capped at 40 lessons (the loop warns, and the agent must merge before adding). Every
-  kit update lists the lessons its change supersedes, and its migration removes them. At each phase close, lessons
+  kit update lists the lessons its change supersedes, and its migration removes them. Before and after a kit
+  update, run the Build-Kits repo's `node docs/tools/kit-drift.mjs <project>`: every kit and skill file must match
+  (exit 0), so a project never runs old skills beside new lessons. At each phase close, lessons
   true for every project are promoted into the kit's skills and removed from the files.
 - `[ralph] memory: <n> chars (…)` logs what a job was given; `done (…, in <n>k tok, out <n>k tok)` what it read.
 

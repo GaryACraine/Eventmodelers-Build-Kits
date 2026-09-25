@@ -27,4 +27,7 @@ board/platform is retired in this fork: don't call its API or MCP tools.
   tree). Wait for its log to say *waiting*.
 - **Model through emcli only** (the `event-model` skill in emcli), never through board MCP tools.
 - Kit changes are proven in a real project before they're called done; record results in `PLAN.md`.
+- **Kit updates into a project:** run `node docs/tools/kit-drift.mjs <project>` before (to see what's out of step)
+  and after (it must exit 0). Copy every file it lists, never just the ones you changed. Remove the lessons the
+  change supersedes from the project's `.build-kit/learnings/` (ADR-028), and restart the loop if `ralph.js` changed.
 - Record decisions in `PLAN.md`'s Decisions Log with the reason, and tick tasks as they land.
