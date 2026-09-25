@@ -1,6 +1,6 @@
 /**
- * Placeholder. `npm run gen:api` overwrites this file with the types of every route the backend documents at
- * /openapi.json (start the backend first; API_URL picks another one). Never edit it by hand.
+ * Placeholder. `npm run gen:api` overwrites this file with the types of every route in the API contract,
+ * api/openapi.json, which the model's export writes (emcli workspace export --build-kit). Never edit it by hand.
  */
 export interface paths {}
 export type webhooks = Record<string, never>

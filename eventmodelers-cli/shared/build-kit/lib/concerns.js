@@ -7,8 +7,10 @@
 //                                        "ui": { "status": "Blocked", "blockedReason": "…", "blockedAt": "…" } } }
 //
 // The entry's `status` is derived from them (Blocked > InProgress > Planned > Created > Done), so everything that
-// reads `status` keeps working. The loop takes one concern at a time: a slice's backend, or its UI once that
-// backend is Done. Nothing waits for a UI. An entry without `concerns` (another kit, or an older export) is one
+// reads `status` keeps working. The loop takes one concern at a time: a slice's backend, or its UI. With the
+// project's API contract (`api/openapi.json`, PLAN 14.10, ADR-029) a UI builds against the contract and waits for
+// nothing; without one, it waits until its own backend is Done. Nothing waits for a UI. The loop can also be run for
+// one concern only (`run --concern ui|backend`). An entry without `concerns` (another kit, or an older export) is one
 // backend concern: the whole slice.
 //
 // emcli's export writes `concerns` (model/buildKit.ts); the loop claims a concern and its agent finishes it.
@@ -39,17 +41,21 @@ export function deriveStatus(concerns, fallback) {
 }
 
 /**
- * The next job, in timeline order: a slice's Planned backend, or its Planned UI once its backend is Done (a UI
- * needs its own slice's routes and types). Returns { id, title, concern, tracked } or null; `tracked` is false for
- * an entry without concerns (another kit's export), whose agent picks and claims its slice itself, as before.
+ * The next job, in timeline order: a slice's Planned backend, then its Planned UI. Returns { id, title, concern,
+ * tracked } or null; `tracked` is false for an entry without concerns (another kit's export), whose agent picks and
+ * claims its slice itself, as before.
+ *
+ * - `contractFirst`: the project has an API contract, so a UI builds from it and doesn't wait for its backend.
+ *   Without it, a UI waits until its own backend is Done (it needs that backend's routes and types).
+ * - `only`: 'backend' or 'ui' — jobs of the other concern are skipped (`run --concern`).
  */
-export function nextWork(entries) {
+export function nextWork(entries, { contractFirst = false, only = null } = {}) {
   for (const entry of entries ?? []) {
     const concerns = concernsOf(entry);
     const job = (concern) => ({ id: entry.id ?? null, title: entry.slice || entry.id || null, concern, tracked: hasConcerns(entry) });
-    if (concerns.backend && norm(concerns.backend.status) === 'planned') return job('backend');
-    if (concerns.ui && norm(concerns.ui.status) === 'planned'
-      && (!concerns.backend || norm(concerns.backend.status) === 'done')) return job('ui');
+    const planned = (concern) => concerns[concern] && norm(concerns[concern].status) === 'planned' && (!only || only === concern);
+    if (planned('backend')) return job('backend');
+    if (planned('ui') && (contractFirst || !concerns.backend || norm(concerns.backend.status) === 'done')) return job('ui');
   }
   return null;
 }

@@ -59,19 +59,24 @@ node .build-kit/ralph-claude.js /path/to/project
 **Jobs per concern** (when the export writes `concerns` into the index entries, as emcli does for the DCB kit;
 ADR-027): a slice's work is two jobs, its **backend** and its **UI**, each with its own status
 (`concerns: { backend: { status, blockedReason?, blockedAt? }, ui: {…} }`); the entry's `status` is derived from
-them. The loop picks the next job (`lib/concerns.js` `nextWork`: a Planned backend, or a Planned UI whose backend
-is Done), claims it (InProgress), and runs that job's routine (`backend-prompt.md` or `screen-prompt.md`) with
+them. The loop picks the next job (`lib/concerns.js` `nextWork`: a Planned backend, or a Planned UI), claims it (InProgress), and runs that job's routine (`backend-prompt.md` or `screen-prompt.md`) with
 the job named in a "Your task" header; the agent sets its concern Done or Blocked, and the loop derives the
 slice's status after each run. `models: { ui, backend }` in `.eventmodelers/config.json` gives a routine its own
 model (`ralph-claude.js`). Entries without `concerns` (other kits' exports) run exactly as before: the agent
 picks and claims the slice itself.
 
+**Contract-first** (DCB ADR-029): when the project has an API contract, `api/openapi.json` (emcli writes it from
+the model at export), a UI job waits for nothing, since it builds from the contract. Without one, a UI waits until
+its own backend is Done. `eventmodelers run --local --concern ui` (or `backend`) builds one concern only
+(`RALPH_CONCERN`); the loop's start and its waiting line say so.
+
 **The loop's memory** (kits that ship `learnings/`, e.g. DCB; ADR-028 in the DCB kit):
 - **Lessons by concern:** `learnings/shared.md`, `backend.md` and `ui.md`. The loop puts the shared file and the
   job's concern's file into the prompt ("What the loop remembers", under "Your task"), so a backend job never
   reads UI lessons and vice versa. Agents don't read memory files themselves.
-- **Git is the record:** a job that commits describes its work in the commit's body. A UI job's memory includes
-  its backend's commit body (what it built, status codes, messages).
+- **Git is the record:** a job that commits describes its work in the commit's body. Without an API contract, a UI
+  job's memory includes its backend's commit body (what it built, status codes, messages); with one, the contract
+  replaces it.
 - **`progress.txt` is a journal of open problems:** a blocked or interrupted job gets an entry tagged
   `[slice:<id> concern:<backend|ui>]`, which is in that job's memory when it runs again, and the loop removes it
   once the job is Done (`[ralph] journal: removed …`). The file is committed with the model, so history keeps it.

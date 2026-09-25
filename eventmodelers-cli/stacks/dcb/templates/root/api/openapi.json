@@ -1,0 +1,828 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "course-manager",
+    "version": "0.0.1",
+    "description": "The example app's API contract, written once from its code. The model's export (emcli workspace export --build-kit) replaces it with the contract derived from your model."
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "components": {
+    "schemas": {
+      "ProblemDetails": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "integer",
+            "example": 422
+          },
+          "title": {
+            "type": "string",
+            "example": "Unprocessable Entity"
+          },
+          "detail": {
+            "type": "string",
+            "example": "Course is full"
+          },
+          "type": {
+            "type": "string",
+            "example": "about:blank"
+          },
+          "instance": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "title",
+          "detail"
+        ]
+      },
+      "UpdateCourseCapacityBody": {
+        "type": "object",
+        "properties": {
+          "courseId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "ID of the course",
+            "example": "course-101"
+          },
+          "newCapacity": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "New maximum student capacity",
+            "example": 50
+          }
+        },
+        "required": [
+          "courseId",
+          "newCapacity"
+        ]
+      },
+      "Course": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "course-101"
+          },
+          "title": {
+            "type": "string",
+            "example": "Introduction to TypeScript"
+          },
+          "capacity": {
+            "type": "integer",
+            "example": 30
+          },
+          "subscribedStudents": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "studentId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "studentNumber": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "studentId",
+                "name",
+                "studentNumber"
+              ]
+            }
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "capacity",
+          "subscribedStudents"
+        ]
+      },
+      "RegisterCourseBody": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Unique course identifier",
+            "example": "course-101"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Course title",
+            "example": "Introduction to TypeScript"
+          },
+          "capacity": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Maximum number of students",
+            "example": 30
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "capacity"
+        ]
+      },
+      "RegisterStudentBody": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Unique student identifier",
+            "example": "student-1"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Student full name",
+            "example": "Alice"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "Student": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "student-1"
+          },
+          "name": {
+            "type": "string",
+            "example": "Alice"
+          },
+          "studentNumber": {
+            "type": "integer",
+            "example": 1
+          },
+          "subscribedCourses": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "courseId": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "capacity": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "courseId",
+                "title",
+                "capacity"
+              ]
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "studentNumber",
+          "subscribedCourses"
+        ]
+      },
+      "SubscribeStudentBody": {
+        "type": "object",
+        "properties": {
+          "courseId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "ID of the course",
+            "example": "course-101"
+          },
+          "studentId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "ID of the student to subscribe",
+            "example": "student-1"
+          }
+        },
+        "required": [
+          "courseId",
+          "studentId"
+        ]
+      },
+      "UnsubscribeStudentBody": {
+        "type": "object",
+        "properties": {
+          "courseId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "ID of the course",
+            "example": "course-101"
+          },
+          "studentId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "ID of the student to unsubscribe",
+            "example": "student-1"
+          }
+        },
+        "required": [
+          "courseId",
+          "studentId"
+        ]
+      }
+    },
+    "parameters": {}
+  },
+  "paths": {
+    "/change-course-capacity": {
+      "post": {
+        "summary": "Change a course's capacity",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Client-generated UUID. A replayed request with the same key returns the original response without appending a duplicate event."
+            },
+            "required": false,
+            "name": "Idempotency-Key",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCourseCapacityBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Done",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string",
+                  "description": "Sequence position of the last appended event (writes) or the read model's position (async reads). Send it back as If-None-Match with Prefer: wait to read your own write.",
+                  "example": "\"5\""
+                },
+                "required": true
+              }
+            }
+          },
+          "400": {
+            "description": "The body failed validation",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Course not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "New capacity is the same as the current one",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/course-details/{courseId}": {
+      "get": {
+        "summary": "Get a course",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "courseId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "The ETag of a prior write. With Prefer: wait, the read waits until the read model has processed it.",
+              "example": "\"5\""
+            },
+            "required": false,
+            "name": "If-None-Match",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Wait up to this many seconds for the read model to reach If-None-Match. 504 if it doesn't.",
+              "example": "wait=5"
+            },
+            "required": false,
+            "name": "Prefer",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string",
+                  "description": "Sequence position of the last appended event (writes) or the read model's position (async reads). Send it back as If-None-Match with Prefer: wait to read your own write.",
+                  "example": "\"5\""
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Course"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Course not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Prefer: wait timed out",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/course-list": {
+      "get": {
+        "summary": "List courses (keyset-paginated)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "Page size (max 200)",
+              "example": "20"
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "The last id of the previous page"
+            },
+            "required": false,
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "The ETag of a prior write. With Prefer: wait, the read waits until the read model has processed it.",
+              "example": "\"5\""
+            },
+            "required": false,
+            "name": "If-None-Match",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Wait up to this many seconds for the read model to reach If-None-Match. 504 if it doesn't.",
+              "example": "wait=5"
+            },
+            "required": false,
+            "name": "Prefer",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string",
+                  "description": "Sequence position of the last appended event (writes) or the read model's position (async reads). Send it back as If-None-Match with Prefer: wait to read your own write.",
+                  "example": "\"5\""
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Course"
+                      }
+                    },
+                    "cursor": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Prefer: wait timed out",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/register-course": {
+      "post": {
+        "summary": "Register a course",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Client-generated UUID. A replayed request with the same key returns the original response without appending a duplicate event."
+            },
+            "required": false,
+            "name": "Idempotency-Key",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterCourseBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Done",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string",
+                  "description": "Sequence position of the last appended event (writes) or the read model's position (async reads). Send it back as If-None-Match with Prefer: wait to read your own write.",
+                  "example": "\"5\""
+                },
+                "required": true
+              }
+            }
+          },
+          "400": {
+            "description": "The body failed validation",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Course already exists",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/register-student": {
+      "post": {
+        "summary": "Register a student",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Client-generated UUID. A replayed request with the same key returns the original response without appending a duplicate event."
+            },
+            "required": false,
+            "name": "Idempotency-Key",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterStudentBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Done",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string",
+                  "description": "Sequence position of the last appended event (writes) or the read model's position (async reads). Send it back as If-None-Match with Prefer: wait to read your own write.",
+                  "example": "\"5\""
+                },
+                "required": true
+              }
+            }
+          },
+          "400": {
+            "description": "The body failed validation",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Student already exists",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/student-details/{studentId}": {
+      "get": {
+        "summary": "Get a student",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "studentId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "The ETag of a prior write. With Prefer: wait, the read waits until the read model has processed it.",
+              "example": "\"5\""
+            },
+            "required": false,
+            "name": "If-None-Match",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Wait up to this many seconds for the read model to reach If-None-Match. 504 if it doesn't.",
+              "example": "wait=5"
+            },
+            "required": false,
+            "name": "Prefer",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string",
+                  "description": "Sequence position of the last appended event (writes) or the read model's position (async reads). Send it back as If-None-Match with Prefer: wait to read your own write.",
+                  "example": "\"5\""
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Student"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Student not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Prefer: wait timed out",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/subscribe-student-to-course": {
+      "post": {
+        "summary": "Subscribe a student to a course",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Client-generated UUID. A replayed request with the same key returns the original response without appending a duplicate event."
+            },
+            "required": false,
+            "name": "Idempotency-Key",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscribeStudentBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Done",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string",
+                  "description": "Sequence position of the last appended event (writes) or the read model's position (async reads). Send it back as If-None-Match with Prefer: wait to read your own write.",
+                  "example": "\"5\""
+                },
+                "required": true
+              }
+            }
+          },
+          "400": {
+            "description": "The body failed validation",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Course or student not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Course is full, or the student is already subscribed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/unsubscribe-student-from-course": {
+      "post": {
+        "summary": "Unsubscribe a student from a course",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Client-generated UUID. A replayed request with the same key returns the original response without appending a duplicate event."
+            },
+            "required": false,
+            "name": "Idempotency-Key",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnsubscribeStudentBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Done",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string",
+                  "description": "Sequence position of the last appended event (writes) or the read model's position (async reads). Send it back as If-None-Match with Prefer: wait to read your own write.",
+                  "example": "\"5\""
+                },
+                "required": true
+              }
+            }
+          },
+          "400": {
+            "description": "The body failed validation",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Course or subscription not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "webhooks": {}
+}

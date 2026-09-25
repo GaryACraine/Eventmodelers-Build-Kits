@@ -9,9 +9,10 @@ description: Builds a slice's screen in web/ (React) from slice.json's screens[]
 > of truth**: the screen's contract, its mockup, its page, the fields, the API paths and the scenario examples all
 > come from it. Never invent a field, a value, a message or a page.
 
-A slice with a screen gets its UI **after** its backend: the slice's routes exist, are in `/openapi.json`, and
-their tests pass. This skill touches `web/` only, and one slice at a time. The loop runs it as the slice's **UI
-job** (`concerns.ui`, `lib/screen-prompt.md`), once the slice's backend job is Done. With `buildScreen` in
+A slice's UI is built against the **API contract**, `api/openapi.json`, which the model's export writes (ADR-029):
+every route, field and rejection the model has, whether or not its backend is built yet. So the backend may not
+exist when this runs; nothing here needs it. This skill touches `web/` only, and one slice at a time. The loop runs
+it as the slice's **UI job** (`concerns.ui`, `lib/screen-prompt.md`). With `buildScreen` in
 slice.json, the screen of a built slice was added or changed (see "A screen added or changed" at the end). When
 the job ends, its concern's status is set in `index.json`: `concerns.ui` Done, or Blocked with the reason.
 
@@ -68,18 +69,18 @@ missing shadcn component, a library), invoke `request-feedback` and stop.
 
 ## Step 1 — Types
 
-The client is typed from the backend's `/openapi.json`. Regenerate it from the code, so this slice's new paths
-are in it. No database or running backend is needed (and don't use one: a backend started earlier serves the old
-routes):
+The client is typed from the API contract, `api/openapi.json`. Regenerate the types from it, so this slice's
+paths are in them. No backend is involved:
 
 ```bash
-npm run gen:api        # from the project root: build, write web/openapi.json from the code, generate the types
+npm run gen:api        # from the project root: api/openapi.json → web/src/lib/api-types.ts
 ```
 
-Check that `web/src/lib/api-types.ts` now has every `apiEndpoint` of this slice. If `npm run openapi` says a route
-couldn't be documented without a database, stop and set the slice to Blocked with its output. Body
-and response types come from it: `components["schemas"]["<name>"]`, the name the slice's `schema.ts` gave its
-Zod object with `.openapi("…")`.
+Check that `web/src/lib/api-types.ts` now has every `apiEndpoint` of this slice. If one is missing, the contract is
+older than the slice: stop and set the job to Blocked ("api/openapi.json lacks <path>: export the model again").
+Never edit the contract or the types (the `api-types` check compares them). Body and response types come from
+it: `components["schemas"]["<Command>Body"]` for a command, `components["schemas"]["<ReadModel>"]` for a read model.
+Rejections: the command's `x-rejections` in the contract, the same as slice.json's `SPEC_ERROR` titles.
 
 ## Step 2 — A form per submitted command
 
@@ -98,7 +99,7 @@ Every field that is sent goes in the body: `POST {apiEndpoint}` with the whole c
 ```tsx
 type RegisterCourse = components["schemas"]["RegisterCourseBody"]
 
-/** registerCourse's fields (slice.json), checked against the body the backend documents. */
+/** registerCourse's fields (slice.json), checked against the body the API contract documents. */
 const RegisterCourseSchema = z.object({
     id: z.string().trim().min(1, "Required"),
     title: z.string().trim().min(1, "Required"),
@@ -108,8 +109,8 @@ const RegisterCourseSchema = z.object({
 
 - One Zod entry per **typed** field: `String` → `z.string().trim().min(1, "Required")`, `Int`/`Long` →
   `z.number({ error: "Required" }).int()` with `register(name, { valueAsNumber: true })`, `Boolean` → a checkbox,
-  `optional: true` → `.optional()`. Add the constraints the slice's backend `schema.ts` enforces (`.min(1)`), so a
-  400 scenario is caught before anything is sent. `satisfies z.ZodType<Body>` when every body field is typed;
+  `optional: true` → `.optional()`. Add the constraints the slice's specifications state (a rejection like
+  "Rating must be between 1 and 5", a required text), so a 400 scenario is caught before anything is sent. `satisfies z.ZodType<Body>` when every body field is typed;
   when some come from props or the session, `satisfies z.ZodType<Pick<Body, "rating">>` over the typed ones.
 - A mockup `<select>` is a native `<select>` (`.mock-card` styles it; there's no shadcn Select), with
   `register(name, { valueAsNumber: true })` for a number and `defaultValues` for the mockup's `selected` option.
@@ -197,7 +198,7 @@ export const handlers = [
 - One handler per API path the slice's components call (MSW path syntax: `:param`), answered with the **happy
   path** of the specifications: the examples of the first success scenario, in the response shape of
   `api-types.ts` (a field the scenario leaves out takes its field example). A keyed read answers its example key;
-  any other key gets the backend's 404 (the route's `notFound` message).
+  any other key gets a 404 Problem-JSON whose `detail` is the contract's 404 description ("Course not found").
 - A paged list answers through `page(rows, request)` (`src/mocks/paging.ts`), which pages the scenario rows the
   way the backend does: `HttpResponse.json(page(rows, request))`.
 - A command answers 204 with an `ETag` (201 with the generated fields when it has any).
@@ -212,7 +213,7 @@ A test file per component, `describe("{slice title}")`, rendered with `renderWit
 | Specification | Test |
 |---|---|
 | a success (`then` an event, or a read model) | the form sends exactly the example body (capture it in `server.use`), or the view shows the example values |
-| a rejection (`then` `SPEC_ERROR` 404/409/422) | `server.use(...)` answers the Problem-JSON with the backend's **own message** (read it in the slice's `decider.ts` / route), and the alert shows it |
+| a rejection (`then` `SPEC_ERROR`) | `server.use(...)` answers a 422 Problem-JSON whose `detail` is the `SPEC_ERROR` title **verbatim** (the backend sends exactly that; the status doesn't matter to the UI), and the alert shows it |
 | a 400 for a typed field | fill the form without it (or with the invalid value): the field's message shows, and nothing is sent |
 | one the screen can't produce (a 400 for a session or route value, or a range the `<select>` can't send) | no test; a comment naming the specification and why |
 
@@ -265,15 +266,16 @@ Load more, sees both rows, and sees the button gone.
 ## Step 8 — Verify, check, commit
 
 1. **Against slice.json:** every field the forms send and the views show is in slice.json; every rejection test
-   uses a message the backend really sends; every `api.GET`/`api.POST` path is an `apiEndpoint` of this slice.
+   uses a `SPEC_ERROR` title verbatim; every `api.GET`/`api.POST` path is an `apiEndpoint` of this slice.
 2. `cd web && npx tsc -b && npx vitest run src/slices/{slicename} src/pages`.
-3. Commit the screen on its own (the backend is already committed):
+3. Commit the screen on its own (the backend is its own job, before or after this one):
    ```bash
    git add web/src/slices/{slicename} web/src/pages web/src/lib/api-types.ts
    git commit -m "feat: [Slice Name] screen"
    ```
-   The pre-commit guard runs `blocked-paths`, `web-scope` (only these paths, one slice, tests present) and
-   `web-tests` (typecheck, the slice's and the pages' tests).
+   The pre-commit guard runs `blocked-paths`, `web-scope` (only these paths, one slice, tests present),
+   `api-types` (the types are what the contract generates) and `web-tests` (typecheck, the slice's and the pages'
+   tests).
 
 ## A screen added or changed (`buildScreen`)
 

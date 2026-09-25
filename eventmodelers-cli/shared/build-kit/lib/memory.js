@@ -5,7 +5,8 @@
 //     discipline's;
 //   - `progress.txt` as a journal of what has no commit (a blocked or interrupted job, an open question). Each
 //     entry is tagged `[slice:<id> concern:<backend|ui>]` and removed once that concern is Done. Completed work is
-//     recorded in its commit's body instead, and a UI job is given its backend's commit body.
+//     recorded in its commit's body instead. A UI job is given its backend's commit body, unless the project has an
+//     API contract (`api/openapi.json`), which replaces it.
 // A kit without `learnings/` keeps today's prompts and files untouched.
 
 import { existsSync, readFileSync, writeFileSync } from 'fs';
@@ -25,6 +26,14 @@ export function usesLearnings(kitDir) {
 /** The journal: the project's `progress.txt`, next to the kit dir. */
 export function journalPath(kitDir) {
   return join(dirname(kitDir), 'progress.txt');
+}
+
+/**
+ * The project's API contract (PLAN 14.10, ADR-029): written by emcli at export, next to the kit dir. With it a UI
+ * builds from the contract alone: it doesn't wait for its backend, and isn't given the backend's commit body.
+ */
+export function contractPath(kitDir) {
+  return join(dirname(kitDir), 'api', 'openapi.json');
 }
 
 /** The tag that makes a journal entry prunable: `[slice:<id> concern:<concern>]`. */
@@ -138,7 +147,7 @@ export function memoryBlock({ kitDir, projectDir, planned }) {
     summary.push(`${notes.length} open note${notes.length === 1 ? '' : 's'}`);
   }
 
-  if (concern === 'ui' && planned?.title) {
+  if (concern === 'ui' && planned?.title && !existsSync(contractPath(kitDir))) {
     const body = backendCommitBody(projectDir ?? dirname(kitDir), planned.title);
     if (body) {
       sections.push(['### What the backend job recorded (its commit body)', '', body].join('\n'));

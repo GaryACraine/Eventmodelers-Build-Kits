@@ -828,7 +828,8 @@ concern.
 - A blocked UI shows its slice as Blocked, but nothing else waits; re-planning rebuilds only the UI.
 - The UI still waits for its own slice's backend. **Contract-first** (PLAN 14.10, future) removes that: emcli
   writes the API contract from the model, so the UI and the backend can be built in parallel, each against the
-  contract, with a check that the code's `/openapi.json` matches it.
+  contract, with a check that the code's `/openapi.json` matches it. *Done in ADR-029: with the contract, a UI
+  waits for nothing.*
 
 
 ### ADR-028: The loop's memory by concern, with git as the record
@@ -905,3 +906,77 @@ promoted into the skills.
 - The loop's commits gain a body, and the commit checks must accept one.
 - A blocked job's narrative lives in the journal until it's fixed, then only in history.
 - Keeping the learnings accurate becomes part of every kit update and every phase close.
+
+
+### ADR-029: The API contract comes from the model
+
+**Status:** Accepted; implemented in PLAN 14.10 (emcli `model/contract.ts`; kit: `src/shared/contract.ts`, the
+`api-contract` and `api-types` checks, `nextWork`'s contract-first order, `run --concern`)
+**Date:** 2026-09-25
+
+**Context:** The UI depended on its slice's backend three ways (ADR-027, ADR-028):
+- **the order:** the loop ran a UI job only once its backend was Done;
+- **the types:** `gen:api` generated the UI's client from the backend's code (`src/openapi.ts`), so the code had to
+  exist;
+- **what it knew:** the UI job was given the backend's commit body, and read rejection messages from `decider.ts`.
+
+Yet the model already names everything the UI needs: every route (ADR-025), every field with its type, optional
+and ID flags and example, each query's parameters, each read model's type, and every rejection (its specs'
+`SPEC_ERROR` titles). Gary wants the backend and the UI developed independently (PLAN 14.10).
+
+**Decision:**
+- **emcli writes the API contract**, `api/openapi.json` (OpenAPI 3.1), at every build-kit export, from the whole
+  model, whatever the export is scoped to. It covers the slices handed to the build (planned or later, never
+  drafts), and it's committed with the model and never edited.
+- **It mirrors what the kit serves** (`src/shared/openapi.ts`), so the same types come from either:
+  - **Commands:** `POST /<command>`, body `{Command}Body` (all fields but generated ones), 204 + ETag or 201 with the
+    generated fields, 400, and `4XX` listing the rejections (`x-rejections`).
+  - **Read models:** `GET /<read-model>/{id}` → `{ReadModel}` and 404 (`"<Entity> not found"`), or a page without
+    an ID. A copy's new fields join the origin: a scalar optional, a List required (the fold starts it `[]`).
+  - **Queries:** their parameters, `limit` and `cursor`, answering a page.
+  - **Async reads:** `If-None-Match` + `Prefer: wait`, ETag, 504.
+- **The UI builds from the contract.** `gen:api` generates `api-types.ts` from it, with no backend; rejection
+  messages come from slice.json's `SPEC_ERROR` titles, which the backend sends verbatim. The UI job isn't given
+  the backend's commit body. The `api-types` check keeps the types exactly the contract's.
+- **The backend is checked against it.** `npm run contract:check` builds the served document from the code (no
+  database) and compares it operation by operation, on what the typed client sees:
+  - the parameters (name, required);
+  - the success status;
+  - the fields, required ones and types (an integer is a number) of the body and response;
+  - the schema names.
+
+  Descriptions, headers, formats, nullability and which 4xx a rejection uses aren't compared: the model doesn't
+  decide them, and the UI shows a rejection's `detail` whatever its status. A served route the contract lacks is
+  an error; a contract route not served yet is **pending**. The `api-contract` commit check runs it for the
+  touched slices' operations.
+- **The loop:** with a contract, a UI job waits for nothing (`nextWork`'s `contractFirst`); within a slice, the
+  backend is still picked first. `eventmodelers run --local --concern ui|backend` builds one discipline only, so
+  the screens can be built before the backends (or by a person, from the contract, in mock mode).
+
+**Why:**
+- **Independence.** Each discipline works from the model alone: the UI needs neither the backend's code nor its
+  notes, and each learns only its own lessons (ADR-028).
+- **One source of truth.** The model already decides the API (ADR-025). Deriving the contract means nobody
+  designs it twice, and the check keeps the code honest to it.
+- **It's visible.** The contract is a committed file: a model change that changes the API shows in its diff, and
+  the export names the operations it changed.
+
+**Alternatives considered:**
+- **Keep generating the client from the backend's code.** Rejected: that's the dependency this removes.
+- **Generate the backend's Zod schemas from the contract.** Rejected for now: the build skills already write them
+  from slice.json (the same data), and the check catches any drift. Worth it if drift proves common.
+- **Put each rejection's HTTP status in the model.** Rejected: statuses are the backend's (ValidationError 400,
+  NotFound 404, IllegalState 422), and the UI treats every rejection alike. The model keeps the message.
+- **Two loops at once, one per concern** (worktrees). Out of scope (PLAN 14.10): one working tree still means one
+  loop at a time. The contract makes it possible later; `--concern` covers building one discipline first.
+
+**Consequences:**
+- A UI can be built, tested and shown in mock mode before its backend exists; it works against the backend once
+  that's built, with no change, as long as the backend matches the contract (proven in PLAN 14.10's t16).
+- A model change to a built slice's API makes its code **differ** until the slice is built again;
+  `contract:check` names what differs, and the export lists the changed operations.
+- The contract can't say: a custom 404 message, which 4xx a rejection gets, a value the backend may send as
+  `null`, or a read that answers 404 until its first event. Those stay in the specs, the skills and the backend's
+  commit body.
+- Two slices modelling the same route (not linked as copies) make the contract use the later one; the export warns.
+

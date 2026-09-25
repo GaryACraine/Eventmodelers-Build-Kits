@@ -1,6 +1,6 @@
 # Ralph Agent Instructions: the backend
 
-You are an autonomous coding agent working on a software project using the DCB Event Store stack. You apply your skills to build software slices. This routine builds a slice's **backend**: its commands, events, read models and automations under `src/`. A slice's UI (its screen, in `web/`) is a separate job with its own routine, which the loop runs once this backend is Done. Never touch `web/` here.
+You are an autonomous coding agent working on a software project using the DCB Event Store stack. You apply your skills to build software slices. This routine builds a slice's **backend**: its commands, events, read models and automations under `src/`. A slice's UI (its screen, in `web/`) is a separate job with its own routine, built against the API contract (`api/openapi.json`, written from the model), so it may run before or after this job. Never touch `web/` here, and never edit `api/openapi.json`.
 
 The loop has chosen the job: **"Your task" above names the slice and the concern.** Build exactly that, one job per run.
 
@@ -23,14 +23,14 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
    - DCB path conventions: `src/contexts/{context}/slices/{slicename}/`
    - Events at `src/contexts/{context}/Events.ts`
    - No migration files — Pongo handles schema
-   - OpenAPI via each slice's `schema.ts` (`registerCommand` / `registerRead`, or `readModelRoute`'s `schema`), not JSDoc: the UI's API types are generated from it
+   - OpenAPI via each slice's `schema.ts` (`registerCommand` / `registerRead`, or `readModelRoute`'s `schema`), not JSDoc, matching the API contract (`api/openapi.json`): the same schema names, fields, types and required ones. The UI is built from the contract, so the `api-contract` check compares them. The contract is the model's: if it's wrong, block the job and say what the model should say
 6. Run quality checks: `npm run build`, then the slice tests only.
 7. Stage the slice's changes and run the commit checks: `npm run run:checks -- --staged`. The pre-commit hook runs the same checks, including the slice's tests. **Never commit over a failing check.** Don't call a violation a false positive and don't use `--no-verify`. Fix the code, or if the check itself is wrong, block the job (below) with the check output as the reason and stop. Then commit: `feat: [Slice Name]`, with a body ("Commit body" below): the commit is the record of this job. Commit `src/index.ts` wiring separately (blocked-paths), with the one-line subject `chore: wire <Slice Name> …` (e.g. `chore: wire rate course route`).
 8. Set `concerns.backend.status` to `"Done"` in `index.json`. The loop derives the slice's `status` from its concerns; don't set it yourself. (With board sync on, not `--local`, also update the board via the `update-slice-status` skill with that derived status.)
 9. Lessons: add what a later backend job in this project should know to `.build-kit/learnings/backend.md` (or `learnings/shared.md` if the UI needs it too), following "Lessons" below. Most jobs add none or one.
 10. Finish the iteration. Don't write to `progress.txt` unless you block the job.
 
-**Blocking the job** (step 7, or a skill's escalation): in `index.json`, set `concerns.backend` to `{ "status": "Blocked", "blockedReason": "<the check output or the question, in short>", "blockedAt": "<now, ISO 8601>" }`, and add a journal entry to `progress.txt` ("Journal entry" below). The model plans it again after the fix, and the export queues it again only when that planning came after `blockedAt`. A blocked backend leaves the slice's UI waiting; other slices go on.
+**Blocking the job** (step 7, or a skill's escalation): in `index.json`, set `concerns.backend` to `{ "status": "Blocked", "blockedReason": "<the check output or the question, in short>", "blockedAt": "<now, ISO 8601>" }`, and add a journal entry to `progress.txt` ("Journal entry" below). The model plans it again after the fix, and the export queues it again only when that planning came after `blockedAt`. The slice's UI doesn't wait for it (it builds from the contract), and other slices go on.
 
 ## Escalating Ambiguity
 
@@ -46,11 +46,10 @@ feat: [rate course]
 Built: POST /rate-course → courseWasRated (tags courseId, studentId); decision models IsSubscribed, HasRated
 Rules: rating outside 1..5 → ValidationError 400 "Rating must be between 1 and 5"; not subscribed → 422
   "Student is not subscribed to this course"; a second rating → 422 "Course already rated by this student"
-Tests: 5 unit + 5 integration, all passing
-For the UI: 204 + ETag on success; 400/422 with the messages above as the problem `detail`
+Tests: 5 unit + 5 integration, all passing; contract: match
 ```
 
-`For the UI` is what the slice's UI job needs from you (it gets this body): status codes, messages, and when a read answers 404 (e.g. before a document's first event). Leave it out when the slice has no screen.
+The UI doesn't read this body: it builds from the API contract and slice.json (ADR-029). Say in `Rules` anything the contract can't: a read that answers 404 until its first event, a rejection's status.
 
 ## Journal entry (only when you block the job)
 

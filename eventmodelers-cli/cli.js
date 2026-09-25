@@ -3092,6 +3092,7 @@ credentialFlags(program
   .option('--exclusive', 'Work only the prompts addressed to this agent\'s id — the board\'s "preferred agent" (the star in the prompts panel) — and hand every untargeted prompt straight back to the queue for another agent to take. Without it an agent also works everything nobody addressed to anyone, which is what you want for a single agent and exactly what you do not want for a dedicated one (a board with a general agent plus a specialist, or an agent a supervisor drives by id). Pair it with --id so the same agent is addressable across restarts — --global/--standalone otherwise mint a fresh id per run, and prompts addressed to the previous run\'s id are never claimed. Leaves --standalone alone: a self-directed turn is nobody\'s prompt, so an exclusive standalone agent still works the board on its own initiative.')
   .option('--global', 'Run the modeling agent from the global install (~/.eventmodelers/kit), initializing it on first use, and ignore any kit in this directory. This is also what --modeling/--standalone fall back to on their own when nothing is installed here — pass it explicitly to prefer the global install over a local one. Credentials come from the flags below, EVENTMODELERS_* env vars, or ~/.eventmodelers/boards/<board>.json, so nothing is written into the current directory.')
   .option('--local', 'Skip platform config/credential lookup entirely and run the local-only loop (no board sync, no realtime agent) — even if .eventmodelers/config.json has credentials (build-kit stacks only)')
+  .option('--concern <concern>', 'Build one discipline only: "ui" (screens) or "backend". With the project\'s API contract (api/openapi.json, written by the model\'s export) a UI builds without its backend, so the two can be built at different times (DCB kit, ADR-029). Build-kit stacks only.')
   .option('--verbose', 'Log every tool call\'s full input (commands, skill args, file paths) and assistant reasoning text. Default is condensed, high-level per-step logging only.')
   .option('--id <id>', 'Pin the agent id this run identifies itself with on the platform. A project install otherwise mints one id per project and reuses it on every restart; --global/--standalone mints a fresh one per run, since two ad-hoc agents for one board must not share a row (the heartbeat is keyed on token + agent_id + agent_type, so the second would replace the first). Pass this when an agent has to keep ONE identity across restarts — a supervisor that already knows the id, or a board where it is the starred "preferred agent". Per-run only: nothing is written to disk.')
   .option('--name <name>', 'A human-readable name for this agent, sent with every heartbeat so the board shows which agent is live rather than a bare uuid (e.g. "ci-builder", "martins-laptop"). Per-run only, like --id: the persistent name is `agentName` in config.json (set via `init --name` / `init-config --name`), and this overrides it for one run without writing anything.')
@@ -3103,6 +3104,10 @@ credentialFlags(program
     // should fail on the spot, not once the loop is already up — and a cap passed where
     // nothing will read it is worth saying out loud rather than ignoring silently.
     const maxAgents = parseMaxAgents(opts.maxAgents);
+    if (opts.concern !== undefined && !['ui', 'backend'].includes(opts.concern)) {
+      console.error(`❌ --concern must be "ui" or "backend", not "${opts.concern}".`);
+      process.exit(1);
+    }
     if (command.getOptionValueSource('maxAgents') === 'cli' && !opts.standalone) {
       console.log('ℹ️  --max-agents only applies to --standalone turns; ignoring it here.');
     }
@@ -3239,7 +3244,8 @@ credentialFlags(program
       // local-only branch even when .eventmodelers/config.json has valid credentials.
       // RALPH_AGENT_ID/RALPH_AGENT_NAME (--id/--name) are read in ralph.js's startRalph, so
       // they reach both node runners but not ralph.sh, which has no heartbeat to identify.
-      execSync(cmd, { cwd: kitDir, stdio: 'inherit', env: { ...process.env, RALPH_VERBOSE: opts.verbose ? '1' : '', RALPH_LOCAL: opts.local ? '1' : '', RALPH_AGENT_ID: identity.agentId ?? '', RALPH_AGENT_NAME: identity.agentName ?? '', ...(typeof localAiTarget === 'string' ? { LOCAL_AI_TARGET: localAiTarget } : {}), ...(typeof opts.exec === 'string' ? { RALPH_EXEC_CMD: opts.exec } : {}) } });
+      // RALPH_CONCERN (--concern) is read by ralph.js when it picks the next job.
+      execSync(cmd, { cwd: kitDir, stdio: 'inherit', env: { ...process.env, RALPH_VERBOSE: opts.verbose ? '1' : '', RALPH_LOCAL: opts.local ? '1' : '', RALPH_CONCERN: opts.concern ?? '', RALPH_AGENT_ID: identity.agentId ?? '', RALPH_AGENT_NAME: identity.agentName ?? '', ...(typeof localAiTarget === 'string' ? { LOCAL_AI_TARGET: localAiTarget } : {}), ...(typeof opts.exec === 'string' ? { RALPH_EXEC_CMD: opts.exec } : {}) } });
     } catch (err) {
       process.exit(err.status || 1);
     }

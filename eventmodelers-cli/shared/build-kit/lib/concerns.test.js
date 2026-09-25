@@ -36,6 +36,25 @@ test('the next job: a Planned backend, or a Planned UI once its backend is Done,
   assert.equal(nextWork([entry('f', { backend: { status: 'Done' } })]), null);
 });
 
+test('with an API contract a UI waits for nothing; one concern only skips the other', () => {
+  const entries = () => [
+    entry('a', { backend: { status: 'Blocked' }, ui: { status: 'Planned' } }),
+    entry('b', { backend: { status: 'Planned' }, ui: { status: 'Planned' } }),
+  ];
+  // contract-first: a's UI goes although its backend is blocked; within a slice, the backend still comes first
+  assert.deepEqual(nextWork(entries(), { contractFirst: true }), { id: 'a', title: 'a', concern: 'ui', tracked: true });
+  const later = entries(); later[0].concerns.ui.status = 'Done';
+  assert.deepEqual(nextWork(later, { contractFirst: true }), { id: 'b', title: 'b', concern: 'backend', tracked: true });
+  // --concern ui: b's UI goes before its backend is built
+  assert.deepEqual(nextWork(later, { contractFirst: true, only: 'ui' }), { id: 'b', title: 'b', concern: 'ui', tracked: true });
+  // --concern ui without a contract: a UI still waits for its backend, so there's nothing to do
+  assert.equal(nextWork(later, { only: 'ui' }), null);
+  // --concern backend: UIs are skipped
+  assert.equal(nextWork([entry('c', { backend: { status: 'Done' }, ui: { status: 'Planned' } })], { contractFirst: true, only: 'backend' }), null);
+  // an entry without concerns is a backend job, never a UI one
+  assert.equal(nextWork([{ id: 'e', slice: 'e', status: 'Planned' }], { only: 'ui' }), null);
+});
+
 test('setting one concern updates it, the derived status and the definition; leaving Blocked drops the record', () => {
   const e = entry('a', { backend: { status: 'Done' }, ui: { status: 'Planned' } });
   assert.equal(setConcernStatus(e, 'ui', 'InProgress'), 'InProgress');
