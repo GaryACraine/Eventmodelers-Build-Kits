@@ -2,8 +2,8 @@ import createClient, { type Middleware } from "openapi-fetch"
 import type { paths } from "./api-types"
 
 /**
- * The only place that talks to the backend. Components never call `fetch`: they call `api` (typed from
- * /openapi.json by `npm run gen:api`) and pass the result through `command` or `read`.
+ * The only place that talks to the backend. Components never call `fetch`: they call `api` (typed from the API
+ * contract, api/openapi.json, by `npm run gen:api`) and pass the result through `command` or `read`.
  *
  *   const { position } = await command(api.POST("/subscribe-student", { body }))
  *   const course = await read(api.GET("/course-details/{courseId}", { params, headers: afterWrite(position) }))

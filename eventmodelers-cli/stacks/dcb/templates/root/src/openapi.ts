@@ -1,6 +1,7 @@
 /**
- * Writes the API's OpenAPI document to a file, with no database and no server: `npm run openapi` (after
- * `npm run build`). `npm run gen:api` runs both, then generates the frontend's client from the file.
+ * Writes the OpenAPI document the code serves to a file, with no database and no server: `npm run openapi` (after
+ * `npm run build`). The frontend's client comes from the API contract (api/openapi.json, the model's) instead;
+ * this is the other side, for comparing by hand. `npm run contract:check` compares the two.
  *
  * The document is the one the running app serves at `/openapi.json` (the openapi slice's `openApiDocument`),
  * built from the code on disk, so it can't be stale the way a backend started earlier would be.
@@ -30,7 +31,7 @@ const failures = await registerRoutesFromCode(contexts)
 if (failures.length > 0) {
     console.error("Couldn't document every route without a database, so the document would be incomplete:")
     for (const failure of failures) console.error(`  ${failure}`)
-    console.error("Generate from a running backend instead: API_URL=http://localhost:3000 npm --prefix web run gen:api")
+    console.error("Read it from a running backend instead: curl http://localhost:3000/openapi.json")
     process.exit(1)
 }
 

@@ -47,7 +47,8 @@ A React app next to the backend, built by the loop from each slice's screen (see
 
 ```bash
 cd web && npm install && cd ..
-npm run gen:api     # typed client from the code's routes: no database or running backend needed
+npm run gen:api     # the UI's typed client, from the API contract (api/openapi.json, written by the model's export)
+npm run contract:check  # does the code serve what the contract says? (match / pending / differ)
 cd web
 npm run dev         # http://localhost:5173 (start the backend with CORS_ORIGIN=http://localhost:5173)
 npm run dev:mock    # no backend: mock responses from the scenarios

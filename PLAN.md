@@ -1410,7 +1410,68 @@ routes and queries, the examples, and the scenarios. Use it to:
   - [ ] The t14 chapter (after 14.8 and the 14.10 decision): told as what to say to the skill, from this run's
     transcript, with the board and app screenshots, plus the deploy section from 14.8.
 - [ ] **14.10 Contract-first: the UI and the backend built in parallel.** *(Gary, 2026-09-24: to look into
-  later. Moved up 2026-09-25: next after 14.10a, before 14.8.)*
+  later. Moved up 2026-09-25: next after 14.10a, before 14.8. Detailed plan approved 2026-09-25; ADR-029.
+  Implemented and migrated; the t16 live proof is next.)*
+  - **Decided with Gary (2026-09-25):**
+    - **Scope:** the contract plus a concern filter. A UI no longer waits for its backend, and `eventmodelers run
+      --local --concern ui|backend` builds one discipline. It's still one loop at a time per working tree; two
+      loops in worktrees stay out of scope.
+    - **Proof:** t16 "bookmark a course", with the UIs built first against the contract, the backends after.
+  - **The contract:** `api/openapi.json`, written by emcli at every build-kit export from the whole model (slices
+    planned or later, never drafts), and committed with the model. It mirrors what the kit serves:
+    - `{Command}Body`, 204 or 201, `4XX` with `x-rejections`;
+    - `{ReadModel}`, a 404 "<Entity> not found", or a page;
+    - queries with `limit` and `cursor`;
+    - for async reads: Prefer/ETag/504.
+
+    A copy's new fields join its origin: a scalar optional, a List required.
+  - **What "matches" means:** what the typed client sees: parameters, the success status, the body and response
+    fields, required, type class, and schema names. Descriptions, headers, formats, nullability and the 4xx
+    statuses are ignored. A contract operation not served is **pending**; a served one not in the contract is an
+    error.
+  - **emcli (`e46b8f2`, 312 tests):**
+    - `model/contract.ts`;
+    - the export writes the contract and names the changed operations;
+    - `workspace contract [-o]`;
+    - the event-model skill's hand-off ("build the screens first", "the backend doesn't match the contract").
+  - **Kit:**
+    - `concerns.js` `nextWork(entries, { contractFirst, only })` (+1 test); `ralph.js` (contract-first when the
+      project has the contract, `RALPH_CONCERN`, start and waiting lines); `memory.js` (no backend commit body
+      with a contract, +1 test); `cli.js` `run --concern`;
+    - scaffold:
+      - `src/shared/contract.ts` + 5 tests and `npm run contract:check`;
+      - `gen:api` reads `api/openapi.json` (no build);
+      - the example app ships its contract;
+      - `start-empty.sh` removes it;
+    - checks: `92-api-contract` (the touched slices' operations, via `node dist/contract.js --only`),
+      `13-api-types` (the types are the contract's), and `blocked-paths` (`api/openapi.json`);
+    - build-screen builds from the contract (messages are the `SPEC_ERROR` titles, constraints from the specs);
+      build-state-change and build-state-view name schemas as the contract does (`{ReadModel}`, not the slice);
+    - the routines (no `For the UI:` line, no "the UI waits"), `build-kit/CLAUDE.md`, ADR-029 (and ADR-027's
+      consequence), the shared README and the testing guide.
+    - **Simulation** (fake agent): with a contract and `--concern ui`, the UI of a slice whose backend is Planned
+      is built, without a backend body; without a contract, `--concern ui` waits; with no filter, the backend
+      runs, then the UI.
+  - **course-enrollment (`98e3b1e`):**
+    - kit-drift before: 13 differ, 2 missing; after: 48 same;
+    - the export wrote 15 operations, and `contract:check` shows 15 match, 0 differ, with `/events` exempt;
+    - `api-types.ts` from the contract differs only in summaries and descriptions and `4XX` for 422/404, so web
+      tsc passes, with 50/50 tests;
+    - backend 161/161; the kit's unit tests 17/17.
+    - **Negative cases:**
+      - a body schema renamed: `api-contract` blocks the commit and names the difference;
+      - `api-types.ts` edited by hand: `api-types` blocks it;
+      - a read model field made optional: tsc already catches it (the schema is typed against the Doc).
+  - **Findings:**
+    - **The first comparison showed two real gaps, both fixed in the contract rule:**
+      - an extension's List (`subscribedStudents`) is required in the code, because the fold starts it as `[]`;
+      - a lookup the fold may store as `null` (`courses[].title`) isn't in the model. Nullability is ignored.
+    - **course-enrollment's model has a second "Enrollment" chapter (ready, no specs)** that models the same
+      commands and read models as "Course Enrollment", so the export warns that 11 routes are "modelled twice", and
+      uses the later chapter. Worth making that chapter's slices draft, through the skill; not done here (it's a
+      model decision).
+    - Summaries in the contract name the slice (`rateCourse (slice "rate course")`); the code's are prose. Both are
+      ignored by the check.
   - With 14.10a in place, the contract replaces the UI's last need for backend notes (the backend's commit
     body). Each discipline's memory then stands alone, which two independent loops would need.
   - Today the UI waits for its own slice's backend: its API types are generated from the backend's code
@@ -2406,6 +2467,9 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-25 | New order: 14.10a loop memory, then 14.10 contract-first, then 14.8 deploy, then the t14 chapter (Gary) | Gary wants contract-first now, as the way to a backend and UI developed independently. 14.10a doesn't need it, is small, and fixes stale lessons the loop reads today. t14 showed no UI waiting on a failing backend, so contract-first's value is independence, not speed |
 | 2026-09-25 | The loop's learnings are split by concern (`learnings/shared.md`, `backend.md`, `ui.md`), and the loop injects them into the prompt (14.10a, ADR-028) | A shared file mixes disciplines (32 backend bullets to 4 UI), and 5 bullets contradict the current kit. Small files with owners can be capped and pruned; two loops would collide on one file |
 | 2026-09-25 | Git is the record of completed work: a job's summary goes in its commit body, and `progress.txt` holds only what has no commit (blocked, interrupted, open questions), removed once its concern is Done (14.10a, ADR-028) | `progress.txt` duplicated git plus the learnings, and every job read all of it (about 8k tokens, growing). Nothing is lost: it's committed with the model, so history keeps it |
+| 2026-09-25 | Contract-first scope: emcli writes the API contract (`api/openapi.json`) at export; the UI builds from it and waits for nothing; the backend is checked against it; `run --concern ui|backend` builds one discipline; still one loop per working tree (14.10, ADR-029, Gary) | Independent development needs each discipline to work from the model alone. Two loops need worktrees and merging, which `--concern` makes unnecessary for building one discipline first |
+| 2026-09-25 | The contract check compares what the typed client sees (parameters, success status, fields, required, type class, schema names) and ignores descriptions, headers, formats, nullability and 4xx statuses (14.10, ADR-029) | The model doesn't decide those, and the UI shows a rejection's message whatever its status; a strict equality would fail on prose |
+| 2026-09-25 | A rejection's status stays out of the model; its message (the `SPEC_ERROR` title) is the contract (14.10, ADR-029) | Statuses follow the backend's error types (400/404/422); the UI treats every rejection alike |
 | 2026-09-25 | Learnings are pruned at three triggers (a kit update, a size cap of about 40 bullets, phase close), and lessons true for every project are promoted into the skills (Gary approves) (14.10a, ADR-028) | Promotion into the skills is where knowledge has really crystallised so far. Without pruning, lessons go stale when the kit changes |
 | 2026-09-24 | Planning a slice again after the loop blocked it re-queues it (`plannedAt` later than the loop's `blockedAt`) (14.7) | The loop's Blocked was otherwise permanent, which forced hand edits to index.json; timestamps stop a stale plan from re-queuing a fresh block |
 
@@ -2425,5 +2489,5 @@ What each `build-*` skill generates and what it verifies:
 | 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 done (stale InProgress recovery in `--local` mode) |
 | 11 — Read Model Types | ✅ Complete | Async, inline and live read models from one fold definition, with an identical data shape across types (ADR-021/022). Proven on course-enrollment t5–t10: inline, a retype to live and back, a new live read model with a lookup |
 | 12 — Query Read Models | 🚧 In progress (top priority) | 12.1–12.3 done: ADR-023 query contract; emcli queries + `SPEC_QUERY` + `addQueries` re-queue; kit runtime (stored SQL + live, one semantics). Named queries on the read model element, the spec *when* references them, `{ data, cursor? }` pages; live needs a tag parameter |
-| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.3 done: native wireframes pushed and pulled (board links work in Connect), design system as a synced snippet. 14.4 done: the `event-model` skill's screen mode (contract → draft → edit → check → push → show); screen problems warn, one set of field exceptions. 14.4b done: manual §13, t13 on course-enrollment (five screens, board wireframes, snippet restyle). 14.4c done: hand-off gate, only information-complete slices reach the loop. 14.5 done: `web/` scaffold in the DCB kit (typed client from `/openapi.json`, opt-in read-your-writes for async read models, MSW mock mode, shell, one Tailwind design system for app and board snippet); entity-oriented routing recorded as an open decision. 14.5b done: API routes named after the model (ADR-025; emcli derives them, `POST /<command>`, `GET /<read-model>/:id`, `GET /<read-model>/<query>`), kit, course-enrollment and manual migrated; page routes decided (entity-based, derived at export) and `session:` from a stub current user. 14.6 done: `build-screen` (a form per command, a view per read model, MSW handlers and tests from the scenarios, pages from `screens[].page`), page routes derived by emcli (entity-shaped, session keys never in URLs), web commit checks, a reference frontend, and course-enrollment's five screens built one commit each, walked through live and in mock mode. 14.7 done: the loop builds a slice's screen after its backend, a mockup added or changed on a built slice re-queues the screen alone, `gen:api` needs no backend, a blocked slice planned again is re-queued, manual §13.9. 14.7b done: a build status per concern (backend, UI), the slice's status derived, one loop with a routine per concern, a blocked UI holds up nothing (ADR-027). 14.9's live run done (t14 "rate a course": four jobs, none blocked, 6 min, $3.17; no UI waited on a failing backend). 14.10a done: the loop's memory by concern, git commit bodies as the record, progress.txt as a journal of open problems (ADR-028); t15 proved it (four jobs first time, 5 min 28 s, $2.81, 11% under t14), and the first curation cut 42 lessons to 11 and fixed a skill bug. Next: 14.10 contract-first, then 14.8 deploy, then the t14 chapter. 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
+| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.3 done: native wireframes pushed and pulled (board links work in Connect), design system as a synced snippet. 14.4 done: the `event-model` skill's screen mode (contract → draft → edit → check → push → show); screen problems warn, one set of field exceptions. 14.4b done: manual §13, t13 on course-enrollment (five screens, board wireframes, snippet restyle). 14.4c done: hand-off gate, only information-complete slices reach the loop. 14.5 done: `web/` scaffold in the DCB kit (typed client from `/openapi.json`, opt-in read-your-writes for async read models, MSW mock mode, shell, one Tailwind design system for app and board snippet); entity-oriented routing recorded as an open decision. 14.5b done: API routes named after the model (ADR-025; emcli derives them, `POST /<command>`, `GET /<read-model>/:id`, `GET /<read-model>/<query>`), kit, course-enrollment and manual migrated; page routes decided (entity-based, derived at export) and `session:` from a stub current user. 14.6 done: `build-screen` (a form per command, a view per read model, MSW handlers and tests from the scenarios, pages from `screens[].page`), page routes derived by emcli (entity-shaped, session keys never in URLs), web commit checks, a reference frontend, and course-enrollment's five screens built one commit each, walked through live and in mock mode. 14.7 done: the loop builds a slice's screen after its backend, a mockup added or changed on a built slice re-queues the screen alone, `gen:api` needs no backend, a blocked slice planned again is re-queued, manual §13.9. 14.7b done: a build status per concern (backend, UI), the slice's status derived, one loop with a routine per concern, a blocked UI holds up nothing (ADR-027). 14.9's live run done (t14 "rate a course": four jobs, none blocked, 6 min, $3.17; no UI waited on a failing backend). 14.10a done: the loop's memory by concern, git commit bodies as the record, progress.txt as a journal of open problems (ADR-028); t15 proved it (four jobs first time, 5 min 28 s, $2.81, 11% under t14), and the first curation cut 42 lessons to 11 and fixed a skill bug. 14.10 contract-first implemented (ADR-029: emcli writes `api/openapi.json`, the UI builds from it and waits for nothing, the backend is checked against it, `run --concern`); course-enrollment migrated (15 operations match). Next: its t16 live proof, then 14.8 deploy, then the t14 chapter. 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
 | 7 — Board Re-pointing | ⛔ Dropped | eventmodelers board retired; prooph board via emcli is the only board |

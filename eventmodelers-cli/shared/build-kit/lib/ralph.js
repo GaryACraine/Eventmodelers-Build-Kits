@@ -13,7 +13,7 @@ import { randomUUID } from 'crypto';
 import { execFileSync } from 'child_process';
 import { createRealtimeAdapter } from './adapters/realtime-adapter.js';
 import { concernsOf, inProgressConcerns, nextWork, setConcernStatus, settleEntries } from './concerns.js';
-import { LEARNINGS_CAP, journalPath, journalTag, memoryBlock, pruneJournal, usesLearnings } from './memory.js';
+import { LEARNINGS_CAP, contractPath, journalPath, journalTag, memoryBlock, pruneJournal, usesLearnings } from './memory.js';
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 
@@ -421,9 +421,18 @@ function readCurrentContext(kitDir) {
   try { return JSON.parse(readFileSync(ctxPath, 'utf-8')).name || null; } catch { return null; }
 }
 
+// `eventmodelers run --concern ui|backend` (RALPH_CONCERN): build one discipline only (PLAN 14.10).
+const ONLY_CONCERN = ['backend', 'ui'].includes(process.env.RALPH_CONCERN) ? process.env.RALPH_CONCERN : null;
+
+// How the next job is chosen: contract-first when the project has an API contract (a UI waits for nothing), and
+// one concern only when the loop was started for one.
+function workOptions(kitDir) {
+  return { contractFirst: existsSync(contractPath(kitDir)), only: ONLY_CONCERN };
+}
+
 // Returns the next job IN THE CURRENT CONTEXT ONLY: one concern of one slice (concerns.js), a Planned backend or
-// a Planned UI whose backend is Done. If the current context has no planned work, returns null so the loop
-// waits — it must NEVER cross into another context to find something to build.
+// a Planned UI (whose backend is Done, unless the project has an API contract). If the current context has no
+// planned work, returns null so the loop waits — it must NEVER cross into another context to find something to build.
 function getFirstPlannedSlice(kitDir) {
   const currentCtx = readCurrentContext(kitDir);
   if (!currentCtx) return null;
@@ -431,7 +440,7 @@ function getFirstPlannedSlice(kitDir) {
   if (!existsSync(indexPath)) return null;
   try {
     const { slices } = JSON.parse(readFileSync(indexPath, 'utf-8'));
-    const work = nextWork(slices);
+    const work = nextWork(slices, workOptions(kitDir));
     if (work) return { ...work, ctx: currentCtx };
   } catch {}
   return null;
@@ -797,7 +806,7 @@ function taskHeader(planned, claimed) {
 }
 
 // A tracked job's prompt: the task header, then (in a kit with learnings/) the memory the loop gives it (memory.js:
-// its concern's lessons, its open journal notes, a UI's backend commit body), then its routine.
+// its concern's lessons, its open journal notes, a UI's backend commit body when there's no API contract), then its routine.
 function jobPrompt(kitDir, projectDir, planned, claimed, routine) {
   const header = taskHeader(planned, claimed);
   if (!usesLearnings(kitDir)) return header + routine;
@@ -913,7 +922,8 @@ async function ralphLoop(kitDir, projectDir, cfg, onTask, onPlannedSlice, localO
       const ctx = readCurrentContext(kitDir);
       if (credentialed && ctx) reportStaleClaims(kitDir, ctx);
       if (ctx !== lastIdleCtx) {
-        console.log(`[ralph] No planned slices in current context "${ctx}" — waiting. Switch context on the board to continue.`);
+        const only = ONLY_CONCERN ? ` (${ONLY_CONCERN} jobs only)` : '';
+        console.log(`[ralph] No planned slices in current context "${ctx}"${only} — waiting. Switch context on the board to continue.`);
         lastIdleCtx = ctx;
       }
       await new Promise((r) => setTimeout(r, 10_000));
@@ -940,6 +950,9 @@ export async function startRalph({ kitDir, projectDir, onTask, onPlannedSlice, a
   console.log(`Ralph — kit: ${kitDir}`);
   console.log(`         project: ${projectDir}`);
   console.log(`         agent: ${local.agentName ? `${local.agentName} (${local.agentId})` : local.agentId}`);
+  const { contractFirst } = workOptions(kitDir);
+  if (contractFirst) console.log(`         API contract: api/openapi.json (a UI doesn't wait for its backend)`);
+  if (ONLY_CONCERN) console.log(`         builds: ${ONLY_CONCERN} jobs only (--concern ${ONLY_CONCERN})`);
 
   // localOnly (set via `eventmodelers run --local`) forces this branch even when
   // credentials are present — it skips fetchPlatformConfig's network call to

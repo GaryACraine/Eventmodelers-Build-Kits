@@ -254,9 +254,14 @@ export const {SliceName}Schema = z
         {field1}: z.number().int().openapi({ example: {example} }),
         {listField}: z.array(z.object({ {subField}: z.string() }))
     })
-    .openapi("{SliceName}")
+    .openapi("{ReadModelName}")
 ```
 
+- **The API contract** (`api/openapi.json`, written from the model, ADR-029) already has this document as
+  `components.schemas.{ReadModelName}` (the read model's name in PascalCase, e.g. `CourseRatings`), and the UI may
+  already be built against it. Name the schema that, with the same fields, types and required ones; the
+  `api-contract` commit check compares them. An extension's new scalar fields are optional, a new List is
+  required (the fold starts it as `[]`).
 - Types follow the Doc interface: `string` → `z.string()`, `number` → `z.number()` (`.int()` for `Int`/`Long`),
   `boolean` → `z.boolean()`, a list → `z.array(z.object({ … }))`, a value `evolve` may store as `null` →
   `.nullable()`, an optional Doc field → `.optional()`.
@@ -578,7 +583,7 @@ export const {SliceName}Schema = z
     .object({
         // the response body's fields, as the handler below maps them
     })
-    .openapi("{SliceName}")
+    .openapi("{ReadModelName}")
 
 registerRead({
     path: "/{read-model}/:{key}",       // exactly as route.ts writes it: the apiEndpoint (ADR-025)
@@ -1160,7 +1165,7 @@ Queries add no files: they're declared in `readModel.ts`, served and documented 
 - [ ] `readModel.ts`: `type` from slice.json, `key` = the idAttribute field, `canHandle` = slice.json `events[]` (one per line), lookups only for data from another entity
 - [ ] `evolve` is pure, returns new objects, tolerates a missing document, and ends with `return doc`
 - [ ] Every field in `readModel.fields` is produced by `evolve`, and there are no invented fields
-- [ ] `schema.ts` has the document's Zod schema, one entry per Doc field (optional ones too)
+- [ ] `schema.ts` has the document's Zod schema, one entry per Doc field (optional ones too), named `{ReadModelName}` as in the API contract (`npm run contract:check`: match)
 - [ ] `route.ts` is a `readModelRoute` call with the `path` from `apiEndpoint` and `schema`
 - [ ] `readModels` in `src/index.ts` lists it, and its route is in `apis` (a separate wire commit)
 - [ ] `route.tests.ts`: `describe.each(READ_MODEL_TYPES)`, one `test` per keyed specification, `settle()` before each GET, `toMatchObject`, nothing type-specific

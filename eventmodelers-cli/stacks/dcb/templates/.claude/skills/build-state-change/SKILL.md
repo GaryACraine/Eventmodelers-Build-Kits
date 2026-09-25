@@ -295,6 +295,13 @@ registerCommand({
 })
 ```
 
+**The API contract** (`api/openapi.json`, written from the model, ADR-029) already documents this route, and the
+UI may already be built against it: the body is `components.schemas.{CommandName}Body` (the command's name in
+PascalCase) with slice.json's fields, all but the generated ones, required unless `optional`. Match it: the
+`api-contract` commit check compares the route's path, body fields, their types and required ones, and the success
+status. Which 4xx a rejection gets is yours (below); its message is the `SPEC_ERROR` title, verbatim, because the UI
+shows it.
+
 **The route is `commands[0].apiEndpoint`, always `POST`, every field in the body** (ADR-025: routes are named
 after the model, e.g. `POST /change-course-capacity {courseId, newCapacity}`). Never design a REST path, never
 put an ID in the path, and never use PUT/PATCH/DELETE: the endpoint in slice.json is the route. (Only if it was
@@ -613,6 +620,7 @@ src/contexts/{context}/
 - [ ] `decider()` handlers object keys match the state properties used in `decide()`
 - [ ] No business rules, defaults, or constraints were added that do not appear in slice.json `description` or `comments`
 - [ ] `schema.ts` registers the route (`registerCommand`, same method and path as `route.ts`), and `route.ts` imports `./schema.js`
+- [ ] The body is named `{CommandName}Body` and matches the API contract (`npm run contract:check` shows the route as match)
 - [ ] Route is wired in `src/index.ts`
 - [ ] `npm run build` passes (tsc --noEmit)
 - [ ] Slice tests pass

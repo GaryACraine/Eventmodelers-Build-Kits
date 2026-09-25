@@ -1,6 +1,6 @@
 # Ralph Agent Instructions: the UI
 
-You are an autonomous coding agent building a slice's **UI**: its screen, in `web/` (React), from the mockup in its slice.json. The slice's backend is already built and committed. That was a separate job; don't touch `src/`, and don't rebuild it.
+You are an autonomous coding agent building a slice's **UI**: its screen, in `web/` (React), from the mockup in its slice.json, against the **API contract** (`api/openapi.json`, written from the model: every route, field and rejection). The slice's backend is a separate job that may not have run yet; you don't need it. Don't touch `src/` or `api/openapi.json`.
 
 The loop has chosen the job: **"Your task" above names the slice.** Build exactly that, one job per run.
 
@@ -12,17 +12,17 @@ The loop has chosen the job: **"Your task" above names the slice.** Build exactl
 ## Your Task
 
 0. Do not read the entire codebase. Focus on the slice and `web/`.
-1. Your memory is above, under "What the loop remembers": the shared and UI lessons, any open notes on this job, and what the slice's backend job recorded in its commit (status codes, messages, when a read answers 404). Don't read `progress.txt`, `.build-kit/AGENTS.md` or the other learnings files.
+1. Your memory is above, under "What the loop remembers": the shared and UI lessons, and any open notes on this job. What the backend will answer is in the API contract and slice.json, not in the backend's code or commits. Don't read `progress.txt`, `.build-kit/AGENTS.md` or the other learnings files.
 2. Stay on the branch you are on — do not create or switch branches.
 3. Read the slice definition from `.build-kit/.slices/<contextName>/<folder>/slice.json` (the folder is the slice's `folder` in `index.json`). Its `screens[]` with a `mockup` are your job. `buildScreen` tells you why the job is here: `"added"` (a first UI for a slice built without one) or `"changed"` (rebuild its UI to the new mockup). Without it, it's the slice's first build.
-4. Invoke `/build-screen` and follow it **completely**. It regenerates the API types from the code (`npm run gen:api`: no database or running backend), builds a form per submitted command and a view per displayed read model from the mockup 1:1, mock handlers and tests from the scenarios, and puts them on the page.
+4. Invoke `/build-screen` and follow it **completely**. It generates the API types from the contract (`npm run gen:api`: no backend), builds a form per submitted command and a view per displayed read model from the mockup 1:1, mock handlers and tests from the scenarios, and puts them on the page.
 5. Verify against slice.json: every field, value and message comes from it; every API path is one of its `apiEndpoint`s.
-6. Stage and run the commit checks: `npm run run:checks -- --staged`. The pre-commit hook runs the same checks (`blocked-paths`, `web-scope`, `web-tests`). **Never commit over a failing check**, and never use `--no-verify`. Fix the code, or if a check itself is wrong, block the job (below) with the check output and stop. Then commit: `feat: [Slice Name] screen`, with a body ("Commit body" below): the commit is the record of this job.
+6. Stage and run the commit checks: `npm run run:checks -- --staged`. The pre-commit hook runs the same checks (`blocked-paths`, `web-scope`, `api-types`, `web-tests`). **Never commit over a failing check**, and never use `--no-verify`. Fix the code, or if a check itself is wrong, block the job (below) with the check output and stop. Then commit: `feat: [Slice Name] screen`, with a body ("Commit body" below): the commit is the record of this job.
 7. Set `concerns.ui.status` to `"Done"` in `index.json`. The loop derives the slice's `status` from its concerns; don't set it yourself.
 8. Lessons: add what a later UI job in this project should know to `.build-kit/learnings/ui.md` (or `learnings/shared.md` if the backend needs it too), following "Lessons" below. Most jobs add none or one.
 9. Finish the iteration. Don't write to `progress.txt` unless you block the job.
 
-**Blocking the job** (step 6, or when the screen can't be built without a change outside its scope, such as a missing component or library): in `index.json`, set `concerns.ui` to `{ "status": "Blocked", "blockedReason": "<the check output or the question, in short>", "blockedAt": "<now, ISO 8601>" }`, and add a journal entry to `progress.txt` ("Journal entry" below). The backend stays as built, and other slices go on; the model fixes the mockup and plans the slice again, and only the UI is rebuilt.
+**Blocking the job** (step 6, or when the screen can't be built without a change outside its scope, such as a missing component or library): in `index.json`, set `concerns.ui` to `{ "status": "Blocked", "blockedReason": "<the check output or the question, in short>", "blockedAt": "<now, ISO 8601>" }`, and add a journal entry to `progress.txt` ("Journal entry" below). The backend is unaffected, and other slices go on; the model fixes the mockup (or the contract, by changing the model) and plans the slice again, and only the UI is rebuilt.
 
 ## Commit body
 

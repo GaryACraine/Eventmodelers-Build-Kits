@@ -16,19 +16,25 @@ Read `src/contexts/` to understand the global structure. Events for each context
 ## Frontend (`web/`)
 
 `web/` is the project's React app: Vite, React 19, TypeScript, Tailwind CSS v4 + shadcn/ui, React Router,
-TanStack Query, React Hook Form + Zod, openapi-fetch (types generated from `/openapi.json`), Vitest + Testing
+TanStack Query, React Hook Form + Zod, openapi-fetch (types generated from the API contract), Vitest + Testing
 Library + MSW. See `web/README.md`.
+
+**The API contract** is `api/openapi.json` (ADR-029): the model's whole API (routes, fields, rejections), written
+by emcli at every export and committed with the model. The UI is built from it and the backend is checked against
+it, so the two are independent jobs. Nobody edits it here: a wrong contract is a model change. `npm run
+contract:check` shows every operation: match, pending (not built yet), differ.
 
 - A slice's work has two **concerns**, each a job of its own with its own status (`concerns` in its
   `index.json` entry; the slice's `status` is derived from them): the **backend** (`src/`, the backend skills,
   `lib/backend-prompt.md`) and the **UI** (`web/`, `/build-screen`, `lib/screen-prompt.md`). The loop picks the
-  job and names it in "Your task". A slice's UI is built once its backend is Done; nothing waits for a UI. A
-  backend job never touches `web/`, and a UI job never touches `src/`.
+  job and names it in "Your task". With the API contract a UI waits for nothing (without one, it waits until its
+  backend is Done), and nothing waits for a UI; `eventmodelers run --local --concern ui|backend` builds one
+  discipline only. A backend job never touches `web/`, and a UI job never touches `src/`.
 - The UI job exists when slice.json has a `screens[]` entry with a `mockup`. It builds `web/src/slices/{slicename}/`
   and the page the screen is on (`web/src/pages/`), and commits it on its own. A screen with no mockup isn't built:
   the model adds the mockup later, and the export queues the UI then.
 - The UI calls the backend only through `web/src/lib/api.ts`, on slice.json's `apiEndpoint` paths.
-  `web/src/lib/api-types.ts` is regenerated (`npm run gen:api`), never edited.
+  `web/src/lib/api-types.ts` is generated from the contract (`npm run gen:api`), never edited.
 - A page's URL is slice.json's `screens[].page.route` (entity-shaped, for people). It is never an API path, and
   never the other way round.
 - Read-your-writes (`afterLastWrite()`) is only for **async** (`database-projected`) read models. Inline and
@@ -43,7 +49,9 @@ Library + MSW. See `web/README.md`.
 3. No migration files — Pongo creates JSONB collections via `projection.init()`
 4. OpenAPI is programmatic: each slice documents its routes (`registerCommand` / `registerRead` in its
    `schema.ts`, or `readModelRoute`'s `schema`) through `src/shared/openapi.ts`, and the `openapi` slice serves
-   them all at `/openapi.json`. The frontend's client is generated from it, so every route must be there
+   them all at `/openapi.json`. What it serves must match the API contract (`api/openapi.json`): the same schema
+   names (`{Command}Body`, `{ReadModel}`), fields, types and required ones. A rejection's message is its
+   `SPEC_ERROR` title, verbatim
 5. Routes are slice.json's `apiEndpoint`, named after the model (ADR-025): a command is `POST /<command>` with
    every field in the body, a read model `GET /<read-model>/:<id>`, a query `GET /<read-model>/<query>?…`.
    Never design a REST path, nest one under an entity, or use PUT/PATCH/DELETE
@@ -106,7 +114,8 @@ After you are done, automatically run the tests for the slice that was edited.
 A pre-commit hook runs `.build-kit/lib/check-commit-scope.cjs` on every commit that touches `src/contexts/{context}/slices/{slicename}/`.
 It loads every check under `.build-kit/lib/checks/` and rejects the commit if any find a problem:
 
-- **blocked-paths** — `package.json`/lockfiles and `index.ts` are never touched by slice work
+- **blocked-paths** — `package.json`/lockfiles, `api/openapi.json` (the model's) and `index.ts` are never touched
+  by slice work
 - **slice-scope** — everything staged must be inside the slice folder or a documented exception:
   `src/contexts/{context}/Events.ts`
 - **extension-additive** — while an extension slice (`extends` in slice.json) is InProgress: changes stay in
@@ -131,6 +140,10 @@ It loads every check under `.build-kit/lib/checks/` and rejects the commit if an
 - **openapi-registered** — every `router.get/post/put/patch/delete("<path>")` in a slice's `route.ts` has a
   `registerCommand` / `registerRead` with the same method and path in its `schema.ts`, and `route.ts` imports
   `./schema.js`; every `readModelRoute(…)` passes `schema:` (it documents the keyed GET and the queries itself)
+- **api-contract** — the operations the touched slices serve match the API contract (`api/openapi.json`): path,
+  parameters, success status, body and response fields, types, required ones and schema names (`node
+  dist/contract.js --only …`). Descriptions, headers and which 4xx a rejection uses aren't compared. Skipped
+  without a contract
 - **tsc-build** — `npx tsc --noEmit` must still pass
 - **slice-tests** — the tests of every slice folder the commit touches must pass (for an extension, that is
   the origin's full test file, earlier scenarios included)
@@ -141,6 +154,7 @@ plus blocked-paths (which also covers `web/package.json` and its lockfile):
 - **web-scope** — everything staged is in that one slice's `web/src/slices/{slicename}/`, a page in
   `web/src/pages/*.tsx`, or the regenerated `web/src/lib/api-types.ts`; no backend file, nothing else in `web/`;
   and the slice's folder has a `*.test.tsx`
+- **api-types** — `web/src/lib/api-types.ts` is exactly what `gen:api` generates from `api/openapi.json`
 - **web-tests** — `web/` typechecks (`tsc -b`) and the slice's and the pages' tests pass (MSW, no backend)
 
 The hook lives in `.githooks/`, added by `eventmodelers init --hooks` (or `eventmodelers init-hooks` later); `npm install`'s

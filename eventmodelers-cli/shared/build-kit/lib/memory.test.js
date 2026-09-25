@@ -6,7 +6,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { execFileSync } from 'child_process';
 import {
-  LEARNINGS_CAP, backendCommitBody, countLessons, journalEntries, journalTag, memoryBlock, openNotes, pruneJournal, usesLearnings,
+  LEARNINGS_CAP, backendCommitBody, contractPath, countLessons, journalEntries, journalTag, memoryBlock, openNotes, pruneJournal, usesLearnings,
 } from './memory.js';
 
 // A scratch project: <root>/.build-kit (with learnings/ unless `learnings: false`) and <root>/progress.txt.
@@ -56,6 +56,18 @@ test("a UI job gets the shared and UI lessons, and its backend's commit body", (
   assert.match(text, /### What the backend job recorded[\s\S]*For the UI: 422/);
   assert.doesNotMatch(text, /Co-Authored-By/);
   assert.equal(summary, 'shared, ui, backend commit');
+});
+
+test("with an API contract, a UI job builds from it: no backend commit body", () => {
+  const { root, kitDir } = project();
+  git(root, 'init', '-q');
+  commit(root, 'feat: [rate course]\n\nBuilt: POST /rate-course');
+  mkdirSync(join(root, 'api'));
+  writeFileSync(join(root, 'api', 'openapi.json'), '{}');
+  assert.equal(contractPath(kitDir), join(root, 'api', 'openapi.json'));
+  const { text, summary } = memoryBlock({ kitDir, projectDir: root, planned: { id: 'a', title: 'rate course', concern: 'ui' } });
+  assert.doesNotMatch(text, /What the backend job recorded/);
+  assert.equal(summary, 'shared, ui');
 });
 
 test('missing files are skipped, and nothing at all gives no block', () => {
