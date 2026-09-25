@@ -1103,7 +1103,7 @@ routes and queries, the examples, and the scenarios. Use it to:
   waits only for its own backend. The full pipeline for a new slice is still unproven, and contract-first is
   about 14.6's size.
 - **Order changed (Gary, 2026-09-25), after 14.9's live run:**
-  1. **14.10a** Loop memory by concern, with git as the record;
+  1. **14.10a** Loop memory by concern, with git as the record; ✅ 2026-09-25
   2. **14.10** Contract-first;
   3. **14.8** Deploy;
   4. the t14 chapter (14.9).
@@ -1111,8 +1111,8 @@ routes and queries, the examples, and the scenarios. Use it to:
   Gary wants contract-first now, as the way to a backend and a UI developed independently. 14.10a comes first
   because it's small, doesn't need contract-first, and fixes stale knowledge the loop reads today. Contract-first
   then removes the UI's last dependency on the backend's notes. See ADR-028.
-- [ ] **14.10a Loop memory by concern; git as the record.** *(Decided with Gary 2026-09-25; ADR-028. Next: a
-  detailed plan, then kit code.)*
+- [x] **14.10a Loop memory by concern; git as the record.** *(Decided with Gary 2026-09-25; ADR-028. Done
+  2026-09-25: PR #65 + this PR, emcli `486f72e`, course-enrollment `10a4be8` (t15) and `0aca582`.)*
   - **How it works today (checked on course-enrollment after t14):**
     - Two memory files, shared by both routines:
       - `progress.txt`: append-only, one entry per job, each ending in "Learnings for future iterations". It's
@@ -1238,6 +1238,98 @@ routes and queries, the examples, and the scenarios. Use it to:
     - §14: "Who commits what" (commit bodies, the files a `model(…)` commit picks up);
     - §17: "the loop keeps repeating a mistake → correct the lesson in `learnings/<concern>.md`";
     - §20: limits.
+  - **Kit (PR #65):**
+    - `shared/build-kit/lib/memory.js` (+ 9 `node:test`s);
+    - `ralph.js`:
+      - the prompt is the task header, then memory, then the routine;
+      - notes are tagged per job (per job for interrupted runs);
+      - `settleIndex` prunes the journal;
+      - `[ralph] memory: …` and `journal: removed …` log lines;
+    - `ralph-claude.js`: `done (…, in <n>k tok, out <n>k tok)`;
+    - the DCB prompts (commit bodies, journal only when blocked, lessons with writing rules), `CLAUDE.md`,
+      `learnings/` templates;
+    - `cli.js`: a re-install seeds `learnings/` only where it's missing;
+    - the shared README and the DCB testing guide.
+    - Everything is gated on the kit shipping `learnings/`.
+  - **Proof before the live run:**
+    - unit tests 15/15 (memory 9, concerns 6); DCB check tests 36/36;
+    - a fake-agent simulation driving the real `ralph.js` (scratch projects, no Claude), 17 checks:
+      - each concern's memory, in order;
+      - the UI job gets the backend commit body without the trailer;
+      - a Done job leaves no entry;
+      - a blocked UI keeps its tagged entry, sees it when planned again, and has it pruned once Done;
+      - an interrupted job's note is tagged, seen by its retry, then pruned;
+      - a kit without `learnings/` gets today's prompts and an untagged combined note;
+      - an entry without concerns gets the routine alone.
+  - **The first curation (course-enrollment, `c290946`):** AGENTS.md's 42 lessons became 11 (shared 3,
+    backend 5, ui 3).
+
+    | Removed | Count | Lessons |
+    |---|---|---|
+    | stale (pre fold form, pre ADR-025/027) | 12 | 9, 12, 14, 19–22, 24, 26–28, 36 |
+    | already in the skills | 13 | 1–4, 11, 13, 29–35 |
+    | environment noise | 2 | 7, 25 |
+    | promoted into the skills (Gary approved) | 7 | 17, 18, 38–42 |
+
+    - **Promotion caught a skill bug:** `build-state-change` said `ValidationError` → 422. The library says 400,
+      t14's live curl got 400, and the loop had recorded it as a lesson. Now fixed in the skill.
+    - **Promoted:**
+      - range rules as a `ValidationError` in the decider;
+      - once-per-pair decision models; a model per rule for two-entity commands; only the rules a spec states;
+      - aggregates (count/average) in `evolve`;
+      - a native `<select>`, `Pick<Body, …>` for partly typed forms, and an aggregate's 404 as the empty state.
+  - **The live proof: t15 "course comments" on course-enrollment** (`comment on course` + `course comments`, both
+    on the Course Page, the same shape as t14). Loop restarted after the kit update.
+
+    | Job | t14 (before) | t15 (after) | Memory given | Tokens read |
+    |---|---|---|---|---|
+    | write backend | 93.6 s, $0.80 | 82.2 s, $0.71 | 2294 chars (shared, backend) | 617k |
+    | write UI | 106.9 s, $0.86 | 83.8 s, $0.67 | 2311 chars (shared, ui, backend commit) | 672k |
+    | read backend | 72.2 s, $0.73 | 79.3 s, $0.76 | 2461 chars (shared, backend) | 804k |
+    | read UI | 94.1 s, $0.78 | 82.7 s, $0.68 | 2528 chars (shared, ui, backend commit) | 780k |
+    | **total** | 6 min 7 s, $3.17 | **5 min 28 s, $2.81** (−11%, −11%) | | |
+
+    - **All four passed first time.** None blocked; `progress.txt` stayed at its header throughout.
+    - **Commit bodies worked as the hand-off.** Both backend bodies had "For the UI". The read model's said "async
+      (use `afterLastWrite()`); 404 until the first comment, so show that as no comments". Its UI job built
+      exactly that ("No comments yet."). The UI bodies record where they depart from the mockup (the textarea
+      starts empty).
+    - **Lessons:**
+      - the backend jobs extended the templates bullet instead of adding one (merge before adding);
+      - a UI job added two project lessons (a native `<textarea>`; page tests scoped `within` a card);
+      - **a backend job corrected one of my curated lessons**: `registercourse/` answers 204, not "201 with the
+        created id". That's the "correct, don't contradict" rule working.
+
+      11 → 13 lessons.
+    - Verified:
+      - backend 156/156, web 50/50;
+      - curl on the live DB: 204; blank and 501 characters both 400 with the spec's message; not subscribed 422;
+        the read 404 before the first comment, then the list;
+      - Chrome: posting a comment adds it to the list without a reload.
+    - **Caveat on the numbers:** one pair of runs, and the slices differ (comments, not ratings). The skills also
+      improved in the same change. So −11% is suggestive, not proof. There's no token baseline, because t14's log
+      had none. From here, every run logs memory size and tokens.
+  - **Findings:**
+    - **The wiring commit lost its `chore:` prefix** (`wire comment on course route`). The convention came from
+      the examples in `progress.txt`, which are gone now. The backend prompt now names it (`chore: wire <slice>
+      …`); course-enrollment updated (`0aca582`). The prefix matters to nothing mechanical, only to the log's
+      readability.
+    - **Skills drift in projects.** course-enrollment's `build-state-change` and `build-state-view` predated
+      ADR-025 (PUT/DELETE routes): the 14.5b migration updated the code, never the skills. A kit update must
+      diff every kit file against the project (done this time: nothing else had drifted).
+    - **An emcli export gap:** `slice.json`'s `readmodels[]` has no `readModelType`, which is only in the index
+      entry. The UI jobs work around it (a lesson in `ui.md`). Fix in emcli's export later.
+    - **Promotion candidates for the next phase close:** a native `<textarea>` (next to the promoted
+      `<select>`), and scoping a page test's list items `within` a card.
+  - **Manual (this PR):**
+    - §5.5: what the loop leaves (commit bodies, `learnings/`, `progress.txt` usually empty);
+    - §14: "You vs the loop" and "Who commits what" (bodies, bracketed subjects, no `chore: progress` commits);
+    - §15: the backend steps, and "What a job remembers" (the table, log lines, journal, pruning), the
+      interrupted note;
+    - §17: three rows (a repeated mistake → correct the lesson; the cap warning; entries in `progress.txt`);
+    - §20: lessons are only as good as their pruning.
+  - **emcli (`486f72e`):** the event-model skill's hand-off mode corrects or reviews the loop's lessons, and reads
+    what the loop did from commit bodies (`handoff.md` §4).
 - [ ] **14.8 Deploy.** The `web/` build goes to S3 + CloudFront (SPA fallback to `index.html`), with `VITE_API_BASE`
   per environment. A script first; CDK later if wanted.
 - [ ] **14.9 Prove and document (increment t14 on course-enrollment).**
@@ -2321,5 +2413,5 @@ What each `build-*` skill generates and what it verifies:
 | 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 done (stale InProgress recovery in `--local` mode) |
 | 11 — Read Model Types | ✅ Complete | Async, inline and live read models from one fold definition, with an identical data shape across types (ADR-021/022). Proven on course-enrollment t5–t10: inline, a retype to live and back, a new live read model with a lookup |
 | 12 — Query Read Models | 🚧 In progress (top priority) | 12.1–12.3 done: ADR-023 query contract; emcli queries + `SPEC_QUERY` + `addQueries` re-queue; kit runtime (stored SQL + live, one semantics). Named queries on the read model element, the spec *when* references them, `{ data, cursor? }` pages; live needs a tag parameter |
-| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.3 done: native wireframes pushed and pulled (board links work in Connect), design system as a synced snippet. 14.4 done: the `event-model` skill's screen mode (contract → draft → edit → check → push → show); screen problems warn, one set of field exceptions. 14.4b done: manual §13, t13 on course-enrollment (five screens, board wireframes, snippet restyle). 14.4c done: hand-off gate, only information-complete slices reach the loop. 14.5 done: `web/` scaffold in the DCB kit (typed client from `/openapi.json`, opt-in read-your-writes for async read models, MSW mock mode, shell, one Tailwind design system for app and board snippet); entity-oriented routing recorded as an open decision. 14.5b done: API routes named after the model (ADR-025; emcli derives them, `POST /<command>`, `GET /<read-model>/:id`, `GET /<read-model>/<query>`), kit, course-enrollment and manual migrated; page routes decided (entity-based, derived at export) and `session:` from a stub current user. 14.6 done: `build-screen` (a form per command, a view per read model, MSW handlers and tests from the scenarios, pages from `screens[].page`), page routes derived by emcli (entity-shaped, session keys never in URLs), web commit checks, a reference frontend, and course-enrollment's five screens built one commit each, walked through live and in mock mode. 14.7 done: the loop builds a slice's screen after its backend, a mockup added or changed on a built slice re-queues the screen alone, `gen:api` needs no backend, a blocked slice planned again is re-queued, manual §13.9. 14.7b done: a build status per concern (backend, UI), the slice's status derived, one loop with a routine per concern, a blocked UI holds up nothing (ADR-027). 14.9's live run done (t14 "rate a course": four jobs, none blocked, 6 min, $3.17; no UI waited on a failing backend). Next (reordered 2026-09-25): 14.10a loop memory by concern with git as the record (ADR-028), then 14.10 contract-first, then 14.8 deploy, then the t14 chapter. 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
+| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.3 done: native wireframes pushed and pulled (board links work in Connect), design system as a synced snippet. 14.4 done: the `event-model` skill's screen mode (contract → draft → edit → check → push → show); screen problems warn, one set of field exceptions. 14.4b done: manual §13, t13 on course-enrollment (five screens, board wireframes, snippet restyle). 14.4c done: hand-off gate, only information-complete slices reach the loop. 14.5 done: `web/` scaffold in the DCB kit (typed client from `/openapi.json`, opt-in read-your-writes for async read models, MSW mock mode, shell, one Tailwind design system for app and board snippet); entity-oriented routing recorded as an open decision. 14.5b done: API routes named after the model (ADR-025; emcli derives them, `POST /<command>`, `GET /<read-model>/:id`, `GET /<read-model>/<query>`), kit, course-enrollment and manual migrated; page routes decided (entity-based, derived at export) and `session:` from a stub current user. 14.6 done: `build-screen` (a form per command, a view per read model, MSW handlers and tests from the scenarios, pages from `screens[].page`), page routes derived by emcli (entity-shaped, session keys never in URLs), web commit checks, a reference frontend, and course-enrollment's five screens built one commit each, walked through live and in mock mode. 14.7 done: the loop builds a slice's screen after its backend, a mockup added or changed on a built slice re-queues the screen alone, `gen:api` needs no backend, a blocked slice planned again is re-queued, manual §13.9. 14.7b done: a build status per concern (backend, UI), the slice's status derived, one loop with a routine per concern, a blocked UI holds up nothing (ADR-027). 14.9's live run done (t14 "rate a course": four jobs, none blocked, 6 min, $3.17; no UI waited on a failing backend). 14.10a done: the loop's memory by concern, git commit bodies as the record, progress.txt as a journal of open problems (ADR-028); t15 proved it (four jobs first time, 5 min 28 s, $2.81, 11% under t14), and the first curation cut 42 lessons to 11 and fixed a skill bug. Next: 14.10 contract-first, then 14.8 deploy, then the t14 chapter. 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
 | 7 — Board Re-pointing | ⛔ Dropped | eventmodelers board retired; prooph board via emcli is the only board |

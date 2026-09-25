@@ -518,14 +518,18 @@ git status --short
 e060da1 feat: course details
 31eba83 chore: wire register course route
 eeb59d5 feat: register course
-?? .build-kit/AGENTS.md
-?? progress.txt
+ M .build-kit/learnings/backend.md
 ```
 
 Each slice gets a `feat:` commit (its own folder) and a `wire` commit (registering routes and projections in
-`src/index.ts`, kept separate on purpose). `progress.txt` and `.build-kit/AGENTS.md` are the loop's memory:
-what it built, and what it learned about this project. The loop sometimes commits them itself. Otherwise your
-next `git add -A` picks them up.
+`src/index.ts`, kept separate on purpose). The loop remembers in two places (ADR-028):
+
+- **What it built is in git.** Each `feat:` commit's body says what the job built, the rules it applied, the tests
+  it ran, and what the slice's UI needs to know (`git log -1 --format=%B`).
+- **What it learned about this project** is in `.build-kit/learnings/`: `shared.md`, `backend.md` and `ui.md`. A
+  job adds a lesson when it finds one; your next `git add -A` commits it.
+
+`progress.txt` stays at its one-line header unless a job is blocked or interrupted (§15).
 
 > **Rule:** don't commit, pull or edit files while the loop is building. Wait for *"waiting"*.
 
@@ -2072,7 +2076,7 @@ used throughout the manual.
 | Switch branches | ✅ only while the loop is idle | ❌ never, it stays where you put it |
 | Commit the model (`workspace.json`) | ✅ `model(tN): …` commits | ❌ |
 | Commit code, tests, wiring | ❌ | ✅ `feat: …` and `chore: wire …` commits |
-| Commit the loop's notes (`progress.txt`, `.build-kit/AGENTS.md`) | ✅ if the loop left them uncommitted (your next `git add -A`) | ✅ sometimes (`chore: progress …`) |
+| Commit the loop's lessons and journal (`.build-kit/learnings/`, `progress.txt`) | ✅ your next `git add -A` | ❌ |
 | Run the commit checks | automatic (the hook), for any commit touching a slice folder | ✅ before every `feat:` commit, and the hook runs them again |
 | Merge the increment into `main` / open a PR | ✅ | ❌ never |
 | Push to a remote | ✅ | ❌ never |
@@ -2121,14 +2125,14 @@ d7ca76c  loop   feat: course details capacity                                   
 
 | Commit | Made by | Contains | Checked by the hook? |
 |---|---|---|---|
-| `model(tN): …` | you | `workspace.json`, and the loop's notes (`progress.txt`, `.build-kit/AGENTS.md`) | no (touches no slice folder) |
-| `feat: <slice>` | loop | the slice's folder: code and tests. For an extension, the origin's folder | **yes**: all eight checks, including the slice's tests |
+| `model(tN): …` | you | `workspace.json`, and the loop's lessons and journal (`.build-kit/learnings/`, `progress.txt`) | no (touches no slice folder) |
+| `feat: [<slice>]` | loop | the slice's folder: code and tests. For an extension, the origin's folder. Its **body** records the job: built, rules, tests, notes for the UI | **yes**: all eight checks, including the slice's tests |
 | `chore: wire <slice> …` | loop | `src/index.ts` only (registering the route and projection) | no (kept separate on purpose; `blocked-paths` forbids it in a slice commit) |
-| `feat: <slice> screen` | loop (the slice's UI job, §13.9) | the slice's `web/src/slices/<slice>/`, the pages it's on, and the regenerated `web/src/lib/api-types.ts` | **yes**: `blocked-paths`, `web-scope`, `web-tests` |
-| `chore: progress + learnings …` | loop, sometimes | `progress.txt`, `.build-kit/AGENTS.md` | no |
+| `feat: [<slice>] screen` | loop (the slice's UI job, §13.9) | the slice's `web/src/slices/<slice>/`, the pages it's on, and the regenerated `web/src/lib/api-types.ts`. Its body records the job | **yes**: `blocked-paths`, `web-scope`, `web-tests` |
 
-The loop doesn't always commit its notes. If `git status` shows `progress.txt` or `.build-kit/AGENTS.md`
-modified, your next `model(tN): …` commit picks them up (`git add -A`).
+The loop never commits its lessons or journal. If `git status` shows `.build-kit/learnings/` or `progress.txt`
+modified, your next `model(tN): …` commit picks them up (`git add -A`). Older runs (before ADR-028) wrote
+`feat: <slice>` without brackets and kept `.build-kit/AGENTS.md`; both still read the same.
 
 ### When you commit
 
@@ -2216,14 +2220,32 @@ it (InProgress), and starts a fresh Claude agent with that job's **routine**: `l
    or `build-automation`.
 2. Writes the code, tests and events using only what `slice.json` contains. It never invents fields.
 3. Runs `npm run build` and the slice's tests.
-4. Stages and runs `npm run run:checks -- --staged`, then commits `feat: <slice>`, with the `src/index.ts`
-   wiring as a separate commit.
-5. Sets its concern Done, and appends to `progress.txt` and `.build-kit/AGENTS.md`.
+4. Stages and runs `npm run run:checks -- --staged`, then commits `feat: [<slice>]` with a body (what it built,
+   the rules, the tests, what the UI needs to know), and the `src/index.ts` wiring as `chore: wire <slice> …`.
+5. Sets its concern Done, and adds a lesson to `.build-kit/learnings/backend.md` if it learned one.
 
 **The UI job** (§13.9): `build-screen` regenerates the frontend's API types from the code (`npm run gen:api`,
 no database or running backend needed), builds the slice's forms, views and page in `web/`, and commits them as
-`feat: <slice> screen` under the web checks. Then it sets its concern Done. With `"buildScreen"` in `slice.json`
+`feat: [<slice>] screen` under the web checks, with a body. Then it sets its concern Done. With `"buildScreen"` in `slice.json`
 (a mockup added or changed after the slice was built), it builds or rebuilds that UI only.
+
+**What a job remembers** (ADR-028). The loop starts each job with "What the loop remembers", above its routine:
+
+| A job gets | From |
+|---|---|
+| the lessons both disciplines share | `.build-kit/learnings/shared.md` |
+| its own discipline's lessons, never the other's | `learnings/backend.md` or `learnings/ui.md` |
+| its open notes, if it was blocked or interrupted before | `progress.txt`, the entries tagged with its slice and concern |
+| a UI job: what its backend recorded | the body of the slice's `feat: [<slice>]` commit |
+
+The log shows it: `[ralph] memory: 2311 chars (shared, ui, backend commit)`, and each job's `done (…)` line ends
+with the tokens it read. `progress.txt` is a journal of open problems only: an entry is written when a job is
+blocked or interrupted, and the loop removes it once that job is Done (`[ralph] journal: removed 1 note(s)`).
+Nothing is lost: it's committed with your model, so `git log -p -- progress.txt` shows every version.
+
+Lessons stay useful only while they're true. Each file holds at most 40; the agent merges before adding one, and
+corrects a lesson that's wrong instead of adding one that contradicts it. A kit update removes the lessons its
+change makes obsolete, and at the end of a phase the lessons true for every project move into the kit's skills.
 
 **A model per routine (optional):** `"models": { "ui": "<model>", "backend": "<model>" }` in
 `.eventmodelers/config.json` runs each job's agent with its own model; `"model"` stays the default.
@@ -2238,7 +2260,8 @@ next starts if the loop itself was killed, it stashes the files the run created 
 `ralph: interrupted slice "<slice>"`, sets that job back to **Planned**, and builds it again from scratch. Files
 you had already changed before the run started stay in place. If the agent had already committed part of the
 job, the loop marks that job **Blocked** instead, because a rebuild would collide with those commits. Each recovery
-is noted in `progress.txt`.
+is noted in `progress.txt`, tagged with the job; the rebuilt job sees the note, and the loop removes it once the job
+is Done.
 
 **The pre-commit hook** (installed by `init --hooks`) runs the same checks on every commit that touches a slice
 folder, so nothing can skip them:
@@ -2353,6 +2376,9 @@ instantaneous in this example, and it grows with your event store.
 | `eventmodelers init` crashes with `ERR_USE_AFTER_CLOSE` | no terminal input was available | run it in an interactive terminal and answer the prompts |
 | a slice went back to Planned and `git stash list` shows `ralph: interrupted slice …` | the agent was interrupted mid-slice (Claude usage ran out, a crash, the terminal closed). The loop stashed the partial work and rebuilds the slice (§15). If Claude is still unavailable, the loop retries every 60 s | nothing, once Claude is available again (restart the loop if you closed it). Drop the stash after the rebuilt slice is committed: `git stash drop stash@{N}` |
 | after a kit update, the agent seems confused about which slice or job to build | the loop was still running the old code with the new routines | stop the loop and start it again; re-plan anything it blocked |
+| the loop keeps repeating a mistake, or follows a rule that's no longer true | a lesson in `.build-kit/learnings/` is wrong or out of date (each job is given its discipline's lessons, §15) | tell the skill *"the loop's lesson about … is wrong: …"*, or correct the bullet in `learnings/backend.md` / `ui.md` yourself. Commit it with your next model commit; the next job reads the corrected file |
+| `ralph.log` warns *"learnings over the cap of 40"* | a lessons file grew past 40 bullets | nothing: the next job that adds a lesson merges first. To prune it now, ask the skill to review the loop's lessons |
+| `progress.txt` has entries | a job is blocked or was interrupted; each entry is tagged with its slice and concern | read them with the job's `blockedReason`. They go away by themselves once that job is Done |
 | a slice is **Blocked** after an interruption | the agent committed part of the slice but was interrupted before marking it Done. `progress.txt` names the commits | check them with `git log`. If the slice is complete, set it to Done. Otherwise `git revert` them and set it back to Planned |
 | a slice stays **InProgress** and the loop says *waiting* | an interrupted agent, with the loop running with board sync (without `--local`). There the loop can't tell an interrupted claim from another agent's, so it only logs a warning | once no agent is building it: `git stash push -u -m "interrupted slice"`, then set the slice back to Planned on the board |
 
@@ -2575,3 +2601,6 @@ left out once `emcli use chapter` / `use slice` / `use spec` has set them (§4, 
   an edited wireframe back as the card's mockup but drops board-made links; run `element mockup <card>` to check
   it.
 - **The board draws arrows from the layout,** not from a screen's dependencies (§13.5).
+- **The loop's lessons are only as good as their pruning.** A job writes lessons and corrects wrong ones, but
+  nothing checks them against the kit automatically: a lesson made obsolete by a kit change stays until the kit
+  update or the end-of-phase review removes it (ADR-028).
