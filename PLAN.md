@@ -1104,7 +1104,8 @@ routes and queries, the examples, and the scenarios. Use it to:
   about 14.6's size.
 - **Order changed (Gary, 2026-09-25), after 14.9's live run:**
   1. **14.10a** Loop memory by concern, with git as the record; ✅ 2026-09-25
-  2. **14.10** Contract-first; ✅ 2026-09-25 (then **14.10b**, read-your-writes at the root in the library, open)
+  2. **14.10** Contract-first; ✅ 2026-09-25 (then **14.10b**, read-your-writes at the root in the library; ✅ 2026-09-25,
+     library PR #28 awaiting Gary's merge)
   3. **14.8** Deploy;
   4. the t14 chapter (14.9).
 
@@ -1524,9 +1525,10 @@ routes and queries, the examples, and the scenarios. Use it to:
   - That gives full independence and parallelism between frontend and backend work. It's also the point at which
     separate loops per concern (14.7b's "not now") become worth revisiting.
   - It builds on 14.7b's per-concern status without rework.
-- [ ] **14.10b Read-your-writes across read models: fix at the root, in the event-store library.** *(Found in
+- [x] **14.10b Read-your-writes across read models: fix at the root, in the event-store library.** *(Found in
   t16's live walkthrough, 2026-09-25; Gary: "something we need to get right at root source". Kit fix done
-  2026-09-25 (this PR, course-enrollment `51c2c31`); the library fix is open.)*
+  2026-09-25 (course-enrollment `51c2c31`); the root fix done 2026-09-25 as dcb-event-store phase 18
+  (GaryACraine/dcb-event-store#28, for Gary to merge), the kit's rule removed, course-enrollment `8e80535`.)*
   - **The defect:** after a write, a page refetches every async read model on it with `If-None-Match: <position>`
     + `Prefer: wait`. A read model that doesn't handle the written event never reaches that position, because its
     processor subscribes only to its own events and checkpoints only when one arrives. So the read waits 5 s and
@@ -1554,6 +1556,43 @@ routes and queries, the examples, and the scenarios. Use it to:
       walkthrough.
   - Also unexplained: the browser once saw a 503 on the bookmark POST while the refetches were timing out
     (curl never did). Re-check after the fix.
+  - **Done at the root: dcb-event-store phase 18** (branch `phase-18/read-side-hardening`, PR #28; its PLAN §11f).
+    - **Emmett context (Gary, 2026-09-25).** The library's read side was adapted from Emmett, not forked, and nothing
+      tracked Emmett's fixes. Emmett PR #405 (processor memory leak) is code we never ported. Its lesson, remove a
+      listener when its race settles, found two leaks of ours. Its `processors.ts` showed the root cause: Emmett
+      checkpoints the last message *read*, ours the last event *handled*, since we subscribe with a filtered query.
+      Emmett PR #406 (graceful shutdown) was taken. Our `startAPI` registered its own signal listeners, which
+      caused the double "Shutting down…" and `Called end on pool more than once` seen in t16's backend log.
+    - **The checkpoint means "has seen everything up to X":** `SubscribeOptions.onCaughtUp(position)` reports the
+      read barrier's high-water mark when nothing past the last event matched, and the processor stores it. So
+      `waitUntilProcessed` works for any position. This is the second option above, and it keeps one place for the
+      rule.
+    - `subscribe` and `waitUntilProcessed` hold one listener each for their life (the leak tests failed first: 65
+      and 16 listeners). `WaitTimeoutError` is core and a 504, and `preferWait` matches it by class.
+    - `onShutdown` / `stopAPI`; `startAPI` registers no signals.
+    - `UPSTREAM.md` + `pnpm upstream:emmett`: a file map from ours to Emmett's, the Emmett paths watched, a baseline
+      and a review log (#396–#409). The routine runs at the start of every library phase; each Emmett PR is ported
+      by intent, tests first, or logged as pattern, later or n/a.
+    - Library tests: 46 new (core 188, web 13, postgres 372, express 94), all green, lint clean. Quick pg bench, main
+      vs branch: no change beyond noise. Three bulk-append bench checks fail on main too (the library's known issue
+      13.2).
+  - **The kit (this PR):**
+    - `readModels.ts`'s rule is gone, and the waits call `waitUntilProcessed`; the 3 read-your-writes tests stay and
+      now prove the library.
+    - `src/index.ts` and `scripts/empty/index.ts` register the shutdown once with `onShutdown`, and `stopAPI` ends
+      the SSE feed.
+    - **The kit and the library must move together.** With the old kit rule on the new library, the 504 test fails
+      (a 500): the rule's plain `Error("Wait timeout: …")` is no longer taken for a timeout.
+  - **course-enrollment `8e80535`:**
+    - backend 172/172, `contract:check` 17 match, `kit-drift` 0.
+    - curl after a bookmark: all six read models answered within 3 ms with `Prefer: wait` at the bookmark's position.
+      Every running projection's checkpoint moved to it, including Ratings, Comments and Seats, which don't handle
+      bookmarks.
+    - Chrome: "Course bookmarked.", then course details, Ratings and Comments refetched at once, and My bookmarks
+      lists the course. The extension still labels the POST 503 while the app gets its 204, so the 503 was the
+      tool's, not the app's.
+    - One Ctrl-C with the SSE feed open: one "Shutting down…", exit in 0.14 s.
+    - The loop wasn't restarted (`ralph.js` unchanged).
 - [x] **14.A ADR-024 "Screens as bound HTML"** in the DCB kit's ADR.md *(2026-09-23)*: mockups as full HTML
   documents with checked bindings, the dependency contract, native board wireframes in the description, the
   design system as a snippet imported by slug, and `web/` built from the mockup plus `/openapi.json`.
@@ -2540,6 +2579,8 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-25 | The contract check compares what the typed client sees (parameters, success status, fields, required, type class, schema names) and ignores descriptions, headers, formats, nullability and 4xx statuses (14.10, ADR-029) | The model doesn't decide those, and the UI shows a rejection's message whatever its status; a strict equality would fail on prose |
 | 2026-09-25 | A rejection's status stays out of the model; its message (the `SPEC_ERROR` title) is the contract (14.10, ADR-029) | Statuses follow the backend's error types (400/404/422); the UI treats every rejection alike |
 | 2026-09-25 | An async read model is current as of a position when none of its events lies between its checkpoint and that position; the kit's wait uses that rule, and a timeout answers 504 (14.10b, Gary) | A projection sees only its own events, so its checkpoint can't pass a write it doesn't handle; waiting for the checkpoint made every other view on the page time out after a write. The same fix belongs in the event-store library (open) |
+| 2026-09-25 | Superseded at the root: the library's processor moves its checkpoint past events it doesn't handle (`onCaughtUp`, the read barrier's high-water mark), so a checkpoint means "has seen everything up to X", as Emmett's does; the kit calls `waitUntilProcessed` again (14.10b, dcb-event-store phase 18) | One place for the rule, correct for every library user, not only the kit. Emmett's `processors.ts` showed the cause: it checkpoints the last message read, and our filtered subscription made ours the last event handled |
+| 2026-09-25 | Emmett changes are ported into dcb-event-store by intent, never merged: `UPSTREAM.md` holds the file map, the watched Emmett paths, the baseline and a review log; `pnpm upstream:emmett` lists what's untriaged at the start of every library phase (Gary) | The library adapted Emmett's read side without forking it, and fixes such as #405 and #406 went unnoticed. The code shapes differ (DCB, not streams), so a merge would be meaningless; the file map says which of ours each Emmett change touches |
 | 2026-09-25 | Learnings are pruned at three triggers (a kit update, a size cap of about 40 bullets, phase close), and lessons true for every project are promoted into the skills (Gary approves) (14.10a, ADR-028) | Promotion into the skills is where knowledge has really crystallised so far. Without pruning, lessons go stale when the kit changes |
 | 2026-09-24 | Planning a slice again after the loop blocked it re-queues it (`plannedAt` later than the loop's `blockedAt`) (14.7) | The loop's Blocked was otherwise permanent, which forced hand edits to index.json; timestamps stop a stale plan from re-queuing a fresh block |
 
@@ -2559,5 +2600,5 @@ What each `build-*` skill generates and what it verifies:
 | 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 done (stale InProgress recovery in `--local` mode) |
 | 11 — Read Model Types | ✅ Complete | Async, inline and live read models from one fold definition, with an identical data shape across types (ADR-021/022). Proven on course-enrollment t5–t10: inline, a retype to live and back, a new live read model with a lookup |
 | 12 — Query Read Models | 🚧 In progress (top priority) | 12.1–12.3 done: ADR-023 query contract; emcli queries + `SPEC_QUERY` + `addQueries` re-queue; kit runtime (stored SQL + live, one semantics). Named queries on the read model element, the spec *when* references them, `{ data, cursor? }` pages; live needs a tag parameter |
-| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.3 done: native wireframes pushed and pulled (board links work in Connect), design system as a synced snippet. 14.4 done: the `event-model` skill's screen mode (contract → draft → edit → check → push → show); screen problems warn, one set of field exceptions. 14.4b done: manual §13, t13 on course-enrollment (five screens, board wireframes, snippet restyle). 14.4c done: hand-off gate, only information-complete slices reach the loop. 14.5 done: `web/` scaffold in the DCB kit (typed client from `/openapi.json`, opt-in read-your-writes for async read models, MSW mock mode, shell, one Tailwind design system for app and board snippet); entity-oriented routing recorded as an open decision. 14.5b done: API routes named after the model (ADR-025; emcli derives them, `POST /<command>`, `GET /<read-model>/:id`, `GET /<read-model>/<query>`), kit, course-enrollment and manual migrated; page routes decided (entity-based, derived at export) and `session:` from a stub current user. 14.6 done: `build-screen` (a form per command, a view per read model, MSW handlers and tests from the scenarios, pages from `screens[].page`), page routes derived by emcli (entity-shaped, session keys never in URLs), web commit checks, a reference frontend, and course-enrollment's five screens built one commit each, walked through live and in mock mode. 14.7 done: the loop builds a slice's screen after its backend, a mockup added or changed on a built slice re-queues the screen alone, `gen:api` needs no backend, a blocked slice planned again is re-queued, manual §13.9. 14.7b done: a build status per concern (backend, UI), the slice's status derived, one loop with a routine per concern, a blocked UI holds up nothing (ADR-027). 14.9's live run done (t14 "rate a course": four jobs, none blocked, 6 min, $3.17; no UI waited on a failing backend). 14.10a done: the loop's memory by concern, git commit bodies as the record, progress.txt as a journal of open problems (ADR-028); t15 proved it (four jobs first time, 5 min 28 s, $2.81, 11% under t14), and the first curation cut 42 lessons to 11 and fixed a skill bug. 14.10 contract-first done (ADR-029: emcli writes `api/openapi.json`, the UI builds from it and waits for nothing, the backend is checked against it, `run --concern`); t16 built the screens first with no backend, then the backends (4/4 first time, 6 min, $3.03; 17 operations match), and the pages worked against the live backend unchanged. 14.10b: read-your-writes across read models fixed in the kit; the event-store library fix is open. Next: 14.10b's library fix, 14.8 deploy, then the t14 chapter. 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
+| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.3 done: native wireframes pushed and pulled (board links work in Connect), design system as a synced snippet. 14.4 done: the `event-model` skill's screen mode (contract → draft → edit → check → push → show); screen problems warn, one set of field exceptions. 14.4b done: manual §13, t13 on course-enrollment (five screens, board wireframes, snippet restyle). 14.4c done: hand-off gate, only information-complete slices reach the loop. 14.5 done: `web/` scaffold in the DCB kit (typed client from `/openapi.json`, opt-in read-your-writes for async read models, MSW mock mode, shell, one Tailwind design system for app and board snippet); entity-oriented routing recorded as an open decision. 14.5b done: API routes named after the model (ADR-025; emcli derives them, `POST /<command>`, `GET /<read-model>/:id`, `GET /<read-model>/<query>`), kit, course-enrollment and manual migrated; page routes decided (entity-based, derived at export) and `session:` from a stub current user. 14.6 done: `build-screen` (a form per command, a view per read model, MSW handlers and tests from the scenarios, pages from `screens[].page`), page routes derived by emcli (entity-shaped, session keys never in URLs), web commit checks, a reference frontend, and course-enrollment's five screens built one commit each, walked through live and in mock mode. 14.7 done: the loop builds a slice's screen after its backend, a mockup added or changed on a built slice re-queues the screen alone, `gen:api` needs no backend, a blocked slice planned again is re-queued, manual §13.9. 14.7b done: a build status per concern (backend, UI), the slice's status derived, one loop with a routine per concern, a blocked UI holds up nothing (ADR-027). 14.9's live run done (t14 "rate a course": four jobs, none blocked, 6 min, $3.17; no UI waited on a failing backend). 14.10a done: the loop's memory by concern, git commit bodies as the record, progress.txt as a journal of open problems (ADR-028); t15 proved it (four jobs first time, 5 min 28 s, $2.81, 11% under t14), and the first curation cut 42 lessons to 11 and fixed a skill bug. 14.10 contract-first done (ADR-029: emcli writes `api/openapi.json`, the UI builds from it and waits for nothing, the backend is checked against it, `run --concern`); t16 built the screens first with no backend, then the backends (4/4 first time, 6 min, $3.03; 17 operations match), and the pages worked against the live backend unchanged. 14.10b done: read-your-writes fixed at the root in the event-store library (its phase 18: a checkpoint means "has seen everything up to X", no listener leaks, timeouts are 504, `onShutdown` from Emmett #406; Emmett's PRs now reviewed through `UPSTREAM.md`), the kit's own rule removed. Next: 14.8 deploy, then the t14 chapter. 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
 | 7 — Board Re-pointing | ⛔ Dropped | eventmodelers board retired; prooph board via emcli is the only board |

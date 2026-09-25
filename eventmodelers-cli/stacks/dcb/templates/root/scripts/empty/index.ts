@@ -1,5 +1,5 @@
 import { Pool } from "pg"
-import { getApplication, startAPI } from "@dcb-es/event-store-express"
+import { getApplication, onShutdown, startAPI, stopAPI } from "@dcb-es/event-store-express"
 
 import { startReadModels, type ReadModel, type StoredProjectionRegistration } from "./shared/readModels.js"
 import type { SliceDependencies } from "./shared/dependencies.js"
@@ -54,11 +54,11 @@ server.on("listening", () => {
 
 void deps
 
-const shutdown = async () => {
+// Once, whatever signals arrive: stop taking requests (ending the SSE feed), stop the projections, end the pool.
+// A second Ctrl-C during it exits at once.
+onShutdown(async () => {
     console.log("Shutting down…")
+    await stopAPI(server)
     await readModelRuntime.stop()
     await pool.end()
-}
-
-process.on("SIGTERM", shutdown)
-process.on("SIGINT", shutdown)
+})

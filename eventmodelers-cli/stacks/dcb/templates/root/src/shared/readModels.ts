@@ -9,7 +9,8 @@ import {
     projectionToProcessor,
     type PongoProjectionContext,
     type Projection,
-    type RunningConsumer
+    type RunningConsumer,
+    waitUntilProcessed
 } from "@dcb-es/event-store-postgres"
 import { on, OK, preferWait, withETag, type WaitFunction, type WebApiSetup } from "@dcb-es/event-store-express"
 import { ensureProjectionsCurrent } from "./ensureProjectionsCurrent.js"
@@ -370,44 +371,15 @@ export interface ReadModelRuntime {
 }
 
 /**
- * Read-your-writes for an async projection (PLAN 14.10b): resolves once the projection is current as of
- * `position`, meaning no event it handles, at or before `position`, is past its checkpoint.
- *
- * A projection's consumer sees only the events it handles, so its checkpoint stops at the last of those. Waiting for
- * the checkpoint itself to reach `position` (the library's `waitUntilProcessed`) times out whenever the write was an
- * event this read model doesn't handle: bookmarking a course while the page also shows the course's ratings. The fix
- * belongs in the library; until then this is the rule. A timeout throws an error whose message has "timeout" in it,
- * which `preferWait` answers as 504.
+ * Read-your-writes for an async projection: resolves once its checkpoint has reached `position`. Any position works,
+ * including a write this read model doesn't handle: the library moves a projection's checkpoint past the events it
+ * doesn't handle (dcb-event-store phase 18, PLAN 14.10b). A timeout throws `WaitTimeoutError`, which `preferWait`
+ * answers as 504.
  */
-export async function waitForProjection(
-    pool: Pool,
-    projection: Pick<Projection, "name" | "canHandle">,
-    position: SequencePosition,
-    timeoutMs: number
-): Promise<void> {
-    const deadline = Date.now() + timeoutMs
-    const delays = [5, 15, 30, 50, 100]
-    for (let attempt = 0; ; attempt++) {
-        if (await isCurrentAsOf(pool, projection, position)) return
-        const remaining = deadline - Date.now()
-        if (remaining <= 0) {
-            throw new Error(`Wait timeout: ${projection.name} isn't current as of position ${position.toString()} after ${timeoutMs}ms`)
-        }
-        await new Promise(r => setTimeout(r, Math.min(delays[Math.min(attempt, delays.length - 1)], remaining)))
-    }
-}
-
-async function isCurrentAsOf(pool: Pool, projection: Pick<Projection, "name" | "canHandle">, position: SequencePosition): Promise<boolean> {
-    const r = await pool.query<{ pending: boolean }>(
-        `SELECT EXISTS (
-             SELECT 1 FROM events
-             WHERE sequence_position <= $2 AND type = ANY($3)
-               AND sequence_position > COALESCE((SELECT last_sequence_position FROM _handler_bookmarks WHERE handler_id = $1), 0)
-         ) AS pending`,
-        [projection.name, position.toString(), projection.canHandle]
-    )
-    return !r.rows[0].pending
-}
+const waitForProjection =
+    (pool: Pool, projectionName: string): WaitFunction =>
+    (position: SequencePosition, timeoutMs: number) =>
+        waitUntilProcessed(pool, projectionName, position, { timeoutMs })
 
 /**
  * Start every read model by its type: async ones on the consumer, inline ones inside the event
@@ -512,13 +484,13 @@ export async function startReadModels(
         waitFn: requested => {
             const readModel = resolve(requested)
             return readModel.type === "database-projected"
-                ? (position: SequencePosition, timeoutMs: number) => waitForProjection(pool, readModel.projection, position, timeoutMs)
+                ? waitForProjection(pool, readModel.projection.name)
                 : undefined
         },
         waitFor: projectionName => {
             const projection = asyncProjections.find(p => p.name === projectionName)
             if (!projection) throw new Error(`waitFor("${projectionName}"): no async projection of that name is registered`)
-            return (position: SequencePosition, timeoutMs: number) => waitForProjection(pool, projection, position, timeoutMs)
+            return waitForProjection(pool, projection.name)
         },
         stop: async () => {
             await consumer?.stop()

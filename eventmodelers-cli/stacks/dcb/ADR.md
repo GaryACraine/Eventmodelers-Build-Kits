@@ -237,6 +237,8 @@ because a frontend now generates its client from `/openapi.json`.
 
 **Consequences:** Transparent to clients (just set the Prefer header) and guarantees read-your-writes consistency. The trade-off is added latency to reads (blocking until projection catches up) and coupling read availability to projection processing speed. If projection lag grows, reads will time out.
 
+*Updated 2026-09-25 (PLAN 14.10b, dcb-event-store phase 18):* any position can be waited for, including a write the read model doesn't handle (a page refetching all its views after one write), because a processor's checkpoint moves past the events it doesn't handle. A wait that runs out is a `WaitTimeoutError`, answered 504.
+
 ---
 
 ### ADR-014: Async consumer projections over inline projections
