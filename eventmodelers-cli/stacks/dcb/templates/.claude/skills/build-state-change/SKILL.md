@@ -164,6 +164,22 @@ export const {IsSubscribed} = ({ entityId, otherId }: { entityId: string; otherI
 })
 ```
 
+**Once per pair (e.g. a student rates a course once):** a toggle's sibling that only ever turns on. Tag it with
+both ids, like the toggle, so it reads only that pair's events:
+```typescript
+export const {HasRated} = ({ entityId, otherId }: { entityId: string; otherId: string }):
+    EventHandlerWithState<{RatedEvent}, boolean> => ({
+    tagFilter: Tags.fromObj({ entityId, otherId }),
+    init: false,
+    when: {
+        {ratedEventName}: () => true
+    }
+})
+```
+
+A command about two entities (subscribe a student to a course) uses one decision model per rule, each tagged by
+the ids that rule is about. Its event is tagged with both ids.
+
 **Global counter (auto-increment):**
 ```typescript
 export const NextNumber = (): EventHandlerWithState<{CreatedEvent}, number> => ({
@@ -232,10 +248,18 @@ export const {commandHandlerFn} = decider<
 })
 ```
 
-Error types:
+Error types (the library sets the status; the problem's `detail` is the message):
 - `NotFoundError` — resource does not exist (→ HTTP 404)
 - `IllegalStateError` — business rule violated (→ HTTP 422)
-- `ValidationError` — semantically invalid input (→ HTTP 422)
+- `ValidationError` — semantically invalid input (→ HTTP 400)
+
+Throw each rejection with its `SPEC_ERROR` title as the message, verbatim. **A range rule on an input** (e.g.
+"Rating must be between 1 and 5") is a `ValidationError` thrown in the decider, first. Keep the Zod schema to the
+type (`z.number().int()`): a Zod `min`/`max` would answer 400 with a generic "Validation failed: …" detail that
+doesn't match the spec.
+
+Add only the rules a specification states. A capacity or duplicate check that no scenario asks for stays out
+until a slice specifies it.
 
 ---
 
@@ -279,7 +303,7 @@ overridden in the model with `{param}` segments do those come from `req.params`,
 - `success`: `"noContent"` (204) normally; `"created"` (201) when the command has `generated: true` fields, with
   `created` the schema of those fields (Step 7).
 - `errors`: one entry per status the specifications' rejections produce (`NotFoundError` → 404,
-  `IllegalStateError` / `ValidationError` → 422), described by their error text. Leave it out when no
+  `IllegalStateError` → 422, `ValidationError` → 400), described by their error text. Leave it out when no
   specification rejects. 400 for a bad body is added for you.
 - **No fields** (rare): leave out the Zod object and `body`; `schema.ts` holds only `registerCommand`, and
   `route.ts` imports it with `import "./schema.js"`.

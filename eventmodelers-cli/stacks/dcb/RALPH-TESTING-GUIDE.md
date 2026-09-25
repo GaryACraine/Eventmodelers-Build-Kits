@@ -19,6 +19,7 @@ Ralph processes slices in two phases:
 1. **Board sync** (`prompt.md`) — Reacts to `slice:changed` events from the board. Loads credentials via `/connect`, fetches the slice definition via `/load-slice`, and determines the action based on `sliceStatus` (Planned → build, InProgress → skip, Done → summarise).
 
 2. **Build** — the loop takes the next **job**: one concern of one slice (ADR-027). Each slice's `index.json` entry has `concerns` (`backend`, and `ui` when its screen has a mockup), each with its own status; the slice's `status` is derived from them. A Planned backend runs `backend-prompt.md`; a Planned UI whose backend is Done runs `screen-prompt.md` (`/build-screen`). The loop claims the job and names it in a "Your task" header above the routine; the agent sets its concern Done or Blocked.
+3. **Memory** (ADR-028) — under "Your task", the loop gives the job "What the loop remembers": `learnings/shared.md` and the concern's `learnings/backend.md` or `ui.md`, the job's open notes from `progress.txt`, and for a UI job its backend's commit body. To check a job's memory, read the `[ralph] memory: …` line in `ralph.log`; the journal (`progress.txt`) should hold only entries tagged `[slice:<id> concern:<backend|ui>]` for jobs that aren't Done, and each slice commit should have a body (`git log -1 --format=%B`). The loop's memory code is tested by `node --test .build-kit/lib/memory.test.js`.
 
 ### Slice type routing
 

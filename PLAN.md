@@ -1117,7 +1117,7 @@ routes and queries, the examples, and the scenarios. Use it to:
     - Two memory files, shared by both routines:
       - `progress.txt`: append-only, one entry per job, each ending in "Learnings for future iterations". It's
         25 entries, 270 lines and 30 KB, growing about 1.2 KB per job.
-      - `.build-kit/AGENTS.md`: "Project Learnings", 44 bullets, 9.7 KB.
+      - `.build-kit/AGENTS.md`: "Project Learnings", 42 bullets, 9.7 KB.
     - Reading:
       - `screen-prompt.md` step 1 reads both;
       - `backend-prompt.md` step 1 reads `progress.txt`, and gets `AGENTS.md` through the project CLAUDE.md →
@@ -1127,7 +1127,7 @@ routes and queries, the examples, and the scenarios. Use it to:
     - **It isn't a pipeline.** In one run, the agent writes its progress entry, with its own Learnings block, and
       appends the same lessons to `AGENTS.md`. Nothing reads `progress.txt` later to distil it, so its Learnings
       blocks are duplicates.
-    - **The mix:** of the 44 bullets, about 31 are backend, about 4 UI, and about 9 environment, git or checks. A
+    - **The mix:** of the 42 bullets, 32 are backend, 4 UI, and 6 environment, git or checks. A
       UI job reads about 7 KB of backend lessons it can't use.
   - **Has AGENTS.md made the loop better?**
     - **Applied, yes.** t14's `rate course` backend followed project lessons:
@@ -2300,7 +2300,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-24 | Before contract-first: 14.9's live end-to-end run, then 14.8 deploy, then decide 14.10, then the t14 chapter (Gary) | With one loop, contract-first changes job order, not throughput; the new-slice pipeline (backend job then UI job) is unproven; evidence first |
 | 2026-09-24 | Contract-first (the model writes the API contract) is a future step (14.10, Gary) | It removes the UI's wait on its slice's backend, for full parallelism, and builds on 14.7b |
 | 2026-09-25 | New order: 14.10a loop memory, then 14.10 contract-first, then 14.8 deploy, then the t14 chapter (Gary) | Gary wants contract-first now, as the way to a backend and UI developed independently. 14.10a doesn't need it, is small, and fixes stale lessons the loop reads today. t14 showed no UI waiting on a failing backend, so contract-first's value is independence, not speed |
-| 2026-09-25 | The loop's learnings are split by concern (`learnings/shared.md`, `backend.md`, `ui.md`), and the loop injects them into the prompt (14.10a, ADR-028) | A shared file mixes disciplines (about 31 backend bullets to 4 UI), and 5 bullets contradict the current kit. Small files with owners can be capped and pruned; two loops would collide on one file |
+| 2026-09-25 | The loop's learnings are split by concern (`learnings/shared.md`, `backend.md`, `ui.md`), and the loop injects them into the prompt (14.10a, ADR-028) | A shared file mixes disciplines (32 backend bullets to 4 UI), and 5 bullets contradict the current kit. Small files with owners can be capped and pruned; two loops would collide on one file |
 | 2026-09-25 | Git is the record of completed work: a job's summary goes in its commit body, and `progress.txt` holds only what has no commit (blocked, interrupted, open questions), removed once its concern is Done (14.10a, ADR-028) | `progress.txt` duplicated git plus the learnings, and every job read all of it (about 8k tokens, growing). Nothing is lost: it's committed with the model, so history keeps it |
 | 2026-09-25 | Learnings are pruned at three triggers (a kit update, a size cap of about 40 bullets, phase close), and lessons true for every project are promoted into the skills (Gary approves) (14.10a, ADR-028) | Promotion into the skills is where knowledge has really crystallised so far. Without pruning, lessons go stale when the kit changes |
 | 2026-09-24 | Planning a slice again after the loop blocked it re-queues it (`plannedAt` later than the loop's `blockedAt`) (14.7) | The loop's Blocked was otherwise permanent, which forced hand edits to index.json; timestamps stop a stale plan from re-queuing a fresh block |

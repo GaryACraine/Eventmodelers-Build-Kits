@@ -41,6 +41,15 @@ const claudeEnv = {
 // Collapses whitespace/newlines to a single line and truncates past `max` chars — a long
 // multi-line curl command wrapped across many terminal lines is just as unreadable as no
 // detail at all. Keeps one tool call to one log line.
+// The run's tokens for the `done (…)` line: "in" counts everything read (input, cache reads, cache writes), so runs
+// can be compared on how much context they carried (PLAN 14.10a).
+function tokens(usage) {
+  if (!usage) return '';
+  const k = (n) => `${Math.round(n / 1000)}k`;
+  const read = (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0);
+  return `, in ${k(read)} tok, out ${k(usage.output_tokens ?? 0)} tok`;
+}
+
 function oneLine(s, max) {
   const collapsed = String(s ?? '').replace(/\s+/g, ' ').trim();
   return collapsed.length > max ? `${collapsed.slice(0, max)}…` : collapsed;
@@ -91,7 +100,7 @@ function runClaude(prompt, { concern } = {}) {
             }
           }
         } else if (msg.type === 'result') {
-          console.log(`done (${msg.duration_ms}ms${msg.total_cost_usd ? `, $${msg.total_cost_usd.toFixed(4)}` : ''})`);
+          console.log(`done (${msg.duration_ms}ms${msg.total_cost_usd ? `, $${msg.total_cost_usd.toFixed(4)}` : ''}${tokens(msg.usage)})`);
         }
       }
     });

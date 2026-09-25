@@ -1020,7 +1020,17 @@ async function installStack(stackKey, stackCfg, options = {}) {
     if (stackCfg.useShared) {
       copyDirContents(sharedBuildKit, kitDir);
     }
-    copyDirContents(join(templatesSource, stackCfg.kitSubdir), kitDir, { skip: ['.eventmodelers'] });
+    copyDirContents(join(templatesSource, stackCfg.kitSubdir), kitDir, { skip: ['.eventmodelers', 'learnings'] });
+    // A project's lessons (`learnings/`, DCB ADR-028) are its own: a re-install seeds the empty files only where
+    // they're missing, and never overwrites what the loop has learned.
+    const learningsSrc = join(templatesSource, stackCfg.kitSubdir, 'learnings');
+    if (existsSync(learningsSrc)) {
+      const learningsDest = join(kitDir, 'learnings');
+      mkdirSync(learningsDest, { recursive: true });
+      for (const file of readdirSync(learningsSrc)) {
+        if (!existsSync(join(learningsDest, file))) copyFileSync(join(learningsSrc, file), join(learningsDest, file));
+      }
+    }
 
     // An outdated community/--git stack that still ships root/CLAUDE.md (the pre-fix
     // layout every built-in stack used to follow too) gets it relocated here instead
