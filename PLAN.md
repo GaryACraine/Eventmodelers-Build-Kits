@@ -1321,6 +1321,18 @@ routes and queries, the examples, and the scenarios. Use it to:
       entry. The UI jobs work around it (a lesson in `ui.md`). Fix in emcli's export later.
     - **Promotion candidates for the next phase close:** a native `<textarea>` (next to the promoted
       `<select>`), and scoping a page test's list items `within` a card.
+  - **Loose ends closed (2026-09-25, Gary: "tidy up … on a clean slate"):**
+    - **The export gap:** emcli (`c3a68bb`) now exports every read model's `readModelType`, the default when none
+      is named (`DEFAULT_READ_MODEL_TYPE` in `domain/element.ts`); 300/300 tests. course-enrollment re-exported:
+      nothing queued, and each `slice.json` names its type (`CourseDetails`: live-report). The UI workaround
+      lesson is gone.
+    - **The promotions:** `build-screen` now covers a native `<textarea>` and page tests that find rows `within`
+      their card. Both lessons were removed from course-enrollment's `ui.md` (5 → 2).
+    - **Skills drift:** `docs/tools/kit-drift.mjs <project> [--stack dcb] [--root]` compares everything `init`
+      installs (the shared kit, the stack's kit, the skills; `learnings/` skipped) with the project, and exits 1
+      on any difference. `--root` lists the scaffold for information.
+      - course-enrollment: 46 files, all the same after the update (`55254af`);
+      - the rule is in the repo's CLAUDE.md and the shared README: run it before and after every kit update.
   - **Manual (this PR):**
     - §5.5: what the loop leaves (commit bodies, `learnings/`, `progress.txt` usually empty);
     - §14: "You vs the loop" and "Who commits what" (bodies, bracketed subjects, no `chore: progress` commits);

@@ -113,6 +113,8 @@ const RegisterCourseSchema = z.object({
   when some come from props or the session, `satisfies z.ZodType<Pick<Body, "rating">>` over the typed ones.
 - A mockup `<select>` is a native `<select>` (`.mock-card` styles it; there's no shadcn Select), with
   `register(name, { valueAsNumber: true })` for a number and `defaultValues` for the mockup's `selected` option.
+- A mockup `<textarea>` is a native `<textarea>` too (no shadcn Textarea), registered as a string. It starts
+  empty: its text in the mockup is the example value, not a default.
 - `useForm({ resolver: zodResolver(Schema) })`. A form with nothing typed (only props and session) is a plain
   `<form onSubmit>` with `useState` for sending / done / error.
 - Submit:
@@ -213,6 +215,11 @@ A test file per component, `describe("{slice title}")`, rendered with `renderWit
 | a rejection (`then` `SPEC_ERROR` 404/409/422) | `server.use(...)` answers the Problem-JSON with the backend's **own message** (read it in the slice's `decider.ts` / route), and the alert shows it |
 | a 400 for a typed field | fill the form without it (or with the invalid value): the field's message shows, and nothing is sent |
 | one the screen can't produce (a 400 for a session or route value, or a range the `<select>` can't send) | no test; a comment naming the specification and why |
+
+**Page tests** (`src/pages/<Page>.test.tsx`) render the whole page, which may stack several cards with lists (a
+course's students, its comments). Find a card's rows `within` that card, by its heading
+(`within(screen.getByRole("heading", { name: "Comments" }).parentElement!)`), never with a page-wide
+`findByRole("listitem")`, which breaks as soon as another card adds a list.
 
 Every paged list also gets **"Load more adds the next page"**: `server.use(...)` answers the first request (no
 `cursor`) with a row and a cursor, and the request with that cursor with another row and none; the test clicks
