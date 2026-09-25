@@ -1,7 +1,5 @@
 import { Pool } from "pg"
-import { waitUntilProcessed } from "@dcb-es/event-store-postgres"
 import { getApplication, startAPI } from "@dcb-es/event-store-express"
-import type { SequencePosition } from "@dcb-es/event-store"
 
 import {
     courseDetailsProjection,
@@ -50,11 +48,9 @@ const imperative: StoredProjectionRegistration[] = [
 const readModelRuntime = await startReadModels(pool, readModels, imperative)
 const eventStore = readModelRuntime.eventStore
 
-const courseWaitFn = (position: SequencePosition, timeoutMs: number) =>
-    waitUntilProcessed(pool, COURSE_PROJECTION_NAME, position, { timeoutMs })
-
-const studentWaitFn = (position: SequencePosition, timeoutMs: number) =>
-    waitUntilProcessed(pool, STUDENT_PROJECTION_NAME, position, { timeoutMs })
+// Read-your-writes waits for the imperative projections (current as of a position, PLAN 14.10b).
+const courseWaitFn = readModelRuntime.waitFor(COURSE_PROJECTION_NAME)
+const studentWaitFn = readModelRuntime.waitFor(STUDENT_PROJECTION_NAME)
 
 const deps = { store: eventStore, pool, readModels: readModelRuntime }
 

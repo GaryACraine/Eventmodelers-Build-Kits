@@ -475,10 +475,16 @@ emcli workspace export --build-kit .build-kit --chapter "Course Enrollment"
 
 ```text
 Exported 2 slice(s) to .build-kit/.slices
+API contract: api/openapi.json (3 operations, new)
 ```
 
 This writes one `slice.json` per slice into `.build-kit/.slices/enrollment/`. It holds everything the builder
 needs: fields, events, scenarios, and for extension slices an `extends` block.
+
+It also writes **the API contract**, `api/openapi.json`: your model's whole API as an OpenAPI document (every
+planned or built slice's routes, fields and rejections; ADR-029). The screens are built from it, and the backend is
+checked against it, so neither needs the other (§13.9). You never edit it: change the model and export again, and
+the export lists the operations that changed. It's committed with the model (the next `git add -A`, §5.6).
 
 ### 5.5 Let the loop build
 
@@ -524,8 +530,8 @@ eeb59d5 feat: register course
 Each slice gets a `feat:` commit (its own folder) and a `wire` commit (registering routes and projections in
 `src/index.ts`, kept separate on purpose). The loop remembers in two places (ADR-028):
 
-- **What it built is in git.** Each `feat:` commit's body says what the job built, the rules it applied, the tests
-  it ran, and what the slice's UI needs to know (`git log -1 --format=%B`).
+- **What it built is in git.** Each `feat:` commit's body says what the job built, the rules it applied and the
+  tests it ran, including whether the routes match the API contract (`git log -1 --format=%B`).
 - **What it learned about this project** is in `.build-kit/learnings/`: `shared.md`, `backend.md` and `ui.md`. A
   job adds a lesson when it finds one; your next `git add -A` commits it.
 
@@ -1996,11 +2002,16 @@ The loop builds a slice's UI in `web/` from its mockup: a form per command the s
 model it displays, and the page the card is on (its route from §13's page routes).
 
 A slice's **backend** and its **UI** are two jobs, each with its own status, like the backend and frontend
-tasks of one story on a team. The loop builds the backend first (`feat: <slice>`), then, as a separate job with
-its own routine and commit checks, the UI (`feat: <slice> screen`, §15). The slice is Done when both are. The UI
-waits for its own slice's backend, since it calls its routes. Nothing ever waits for a UI: a slice whose backend
-is built counts as built for the slices after it, whatever its UI is doing. The board shows both in the slice's
-details, e.g. *Build: Backend ✓ built · UI ✗ blocked: web-tests failed*.
+tasks of one story on a team. Each is its own job with its own routine and commit checks: the backend
+(`feat: [<slice>]`) and the UI (`feat: [<slice>] screen`, §15). The slice is Done when both are.
+
+**They don't wait for each other.** The UI is built against the **API contract** (`api/openapi.json`, which the
+export writes from your model, §5.4), not against the backend's code: the routes, the fields, and the messages a
+rejection shows all come from the model. So a screen can be built, tested and tried in mock mode before its
+backend exists, and it works against the backend once that's built, unchanged. The backend is checked against the
+same contract on every commit. Nothing ever waits for a UI either: a slice whose backend is built counts as built
+for the slices after it. The board shows both jobs in the slice's details, e.g. *Build: Backend ✓ built · UI ✗
+blocked: web-tests failed*.
 
 You don't ask for the screen separately. A screen is built when its card has a **mockup**. The `event-model`
 skill keeps track of the rest: whenever you add or change a mockup, it makes sure the loop gets it, and tells you
@@ -2016,7 +2027,10 @@ what will happen. What happens in each situation:
 | a built screen's mockup changes, or its page route | rebuilds that UI only, to the new mockup | ask for the change (*"Put help text under the capacity field."*). The skill hands it over the same way |
 | a page made of several slices' cards (Course Page) | each slice's UI adds its own part to the page | nothing |
 | the UI fails its checks | the UI is **Blocked**; the backend stays **built**, and other slices go on building on it. The slice shows Blocked, its board details say which part | ask *"Why is register course blocked?"* The skill reads the reason, fixes the mockup or the model (or tells you what's wrong), and plans it again. The loop then builds only the UI |
-| the backend fails its checks | the backend is **Blocked**, and the UI waits for it. Slices that need this backend wait too | the same: ask the skill; after the fix, the backend is built, then the UI |
+| the backend fails its checks | the backend is **Blocked**; the UI is still built, from the contract. Slices that need this backend wait | the same: ask the skill; after the fix, the backend is built |
+| you want the screens first (to show a client, or while the backend is being decided) | builds only UIs, from the contract: `eventmodelers run --local --concern ui`. Later `--concern backend` builds the backends (or plain `run --local`, both) | tell the skill *"build the screens first"*; it plans and hands over as usual and tells you which loop command to start |
+| the backend's routes don't match the contract (a field renamed, a type changed) | the commit is rejected (`api-contract` names the difference), so the backend job is **Blocked** | ask *"Why is bookmark course blocked?"* The skill decides with you which is right: the model (the backend is rebuilt to match) or the code (the model changes, the contract with it, and the slice is planned again) |
+| the model changes an API that's already built (a field added to a command) | the export lists the changed operations; `npm run contract:check` shows them as *differ* until they're built again | plan the slice again, as for any change; its backend and UI are rebuilt |
 | the loop is interrupted during a job | puts that job back in the queue (or marks it Blocked if it had already committed, §15) | nothing, or, if Blocked, ask the skill to plan it again |
 | a mockup is removed | deletes nothing: the UI stays in `web/` | remove it from `web/` yourself, if it should go (§20) |
 
@@ -2056,6 +2070,36 @@ over anyway, the export holds back only the UI: *"student subscriptions — its 
 back"*. Nothing else waits. Once the skill fixes the mockup and hands it over again, the loop rebuilds the UI
 alone.
 
+**Screens first (t16, bookmark a course).** You asked for a *Bookmark* button on the Course Page and *My
+bookmarks* on My Courses, then:
+
+> *"Build the screens first."*
+
+The skill planned both slices, exported (the contract gained `POST /bookmark-course` and `GET
+/student-bookmarks/{studentId}`, both *pending*: no backend serves them yet), and told you to run the loop for UIs
+only:
+
+```bash
+eventmodelers run --local --concern ui 2>&1 | tee ralph.log
+```
+
+```text
+         API contract: api/openapi.json (a UI doesn't wait for its backend)
+         builds: ui jobs only (--concern ui)
+[ralph] onPlannedSlice: building the UI of slice "bookmark course"...
+→ Skill: build-screen
+done (65082ms, $0.6021, in 540k tok, out 6k tok)
+[ralph] onPlannedSlice: building the UI of slice "student bookmarks"...
+done (68553ms, $0.5876, in 531k tok, out 6k tok)
+[ralph] No planned slices in current context "enrollment" (ui jobs only) — waiting.
+```
+
+Both screens worked in mock mode (`npm --prefix web run dev:mock`) with no backend at all. Then Ctrl-C, and
+`--concern backend` built the two backends; each commit passed the check that its routes match the contract, and
+`npm run contract:check` said *17 match, 0 pending*. Against the real backend the pages worked unchanged:
+bookmarking showed *Course bookmarked.*, a second try showed the model's rejection (*Course already bookmarked by
+this student*), and My bookmarks listed the course.
+
 **What's queued:** the export's output lists it (`Re-queued … for their screen only`), and
 `.build-kit/.slices/<context>/index.json` shows the slice `Planned` with `"concerns": { "backend": { "status":
 "Done" }, "ui": { "status": "Planned" } }`, its `slice.json` with `"buildScreen": "changed"` (or `"added"`).
@@ -2074,7 +2118,7 @@ used throughout the manual.
 |---|---|---|
 | Create the increment branch (`git switch -c increment/tN`) | ✅ always | ❌ never |
 | Switch branches | ✅ only while the loop is idle | ❌ never, it stays where you put it |
-| Commit the model (`workspace.json`) | ✅ `model(tN): …` commits | ❌ |
+| Commit the model (`workspace.json`, and the API contract `api/openapi.json` the export writes) | ✅ `model(tN): …` commits | ❌ never edits the contract (`blocked-paths`) |
 | Commit code, tests, wiring | ❌ | ✅ `feat: …` and `chore: wire …` commits |
 | Commit the loop's lessons and journal (`.build-kit/learnings/`, `progress.txt`) | ✅ your next `git add -A` | ❌ |
 | Run the commit checks | automatic (the hook), for any commit touching a slice folder | ✅ before every `feat:` commit, and the hook runs them again |
@@ -2125,10 +2169,10 @@ d7ca76c  loop   feat: course details capacity                                   
 
 | Commit | Made by | Contains | Checked by the hook? |
 |---|---|---|---|
-| `model(tN): …` | you | `workspace.json`, and the loop's lessons and journal (`.build-kit/learnings/`, `progress.txt`) | no (touches no slice folder) |
-| `feat: [<slice>]` | loop | the slice's folder: code and tests. For an extension, the origin's folder. Its **body** records the job: built, rules, tests, notes for the UI | **yes**: all eight checks, including the slice's tests |
+| `model(tN): …` | you | `workspace.json`, the API contract (`api/openapi.json`), and the loop's lessons and journal (`.build-kit/learnings/`, `progress.txt`) | no (touches no slice folder) |
+| `feat: [<slice>]` | loop | the slice's folder: code and tests. For an extension, the origin's folder. Its **body** records the job: built, rules, tests, whether it matches the contract | **yes**: every backend check, including that its routes match the API contract and the slice's tests |
 | `chore: wire <slice> …` | loop | `src/index.ts` only (registering the route and projection) | no (kept separate on purpose; `blocked-paths` forbids it in a slice commit) |
-| `feat: [<slice>] screen` | loop (the slice's UI job, §13.9) | the slice's `web/src/slices/<slice>/`, the pages it's on, and the regenerated `web/src/lib/api-types.ts`. Its body records the job | **yes**: `blocked-paths`, `web-scope`, `web-tests` |
+| `feat: [<slice>] screen` | loop (the slice's UI job, §13.9) | the slice's `web/src/slices/<slice>/`, the pages it's on, and `web/src/lib/api-types.ts` generated from the contract. Its body records the job | **yes**: `blocked-paths`, `web-scope`, `api-types`, `web-tests` |
 
 The loop never commits its lessons or journal. If `git status` shows `.build-kit/learnings/` or `progress.txt`
 modified, your next `model(tN): …` commit picks them up (`git add -A`). Older runs (before ADR-028) wrote
@@ -2210,8 +2254,8 @@ A slice's work is two **jobs**, one per concern: its **backend** (commands, even
 `.build-kit/.slices/<context>/index.json` entry (`concerns`), and the slice's status follows them: Blocked if
 either is, else InProgress, else Planned, else Done.
 
-The loop takes the next job in timeline order (a Planned backend, or a Planned UI whose backend is Done), claims
-it (InProgress), and starts a fresh Claude agent with that job's **routine**: `lib/backend-prompt.md` or
+The loop takes the next job in timeline order (a slice's Planned backend, then its Planned UI; a UI doesn't wait
+for its backend when the project has the API contract, ADR-029), claims it (InProgress), and starts a fresh Claude agent with that job's **routine**: `lib/backend-prompt.md` or
 `lib/screen-prompt.md`, each tuned to its job, with the job named at the top. The log says
 `building the backend of slice "register course"` or `building the UI of …`.
 
@@ -2221,11 +2265,12 @@ it (InProgress), and starts a fresh Claude agent with that job's **routine**: `l
 2. Writes the code, tests and events using only what `slice.json` contains. It never invents fields.
 3. Runs `npm run build` and the slice's tests.
 4. Stages and runs `npm run run:checks -- --staged`, then commits `feat: [<slice>]` with a body (what it built,
-   the rules, the tests, what the UI needs to know), and the `src/index.ts` wiring as `chore: wire <slice> …`.
+   the rules, the tests), and the `src/index.ts` wiring as `chore: wire <slice> …`. The routes must match the API
+   contract: the same names, fields and types (`npm run contract:check` shows every operation).
 5. Sets its concern Done, and adds a lesson to `.build-kit/learnings/backend.md` if it learned one.
 
-**The UI job** (§13.9): `build-screen` regenerates the frontend's API types from the code (`npm run gen:api`,
-no database or running backend needed), builds the slice's forms, views and page in `web/`, and commits them as
+**The UI job** (§13.9): `build-screen` generates the frontend's API types from the API contract (`npm run
+gen:api`, no backend needed; the backend may not be built yet), builds the slice's forms, views and page in `web/`, and commits them as
 `feat: [<slice>] screen` under the web checks, with a body. Then it sets its concern Done. With `"buildScreen"` in `slice.json`
 (a mockup added or changed after the slice was built), it builds or rebuilds that UI only.
 
@@ -2236,7 +2281,7 @@ no database or running backend needed), builds the slice's forms, views and page
 | the lessons both disciplines share | `.build-kit/learnings/shared.md` |
 | its own discipline's lessons, never the other's | `learnings/backend.md` or `learnings/ui.md` |
 | its open notes, if it was blocked or interrupted before | `progress.txt`, the entries tagged with its slice and concern |
-| a UI job: what its backend recorded | the body of the slice's `feat: [<slice>]` commit |
+| a UI job, only in a project without an API contract: what its backend recorded | the body of the slice's `feat: [<slice>]` commit |
 
 The log shows it: `[ralph] memory: 2311 chars (shared, ui, backend commit)`, and each job's `done (…)` line ends
 with the tokens it read. `progress.txt` is a journal of open problems only: an entry is written when a job is
@@ -2246,6 +2291,10 @@ Nothing is lost: it's committed with your model, so `git log -p -- progress.txt`
 Lessons stay useful only while they're true. Each file holds at most 40; the agent merges before adding one, and
 corrects a lesson that's wrong instead of adding one that contradicts it. A kit update removes the lessons its
 change makes obsolete, and at the end of a phase the lessons true for every project move into the kit's skills.
+
+**One discipline at a time (optional):** `eventmodelers run --local --concern ui` builds only UI jobs, and
+`--concern backend` only backend jobs; the loop's first lines and its *waiting* line say so. Use it to build the
+screens first (§13.9). It's still one loop at a time in a working tree.
 
 **A model per routine (optional):** `"models": { "ui": "<model>", "backend": "<model>" }` in
 `.eventmodelers/config.json` runs each job's agent with its own model; `"model"` stays the default.
@@ -2268,7 +2317,7 @@ folder, so nothing can skip them:
 
 | Check | Rejects |
 |---|---|
-| blocked-paths | slice commits that touch `package.json` or `src/index.ts` |
+| blocked-paths | slice commits that touch `package.json`, `src/index.ts` or the API contract (`api/openapi.json`) |
 | slice-scope | changes outside the slice's own folder |
 | extension-additive | an extension that edits or removes existing projection code, or lacks its test block |
 | query-additive | adding queries that changes anything but the `queries` block and new query tests |
@@ -2278,14 +2327,16 @@ folder, so nothing can skip them:
 | spec-coverage | fewer tests than scenarios |
 | openapi-registered | a route missing from `/openapi.json` (no `registerCommand`/`registerRead` in `schema.ts`) |
 | tsc-build | TypeScript errors (including a read model's `schema` that doesn't match its document) |
+| api-contract | routes that don't match the API contract: a field, a type, a required field, a schema name, a parameter or the success status (it names the difference) |
 | slice-tests | failing tests in any slice folder the commit touches |
 
 A screen commit (it touches `web/src/slices/<slice>/`) runs blocked-paths, which also covers `web/package.json`,
-and two checks of its own instead:
+and three checks of its own instead:
 
 | Check | Rejects |
 |---|---|
 | web-scope | anything outside the slice's `web/src/slices/<slice>/`, the pages it's on (`web/src/pages/*.tsx`) and the generated `web/src/lib/api-types.ts`; a slice folder with no `*.test.tsx` |
+| api-types | an `api-types.ts` that isn't exactly what `gen:api` generates from the contract (edited by hand, or stale) |
 | web-tests | TypeScript errors in `web/`, and failing tests of the slice or its pages |
 
 If a check fails, the agent must fix the code, or set its job to **Blocked** with the reason (and the time,
@@ -2364,7 +2415,8 @@ instantaneous in this example, and it grows with your event store.
 | the export says *"its UI only; the backend isn't held back"* | the slice's mockup has an error (a binding that names nothing) | nothing blocks the backend. Ask the skill to fix the mockup, then export: the UI is queued |
 | a slice planned again after a block stays **Blocked** on export | it was planned before the loop blocked it, or the entry has no `blockedAt` (a loop from before 14.7) | plan it again now (`slice status … planned`) and export |
 | the export warns *"… have no mockup: the loop builds their backend only"* | a planned slice's screen card has no mockup | nothing, if that's intended. Ask the skill for the mockup later; the export then queues the screen alone (§13.9) |
-| a screen is **Blocked** with `npm run openapi` output | a route can't be configured without a database, so the API types would be incomplete | fix the route so configuring it doesn't need a live database, or generate from a running backend: `API_URL=http://localhost:3000 npm --prefix web run gen:api` |
+| a screen is **Blocked**: *"api/openapi.json lacks <path>: export the model again"* | the contract is older than the slice (it was exported before the slice was planned, or not committed) | ask the skill to hand it over again: it exports (writing the contract) and plans the slice again |
+| `npm run contract:check` can't build the served document (*"Couldn't build the served document without a database"*) | a route can't be configured without a live database | fix the route so configuring it doesn't need one; the loop's `api-contract` check needs the same |
 | commit rejected: `[slice-tests]` | a test fails | fix it. The message names the failing scenario |
 | commit rejected: `[extension-additive]` | an extension changed existing projection code | keep extensions to additions only |
 | a read model is missing older data after an extension | the app wasn't restarted, so no rebuild | restart the app and look for `Rebuilding …` |
@@ -2378,6 +2430,10 @@ instantaneous in this example, and it grows with your event store.
 | after a kit update, the agent seems confused about which slice or job to build | the loop was still running the old code with the new routines | stop the loop and start it again; re-plan anything it blocked |
 | the loop keeps repeating a mistake, or follows a rule that's no longer true | a lesson in `.build-kit/learnings/` is wrong or out of date (each job is given its discipline's lessons, §15) | tell the skill *"the loop's lesson about … is wrong: …"*, or correct the bullet in `learnings/backend.md` / `ui.md` yourself. Commit it with your next model commit; the next job reads the corrected file |
 | `ralph.log` warns *"learnings over the cap of 40"* | a lessons file grew past 40 bullets | nothing: the next job that adds a lesson merges first. To prune it now, ask the skill to review the loop's lessons |
+| a commit is rejected by `api-contract` (*"the served API differs from the API contract"*) | the backend's routes don't match `api/openapi.json`: the message names the operation and the difference | usually nothing: the agent fixes the code or blocks the job. If it's blocked, ask the skill *"why is <slice> blocked?"*: it decides with you whether the model or the code is right (§13.9) |
+| `npm run contract:check` shows **differ** or **pending** | *differ*: a built slice's code no longer matches the model (the model changed since it was built). *pending*: in the model, not built yet | *differ*: plan the slice again. *pending*: nothing, if its backend is queued or you're building screens first |
+| a UI commit is rejected by `api-types` | `web/src/lib/api-types.ts` isn't what the contract generates (edited by hand, or the contract changed after it was generated) | `npm run gen:api`, stage it, commit again. Never edit it by hand |
+| after a write, the page's other views take 5 s and fail (500), then recover | read-your-writes in a project from before PLAN 14.10b: a read model that doesn't handle the written event waited for it | update the kit (`src/shared/readModels.ts`); it answers at once now, and a real timeout answers 504 |
 | `progress.txt` has entries | a job is blocked or was interrupted; each entry is tagged with its slice and concern | read them with the job's `blockedReason`. They go away by themselves once that job is Done |
 | a slice is **Blocked** after an interruption | the agent committed part of the slice but was interrupted before marking it Done. `progress.txt` names the commits | check them with `git log`. If the slice is complete, set it to Done. Otherwise `git revert` them and set it back to Planned |
 | a slice stays **InProgress** and the loop says *waiting* | an interrupted agent, with the loop running with board sync (without `--local`). There the loop can't tell an interrupted claim from another agent's, so it only logs a warning | once no agent is building it: `git stash push -u -m "interrupted slice"`, then set the slice back to Planned on the board |
@@ -2550,7 +2606,8 @@ left out once `emcli use chapter` / `use slice` / `use spec` has set them (§4, 
 | `emcli completeness [<chapter>] [--slice <slice>]` | check every field traces to a source, and every screen's mockup against its contract |
 | `emcli sync push --safe` | push local changes to the board (never deletes) |
 | `emcli sync pull` | pull board changes (notes, names) into the model |
-| `emcli workspace export --build-kit .build-kit --chapter <chapter> [--force]` | hand planned slices to the loop, holding back any that aren't information complete (`--force` queues them anyway). Also queues built slices again: a retype, added queries, a screen added or changed (`buildScreen`), and a blocked slice planned again since |
+| `emcli workspace export --build-kit .build-kit --chapter <chapter> [--force]` | hand planned slices to the loop, holding back any that aren't information complete (`--force` queues them anyway). Also queues built slices again: a retype, added queries, a screen added or changed (`buildScreen`), and a blocked slice planned again since. Writes the API contract, `api/openapi.json`, and lists the operations that changed |
+| `emcli workspace contract [-o <file>]` | print (or write) the API contract without exporting |
 | `emcli workspace import-status --build-kit .build-kit` | bring the loop's statuses back into the model |
 
 ### Build loop and project
@@ -2560,8 +2617,10 @@ left out once `emcli use chapter` / `use slice` / `use spec` has set them (§4, 
 | `eventmodelers init --stack dcb` | scaffold the project and install the kit |
 | `bash scripts/start-empty.sh` | remove the bundled example and start empty |
 | `eventmodelers run --local 2>&1 \| tee ralph.log` | run the build loop |
+| `eventmodelers run --local --concern ui\|backend 2>&1 \| tee ralph.log` | run the loop for one discipline only (screens first, §13.9) |
 | `npm run run:checks -- --staged` | run the commit checks by hand |
-| `npm run gen:api` | regenerate the frontend's API types from the code (`npm run openapi` writes `web/openapi.json`; no database or running backend) |
+| `npm run gen:api` | generate the frontend's API types from the API contract (`api/openapi.json`; no backend needed) |
+| `npm run contract:check` | compare the routes the code serves with the API contract: match, pending (not built yet), differ |
 | `npm run build && node --env-file=.env dist/index.js` | run the service |
 | `npx vitest run src/contexts/enrollment/slices/<slice>` | run one slice's tests |
 
@@ -2590,9 +2649,15 @@ left out once `emcli use chapter` / `use slice` / `use spec` has set them (§4, 
   deliberately.
 - **A removed mockup isn't removed from `web/`.** The loop only adds and rebuilds screens. Delete the slice's
   `web/src/slices/<slice>/` folder and its part of the page by hand.
-- **One loop, one job at a time.** A slice's backend and UI are separate jobs, but the loop runs them one after
-  the other, and a slice's UI waits for its own backend. Two loops in one project aren't supported: they'd share
-  the working tree and collide on commits.
+- **One loop, one job at a time.** A slice's backend and UI are separate jobs and don't wait for each other (the
+  API contract, §13.9), but one loop runs one job at a time; `--concern` picks which discipline. Two loops in one
+  working tree aren't supported: they'd collide on commits.
+- **The API contract doesn't say everything.** It has routes, fields, types, required fields and rejection
+  messages. It doesn't say which 4xx a rejection answers, a custom 404 message, a value the backend may send as
+  `null`, or that a read answers 404 until its first event: those are in the specs and the backend's commit body,
+  and the contract check ignores them.
+- **Read-your-writes waits are the kit's rule for now.** The event-store library's own wait has the flaw fixed in
+  14.10b; the kit works around it until the library is fixed at the root (PLAN 14.10b).
 - **Screens built before the loop built screens (14.7) count as built.** The first export after upgrading
   records them as they are. Change their mockup to have the loop rebuild one.
 - **Mockups are static.** They have no scripts or external links, because the board draws them in a sandbox. The
