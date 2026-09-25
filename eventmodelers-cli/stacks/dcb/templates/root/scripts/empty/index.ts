@@ -1,7 +1,5 @@
 import { Pool } from "pg"
-import { waitUntilProcessed } from "@dcb-es/event-store-postgres"
 import { getApplication, startAPI } from "@dcb-es/event-store-express"
-import type { SequencePosition } from "@dcb-es/event-store"
 
 import { startReadModels, type ReadModel, type StoredProjectionRegistration } from "./shared/readModels.js"
 import type { SliceDependencies } from "./shared/dependencies.js"
@@ -33,8 +31,8 @@ const imperative: StoredProjectionRegistration[] = []
 const readModelRuntime = await startReadModels(pool, readModels, imperative)
 const eventStore = readModelRuntime.eventStore
 
-export const waitFor = (projectionName: string) => (position: SequencePosition, timeoutMs: number) =>
-    waitUntilProcessed(pool, projectionName, position, { timeoutMs })
+// Read-your-writes for an async imperative projection, by name: current as of a position (PLAN 14.10b).
+export const waitFor = (projectionName: string) => readModelRuntime.waitFor(projectionName)
 
 const deps: SliceDependencies = { store: eventStore, pool, readModels: readModelRuntime }
 

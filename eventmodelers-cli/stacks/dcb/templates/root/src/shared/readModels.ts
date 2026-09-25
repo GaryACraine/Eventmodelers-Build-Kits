@@ -7,7 +7,6 @@ import {
     ensureHandlersInstalled,
     pongoProjection,
     projectionToProcessor,
-    waitUntilProcessed,
     type PongoProjectionContext,
     type Projection,
     type RunningConsumer
@@ -365,7 +364,49 @@ export interface ReadModelRuntime {
     querier(readModel: ReadModel<any, any>, queryName: string): (params: QueryParams, page: QueryPageRequest) => Promise<QueryPage>
     /** Async read models only: waits for the consumer (the optional `Prefer: wait` extra). */
     waitFn(readModel: ReadModel<any, any>): WaitFunction | undefined
+    /** The same wait for an async imperative projection, by name (its route's `preferWait`). */
+    waitFor(projectionName: string): WaitFunction
     stop(): Promise<void>
+}
+
+/**
+ * Read-your-writes for an async projection (PLAN 14.10b): resolves once the projection is current as of
+ * `position`, meaning no event it handles, at or before `position`, is past its checkpoint.
+ *
+ * A projection's consumer sees only the events it handles, so its checkpoint stops at the last of those. Waiting for
+ * the checkpoint itself to reach `position` (the library's `waitUntilProcessed`) times out whenever the write was an
+ * event this read model doesn't handle: bookmarking a course while the page also shows the course's ratings. The fix
+ * belongs in the library; until then this is the rule. A timeout throws an error whose message has "timeout" in it,
+ * which `preferWait` answers as 504.
+ */
+export async function waitForProjection(
+    pool: Pool,
+    projection: Pick<Projection, "name" | "canHandle">,
+    position: SequencePosition,
+    timeoutMs: number
+): Promise<void> {
+    const deadline = Date.now() + timeoutMs
+    const delays = [5, 15, 30, 50, 100]
+    for (let attempt = 0; ; attempt++) {
+        if (await isCurrentAsOf(pool, projection, position)) return
+        const remaining = deadline - Date.now()
+        if (remaining <= 0) {
+            throw new Error(`Wait timeout: ${projection.name} isn't current as of position ${position.toString()} after ${timeoutMs}ms`)
+        }
+        await new Promise(r => setTimeout(r, Math.min(delays[Math.min(attempt, delays.length - 1)], remaining)))
+    }
+}
+
+async function isCurrentAsOf(pool: Pool, projection: Pick<Projection, "name" | "canHandle">, position: SequencePosition): Promise<boolean> {
+    const r = await pool.query<{ pending: boolean }>(
+        `SELECT EXISTS (
+             SELECT 1 FROM events
+             WHERE sequence_position <= $2 AND type = ANY($3)
+               AND sequence_position > COALESCE((SELECT last_sequence_position FROM _handler_bookmarks WHERE handler_id = $1), 0)
+         ) AS pending`,
+        [projection.name, position.toString(), projection.canHandle]
+    )
+    return !r.rows[0].pending
 }
 
 /**
@@ -471,9 +512,13 @@ export async function startReadModels(
         waitFn: requested => {
             const readModel = resolve(requested)
             return readModel.type === "database-projected"
-                ? (position: SequencePosition, timeoutMs: number) =>
-                      waitUntilProcessed(pool, readModel.projection.name, position, { timeoutMs })
+                ? (position: SequencePosition, timeoutMs: number) => waitForProjection(pool, readModel.projection, position, timeoutMs)
                 : undefined
+        },
+        waitFor: projectionName => {
+            const projection = asyncProjections.find(p => p.name === projectionName)
+            if (!projection) throw new Error(`waitFor("${projectionName}"): no async projection of that name is registered`)
+            return (position: SequencePosition, timeoutMs: number) => waitForProjection(pool, projection, position, timeoutMs)
         },
         stop: async () => {
             await consumer?.stop()

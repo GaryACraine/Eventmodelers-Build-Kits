@@ -247,6 +247,47 @@ describe("live reads", () => {
     })
 })
 
+// Read-your-writes across read models (PLAN 14.10b): a page refetches every async read model after a write, each
+// with the write's position. One that doesn't handle the written event is already current as of it.
+describe("read-your-writes on an async read model", () => {
+    async function served() {
+        const pool = await freshPool()
+        const readModel = withType(courseDetails, "database-projected")
+        const runtime = await start(pool, readModel)
+        const agent = supertest(getApplication({ apis: [readModelRoute(courseDetails, runtime, "/courses/:courseId", { schema: CourseDocSchema, pool })] }))
+        const head = async () => (await pool.query<{ head: string }>("SELECT max(sequence_position)::text AS head FROM events")).rows[0].head
+        return { pool, readModel, runtime, agent, head }
+    }
+
+    test("a write it doesn't handle doesn't make it wait", async () => {
+        const { pool, readModel, runtime, agent, head } = await served()
+        await runtime.eventStore.append({ events: registerCourse("c1", "Math", 30) })
+        await settle(pool, runtime, readModel)
+        await runtime.eventStore.append({ events: e("courseWasBookmarked", { courseId: "c1", studentId: "s1" }, { courseId: "c1", studentId: "s1" }) })
+        const started = Date.now()
+        const res = await agent.get("/courses/c1").set("If-None-Match", `"${await head()}"`).set("Prefer", "wait=5")
+        expect(res.status).toBe(200)
+        expect(res.body.title).toBe("Math")
+        expect(Date.now() - started).toBeLessThan(1000)
+    })
+
+    test("a write it handles is waited for, then read", async () => {
+        const { runtime, agent, head } = await served()
+        await runtime.eventStore.append({ events: registerCourse("c1", "Math", 30) })
+        const res = await agent.get("/courses/c1").set("If-None-Match", `"${await head()}"`).set("Prefer", "wait=5")
+        expect(res.status).toBe(200)
+        expect(res.body.title).toBe("Math")
+    })
+
+    test("a wait that runs out answers 504", async () => {
+        const { runtime, agent, head } = await served()
+        await runtime.consumer?.stop()
+        await runtime.eventStore.append({ events: registerCourse("c1", "Math", 30) })
+        const res = await agent.get("/courses/c1").set("If-None-Match", `"${await head()}"`).set("Prefer", "wait=1")
+        expect(res.status).toBe(504)
+    })
+})
+
 // The layout generated slice tests use: one describe per type, HTTP only, bodies only.
 describe.each(READ_MODEL_TYPES)("readModelTestApp (%s)", type => {
     const app = readModelTestApp({

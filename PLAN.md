@@ -1104,7 +1104,7 @@ routes and queries, the examples, and the scenarios. Use it to:
   about 14.6's size.
 - **Order changed (Gary, 2026-09-25), after 14.9's live run:**
   1. **14.10a** Loop memory by concern, with git as the record; ✅ 2026-09-25
-  2. **14.10** Contract-first;
+  2. **14.10** Contract-first; ✅ 2026-09-25 (then **14.10b**, read-your-writes at the root in the library, open)
   3. **14.8** Deploy;
   4. the t14 chapter (14.9).
 
@@ -1409,9 +1409,9 @@ routes and queries, the examples, and the scenarios. Use it to:
         (Dana).
   - [ ] The t14 chapter (after 14.8 and the 14.10 decision): told as what to say to the skill, from this run's
     transcript, with the board and app screenshots, plus the deploy section from 14.8.
-- [ ] **14.10 Contract-first: the UI and the backend built in parallel.** *(Gary, 2026-09-24: to look into
-  later. Moved up 2026-09-25: next after 14.10a, before 14.8. Detailed plan approved 2026-09-25; ADR-029.
-  Implemented and migrated; the t16 live proof is next.)*
+- [x] **14.10 Contract-first: the UI and the backend built in parallel.** *(Gary, 2026-09-24: to look into
+  later. Moved up 2026-09-25: next after 14.10a, before 14.8. Detailed plan approved 2026-09-25; ADR-029. Done
+  2026-09-25: PR #68 + this PR, emcli `e46b8f2`, course-enrollment `eb9f21a` (t16).)*
   - **Decided with Gary (2026-09-25):**
     - **Scope:** the contract plus a concern filter. A UI no longer waits for its backend, and `eventmodelers run
       --local --concern ui|backend` builds one discipline. It's still one loop at a time per working tree; two
@@ -1472,6 +1472,45 @@ routes and queries, the examples, and the scenarios. Use it to:
       model decision).
     - Summaries in the contract name the slice (`rateCourse (slice "rate course")`); the code's are prose. Both are
       ignored by the check.
+  - **The live proof: t16 "bookmark a course"** (`bookmark course`: a Course Page button, once per student and
+    course; `student bookmarks`: "My bookmarks" on My Courses, titles kept current):
+    - Modelled with the event-model skill. The Course Page's route was set explicitly (it was derived, with a
+      warning). The export added two operations, both **pending**.
+    - **Screens first:** `run --local --concern ui`. The loop's start lines said "API contract … a UI doesn't
+      wait" and "ui jobs only". Both UIs were built with no backend at all: `src/` was untouched and the check still
+      showed 2 pending. Mock mode showed both (Chrome).
+    - **Backends after:** `--concern backend`. Both commits passed `api-contract`, and `contract:check` showed
+      17 match, 0 pending.
+
+      | Job | Time | Cost | Memory | First time |
+      |---|---|---|---|---|
+      | UI bookmark course | 65 s | $0.60 | 1.6 KB (shared, ui; no backend body) | ✅ |
+      | UI student bookmarks | 69 s | $0.59 | 1.6 KB | ✅ |
+      | backend bookmark course | 76 s | $0.67 | 2.6 KB | ✅ |
+      | backend student bookmarks | 152 s | $1.18 | 2.6 KB | ✅ |
+      | **t16** | **6 min 2 s** | **$3.03** | | 4/4 (t15: 5 min 28 s, $2.81) |
+
+    - **Verified:**
+      - backend 169/169 (172 with the 14.10b tests), web 59/59; the journal stayed at its header;
+      - two lessons, both project-specific: UI "finding My Courses cards in page tests", and backend "a read
+        model showing another entity's current data whose events lack its key can't be a fold";
+      - **Chrome against the live backend, with no UI change:**
+        - empty state "No bookmarks yet." (the 404);
+        - Bookmark → "Course bookmarked.";
+        - again → "Course already bookmarked by this student";
+        - My bookmarks lists the course.
+    - **Found and fixed (14.10b):** after the write, the page's other async views (Ratings, Comments) waited 5 s
+      and answered 500, because they don't handle `courseWasBookmarked`. This was already present in t15 and
+      unnoticed. Fixed in the kit; the root belongs in the library.
+    - **Findings:**
+      - `student bookmarks` took twice as long as the others. `courseTitleWasChanged` is tagged `courseId` only, so
+        a keyed fold on `studentId` can't keep titles current, and the job wrote an imperative projection instead
+        (a lookup collection that updates every bookmarking document). Correct, and recorded as a lesson. A model
+        that wants "current title" on a per-student list pays for it.
+      - Neither job needed anything the contract lacks. The backend body recorded "404 until the first bookmark",
+        which the UI's scenario-driven empty state already covered.
+      - The Chrome extension labels the bookmark POST "503" while the app gets a 204 (the form shows success, and
+        the event is stored). It's a tool artefact; curl shows 204.
   - With 14.10a in place, the contract replaces the UI's last need for backend notes (the backend's commit
     body). Each discipline's memory then stands alone, which two independent loops would need.
   - Today the UI waits for its own slice's backend: its API types are generated from the backend's code
@@ -1485,6 +1524,36 @@ routes and queries, the examples, and the scenarios. Use it to:
   - That gives full independence and parallelism between frontend and backend work. It's also the point at which
     separate loops per concern (14.7b's "not now") become worth revisiting.
   - It builds on 14.7b's per-concern status without rework.
+- [ ] **14.10b Read-your-writes across read models: fix at the root, in the event-store library.** *(Found in
+  t16's live walkthrough, 2026-09-25; Gary: "something we need to get right at root source". Kit fix done
+  2026-09-25 (this PR, course-enrollment `51c2c31`); the library fix is open.)*
+  - **The defect:** after a write, a page refetches every async read model on it with `If-None-Match: <position>`
+    + `Prefer: wait`. A read model that doesn't handle the written event never reaches that position, because its
+    processor subscribes only to its own events and checkpoints only when one arrives. So the read waits 5 s and
+    answers 500, and the form that wrote stays busy. Seen live: bookmarking a course made Ratings and Comments time
+    out (`CourseRatingsProjection did not reach position 860 within 5000ms`). It was already true in t15 (a comment
+    refetching Ratings), unnoticed.
+  - **In the kit now (a correct fix, chosen by Gary; done):** `readModels.ts` `waitForProjection`.
+    - It answers at once when none of the read model's events lies between its checkpoint and the position (it
+      is current as of that position). It polls and holds no LISTEN connection.
+    - A timeout answers 504, as documented.
+    - `runtime.waitFor(name)` serves imperative projections the same way, so `index.ts`'s `waitFor` uses it.
+    - 3 tests. With the old wait, they fail exactly as seen live (500 after 5 s; 500 instead of 504).
+    - Example app 80/80; course-enrollment 172/172; the Chrome walkthrough passed and the backend log is
+      clean.
+  - **At the root, in `~/Projects/dcb-event-store` (to do):**
+    - `waitUntilProcessed` (or the processor) must treat a filtered projection as caught up to a position when no
+      event matching its query lies before it: either the wait checks that itself, or the processor advances its
+      checkpoint to the subscription's head when idle. Every library user waiting on a filtered projection has
+      this bug, not just the kit.
+    - `waitUntilProcessed` adds a `notification` listener every 100 ms and never removes it (the
+      `MaxListenersExceededWarning` in the backend log): remove it on timeout.
+    - `WaitTimeoutError` should reach the client as 504, not 500. Its message starts `Timeout:` (capital T), and
+      `preferWait` looks for a lower-case `timeout`, so it never matches. Match on the error class instead.
+    - Once the library does it, the kit's own check goes (one place for the rule), proven by the same Chrome
+      walkthrough.
+  - Also unexplained: the browser once saw a 503 on the bookmark POST while the refetches were timing out
+    (curl never did). Re-check after the fix.
 - [x] **14.A ADR-024 "Screens as bound HTML"** in the DCB kit's ADR.md *(2026-09-23)*: mockups as full HTML
   documents with checked bindings, the dependency contract, native board wireframes in the description, the
   design system as a snippet imported by slug, and `web/` built from the mockup plus `/openapi.json`.
@@ -2470,6 +2539,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-25 | Contract-first scope: emcli writes the API contract (`api/openapi.json`) at export; the UI builds from it and waits for nothing; the backend is checked against it; `run --concern ui|backend` builds one discipline; still one loop per working tree (14.10, ADR-029, Gary) | Independent development needs each discipline to work from the model alone. Two loops need worktrees and merging, which `--concern` makes unnecessary for building one discipline first |
 | 2026-09-25 | The contract check compares what the typed client sees (parameters, success status, fields, required, type class, schema names) and ignores descriptions, headers, formats, nullability and 4xx statuses (14.10, ADR-029) | The model doesn't decide those, and the UI shows a rejection's message whatever its status; a strict equality would fail on prose |
 | 2026-09-25 | A rejection's status stays out of the model; its message (the `SPEC_ERROR` title) is the contract (14.10, ADR-029) | Statuses follow the backend's error types (400/404/422); the UI treats every rejection alike |
+| 2026-09-25 | An async read model is current as of a position when none of its events lies between its checkpoint and that position; the kit's wait uses that rule, and a timeout answers 504 (14.10b, Gary) | A projection sees only its own events, so its checkpoint can't pass a write it doesn't handle; waiting for the checkpoint made every other view on the page time out after a write. The same fix belongs in the event-store library (open) |
 | 2026-09-25 | Learnings are pruned at three triggers (a kit update, a size cap of about 40 bullets, phase close), and lessons true for every project are promoted into the skills (Gary approves) (14.10a, ADR-028) | Promotion into the skills is where knowledge has really crystallised so far. Without pruning, lessons go stale when the kit changes |
 | 2026-09-24 | Planning a slice again after the loop blocked it re-queues it (`plannedAt` later than the loop's `blockedAt`) (14.7) | The loop's Blocked was otherwise permanent, which forced hand edits to index.json; timestamps stop a stale plan from re-queuing a fresh block |
 
@@ -2489,5 +2559,5 @@ What each `build-*` skill generates and what it verifies:
 | 10 — User Manual | ✅ Complete | Manual written, verified and illustrated (board screenshots SS2–SS4, SS6, SS7; diagrams for t0 pushed / t1 staged). Kit follow-up 10.8 done (stale InProgress recovery in `--local` mode) |
 | 11 — Read Model Types | ✅ Complete | Async, inline and live read models from one fold definition, with an identical data shape across types (ADR-021/022). Proven on course-enrollment t5–t10: inline, a retype to live and back, a new live read model with a lookup |
 | 12 — Query Read Models | 🚧 In progress (top priority) | 12.1–12.3 done: ADR-023 query contract; emcli queries + `SPEC_QUERY` + `addQueries` re-queue; kit runtime (stored SQL + live, one semantics). Named queries on the read model element, the spec *when* references them, `{ data, cursor? }` pages; live needs a tag parameter |
-| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.3 done: native wireframes pushed and pulled (board links work in Connect), design system as a synced snippet. 14.4 done: the `event-model` skill's screen mode (contract → draft → edit → check → push → show); screen problems warn, one set of field exceptions. 14.4b done: manual §13, t13 on course-enrollment (five screens, board wireframes, snippet restyle). 14.4c done: hand-off gate, only information-complete slices reach the loop. 14.5 done: `web/` scaffold in the DCB kit (typed client from `/openapi.json`, opt-in read-your-writes for async read models, MSW mock mode, shell, one Tailwind design system for app and board snippet); entity-oriented routing recorded as an open decision. 14.5b done: API routes named after the model (ADR-025; emcli derives them, `POST /<command>`, `GET /<read-model>/:id`, `GET /<read-model>/<query>`), kit, course-enrollment and manual migrated; page routes decided (entity-based, derived at export) and `session:` from a stub current user. 14.6 done: `build-screen` (a form per command, a view per read model, MSW handlers and tests from the scenarios, pages from `screens[].page`), page routes derived by emcli (entity-shaped, session keys never in URLs), web commit checks, a reference frontend, and course-enrollment's five screens built one commit each, walked through live and in mock mode. 14.7 done: the loop builds a slice's screen after its backend, a mockup added or changed on a built slice re-queues the screen alone, `gen:api` needs no backend, a blocked slice planned again is re-queued, manual §13.9. 14.7b done: a build status per concern (backend, UI), the slice's status derived, one loop with a routine per concern, a blocked UI holds up nothing (ADR-027). 14.9's live run done (t14 "rate a course": four jobs, none blocked, 6 min, $3.17; no UI waited on a failing backend). 14.10a done: the loop's memory by concern, git commit bodies as the record, progress.txt as a journal of open problems (ADR-028); t15 proved it (four jobs first time, 5 min 28 s, $2.81, 11% under t14), and the first curation cut 42 lessons to 11 and fixed a skill bug. 14.10 contract-first implemented (ADR-029: emcli writes `api/openapi.json`, the UI builds from it and waits for nothing, the backend is checked against it, `run --concern`); course-enrollment migrated (15 operations match). Next: its t16 live proof, then 14.8 deploy, then the t14 chapter. 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
+| 14 — UI from the model | 🚧 In progress | HTML mockups in the model (board image until its API exposes wireframes), `web/` React frontend built by the loop from each slice's screen. 14.0 done: wireframes are fenced HTML in a description, native through today's API (snippet API pending). 14.2 + 14.2b done: `element mockup`, checked against each screen's displays/submits contract, exported. 14.3 done: native wireframes pushed and pulled (board links work in Connect), design system as a synced snippet. 14.4 done: the `event-model` skill's screen mode (contract → draft → edit → check → push → show); screen problems warn, one set of field exceptions. 14.4b done: manual §13, t13 on course-enrollment (five screens, board wireframes, snippet restyle). 14.4c done: hand-off gate, only information-complete slices reach the loop. 14.5 done: `web/` scaffold in the DCB kit (typed client from `/openapi.json`, opt-in read-your-writes for async read models, MSW mock mode, shell, one Tailwind design system for app and board snippet); entity-oriented routing recorded as an open decision. 14.5b done: API routes named after the model (ADR-025; emcli derives them, `POST /<command>`, `GET /<read-model>/:id`, `GET /<read-model>/<query>`), kit, course-enrollment and manual migrated; page routes decided (entity-based, derived at export) and `session:` from a stub current user. 14.6 done: `build-screen` (a form per command, a view per read model, MSW handlers and tests from the scenarios, pages from `screens[].page`), page routes derived by emcli (entity-shaped, session keys never in URLs), web commit checks, a reference frontend, and course-enrollment's five screens built one commit each, walked through live and in mock mode. 14.7 done: the loop builds a slice's screen after its backend, a mockup added or changed on a built slice re-queues the screen alone, `gen:api` needs no backend, a blocked slice planned again is re-queued, manual §13.9. 14.7b done: a build status per concern (backend, UI), the slice's status derived, one loop with a routine per concern, a blocked UI holds up nothing (ADR-027). 14.9's live run done (t14 "rate a course": four jobs, none blocked, 6 min, $3.17; no UI waited on a failing backend). 14.10a done: the loop's memory by concern, git commit bodies as the record, progress.txt as a journal of open problems (ADR-028); t15 proved it (four jobs first time, 5 min 28 s, $2.81, 11% under t14), and the first curation cut 42 lessons to 11 and fixed a skill bug. 14.10 contract-first done (ADR-029: emcli writes `api/openapi.json`, the UI builds from it and waits for nothing, the backend is checked against it, `run --concern`); t16 built the screens first with no backend, then the backends (4/4 first time, 6 min, $3.03; 17 operations match), and the pages worked against the live backend unchanged. 14.10b: read-your-writes across read models fixed in the kit; the event-store library fix is open. Next: 14.10b's library fix, 14.8 deploy, then the t14 chapter. 14.1 done: every route in `/openapi.json` (slices register their own; check `openapi-registered`), CORS via `CORS_ORIGIN`, proven on course-enrollment |
 | 7 — Board Re-pointing | ⛔ Dropped | eventmodelers board retired; prooph board via emcli is the only board |
