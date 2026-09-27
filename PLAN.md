@@ -30,6 +30,201 @@
 
 ## Phases
 
+### Phase 15: Automations, proven on a second domain (restaurant orders)
+
+> **Top priority** (recorded 2026-09-27, Gary), ahead of every outstanding task: 14.8 deploy and the t14 chapter,
+> 13.5b, 13.6 (now 15.7), 9.7 and 9.11b. Each subtask is delivered and proven on its own, in order. The most
+> important is the automation itself (15.2–15.4).
+
+**Goal:** make automations first class, next to the state-change and state-view patterns. `build-automation` is
+still Phase 4's template, and no automation has been through the loop. The vehicle is a second domain,
+fraktalio's restaurant order management (DCB in TypeScript, with a payment automation). It's rebuilt with our own
+method: its commands and events as they are, none of its infrastructure. A second domain also shows where
+course-enrollment specifics have leaked into the skills and helped them "cheat". Decisions: ADR-030 (containers
+only) and ADR-031 (automations are to-do lists; Proposed until 15.4).
+
+**Findings (researched 2026-09-27)**
+
+- **The reference implementation.**
+  - Sources:
+    - [fraktalio/order-management-demo-tanstack](https://github.com/fraktalio/order-management-demo-tanstack),
+      cloned read-only to `~/Projects/order-management-demo-tanstack` @ `00ddd12`;
+    - the model at <https://modeler.fraktalio.com/example>;
+    - the live app at <https://forder.fraktalio.com/>.
+  - **Domain:**
+    - 6 commands: createRestaurant, changeRestaurantMenu, placeOrder, markOrderPaid, markOrderPaymentFailed,
+      markOrderAsPrepared;
+    - 8 events: RestaurantCreated, RestaurantMenuChanged, RestaurantOrderPlaced, PaymentInitiated,
+      PaymentExempted, OrderPaid, OrderPaymentFailed, OrderPrepared;
+    - 2 live views: restaurant and order.
+    - `placeOrder` decides the payment path: PaymentInitiated when the total is over 0, PaymentExempted when it
+      is 0.
+  - **It has screens:** four TanStack pages:
+    - Home;
+    - Restaurant (create, change menu);
+    - Order Workflow (place an order, a simulated gateway's approve/decline, an order tracker);
+    - Kitchen (paid orders, mark prepared).
+
+    Ours are mocked from these with the `event-model` skill's screen mode.
+- **Its automation is an orchestration, not event-driven, and it has no to-do list.**
+  - The UI starts a Cloudflare Workflow (`PaymentWorkflow`), which:
+    1. issues `placeOrder` itself;
+    2. logs a "send payment request" (no real call);
+    3. waits up to an hour on `step.waitForEvent('payment-received')`, which the UI's approve and decline buttons
+       send;
+    4. issues markOrderPaid or markOrderPaymentFailed.
+  - **Dual write.** The workflow's progress is kept in Cloudflare's store (Durable Objects) and the facts in
+    Postgres, with no transaction across them. It's resolved with deterministic idempotency keys
+    (`${workflowId}:${step}`): a retried step gets the stored events back, and the decider isn't run again.
+  - **Strengths:**
+    - linear code;
+    - declarative retries, backoff and timeouts per step;
+    - durable waits that hold no resources;
+    - safe step retries.
+  - **Weaknesses:**
+    - two sources of truth: the UI reads the workflow's status, not the events;
+    - the payment result lives in the workflow until the next step records it;
+    - the gateway call has no idempotency key;
+    - a timed-out wait errors and records no event, so the order stays "created" for ever;
+    - nothing in the model shows the pending work;
+    - it's Cloudflare-only (Workflows, Durable Objects, Hyperdrive).
+  - **Its skills** (`.kiro/skills/map-event-model-to-code`, `scaffold-dcb-tanstack-cloudflare`) are written for
+    fmodel-decider and Cloudflare. Only the workflow rules are worth adapting, and only if Temporal is adopted
+    (15.4).
+- **The book.** Dilger, *Understanding Eventsourcing* (the original is `/Volumes/SD/e-books/eventmodeling-and-
+  eventsourcing (1).pdf`; the repo-root copy is corrupt, with every byte above 0x7F turned into U+FFFD).
+  - **Ch. 35, "Processor-TODO-List":**
+    - a read model lists the processor's open tasks, which events open and events close;
+    - the processor issues a command per task, and the command's event checks the task off (the dotted
+      back-channel);
+    - it usually polls (a schedule, cron, "or a job scheduled by a workflow engine like Temporal");
+    - a failed task stays open and is retried until closed or parked (dead letter, manual);
+    - an eventually consistent back-channel can run a task twice, which idempotency or an immediately consistent
+      back-channel prevents;
+    - it prefers choreography ("act on the facts") over a saga orchestrator.
+  - **Ch. 26, "Implementing Automations":**
+    - translate external events first;
+    - automation specs are GIVEN/THEN, with no WHEN;
+    - event handlers fire again on replay (one reason for the to-do list);
+    - errors must not be swallowed, and a partial failure is retried per task.
+- **Our stack.**
+  - **emcli already models it:**
+    - `automation` elements with `processorType` (`event-driven | polling | synchronous`);
+    - `reacts-to` / `relates-to`;
+    - the `AUTOMATION` export;
+    - `event-model`'s rule "every automation has a to-do list" (`skills/event-model/references/slicing.md`),
+      with translations of external events.
+  - **`build-automation`** writes a `handlerFactory.when` handler that **swallows errors**, so a failed
+    automation is checkpointed past and lost.
+  - **In the library:**
+    - `processor.ts` runs each event in its own transaction, and a throw ends that processor;
+    - `consumer.ts` doesn't restart it, so it dies silently;
+    - `decider` `handle(..., { idempotencyKey })` makes event ids deterministic, and the append dedupes them
+      (the exactly-once lever);
+    - inline read models (ADR-021) give an immediately consistent back-channel.
+- **Temporal (TypeScript SDK) fits ADR-030.**
+  - **It runs in containers:**
+    - the server is MIT-licensed and self-hosted (Docker Compose or Helm);
+    - it persists to PostgreSQL (its own databases on our server) with SQL visibility;
+    - `temporal server start-dev` for development;
+    - `@temporalio/testing`'s time-skipping test server.
+  - **What it gives:**
+    - deterministic workflows (a V8 sandbox) with activities for the I/O;
+    - per-activity retries, backoff, timeouts and heartbeats;
+    - durable timers;
+    - signals, updates and queries, and signal- or update-with-start;
+    - a workflow-ID conflict policy that dedupes starts;
+    - versioning;
+    - a web UI.
+
+    That's the durable execution calls to third-party APIs need.
+  - **What it costs:**
+    - a second store of state;
+    - determinism discipline;
+    - more infrastructure;
+    - a workflow spans slices;
+    - its test support is documented for Jest and Mocha, so vitest has to be proven.
+
+**Architecture (ADR-031): a to-do list first, Temporal only where it pays**
+
+- **To-do list only:**
+  - just Postgres;
+  - every open item is visible in the model and the UI;
+  - replay-safe;
+  - slices are built one at a time;
+  - the backoff and parking are ours to build (small);
+  - no workflow UI (the to-do read model is the UI).
+- **Temporal as executor:**
+  - proven retries, timers, heartbeats and a UI;
+  - a multi-step external conversation stays in one function;
+  - costs a second state store, determinism rules, and more infrastructure and tests;
+  - tempts people to hide business state in workflows.
+- **So:**
+  - the to-do list always decides *what* is open;
+  - the kit's own processor is the default executor;
+  - Temporal is an opt-in executor per automation, for calls to systems we don't control. It uses `workflowId` =
+    the item key, the item key as the call's idempotency key, and the command's idempotency key. It holds only
+    execution state that can be rebuilt.
+  - Gary chose a spike after the to-do list (15.4), not Temporal from the start.
+
+**Knowledge investment (15.6).** Skills are built today from iteration: build, feedback, lessons, pruning
+(ADR-028). Outside knowledge could feed them too:
+- books like Dilger's;
+- reference repos' skills (fraktalio's `.kiro/skills`);
+- the eventmodelers method skills;
+- an ontology of event-modeling patterns.
+
+We need a way to distil it into the skills with its provenance, and to keep it current. It's recorded here and
+designed later.
+
+**Tasks**
+
+- [x] **15.0 Record.** *Done 2026-09-27*: this phase, ADR-030 and ADR-031 (Proposed), the Decisions Log, the
+  Progress row, and memory.
+- [ ] **15.1 Model the restaurant domain** in a new project, `~/Projects/restaurant-orders` (its own repo, so
+  the loop can't copy course-enrollment's code), with a new prooph board chapter, through the `event-model` skill
+  (emcli only).
+  - The reference's commands and events, as they are.
+  - To-do read models for the automations, e.g. *payments awaiting*: opened by PaymentInitiated, closed by
+    OrderPaid or OrderPaymentFailed.
+  - A Payment Requester automation, and a payment gateway translation: webhook → markOrderPaid or
+    markOrderPaymentFailed.
+  - Kitchen orders and order status read models.
+  - Screens: Restaurant, Place Order, Kitchen, Order Tracker, and a gateway simulator.
+  - No invented events. A gap becomes a hotspot for Gary. The first known gap: with no PaymentRequested event,
+    the requester would call the gateway again until the order is paid.
+- [ ] **15.2 The library's automation runtime** (dcb-event-store phase 19; Gary merges library PRs).
+  - Run `pnpm upstream:emmett` first: Emmett's processor and workflow work may apply.
+  - A to-do processor primitive: due items, one transaction per item, a lock, backoff and parking.
+  - A failing handler no longer kills its processor silently.
+  - Test-first; bench numbers if append or locks are touched.
+- [ ] **15.3 Rewrite `build-automation`.**
+  - Covers: the to-do read model, the processor, the idempotency key, GIVEN/THEN specs, translation slices, and
+    an external-call adapter with a container mock of the gateway.
+  - Kit wiring and checks.
+  - Proven through the loop on restaurant-orders.
+- [ ] **15.4 The Temporal spike and decision.**
+  - A Temporal server and worker in `docker compose` on our Postgres.
+  - The payment request run through Temporal, behind the same to-do list.
+  - A vitest test with time skipping.
+  - Costs measured.
+  - The reference's workflow rules adapted (Cloudflare → Temporal).
+  - ADR-031 moved to Accepted: go or no-go on the Temporal executor, and the model property that picks it.
+- [ ] **15.5 The whole restaurant domain through the loop** (backend and UI).
+  - A domain-bleed review of `build-state-change`, `build-state-view` and `build-screen`: every course-enrollment
+    assumption the loop relied on is found and generalised.
+  - A manual chapter.
+- [ ] **15.6 Knowledge investment** (above): a design for collating outside sources into the skills and the
+  build, e.g.:
+  - a distilled `references/` folder per skill, with its provenance;
+  - a ledger like `UPSTREAM.md`;
+  - a review routine at phase close.
+- [ ] **15.7 Voice-modeling transcript** (last; fulfils 13.6).
+  - A spoken-style transcript that models the whole restaurant domain through `event-model`.
+  - Replayed in a fresh project.
+  - The result diffed against 15.1's model.
+  - The gaps fed into the skill.
+
 ### Phase 13: Model by talking (an emcli modeling skill)
 
 > **Top priority** (recorded 2026-09-23), ahead of the re-opened 9.7, 9.11b and 10.8 ports.
@@ -145,7 +340,7 @@ Spoken input is just dictation into the same prompt, so it needs no speech-speci
   `request-feedback` (status and the question written to `.build-kit/.slices`, surfaced by
   `emcli workspace import-status`), and drop `connect`/`load-slice` from `lib/AGENT.md` in `--local` mode. Then
   deprecate the eventmodelers `shared/skills`.
-- [ ] **13.6 Experiment.** *Not run yet: Gary hasn't tried it.* Preparation done 2026-09-23 (below).
+- [ ] **13.6 Experiment.** *Now Phase 15.7 (2026-09-27): a voice transcript that models the restaurant domain.* *Not run yet: Gary hasn't tried it.* Preparation done 2026-09-23 (below).
   - In a fresh project, model a small new context by conversation only: events, then slices, then specs, then
     planned. Gary runs the loop.
   - Record the prompts, the commands the skill ran, the corrections needed, and the time from the first sentence
@@ -2506,7 +2701,7 @@ What each `build-*` skill generates and what it verifies:
 
 ## Decisions Log
 
-> **Architectural decisions with full rationale and alternatives:** see [`eventmodelers-cli/stacks/dcb/ADR.md`](eventmodelers-cli/stacks/dcb/ADR.md) — 24 ADRs covering projections, identity, consistency, testing, error handling, idempotency, versioning, and more.
+> **Architectural decisions with full rationale and alternatives:** see [`eventmodelers-cli/stacks/dcb/ADR.md`](eventmodelers-cli/stacks/dcb/ADR.md) — 31 ADRs covering projections, identity, consistency, testing, error handling, idempotency, versioning, and more.
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
@@ -2583,11 +2778,16 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-25 | Emmett changes are ported into dcb-event-store by intent, never merged: `UPSTREAM.md` holds the file map, the watched Emmett paths, the baseline and a review log; `pnpm upstream:emmett` lists what's untriaged at the start of every library phase (Gary) | The library adapted Emmett's read side without forking it, and fixes such as #405 and #406 went unnoticed. The code shapes differ (DCB, not streams), so a merge would be meaningless; the file map says which of ours each Emmett change touches |
 | 2026-09-25 | Learnings are pruned at three triggers (a kit update, a size cap of about 40 bullets, phase close), and lessons true for every project are promoted into the skills (Gary approves) (14.10a, ADR-028) | Promotion into the skills is where knowledge has really crystallised so far. Without pruning, lessons go stale when the kit changes |
 | 2026-09-24 | Planning a slice again after the loop blocked it re-queues it (`plannedAt` later than the loop's `blockedAt`) (14.7) | The loop's Blocked was otherwise permanent, which forced hand edits to index.json; timestamps stop a stale plan from re-queuing a fresh block |
+| 2026-09-27 | Automations are made first class in Phase 15, top priority, proven on a second domain (fraktalio's restaurant orders) in its own project | Gary: automation is one of event modeling's three core patterns and has never been through the loop; a new domain shows where course-enrollment specifics have leaked into the skills |
+| 2026-09-27 | Everything runs in containers; no cloud-only services (ADR-030) | Deployable to any cloud or on premises; the reference's Cloudflare Workflows, Durable Objects and Hyperdrive exist nowhere else |
+| 2026-09-27 | Automations are to-do lists; the event store is the only source of truth; effects happen once by idempotency keys; failures back off and park, never skip (ADR-031, Proposed) | Dilger ch. 35; pending work stays visible in the model; replay-safe; the reference's orchestrator keeps its state outside the events and records nothing when a wait times out |
+| 2026-09-27 | Temporal is spiked as an opt-in executor after the to-do list is built (15.4), not adopted up front | Gary's choice. It fits ADR-030 and brings real durable execution for third-party calls, at the cost of a second state store; evidence decides |
 
 ## Progress
 
 | Phase | Status | Notes |
 |-------|--------|-------|
+| 15 — Automations (restaurant orders) | 🚧 Top priority | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 (automations are to-do lists; Proposed). Next: 15.1 model the restaurant domain in `~/Projects/restaurant-orders`. Order: model → library runtime → `build-automation` → Temporal spike → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) |
 | 1 — Stack Scaffolding | ✅ Complete | Verified: init, npm install, tsc, 21/21 unit tests |
 | 2 — State Change Skill | ✅ Complete | 9-step SKILL.md with full DCB patterns |
 | 3 — State View Skill | ✅ Complete | 5-step SKILL.md with Pongo + preferWait patterns |
