@@ -178,7 +178,7 @@ only) and ADR-031 (automations are to-do lists worked by a processor group; exte
   - **retries, backoff and timeouts are Temporal's configuration only**, with no schedules or deadlines of ours.
 - **The closing event ticks the item off.**
   - Work Temporal gives up on stays open on the list, and Temporal's UI shows why.
-  - **Redrive** (a UI action → a command) is 15.4.
+  - **Redrive** (a UI action → a command) is 15.4 (ADR-032, Proposed).
 - **The processor's failure policy follows Axon's default:**
   - fail fast (back off, retry the same event, block only this processor, show it as blocked);
   - skip is opt-in (Emmett's `skip`);
@@ -240,7 +240,8 @@ designed later.
   - Kit wiring and checks.
   - Proven through the loop on restaurant-orders.
 - [ ] **15.4 Redrive failed work** (after 15.3): a UI action and a command that start an open item's workflow
-  again. Design first: who may redrive, what the list shows, and how the command stays idempotent.
+  again. The design questions and their current leanings are in **ADR-032 (Proposed)**. Decide it, move it to
+  Accepted, then build it.
 - [ ] **15.5 The whole restaurant domain through the loop** (backend and UI).
   - A domain-bleed review of `build-state-change`, `build-state-view` and `build-screen`: every course-enrollment
     assumption the loop relied on is found and generalised.
@@ -2819,12 +2820,13 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-27 | Processors fail fast by default (back off, retry the same event, block that processor, show it), skip is opt-in, no dead-letter queue (ADR-031, PLAN 15.2) | Axon 5's default, and Emmett's STOP that resumes; Axon 5 and Emmett have no DLQ, and the to-do list already holds stuck work. Our processor currently dies silently |
 | 2026-09-27 | Technical events to signal work, and a separate worker woken by notifications, rejected | A projection that appends becomes an automation, with its own dual write and duplicate appends on rebuild; the processor group makes a separate worker unnecessary |
 | 2026-09-27 | Failed work is redriven from the UI with a command (15.4), designed after 15.3 | Gary: restarting failed jobs needs its own thought; no schedules or deadlines in the example |
+| 2026-09-27 | Redrive is an open design question, recorded as ADR-032 (Proposed) | Gary: design questions go in ADR.md. Leaning: a business-named failure outcome event marks the item failed; a *Retry* command from the list's screen reopens it, and the processor starts the same workflow again (`ALLOW_DUPLICATE_FAILED_ONLY`); no timers |
 
 ## Progress
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 15 — Automations (restaurant orders) | 🚧 Top priority | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), blueprint `docs/case-studies/automation-todo-list.md`. Next: 15.1 model the restaurant domain in `~/Projects/restaurant-orders`. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) |
+| 15 — Automations (restaurant orders) | 🚧 Top priority | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. Next: 15.1 model the restaurant domain in `~/Projects/restaurant-orders`. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) |
 | 1 — Stack Scaffolding | ✅ Complete | Verified: init, npm install, tsc, 21/21 unit tests |
 | 2 — State Change Skill | ✅ Complete | 9-step SKILL.md with full DCB patterns |
 | 3 — State View Skill | ✅ Complete | 5-step SKILL.md with Pongo + preferWait patterns |
