@@ -208,7 +208,7 @@ designed later.
 - [x] **15.0 Record.** *Done 2026-09-27*: this phase, ADR-030 and ADR-031, the Decisions Log, the Progress row,
   and memory. The same day, ADR-031 was settled with Gary and moved to Accepted: a processor group, Temporal from
   day one for external work, fail fast after Axon, redrive later. The blueprint case study was added.
-- [ ] **15.1 Model the restaurant domain** in a new project, `~/Projects/restaurant-orders` (its own repo, so
+- [x] **15.1 Model the restaurant domain** in a new project, `~/Projects/restaurant-orders` (its own repo, so
   the loop can't copy course-enrollment's code), with a new prooph board chapter, through the `event-model` skill
   (emcli only).
   - The reference's commands and events, as they are.
@@ -221,6 +221,62 @@ designed later.
   - For each automation: whether it's internal or external, and the modeled event that opens its work.
   - No invented events. A gap becomes a hotspot for Gary. The first known gap: with no PaymentRequested event,
     the requester would call the gateway again until the order is paid.
+
+  *Done 2026-09-27.* Chapter **Restaurant Orders** (context `restaurant`), pushed to prooph board; project commit
+  `f2f6c77`; nothing planned or exported yet (the hand-off is 15.3 and 15.5).
+  - **Contents:**
+    - 17 slices: 6 write, 9 read (4 of them extensions), 2 automation;
+    - 43 scenarios, taken from the reference's decider and view tests, with its example values (`r1`, `o1`,
+      *Ćevapi* 12.00) and its error messages;
+    - 11 screen cards with mockups, on 5 pages: New Restaurant, Restaurant Management, Place Order, Order
+      Tracker, Kitchen;
+    - `emcli completeness`: 0 errors, 4 warnings (the two emcli gaps below).
+  - **Names:**
+    - the commands exactly as the reference names them;
+    - its events without the `Event` suffix, in the kit's camelCase (`restaurantCreated`, `paymentInitiated`, …).
+      That also tests that the kit doesn't depend on course-enrollment's `…Was…` style;
+    - read models: `RestaurantDetails`, `OrderDetails` (the reference's order view, status included),
+      `KitchenOrders` (list) and `PaymentsAwaiting` (the to-do list, a list).
+  - **The automations:**
+    - **Payment Requester** is **external**. It's opened by `paymentInitiated` and closed by `orderPaid` or
+      `orderPaymentFailed`, and it works from `PaymentsAwaiting` (event-driven, the processor group).
+    - It issues none of our commands: the gateway answers through its webhook.
+    - **Payment Gateway Webhook** is a **translation** (synchronous). The gateway's `paymentReceived` (in its own
+      *Payment Gateway* lane, fields mapped `webhook:`) leads to `markOrderPaid` or `markOrderPaymentFailed`,
+      with the idempotency key `payment-result:<orderId>`.
+    - **The domain has no internal automation** (an event of ours leading to a command of ours). 15.3 proves
+      that path some other way, or not at all. That's a question for Gary.
+  - **Differences from the reference:**
+    - **`menu` is flattened** to `menuId`, `cuisine` and `menuItems`, because emcli nests only one level
+      (`Custom` subfields).
+    - **fmodel's `final` flag is dropped**, since it's library machinery.
+    - **The restaurant page is split in two:** New Restaurant (`/restaurants/new`) and Restaurant Management
+      (`/restaurants/:restaurantId`, the details and the menu change).
+    - **A `restaurants` query** (sorted by name) feeds Place Order's restaurant picker.
+    - **The gateway simulator isn't in the model.** It's the gateway's own page, not ours, so it belongs to
+      15.3's container mock of the gateway.
+  - **Open, for Gary:**
+    - the hotspot *"What records that the gateway was asked?"* (on `request payment`; it blocks planning that
+      slice): leave it to Temporal's workflow id, or add a business event such as `paymentRequested`;
+    - kept as in the reference, but worth a decision: `placeOrder` takes each item's name and **price from the
+      customer's request**. It only checks that the ids are on the menu, and `paymentInitiated.amount` is the sum
+      of those prices.
+  - **Found in emcli** (its `ISSUES.md`):
+    - **Fixed** (merged, `fc4a1b3`): pushing a new chapter with two user lanes failed halfway (the board refuses
+      a user lane at the information-flow lane's index). It was recovered with a hand-written baseline.
+    - **Open:** a copy made before its origin has fields gets none.
+    - **Open:** a List field's inputs inside a `data-list` don't count as its input (a warning on all three menu
+      forms).
+    - **Open:** a per-row command on a list page asks for its id in the route (Kitchen's *Mark prepared*). This
+      also matters for `build-screen` in 15.5.
+    - **Open:** after a push, `emcli use` still holds the chapter's old local id; `emcli use chapter` again fixes
+      it.
+  - **Course-enrollment in the scaffold** (for 15.5's domain-bleed review):
+    - the package is named `course-manager`;
+    - `start-empty.sh` leaves an *enrollment* context (`src/contexts/enrollment/`, with the event feed and
+      OpenAPI), while this chapter's code goes to `src/contexts/restaurant/`;
+    - the pre-commit slice guard blocks the scaffold's own first commit (event-feed and openapi are slice
+      folders), so **manual §4's first commit fails**. It was committed with `--no-verify`.
 - [ ] **15.2 The library's processor failure policy** (dcb-event-store phase 19; Gary merges library PRs).
   - Run `pnpm upstream:emmett` first.
   - **Fail fast by default:** log, back off, retry the same event, and block only that processor, with its
@@ -2821,12 +2877,15 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-27 | Technical events to signal work, and a separate worker woken by notifications, rejected | A projection that appends becomes an automation, with its own dual write and duplicate appends on rebuild; the processor group makes a separate worker unnecessary |
 | 2026-09-27 | Failed work is redriven from the UI with a command (15.4), designed after 15.3 | Gary: restarting failed jobs needs its own thought; no schedules or deadlines in the example |
 | 2026-09-27 | Redrive is an open design question, recorded as ADR-032 (Proposed) | Gary: design questions go in ADR.md. Leaning: a business-named failure outcome event marks the item failed; a *Retry* command from the list's screen reopens it, and the processor starts the same workflow again (`ALLOW_DUPLICATE_FAILED_ONLY`); no timers |
+| 2026-09-27 | Restaurant Orders (15.1) keeps the reference's command names, and its event names without the `Event` suffix in camelCase (`restaurantCreated`) | "As they are", in the kit's identifier style; no `…Was…`, so 15.5 shows whether the kit relied on course-enrollment's naming |
+| 2026-09-27 | The reference's nested `menu` is flattened to `menuId`, `cuisine`, `menuItems`; fmodel's `final` flag is dropped | emcli nests one level only; `final` is library machinery, not a business fact |
+| 2026-09-27 | The gateway simulator is not in the model; the gateway's `paymentReceived` sits in its own *Payment Gateway* lane and is translated at the webhook | The simulator is the gateway's page, not ours: it belongs to 15.3's container mock of the gateway |
 
 ## Progress
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 15 — Automations (restaurant orders) | 🚧 Top priority | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. Next: 15.1 model the restaurant domain in `~/Projects/restaurant-orders`. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) |
+| 15 — Automations (restaurant orders) | 🚧 Top priority | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27: the Restaurant Orders chapter (17 slices, 43 scenarios, 11 mockups) on prooph board; emcli push fix for two user lanes. Next: 15.2 the library's failure policy. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) |
 | 1 — Stack Scaffolding | ✅ Complete | Verified: init, npm install, tsc, 21/21 unit tests |
 | 2 — State Change Skill | ✅ Complete | 9-step SKILL.md with full DCB patterns |
 | 3 — State View Skill | ✅ Complete | 5-step SKILL.md with Pongo + preferWait patterns |
