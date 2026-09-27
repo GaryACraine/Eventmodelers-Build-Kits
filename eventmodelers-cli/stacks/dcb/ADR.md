@@ -1099,7 +1099,7 @@ failed automation is either skipped for good or stops silently. We looked at fiv
   - Temporal holds only execution state. Business facts stay in the event store.
 - **The closing event ticks the item off.**
   - If Temporal gives up, the item stays open on the list, and Temporal's UI shows the reason.
-  - **Redrive** (a UI action → a command → the item's workflow started again) is designed separately (PLAN 15.4).
+  - **Redrive** (a UI action → a command → the item's workflow started again) is designed separately (ADR-032, PLAN 15.4).
 - **The processor's failure policy follows Axon's default:**
   - **Fail fast by default:** log, back off, retry the same event, and block this processor only, with its blocked
     status and error visible. It never dies silently and never skips.
@@ -1145,3 +1145,58 @@ failed automation is either skipped for good or stops silently. We looked at fiv
   - a helper that composes the list step and the automation step;
   - `build-automation` rewritten around them.
 - **The model** marks each automation as internal or external.
+
+
+### ADR-032: Redriving automation work that Temporal gave up on
+
+**Status:** Proposed. To be decided in PLAN 15.4, after 15.3 has run external work through Temporal.
+**Date:** 2026-09-27
+
+**Context:** ADR-031 sends external work to a Temporal workflow named after the to-do item. Temporal retries it
+by configuration. When the retries run out, the workflow fails, the item stays open on the to-do list, and
+Temporal's UI shows the reason. Something must then start the work again. Gary wants this done from the UI, with
+a command. There must be no schedules or timers, so it stays event-driven like the rest of ADR-031.
+
+This is different from a **blocked processor** (ADR-031's fail fast), which stops because of our own bug or a
+missing dependency. That's fixed by a deploy or by restarting the dependency, not by a person redriving an item.
+
+**Open questions, with the current leaning:**
+1. **How does the list know that the work failed?** Today it knows only *open* and *closed*, from events.
+   - **(a) Leaning.** The workflow's last step, on giving up, issues a command that records an **outcome event
+     named for the business** (e.g. *Payment Request Failed*). The list step marks the item *failed*. It's
+     visible in the model and on screens, and it's the failure-as-event practice from Emmett and the book. It
+     isn't a technical event (rejected in ADR-031): it records what happened to the business.
+   - **(b)** The UI asks Temporal for the workflow's status by the item key. No event, but the list and the
+     screen then depend on Temporal for status, which ADR-031 keeps out of business state.
+2. **What does redrive do?**
+   - **Leaning:** a command from the UI, e.g. *Retry Payment Request* for order 42, records its event. The
+     automation's processor handles that event like any other: the list step marks the item open again, and the
+     automation step starts the workflow again.
+   - **Leaning:** the same `workflowId` (the item key), with Temporal's reuse policy
+     `ALLOW_DUPLICATE_FAILED_ONLY`. A failed run can then be started again, but a completed one never can, so a
+     redrive of finished work is a no-op.
+   - It's event-driven, with no timers, and it uses the path ADR-031 already has.
+3. **Is the redrive command idempotent?** It carries an idempotency key per redrive request (the UI's
+   `Idempotency-Key`, as for every command, ADR-025). A double click redrives once.
+4. **Who may redrive?** The kit has no real sign-in yet (`session:` from a stub user, PLAN 14.6). Until it does,
+   anyone who sees the screen can. When sign-in arrives, it becomes a role on the command. This needs deciding
+   with authentication.
+5. **What does the model show?**
+   - The redrive command and its event are an ordinary write slice, issued by a screen: the to-do list's screen,
+     which shows failed items with a *Retry* button.
+   - The failure outcome event (1a) is an event of the automation's command slice.
+   - Whether every external automation gets this pair automatically, or models it each time, is still to be
+     decided.
+
+**Constraints already decided (ADR-030, ADR-031):**
+- nothing runs on a timer;
+- no technical events;
+- no dead-letter queue;
+- Temporal holds execution state only;
+- everything runs in containers.
+
+**Consequences, if the leanings hold:**
+- Each external automation gains a failure outcome event, a *failed* state on its list, and a redrive write
+  slice.
+- `build-automation` (15.3) and the `event-model` skill (15.1) learn that shape.
+- Temporal's reuse policy is set in the kit's workflow starter.
