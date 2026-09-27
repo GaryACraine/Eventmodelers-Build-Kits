@@ -997,7 +997,7 @@ Gary wants services built with the kit deployable to any cloud or on premises.
 
 **Decision:**
 - **Every runtime part of a kit project runs as a container image** that we can run ourselves: the API and its
-  processors, Postgres, any workflow engine (PLAN 15.4: Temporal's server is MIT-licensed and self-hosted), and
+  processors, Postgres, any workflow engine (PLAN 15.3: Temporal's server is MIT-licensed and self-hosted), and
   mocks of external systems. `docker compose up` runs the whole system on one machine; tests use testcontainers,
   as they do today.
 - **A cloud service may host a standard interface, never replace it.** We may use:
@@ -1025,88 +1025,124 @@ Gary wants services built with the kit deployable to any cloud or on premises.
 **Consequences:**
 - PLAN 14.8's deploy needs a container path for `web/` (an nginx image) next to S3 and CloudFront.
 - Choosing an engine is part of its spike: the spike runs it in `docker compose` and in a testcontainers test
-  (PLAN 15.4).
-- The reference's workflow code and skills are adapted, never copied (PLAN 15.4).
+  (PLAN 15.3).
+- The reference's workflow code and skills are adapted, never copied (PLAN 15.3).
 
 
-### ADR-031: Automations are to-do lists; the event store is the only source of truth
+### ADR-031: Automations are to-do lists worked by a processor group; external work runs in Temporal
 
-**Status:** Proposed. The default executor is decided here; the Temporal executor is decided by PLAN 15.4's spike.
+**Status:** Accepted, 2026-09-27. Temporal as the executor for external work is subject to PLAN 15.3's proof
+(running in containers and tested under vitest).
 **Date:** 2026-09-27
+**Blueprint:** [`docs/case-studies/automation-todo-list.md`](../../../docs/case-studies/automation-todo-list.md)
 
 **Context:** `build-automation` is still Phase 4's template, and no automation has been through the loop. It
-builds an event handler that issues a command and **swallows its errors**
-(`catch → console.error`). In the library, a handler that throws rolls back and ends its processor, and
-`createConsumer` doesn't restart it. So a failed automation today is either skipped for good or stops quietly.
+builds an event handler that issues a command and **swallows its errors** (`catch → console.error`). In the
+library, a handler that throws rolls back and ends its processor, and `createConsumer` never restarts it. So a
+failed automation is either skipped for good or stops silently. We looked at five sources.
 
-We weighed three sources:
-- **Fraktalio's reference demo** orchestrates payment with a Cloudflare Workflow:
+- **Fraktalio's restaurant demo** (the Phase 15 domain) orchestrates payment with a Cloudflare Workflow:
   - the UI starts it, and it places the order;
   - it waits up to an hour for a gateway signal;
   - it then marks the order paid or failed.
 
-  It has no to-do list, and it isn't event-driven. Its progress lives in the workflow's own store. It resolves
-  the dual write with idempotency keys (`workflowId:step`). The pending work isn't visible in the event model, and
-  a timed-out wait records no event.
-- **Dilger's *Understanding Eventsourcing*:**
+  It has no to-do list and isn't event-driven. Its progress lives in the workflow's own store, and it resolves
+  the dual write with idempotency keys (`workflowId:step`). The pending work isn't visible in the model, and a
+  timed-out wait records nothing.
+- **Dilger, *Understanding Eventsourcing***:
   - **ch. 35, "Processor-TODO-List":** a read model lists the processor's open tasks. Events open a task and
-    events close it, and the command's own event checks it off. A task that fails stays open and is retried until
-    closed or parked. An eventually consistent back-channel can run a task twice, which idempotency or an
-    immediately consistent back-channel prevents. It prefers choreography over a saga orchestrator.
-  - **ch. 26:** translate external events first; specs are GIVEN/THEN; handlers fire again on replay; errors
-    must not be swallowed.
-- **emcli** already models this: `automation` elements with `processorType`, and the rule that every automation
-  has a to-do list (`skills/event-model/references/slicing.md`).
+    events close it, and the command's own event checks it off. A failed task stays open until it's closed or set
+    aside. It prefers choreography over a saga orchestrator.
+  - **ch. 26:** translate external events first; automation specs are GIVEN/THEN; handlers fire again on replay;
+    never swallow errors. The book keeps the to-do projection and the automation in one Axon processing group.
+- **Axon 5** (`axon-messaging` 5.0.2 and 5.1.0):
+  - A processor calls its handling components **one after another for each event, in registration order, in one
+    unit of work** (`ProcessorEventHandlingComponents`). Its progress moves once, after all of them.
+  - The default `ErrorHandler`, `PropagatingErrorHandler`, **fails fast**: the batch aborts, and the segment is
+    claimed again after a backoff that grows, so the same event is retried and that processor blocks until the
+    handler succeeds. Other processors carry on.
+  - "Log and continue" is an `ErrorHandler` you write.
+  - Axon 5 has no dead-letter queue yet: Axon 4's `SequencedDeadLetterQueue` and `LoggingErrorHandler` aren't
+    ported.
+  - Gary's Axon 5 project (`generator-axon5-scratch`, `addssndata`) puts its to-do projector and its automation in
+    one processor, but the automation reacts to the event, never reads the list, and skips replays
+    (`isReplay`).
+- **Emmett** (`error-handling.md`, `workflows.md`):
+  - A throw in a reactor stops the processor, which resumes from the same point on its next run. A handler can
+    return `skip()` (log and continue) or `stop()`.
+  - The guidance is "never throw in asynchronous handlers": record a failure event or skip.
+  - It has no dead-letter queue; its only retries are for optimistic-concurrency conflicts.
+  - Emmett's workflows are event-sourced process managers (an inbox/outbox stream and an `outputHandler` for
+    external work). A failed external call stops them, with no durable retries.
+- **emcli** already models automations (`automation` with `processorType`) and the rule that every automation has
+  a to-do list (`skills/event-model/references/slicing.md`).
 
 **Decision:**
 - **Every automation is a to-do list, and the event store is the only source of truth.**
-  - A to-do read model is opened and closed by events. It's in the model and shown on the board.
-  - A processor works the list's open items, one command per item, and that command's event closes the item.
-  - Waiting on an outside party is an open item plus a translation slice (its webhook → a command → an event that
-    closes the item). It is never state held inside an engine.
-- **Effects happen once, by idempotency.**
-  - The command carries `idempotencyKey = <automation>:<item key>`. The library turns that into deterministic
-    event ids, and the append drops duplicates.
-  - An external call carries the same key.
-  - Running an item twice is harmless, so the back-channel may be eventually consistent. It's made inline
-    (ADR-021) only when even a repeated external call must be avoided.
-- **Failures never skip and never stop the processor.**
-  - An item records its attempts, next-attempt time and last error.
-  - A retry backs off, and after N attempts the item is **parked**: it stays visible and can be retried by hand.
-  - A domain rejection of the command is a decided outcome, recorded as the command slice specifies, not retried
-    for ever.
-- **The default executor is the kit's own to-do processor on Postgres**, with no engine. The library runtime is
-  PLAN 15.2 and the skill is 15.3.
-- **Temporal is a candidate opt-in executor** (PLAN 15.4). It is only for automations that call systems we don't
-  control and need long retry horizons, heartbeats, rate limits, or durable deadlines within a step:
-  - the same to-do list starts one workflow per item, with `workflowId` = the item key and the `USE_EXISTING`
-    conflict policy;
-  - activities make the external call with the item key, then issue the command with the idempotency key;
-  - Temporal holds only execution state that can be rebuilt, and business facts stay in the event store.
+  - The model reads: the opening event → the to-do read model → the automation → its command → the closing event.
+  - A modeled event opens the work. A technical event appended to signal it is never used.
+- **One processor per automation: our processing group, with two steps in a declared order for each event.**
+  1. **The list step** opens or closes the item.
+  2. **The automation step** runs only if the item is open, reading it in the same transaction, so it's always
+     there. There's no race and no signal between separate components.
 
-  Chosen per automation in the model, never for internal event → command reactions.
+  The processor records its progress after both. Our order is written down in the kit's helper; Axon's is only
+  implied by registration order.
+- **Internal work** (an event → one of our commands) runs in the automation step. It issues the command with the
+  idempotency key `<automation>:<item key>`: the library turns that into deterministic event ids, and a repeat is
+  dropped.
+- **External work** (a system we don't control) **runs in Temporal from day one.**
+  - The automation step starts a workflow with `workflowId` = the item key, so a repeated start does nothing.
+  - The workflow's activities call the external system, then issue the command with the idempotency key.
+  - **Retries, backoff and timeouts are the workflow's configuration only.** We write no retry schedules of our
+    own.
+  - Starting a workflow is quick, so no slow call runs inside the event's transaction.
+  - Temporal holds only execution state. Business facts stay in the event store.
+- **The closing event ticks the item off.**
+  - If Temporal gives up, the item stays open on the list, and Temporal's UI shows the reason.
+  - **Redrive** (a UI action → a command → the item's workflow started again) is designed separately (PLAN 15.4).
+- **The processor's failure policy follows Axon's default:**
+  - **Fail fast by default:** log, back off, retry the same event, and block this processor only, with its blocked
+    status and error visible. It never dies silently and never skips.
+  - **Skip is opt-in** (Emmett's `skip`): log and continue, only where losing an event is acceptable.
+  - **No dead-letter queue.** For automations, the to-do list plus Temporal is the visible record of stuck work.
+- **Replays and rebuilds** skip the automation step and rebuild only the list. A repeated start or command would
+  be a no-op in any case.
 
 **Why:**
-- **One source of truth, visible.** Pending work is a read model: the board shows it and the UI can list it. Losing
-  an engine's history loses nothing, because the list still names what to do.
-- **It's the event model's shape.** A to-do read model, an automation and a command are slices the loop already
-  builds one at a time. An orchestrator spans many slices in one function.
-- **Replay-safe.** A rebuilt read model re-lists only open items, where an event-triggered handler would fire
-  again on every replay.
-- **Simplest to run.** It needs only Postgres (ADR-030). An engine is added only where its guarantees pay for
-  themselves.
+- **One source of truth, and it's visible.** Pending work is a read model that the board shows and the UI can list.
+- **Idiomatic.** It's Axon's processing group and the book's own arrangement, built from pieces our library
+  already has (a processor with its handler, a bookmark, idempotent appends). The only new piece, Temporal, does
+  what neither Axon 5 nor Emmett offers: durable retries of outside calls.
+- **Resilient from day one.** External calls get proven retry, backoff and timeout semantics without our writing
+  any.
+- **Replay-safe**, and the slices stay one at a time for the loop.
 
 **Alternatives considered:**
-- **An event-triggered handler per automation** (today's skill). Rejected as the default: errors are either lost
-  or fatal, replays re-fire, and pending work is invisible. It remains the special case of a to-do list whose
-  items open and close in the same step.
-- **A workflow engine as the orchestrator** (the reference's pattern, on Temporal). Rejected: business state moves
-  into the engine, the model stops showing the process, and a workflow cuts across slices.
-- **Temporal for every automation.** Rejected: most automations are internal event → command reactions, where
-  the processor, the lock and idempotency already do the job.
+- **An event-triggered automation beside its list** (today's skill; Gary's Axon 5 example). Rejected: failures are
+  lost or fatal, work is skipped on replay (`isReplay`), and the list is only a report.
+- **A separate worker woken by the list's notifications** ("two bells"). Rejected: it uses existing notifications,
+  but it adds a new kind of component that the processing group makes unnecessary.
+- **A technical event appended after the item is written.** Rejected:
+  - a projection that appends becomes an automation, with its own dual write;
+  - a rebuild appends the events again;
+  - plumbing becomes permanent history.
+- **Our own retry schedule for failed items.** Rejected: retries belong to Temporal's configuration (Gary). Our
+  processor only fails fast on its own infrastructure errors.
+- **A dead-letter queue.** Rejected for now: Axon 5 and Emmett have none, and the to-do list already holds stuck
+  work, visibly.
+- **The reference's orchestrating workflow** (on Temporal). Rejected: business state moves into the engine and
+  the model stops showing the process.
+- **Emmett workflows as the external executor.** Rejected: no durable retries of external calls.
+- **Temporal for every automation.** Rejected: internal event → command reactions need nothing it adds.
 
 **Consequences:**
-- The library needs a to-do processor primitive: due items, one transaction per item, a lock, backoff and
-  parking. A failing handler must stop killing its processor (PLAN 15.2).
-- `build-automation` is rewritten around the to-do read model, the idempotency key and GIVEN/THEN specs (PLAN 15.3).
-- The model needs an executor property per automation if the spike adopts Temporal (PLAN 15.4).
+- **The library** (PLAN 15.2): a processor failure policy (fail fast with backoff and a visible blocked status by
+  default, or opt-in skip), `createConsumer` never losing a processor, and the automation step told when the
+  processor is rebuilding.
+- **The kit** (PLAN 15.3):
+  - Temporal's server and UI in `docker compose` (ADR-030, on our Postgres) and in testcontainers;
+  - a worker in the runtime;
+  - a helper that composes the list step and the automation step;
+  - `build-automation` rewritten around them.
+- **The model** marks each automation as internal or external.

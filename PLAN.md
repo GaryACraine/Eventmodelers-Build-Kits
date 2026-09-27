@@ -34,14 +34,15 @@
 
 > **Top priority** (recorded 2026-09-27, Gary), ahead of every outstanding task: 14.8 deploy and the t14 chapter,
 > 13.5b, 13.6 (now 15.7), 9.7 and 9.11b. Each subtask is delivered and proven on its own, in order. The most
-> important is the automation itself (15.2–15.4).
+> important is the automation itself (15.2–15.3).
 
 **Goal:** make automations first class, next to the state-change and state-view patterns. `build-automation` is
 still Phase 4's template, and no automation has been through the loop. The vehicle is a second domain,
 fraktalio's restaurant order management (DCB in TypeScript, with a payment automation). It's rebuilt with our own
 method: its commands and events as they are, none of its infrastructure. A second domain also shows where
 course-enrollment specifics have leaked into the skills and helped them "cheat". Decisions: ADR-030 (containers
-only) and ADR-031 (automations are to-do lists; Proposed until 15.4).
+only) and ADR-031 (automations are to-do lists worked by a processor group; external work in Temporal; Accepted
+2026-09-27). Blueprint: [`docs/case-studies/automation-todo-list.md`](docs/case-studies/automation-todo-list.md).
 
 **Findings (researched 2026-09-27)**
 
@@ -89,8 +90,7 @@ only) and ADR-031 (automations are to-do lists; Proposed until 15.4).
     - nothing in the model shows the pending work;
     - it's Cloudflare-only (Workflows, Durable Objects, Hyperdrive).
   - **Its skills** (`.kiro/skills/map-event-model-to-code`, `scaffold-dcb-tanstack-cloudflare`) are written for
-    fmodel-decider and Cloudflare. Only the workflow rules are worth adapting, and only if Temporal is adopted
-    (15.4).
+    fmodel-decider and Cloudflare. Only the workflow rules are worth adapting, to Temporal (15.3).
 - **The book.** Dilger, *Understanding Eventsourcing* (the original is `/Volumes/SD/e-books/eventmodeling-and-
   eventsourcing (1).pdf`; the repo-root copy is corrupt, with every byte above 0x7F turned into U+FFFD).
   - **Ch. 35, "Processor-TODO-List":**
@@ -122,6 +122,23 @@ only) and ADR-031 (automations are to-do lists; Proposed until 15.4).
     - `decider` `handle(..., { idempotencyKey })` makes event ids deterministic, and the append dedupes them
       (the exactly-once lever);
     - inline read models (ADR-021) give an immediately consistent back-channel.
+- **Axon 5** (`axon-messaging` 5.0.2, the version Gary's `generator-axon5-scratch` uses, and 5.1.0):
+  - **A processing group runs its handlers one after another** for each event, in registration order, in one unit
+    of work, and moves its progress once (`ProcessorEventHandlingComponents`). The order is implicit.
+  - **The default error handler fails fast** (`PropagatingErrorHandler`): the same event is retried with a
+    backoff that grows, and that processor blocks until it succeeds. Other processors carry on.
+  - **"Log and continue"** is an error handler you write.
+  - **No dead-letter queue** in Axon 5 yet.
+  - **Gary's `addssndata` example** puts its to-do projector (`SsnDetailsToFetch`) and its automation in one
+    processor, which is the right grouping. But the automation reacts to the event, never reads the list, skips
+    replays (`isReplay`), and lets failures go unnoticed.
+- **Emmett** (`~/Projects/emmett`, guides `error-handling.md` and `workflows.md`):
+  - **A throw stops the processor**, which resumes from the same point next run. Handlers can return `skip()` or
+    `stop()`.
+  - **"Never throw in asynchronous handlers":** record a failure event instead.
+  - **No dead-letter queue.**
+  - **Emmett's workflows** are event-sourced process managers (an inbox/outbox stream and an `outputHandler` for
+    external work). A failed external call stops them, with no durable retries.
 - **Temporal (TypeScript SDK) fits ADR-030.**
   - **It runs in containers:**
     - the server is MIT-licensed and self-hosted (Docker Compose or Helm);
@@ -145,27 +162,36 @@ only) and ADR-031 (automations are to-do lists; Proposed until 15.4).
     - a workflow spans slices;
     - its test support is documented for Jest and Mocha, so vitest has to be proven.
 
-**Architecture (ADR-031): a to-do list first, Temporal only where it pays**
+**Architecture (ADR-031, settled with Gary 2026-09-27)**
 
-- **To-do list only:**
-  - just Postgres;
-  - every open item is visible in the model and the UI;
-  - replay-safe;
-  - slices are built one at a time;
-  - the backoff and parking are ours to build (small);
-  - no workflow UI (the to-do read model is the UI).
-- **Temporal as executor:**
-  - proven retries, timers, heartbeats and a UI;
-  - a multi-step external conversation stays in one function;
-  - costs a second state store, determinism rules, and more infrastructure and tests;
-  - tempts people to hide business state in workflows.
-- **So:**
-  - the to-do list always decides *what* is open;
-  - the kit's own processor is the default executor;
-  - Temporal is an opt-in executor per automation, for calls to systems we don't control. It uses `workflowId` =
-    the item key, the item key as the call's idempotency key, and the command's idempotency key. It holds only
-    execution state that can be rebuilt.
-  - Gary chose a spike after the to-do list (15.4), not Temporal from the start.
+- **The model:** the opening event → the to-do list → the automation → the command → the closing event.
+  - A modeled event opens the work. No technical events are appended to signal it.
+- **One processor per automation:** our processing group, with two steps in a declared order for each event.
+  1. **The list step** opens or closes the item.
+  2. **The automation step** runs if the item is open, in the same transaction, so the item is always there.
+     There's no race and no new infrastructure.
+- **Internal work** (an event → one of our commands) runs in the automation step, with the idempotency key
+  `<automation>:<item key>`.
+- **External work runs in Temporal from day one** (Gary):
+  - the automation step starts a workflow with `workflowId` = the item key, so a repeated start is a no-op;
+  - the workflow calls the outside system, then issues the command with the idempotency key;
+  - **retries, backoff and timeouts are Temporal's configuration only**, with no schedules or deadlines of ours.
+- **The closing event ticks the item off.**
+  - Work Temporal gives up on stays open on the list, and Temporal's UI shows why.
+  - **Redrive** (a UI action → a command) is 15.4.
+- **The processor's failure policy follows Axon's default:**
+  - fail fast (back off, retry the same event, block only this processor, show it as blocked);
+  - skip is opt-in (Emmett's `skip`);
+  - no dead-letter queue.
+- **Replays and rebuilds** skip the automation step.
+- **Rejected:**
+  - Kotlin's event-triggered automation;
+  - a separate worker woken by the list's notifications ("two bells");
+  - technical events;
+  - our own retry schedule;
+  - a dead-letter queue;
+  - Emmett workflows as the external executor;
+  - Temporal for internal work.
 
 **Knowledge investment (15.6).** Skills are built today from iteration: build, feedback, lessons, pruning
 (ADR-028). Outside knowledge could feed them too:
@@ -179,8 +205,9 @@ designed later.
 
 **Tasks**
 
-- [x] **15.0 Record.** *Done 2026-09-27*: this phase, ADR-030 and ADR-031 (Proposed), the Decisions Log, the
-  Progress row, and memory.
+- [x] **15.0 Record.** *Done 2026-09-27*: this phase, ADR-030 and ADR-031, the Decisions Log, the Progress row,
+  and memory. The same day, ADR-031 was settled with Gary and moved to Accepted: a processor group, Temporal from
+  day one for external work, fail fast after Axon, redrive later. The blueprint case study was added.
 - [ ] **15.1 Model the restaurant domain** in a new project, `~/Projects/restaurant-orders` (its own repo, so
   the loop can't copy course-enrollment's code), with a new prooph board chapter, through the `event-model` skill
   (emcli only).
@@ -191,31 +218,36 @@ designed later.
     markOrderPaymentFailed.
   - Kitchen orders and order status read models.
   - Screens: Restaurant, Place Order, Kitchen, Order Tracker, and a gateway simulator.
+  - For each automation: whether it's internal or external, and the modeled event that opens its work.
   - No invented events. A gap becomes a hotspot for Gary. The first known gap: with no PaymentRequested event,
     the requester would call the gateway again until the order is paid.
-- [ ] **15.2 The library's automation runtime** (dcb-event-store phase 19; Gary merges library PRs).
-  - Run `pnpm upstream:emmett` first: Emmett's processor and workflow work may apply.
-  - A to-do processor primitive: due items, one transaction per item, a lock, backoff and parking.
-  - A failing handler no longer kills its processor silently.
+- [ ] **15.2 The library's processor failure policy** (dcb-event-store phase 19; Gary merges library PRs).
+  - Run `pnpm upstream:emmett` first.
+  - **Fail fast by default:** log, back off, retry the same event, and block only that processor, with its
+    blocked status and error visible.
+  - **Opt-in skip.**
+  - `createConsumer` never loses a processor.
+  - The handler is told when its processor is rebuilding.
   - Test-first; bench numbers if append or locks are touched.
-- [ ] **15.3 Rewrite `build-automation`.**
-  - Covers: the to-do read model, the processor, the idempotency key, GIVEN/THEN specs, translation slices, and
-    an external-call adapter with a container mock of the gateway.
+- [ ] **15.3 `build-automation`, with Temporal from day one.**
+  - Temporal's server and UI in `docker compose` (ADR-030, on our Postgres) and in testcontainers, and a worker
+    in the kit's runtime.
+  - Vitest proven against Temporal's test server.
+  - A kit helper that composes the list step and the automation step.
+  - The skill covers: internal and external automations, the idempotency key, GIVEN/THEN specs, translation slices
+    (the gateway's webhook), and a container mock of the gateway. The reference's Cloudflare workflow rules are
+    adapted to Temporal.
   - Kit wiring and checks.
   - Proven through the loop on restaurant-orders.
-- [ ] **15.4 The Temporal spike and decision.**
-  - A Temporal server and worker in `docker compose` on our Postgres.
-  - The payment request run through Temporal, behind the same to-do list.
-  - A vitest test with time skipping.
-  - Costs measured.
-  - The reference's workflow rules adapted (Cloudflare → Temporal).
-  - ADR-031 moved to Accepted: go or no-go on the Temporal executor, and the model property that picks it.
+- [ ] **15.4 Redrive failed work** (after 15.3): a UI action and a command that start an open item's workflow
+  again. Design first: who may redrive, what the list shows, and how the command stays idempotent.
 - [ ] **15.5 The whole restaurant domain through the loop** (backend and UI).
   - A domain-bleed review of `build-state-change`, `build-state-view` and `build-screen`: every course-enrollment
     assumption the loop relied on is found and generalised.
   - A manual chapter.
 - [ ] **15.6 Knowledge investment** (above): a design for collating outside sources into the skills and the
-  build, e.g.:
+  build. The first entry is the blueprint `docs/case-studies/automation-todo-list.md`, distilled from the book,
+  Axon 5, Emmett and the reference. Options:
   - a distilled `references/` folder per skill, with its provenance;
   - a ledger like `UPSTREAM.md`;
   - a review routine at phase close.
@@ -2780,14 +2812,19 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-24 | Planning a slice again after the loop blocked it re-queues it (`plannedAt` later than the loop's `blockedAt`) (14.7) | The loop's Blocked was otherwise permanent, which forced hand edits to index.json; timestamps stop a stale plan from re-queuing a fresh block |
 | 2026-09-27 | Automations are made first class in Phase 15, top priority, proven on a second domain (fraktalio's restaurant orders) in its own project | Gary: automation is one of event modeling's three core patterns and has never been through the loop; a new domain shows where course-enrollment specifics have leaked into the skills |
 | 2026-09-27 | Everything runs in containers; no cloud-only services (ADR-030) | Deployable to any cloud or on premises; the reference's Cloudflare Workflows, Durable Objects and Hyperdrive exist nowhere else |
-| 2026-09-27 | Automations are to-do lists; the event store is the only source of truth; effects happen once by idempotency keys; failures back off and park, never skip (ADR-031, Proposed) | Dilger ch. 35; pending work stays visible in the model; replay-safe; the reference's orchestrator keeps its state outside the events and records nothing when a wait times out |
+| 2026-09-27 | Automations are to-do lists; the event store is the only source of truth; effects happen once by idempotency keys (ADR-031). *Refined the same day: "back off and park" became Temporal's retries for external work and fail fast for the processor (rows below)* | Dilger ch. 35; pending work stays visible in the model; replay-safe; the reference's orchestrator keeps its state outside the events and records nothing when a wait times out |
 | 2026-09-27 | Temporal is spiked as an opt-in executor after the to-do list is built (15.4), not adopted up front | Gary's choice. It fits ADR-030 and brings real durable execution for third-party calls, at the cost of a second state store; evidence decides |
+| 2026-09-27 | An automation is one processor with the list step before the automation step, the Axon processing-group idiom (ADR-031) | The automation always sees its item, with no race and no new infrastructure; the book and Gary's Axon 5 example group them the same way |
+| 2026-09-27 | External work runs in Temporal from day one; retries, backoff and timeouts are Temporal configuration only; internal automations stay in the processor (ADR-031, supersedes "Temporal spiked after the to-do list") | Gary: build resilience in from the start and keep retry policy out of our code. Neither Axon 5 nor Emmett offers durable retries of outside calls |
+| 2026-09-27 | Processors fail fast by default (back off, retry the same event, block that processor, show it), skip is opt-in, no dead-letter queue (ADR-031, PLAN 15.2) | Axon 5's default, and Emmett's STOP that resumes; Axon 5 and Emmett have no DLQ, and the to-do list already holds stuck work. Our processor currently dies silently |
+| 2026-09-27 | Technical events to signal work, and a separate worker woken by notifications, rejected | A projection that appends becomes an automation, with its own dual write and duplicate appends on rebuild; the processor group makes a separate worker unnecessary |
+| 2026-09-27 | Failed work is redriven from the UI with a command (15.4), designed after 15.3 | Gary: restarting failed jobs needs its own thought; no schedules or deadlines in the example |
 
 ## Progress
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 15 — Automations (restaurant orders) | 🚧 Top priority | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 (automations are to-do lists; Proposed). Next: 15.1 model the restaurant domain in `~/Projects/restaurant-orders`. Order: model → library runtime → `build-automation` → Temporal spike → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) |
+| 15 — Automations (restaurant orders) | 🚧 Top priority | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), blueprint `docs/case-studies/automation-todo-list.md`. Next: 15.1 model the restaurant domain in `~/Projects/restaurant-orders`. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) |
 | 1 — Stack Scaffolding | ✅ Complete | Verified: init, npm install, tsc, 21/21 unit tests |
 | 2 — State Change Skill | ✅ Complete | 9-step SKILL.md with full DCB patterns |
 | 3 — State View Skill | ✅ Complete | 5-step SKILL.md with Pongo + preferWait patterns |
