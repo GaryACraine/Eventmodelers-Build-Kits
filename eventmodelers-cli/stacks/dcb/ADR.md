@@ -1024,8 +1024,7 @@ Gary wants services built with the kit deployable to any cloud or on premises.
 
 **Consequences:**
 - PLAN 14.8's deploy needs a container path for `web/` (an nginx image) next to S3 and CloudFront.
-- Choosing an engine is part of its spike: the spike runs it in `docker compose` and in a testcontainers test
-  (PLAN 15.3).
+- Adopting an engine includes proving it runs in `docker compose` and in a testcontainers test (PLAN 15.3).
 - The reference's workflow code and skills are adapted, never copied (PLAN 15.3).
 
 
