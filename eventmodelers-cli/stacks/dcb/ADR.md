@@ -982,3 +982,131 @@ and ID flags and example, each query's parameters, each read model's type, and e
   commit body.
 - Two slices modelling the same route (not linked as copies) make the contract use the later one; the export warns.
 
+
+
+### ADR-030: Everything runs in containers; no cloud-only services
+
+**Status:** Accepted
+**Date:** 2026-09-27
+
+**Context:** PLAN Phase 15 takes up automations. Its reference implementation (fraktalio's restaurant
+order-management demo) runs its automation on Cloudflare Workflows. The workflow's state is kept in Durable
+Objects, and Postgres is reached through Hyperdrive. None of these exists outside Cloudflare. Automations will
+bring more engines of this kind (workflow engines, schedulers, queues), and each could tie the kit to one cloud.
+Gary wants services built with the kit deployable to any cloud or on premises.
+
+**Decision:**
+- **Every runtime part of a kit project runs as a container image** that we can run ourselves: the API and its
+  processors, Postgres, any workflow engine (PLAN 15.4: Temporal's server is MIT-licensed and self-hosted), and
+  mocks of external systems. `docker compose up` runs the whole system on one machine; tests use testcontainers,
+  as they do today.
+- **A cloud service may host a standard interface, never replace it.** We may use:
+  - a managed Postgres, as long as the code uses only Postgres;
+  - a static file host for `web/`, such as S3 and CloudFront (PLAN 14.8), as long as the same build is also
+    served from a container (nginx);
+  - a managed runtime for our containers.
+
+  We may not use APIs that exist only in one cloud: Cloudflare Workflows, Durable Objects or Hyperdrive, AWS Step
+  Functions, Lambda-only triggers, and the like.
+- **Every external engine the kit adopts must be self-hostable in containers.** It may offer a managed version
+  (Temporal Cloud), but the kit must not need it.
+
+**Why:**
+- **Portability.** The same system runs on a laptop, on premises, and on any cloud.
+- **Testability.** Integration tests run the real engines in containers, with no emulators and no accounts.
+- **One mental model.** A project's `docker-compose.yml` lists everything it needs.
+
+**Alternatives considered:**
+- **Adopt the reference's Cloudflare stack.** Rejected: it locks us into one vendor, and Workflows can't run on
+  premises.
+- **Abstract over the cloud-specific services** (an adapter per cloud). Rejected: it means several
+  implementations to maintain, and the lowest common denominator of their semantics.
+
+**Consequences:**
+- PLAN 14.8's deploy needs a container path for `web/` (an nginx image) next to S3 and CloudFront.
+- Choosing an engine is part of its spike: the spike runs it in `docker compose` and in a testcontainers test
+  (PLAN 15.4).
+- The reference's workflow code and skills are adapted, never copied (PLAN 15.4).
+
+
+### ADR-031: Automations are to-do lists; the event store is the only source of truth
+
+**Status:** Proposed. The default executor is decided here; the Temporal executor is decided by PLAN 15.4's spike.
+**Date:** 2026-09-27
+
+**Context:** `build-automation` is still Phase 4's template, and no automation has been through the loop. It
+builds an event handler that issues a command and **swallows its errors**
+(`catch → console.error`). In the library, a handler that throws rolls back and ends its processor, and
+`createConsumer` doesn't restart it. So a failed automation today is either skipped for good or stops quietly.
+
+We weighed three sources:
+- **Fraktalio's reference demo** orchestrates payment with a Cloudflare Workflow:
+  - the UI starts it, and it places the order;
+  - it waits up to an hour for a gateway signal;
+  - it then marks the order paid or failed.
+
+  It has no to-do list, and it isn't event-driven. Its progress lives in the workflow's own store. It resolves
+  the dual write with idempotency keys (`workflowId:step`). The pending work isn't visible in the event model, and
+  a timed-out wait records no event.
+- **Dilger's *Understanding Eventsourcing*:**
+  - **ch. 35, "Processor-TODO-List":** a read model lists the processor's open tasks. Events open a task and
+    events close it, and the command's own event checks it off. A task that fails stays open and is retried until
+    closed or parked. An eventually consistent back-channel can run a task twice, which idempotency or an
+    immediately consistent back-channel prevents. It prefers choreography over a saga orchestrator.
+  - **ch. 26:** translate external events first; specs are GIVEN/THEN; handlers fire again on replay; errors
+    must not be swallowed.
+- **emcli** already models this: `automation` elements with `processorType`, and the rule that every automation
+  has a to-do list (`skills/event-model/references/slicing.md`).
+
+**Decision:**
+- **Every automation is a to-do list, and the event store is the only source of truth.**
+  - A to-do read model is opened and closed by events. It's in the model and shown on the board.
+  - A processor works the list's open items, one command per item, and that command's event closes the item.
+  - Waiting on an outside party is an open item plus a translation slice (its webhook → a command → an event that
+    closes the item). It is never state held inside an engine.
+- **Effects happen once, by idempotency.**
+  - The command carries `idempotencyKey = <automation>:<item key>`. The library turns that into deterministic
+    event ids, and the append drops duplicates.
+  - An external call carries the same key.
+  - Running an item twice is harmless, so the back-channel may be eventually consistent. It's made inline
+    (ADR-021) only when even a repeated external call must be avoided.
+- **Failures never skip and never stop the processor.**
+  - An item records its attempts, next-attempt time and last error.
+  - A retry backs off, and after N attempts the item is **parked**: it stays visible and can be retried by hand.
+  - A domain rejection of the command is a decided outcome, recorded as the command slice specifies, not retried
+    for ever.
+- **The default executor is the kit's own to-do processor on Postgres**, with no engine. The library runtime is
+  PLAN 15.2 and the skill is 15.3.
+- **Temporal is a candidate opt-in executor** (PLAN 15.4). It is only for automations that call systems we don't
+  control and need long retry horizons, heartbeats, rate limits, or durable deadlines within a step:
+  - the same to-do list starts one workflow per item, with `workflowId` = the item key and the `USE_EXISTING`
+    conflict policy;
+  - activities make the external call with the item key, then issue the command with the idempotency key;
+  - Temporal holds only execution state that can be rebuilt, and business facts stay in the event store.
+
+  Chosen per automation in the model, never for internal event → command reactions.
+
+**Why:**
+- **One source of truth, visible.** Pending work is a read model: the board shows it and the UI can list it. Losing
+  an engine's history loses nothing, because the list still names what to do.
+- **It's the event model's shape.** A to-do read model, an automation and a command are slices the loop already
+  builds one at a time. An orchestrator spans many slices in one function.
+- **Replay-safe.** A rebuilt read model re-lists only open items, where an event-triggered handler would fire
+  again on every replay.
+- **Simplest to run.** It needs only Postgres (ADR-030). An engine is added only where its guarantees pay for
+  themselves.
+
+**Alternatives considered:**
+- **An event-triggered handler per automation** (today's skill). Rejected as the default: errors are either lost
+  or fatal, replays re-fire, and pending work is invisible. It remains the special case of a to-do list whose
+  items open and close in the same step.
+- **A workflow engine as the orchestrator** (the reference's pattern, on Temporal). Rejected: business state moves
+  into the engine, the model stops showing the process, and a workflow cuts across slices.
+- **Temporal for every automation.** Rejected: most automations are internal event → command reactions, where
+  the processor, the lock and idempotency already do the job.
+
+**Consequences:**
+- The library needs a to-do processor primitive: due items, one transaction per item, a lock, backoff and
+  parking. A failing handler must stop killing its processor (PLAN 15.2).
+- `build-automation` is rewritten around the to-do read model, the idempotency key and GIVEN/THEN specs (PLAN 15.3).
+- The model needs an executor property per automation if the spike adopts Temporal (PLAN 15.4).
