@@ -395,7 +395,8 @@ designed later.
       its stock. ADR-034 and the skill now bound the "look again" to 3 attempts, then decline;
     - **open:** Temporal down leaves `/health/processors` saying `running` for the Payment Requester, not `blocked`;
     - **for 15.4:** a workflow whose retries run out leaves its order `CREATED` with its stock held;
-    - `paymentMethodNonce` stays optional in the model on purpose: an order of zero total is exempt from payment.
+    - `paymentMethodNonce` stays optional in the model on purpose: an order of zero total is exempt from payment;
+    - what we learned is in the manual's new §21 *Automations in depth* and `e2e/README.md`'s *What we learned*.
   - Temporal's server and UI in `docker compose` (ADR-030, on our Postgres) and in testcontainers, and a worker
     in the kit's runtime.
   - Vitest proven against Temporal's test server.
@@ -3047,6 +3048,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-28 | `findExistingPosition` also finds commands of several events (`uuidv5(key:0)`) | A repeated `placeOrder` (three events) with the same `Idempotency-Key` was decided again |
 | 2026-09-28 | The loop's model, effort and per-job budget are pinned per project (restaurant-orders: Sonnet, medium, $2), not inherited from the developer's own settings; each run's cost is recorded per slice (PLAN 15.9) | Gary: token usage is a standing concern. The restaurant backend ran on Opus by accident (about $22). Pinned runs are cheaper and reproducible, and per-slice costs show where the skills need work |
 | 2026-09-28 | Model A/B testing and skill distillation for Sonnet are deferred to the next new project | Gary: finish the restaurant feature first, without the overhead |
+| 2026-09-28 | What running automations taught us goes in the manual (§21, general) and the project's `e2e/README.md` (specific, next to the cases that proved it), not only in commits | Gary: the Temporal and Braintree knowledge is valuable and mustn't be lost; §21 is appended so the chapters that PLAN and the manual cite keep their numbers |
 
 ## Progress
 
