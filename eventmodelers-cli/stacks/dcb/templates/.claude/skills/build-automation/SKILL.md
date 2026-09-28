@@ -55,6 +55,10 @@ retried by Temporal. Swallowing either loses the work silently.
 The automation's **name** is the part before `:` in its idempotency key or workflow id (`stock-returner`,
 `payment-request`).
 
+**Names in code** are the project's, not the model's: a slice's folder is its `folder` in `index.json` (lowercase,
+no hyphens: `stocktoreturn/`), and import what the list's `readModel.ts` and each command's `decider.ts` actually
+export (`stockToReturn`, `returnStockDecider`). The examples below use the restaurant project's names.
+
 ## Step 2: Check what it needs is built
 
 The loop builds an automation after the slices it needs, so these exist:
@@ -76,8 +80,8 @@ File: `src/contexts/{context}/slices/{slicename}/processor.ts`
 
 ```typescript
 import { defineAutomation } from "../../../../shared/automations.js"
-import { StockToReturn, type StockToReturnDoc } from "../stock-to-return/readModel.js"
-import { returnStock } from "../return-stock/decider.js"
+import { stockToReturn, type StockToReturnDoc } from "../stocktoreturn/readModel.js"
+import { returnStockDecider } from "../returnstock/decider.js"
 
 /**
  * Stock Returner (internal): the to-do list StockToReturn, opened by orderPaymentFailed, closed by stockReturned.
@@ -85,10 +89,10 @@ import { returnStock } from "../return-stock/decider.js"
  */
 export const stockReturner = defineAutomation<StockToReturnDoc>({
     name: "stock-returner",
-    todoList: StockToReturn,
+    todoList: stockToReturn,
     triggers: ["orderPaymentFailed"],
     act: async ({ item, issue }) =>
-        issue(returnStock, {
+        issue(returnStockDecider, {
             type: "returnStock",
             data: { orderId: item.orderId, restaurantId: item.restaurantId, menuItems: item.menuItems }
         })
@@ -103,7 +107,7 @@ export const stockReturner = defineAutomation<StockToReturnDoc>({
 ### Wiring (`src/index.ts`, committed separately: `chore: wire <Slice Name>`)
 
 ```typescript
-import { stockReturner } from "./contexts/restaurant/slices/return-failed-order-stock/processor.js"
+import { stockReturner } from "./contexts/restaurant/slices/returnfailedorderstock/processor.js"
 
 const automations: Automation[] = [stockReturner]
 ```
@@ -158,8 +162,8 @@ The workflow runs in Temporal's sandbox and is replayed from its history:
 import type { EventStore } from "@dcb-es/event-store"
 import type { Pool } from "pg"
 import { issueOnce } from "../../../../shared/automations.js"
-import { markOrderPaid } from "../mark-order-paid/decider.js"
-import { markOrderPaymentFailed } from "../mark-order-payment-failed/decider.js"
+import { markOrderPaidDecider } from "../markorderpaid/decider.js"
+import { markOrderPaymentFailedDecider } from "../markorderpaymentfailed/decider.js"
 
 export type ChargeAnswer = { outcome: "paid" } | { outcome: "declined"; reason: string }
 
@@ -167,9 +171,9 @@ export function paymentRequestActivities(deps: { eventStore: EventStore; pool: P
     return {
         async chargeCard(input: PaymentRequestInput): Promise<ChargeAnswer> { /* the SDK call, below */ },
         recordPaid: (orderId: string) =>
-            issueOnce(deps, `payment-result:${orderId}`, markOrderPaid, { type: "markOrderPaid", data: { orderId } }),
+            issueOnce(deps, `payment-result:${orderId}`, markOrderPaidDecider, { type: "markOrderPaid", data: { orderId } }),
         recordFailed: (orderId: string, reason: string) =>
-            issueOnce(deps, `payment-result:${orderId}`, markOrderPaymentFailed, {
+            issueOnce(deps, `payment-result:${orderId}`, markOrderPaymentFailedDecider, {
                 type: "markOrderPaymentFailed",
                 data: { orderId, reason }
             })
@@ -193,13 +197,13 @@ export type PaymentRequestActivities = ReturnType<typeof paymentRequestActivitie
 
 ```typescript
 import { defineAutomation } from "../../../../shared/automations.js"
-import { PaymentsAwaiting, type PaymentsAwaitingDoc } from "../payments-awaiting/readModel.js"
+import { paymentsAwaiting, type PaymentsAwaitingDoc } from "../paymentsawaiting/readModel.js"
 import type { PaymentRequestInput } from "./workflow.js"
 
 /** Payment Requester (external): one workflow per order, payment-request:<orderId>. */
 export const paymentRequester = defineAutomation<PaymentsAwaitingDoc>({
     name: "payment-request",
-    todoList: PaymentsAwaiting,
+    todoList: paymentsAwaiting,
     triggers: ["paymentInitiated"],
     act: async ({ event, start }) => {
         const data = event.event.data as PaymentRequestInput
@@ -215,7 +219,7 @@ finished, does nothing.
 ### Registering it
 
 - `src/workflows.ts`: add **one line** (in the slice commit; the file only grows):
-  `export { paymentRequest } from "./contexts/restaurant/slices/request-payment/workflow.js"`
+  `export { paymentRequest } from "./contexts/restaurant/slices/requestpayment/workflow.js"`
 - `src/index.ts` (the wiring commit): add the automation to `automations`, and its activities to `activities`:
   ```typescript
   const activities = {
@@ -251,11 +255,11 @@ starts the read models and automations as the app does, on a fresh database per 
 import { describe, test, expect } from "vitest"
 import { automationTestApp } from "@test/automationHarness"
 import { orderPaymentFailed, stockDeducted, stockReturned } from "../../Events.js"
-import { StockToReturn } from "../stock-to-return/readModel.js"
+import { stockToReturn } from "../stocktoreturn/readModel.js"
 import { stockReturner } from "./processor.js"
 
 describe("return failed order stock", () => {
-    const app = automationTestApp({ readModels: [StockToReturn], automations: [stockReturner] })
+    const app = automationTestApp({ readModels: [stockToReturn], automations: [stockReturner] })
 
     test("returns the stock of an order whose payment failed", async () => {
         await app.given(stockDeducted({ … }), orderPaymentFailed({ … }))
@@ -280,7 +284,7 @@ afterAll(async () => { await temporal?.stop(); await mock?.stop() })
 describe("request payment", () => {
     const taskQueue = "request-payment-test"
     const app = automationTestApp({
-        readModels: [PaymentsAwaiting],
+        readModels: [paymentsAwaiting],
         automations: [paymentRequester],
         workflows: { start: (...args) => temporalWorkflowStarter(temporal.env.client, taskQueue).start(...args) }
     })
