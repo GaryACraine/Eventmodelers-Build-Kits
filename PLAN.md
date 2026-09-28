@@ -303,13 +303,39 @@ designed later.
     - the pre-commit slice guard blocks the scaffold's own first commit (event-feed and openapi are slice
       folders), so **manual §4's first commit fails**. It was committed with `--no-verify`.
 - [ ] **15.2 The library's processor failure policy** (dcb-event-store phase 19; Gary merges library PRs).
-  - Run `pnpm upstream:emmett` first.
+  **Built 2026-09-28: [dcb-event-store PR #29](https://github.com/GaryACraine/dcb-event-store/pull/29), waiting for
+  Gary's merge.** Tick when merged.
+  - Run `pnpm upstream:emmett` first. *Done: no new Emmett PRs to triage.*
   - **Fail fast by default:** log, back off, retry the same event, and block only that processor, with its
     blocked status and error visible.
   - **Opt-in skip.**
   - `createConsumer` never loses a processor.
   - The handler is told when its processor is rebuilding.
   - Test-first; bench numbers if append or locks are touched.
+  - **What the library now does** (library PLAN §11g, `docs/postgres/event-handling.md`):
+    - `onError` on each processor:
+      - `"retry"` is the default: roll back, log, then retry the same event after 1 s, doubling to 60 s
+        (`backoff`);
+      - `"skip"` logs and moves past the event;
+      - `"stop"` rejects the promise, as before. It is kept by `rebuildProjection` (a job its caller waits on) and by
+        `runHandler`;
+      - a function can decide per error.
+    - Only the handler's own errors follow `onError`. A lost lock or a checkpoint clash still ends the processor.
+    - `status()` on each processor and on the consumer shows `running`, `blocked` (error, event, attempts, since,
+      next attempt), `restarting` or `stopped`. The bookmark row holds the same (`blocked_*` columns), and
+      `readProcessorStatuses(pool)` reads it.
+    - `createConsumer` starts a processor again after the backoff when it ends with an error (for example, its lock
+      held by another instance), so its promises settle only on `stop()`.
+    - `handlerFactory(client, { rebuilding })` and `ProjectionContext.rebuilding` (set by `rebuildProjection`).
+  - **Proof:** 11 new processor and consumer tests and 2 rebuild tests, all green. The full library suite passes,
+    plus a new example, `course-manager-cli-with-failure-policy`: a read model blocked by a bug catches up once it's
+    fixed, and an audit log skips. No bench run: append, read and locks are unchanged.
+  - **For the kit (15.3):**
+    - Projects pick up the new default when they next install the library. Their async read models then retry
+      instead of dying silently, with no kit change.
+    - The automation helper reads `rebuilding` to skip its automation step.
+    - Show `consumer.status()` or `readProcessorStatuses` on a health or status route. That's decided with 15.3 and
+      15.4's redrive screen.
 - [ ] **15.3 `build-automation`, with Temporal from day one.**
   - Temporal's server and UI in `docker compose` (ADR-030, on our Postgres) and in testcontainers, and a worker
     in the kit's runtime.
@@ -2914,6 +2940,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-27 | An automation is one processor with the list step before the automation step, the Axon processing-group idiom (ADR-031) | The automation always sees its item, with no race and no new infrastructure; the book and Gary's Axon 5 example group them the same way |
 | 2026-09-27 | External work runs in Temporal from day one; retries, backoff and timeouts are Temporal configuration only; internal automations stay in the processor (ADR-031, supersedes "Temporal spiked after the to-do list") | Gary: build resilience in from the start and keep retry policy out of our code. Neither Axon 5 nor Emmett offers durable retries of outside calls |
 | 2026-09-27 | Processors fail fast by default (back off, retry the same event, block that processor, show it), skip is opt-in, no dead-letter queue (ADR-031, PLAN 15.2) | Axon 5's default, and Emmett's STOP that resumes; Axon 5 and Emmett have no DLQ, and the to-do list already holds stuck work. Our processor currently dies silently |
+| 2026-09-28 | Library phase 19: a rebuild keeps "stop" (it fails rather than blocks), a consumer restarts a processor that ends with an error, and the blocked status is stored in the bookmark row as well as in memory (PLAN 15.2) | A rebuild is a job its caller (startup) waits on, so blocking there would hang the app. A running processor must never be lost (ADR-031). The row lets another instance, `psql` or a later status screen see a block |
 | 2026-09-27 | Technical events to signal work, and a separate worker woken by notifications, rejected | A projection that appends becomes an automation, with its own dual write and duplicate appends on rebuild; the processor group makes a separate worker unnecessary |
 | 2026-09-27 | Failed work is redriven from the UI with a command (15.4), designed after 15.3 | Gary: restarting failed jobs needs its own thought; no schedules or deadlines in the example |
 | 2026-09-27 | Redrive is an open design question, recorded as ADR-032 (Proposed) | Gary: design questions go in ADR.md. Leaning: a business-named failure outcome event marks the item failed; a *Retry* command from the list's screen reopens it, and the processor starts the same workflow again (`ALLOW_DUPLICATE_FAILED_ONLY`); no timers |
@@ -2929,7 +2956,7 @@ What each `build-*` skill generates and what it verifies:
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 15 — Automations (restaurant orders) | 🚧 Top priority | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27/28: the Restaurant Orders chapter (25 slices, 63 scenarios, 15 mockups) on prooph board, with stock and an internal automation (the Stock Returner); emcli push fixes (lanes, links, skipped deletions). 15.8 added: deciding from a growing event stream. Next: 15.2 the library's failure policy. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) |
+| 15 — Automations (restaurant orders) | 🚧 Top priority | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27/28: the Restaurant Orders chapter (25 slices, 63 scenarios, 15 mockups) on prooph board, with stock and an internal automation (the Stock Returner); emcli push fixes (lanes, links, skipped deletions). 15.8 added: deciding from a growing event stream. 15.2 built 2026-09-28 (library PR #29, awaiting Gary's merge). Next: 15.3 `build-automation` with Temporal. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) |
 | 1 — Stack Scaffolding | ✅ Complete | Verified: init, npm install, tsc, 21/21 unit tests |
 | 2 — State Change Skill | ✅ Complete | 9-step SKILL.md with full DCB patterns |
 | 3 — State View Skill | ✅ Complete | 5-step SKILL.md with Pongo + preferWait patterns |
