@@ -6,11 +6,17 @@
 // DCB path structure: src/contexts/{context}/slices/{slicename}/
 // Exceptions:
 //   - src/contexts/{context}/Events.ts  (shared event union — append-only)
-//   - src/index.ts                      (bootstrap — projection/route wiring)
+//   - src/index.ts                      (bootstrap — projection/route/automation wiring)
+//   - src/workflows.ts                  (the Temporal worker's workflows — append-only, ADR-033)
+//   - mocks/{system}/**                 (an external system's container mock, built with its automation — ADR-033)
+//   - docker-compose.yml                (a mock's service)
 
 const ALLOWED_EXCEPTIONS = [
   /^src\/contexts\/[^/]+\/Events\.ts$/,   // per-context event union (append-only)
   /^src\/index\.ts$/,                     // projection registration, route wiring
+  /^src\/workflows\.ts$/,                 // external automations' workflows (append-only)
+  /^mocks\/[^/]+\//,                      // an external system's mock
+  /^docker-compose\.yml$/,                // a mock's compose service
 ];
 
 // Captures context/slicename to detect cross-slice commits

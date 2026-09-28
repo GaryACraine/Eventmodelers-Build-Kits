@@ -81,8 +81,11 @@ When asked to build a slice, always follow this flow:
 
 1. Read the slice definition from `.build-kit/.slices/<context>/<slicename>/slice.json`.
 2. Determine the slice type:
-   - **Translation** — `sliceType === "TRANSLATION"` → default to `/build-automation`
-   - **Automation** — `processors` array is non-empty → invoke `/build-automation`
+   - **Translation** — `sliceType === "TRANSLATION"`, or an automation with `processorType: "synchronous"` (another
+     system's event translated at a webhook) → `/build-automation`. Not yet proven in a project (ADR-033): if the skill
+     has no section for it, block the slice with `request-feedback`.
+   - **Automation** — `processors` array is non-empty → invoke `/build-automation`: a to-do list worked by one
+     processor, internal (our command) or external (a Temporal workflow) (ADR-031, ADR-033)
    - **State-view** — `sliceType === "STATE_VIEW"`, or `projections`/`queries` array is non-empty → invoke `/build-state-view`
      - Every read model type goes to `/build-state-view`: `database-projected` (async, the default), `inline-projected`
        (updated inside the append transaction) and `live-report` (folded from the event store per read). It writes one

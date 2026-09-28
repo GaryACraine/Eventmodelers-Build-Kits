@@ -276,6 +276,13 @@ designed later.
       slices), not further tables.
     - **Rejected:** a Stock Keeper automation that deducted when the order was prepared. It would let orders
       oversell between placing and deducting.
+  - **Braintree, added 2026-09-28** (ADR-034, a commercial directive; project merges `5d04d97`, `6b2a239`):
+    - `placeOrder` takes an optional `paymentMethodNonce` (a new rule: an order over zero needs one), and
+      `paymentInitiated` carries it to the Payment Requester;
+    - the Payment Requester relates-to `markOrderPaid` and `markOrderPaymentFailed`, with three GIVEN/THEN scenarios
+      on Braintree's sandbox test nonces (the order placed, its payment initiated);
+    - removed: the Payment Gateway lane, `paymentReceived` and the *translate payment result* slice (Braintree sends
+      no card webhooks). The chapter is 24 slices; `completeness` 0 errors.
   - **Found in emcli** (its `ISSUES.md`):
     - **Fixed** (merged, `fc4a1b3`): pushing a new chapter with two user lanes failed halfway (the board refuses
       a user lane at the information-flow lane's index). It was recovered with a hand-written baseline.
@@ -336,7 +343,41 @@ designed later.
     - The automation helper reads `rebuilding` to skip its automation step.
     - Show `consumer.status()` or `readProcessorStatuses` on a health or status route. That's decided with 15.3 and
       15.4's redrive screen.
-- [ ] **15.3 `build-automation`, with Temporal from day one.**
+- [ ] **15.3 `build-automation`, with Temporal from day one.** *Kit built 2026-09-28 (the loop proof on
+  restaurant-orders is next).* Decisions: ADR-033 (the runtime), ADR-034 (Braintree, a commercial directive).
+  - **Research:** Temporal TS SDK 1.24.0; compose from `temporalio/samples-server` (`admin-tools` sets up Temporal's
+    databases on our Postgres; `auto-setup` is retired); a vitest spike passed against the time-skipping server and a
+    `temporalio/temporal` container.
+  - **The scaffold:**
+    - `src/shared/automations.ts`: `defineAutomation` (to-do list, triggers, `act`); `automationProcessor` runs
+      the list step, then, for a trigger and unless rebuilding, `act` on the item **as it stands now** (`readLive`);
+      `issue` / `issueOnce` (idempotency key `uuidv5("<automation>:<key>")`); `start` (workflow id
+      `<automation>:<key>`, `USE_EXISTING` / `REJECT_DUPLICATE`);
+    - `src/shared/temporal.ts`: env config, a lazy client, the workflow starter, a worker that bundles once and
+      retries its connection (1 s doubling to 60 s);
+    - `startReadModels(…, { processorFor })`, `GET /health/processors`, `src/workflows.ts`, `automations` and
+      `activities` in `index.ts`;
+    - `docker-compose.yml`: Temporal's admin-tools setup, server, namespace and UI (:8080) on our Postgres; `npm
+      run infra:start`;
+    - harnesses: `automationTestApp` (GIVEN in one append, `appended`, `waitForAppended`, `started`) and
+      `startTemporalTestServer` / `withWorker`;
+    - `findExistingPosition` finds commands of several events.
+  - **The loop:** `10-slice-scope` allows `src/workflows.ts`, `mocks/<system>/` and `docker-compose.yml`; a new
+    `18-workflows-append-only`; `30-test-file-present` covers `workflow.ts` and `activities.ts`; routing marks
+    translations unproven.
+  - **`build-automation`** rewritten: internal and external, the workflow rules adapted from the reference
+    (determinism, serializable results, retries as configuration, business answers recorded as our commands), the
+    provider's official SDK, never charging twice, mocks after the provider's API, GIVEN/THEN tests.
+  - **emcli** (merged): `spec step example` adds a field the element gained later; the export queues an automation
+    after what it needs.
+  - **Proof so far:** the scaffold's 94 tests (14 new, including processor → Temporal → activity → our command), 40
+    check tests and emcli's tests pass; the compose stack sets Temporal up on our Postgres (safe to re-run), a
+    workflow ran through it, and `npm start` serves `/health/processors`.
+  - **Found:** the library's `dist` predated 15.2, so linked projects didn't have the failure policy until it was
+    rebuilt (`pnpm -r build`); the Temporal test server outlives each test's database, so tests need their own item
+    keys.
+  - **Next:** kit update into restaurant-orders (kit-drift; add the `braintree` SDK, which a slice commit can't),
+    export the whole backend, and Gary runs the loop; then the end-to-end and failure paths.
   - Temporal's server and UI in `docker compose` (ADR-030, on our Postgres) and in testcontainers, and a worker
     in the kit's runtime.
   - Vitest proven against Temporal's test server.
@@ -2951,12 +2992,20 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-28 | `placeOrder` keeps taking prices from the customer's request, as in the reference | Gary: for brevity |
 | 2026-09-28 | Stock added to Restaurant Orders: `placeOrder` rejects short stock, deciding from the stock events (never a read model), and records `stockDeducted` in the same decision; the Stock Returner (internal) gives a failed order's stock back | Gary: the domain needed an internal automation, and a decision must not rest on an eventually consistent read model. Deducting in the same decision can't oversell; a later deduction (at preparation) could |
 | 2026-09-28 | Deciding from a growing event stream is a pattern to investigate (PLAN 15.8) | Gary: revise later how to make the decision efficient when the stream grows large |
+| 2026-09-28 | The payment gateway is Braintree, a commercial directive (ADR-034); Stripe and Paddle set aside | Gary's company is in the Isle of Man, and Stripe doesn't serve the Crown dependencies. Examples follow providers the business can contract |
+| 2026-09-28 | The card nonce travels on `placeOrder` and `paymentInitiated`; the Payment Requester charges it and records the answer itself; no gateway webhook or translation slice | Braintree answers a card sale at once and sends no card webhooks. The nonce is single use and never goes on a read model |
+| 2026-09-28 | An automation acts on its item as it stands now (a live fold of the item's events), not as the stored list stood at the event (ADR-033) | A new automation catching up on old history would otherwise charge orders paid long ago; it's also how a GIVEN/THEN spec and the book's to-do list read |
+| 2026-09-28 | Temporal's worker runs in the API's process; tests use a `temporalio/temporal` dev-server container; Temporal's databases live on the project's Postgres (ADR-033) | One image and one `npm start`; real engines in containers (ADR-030); nothing of ours needs time skipping |
+| 2026-09-28 | The loop builds an external system's mock in the automation's job, after the provider's published API and SDK (`mocks/<system>/`) | Gary: the skill must learn to build mocks; the code that calls the mock is the production code, only the host changes |
+| 2026-09-28 | 15.3 runs the whole restaurant backend through the loop; 15.5 keeps the UI, the domain-bleed review and the manual | Gary: both automations proven end to end need the slices they depend on |
+| 2026-09-28 | The export queues an automation's job after its to-do list and the commands it issues (emcli `buildOrder`) | On the timeline an automation precedes its command, and one job builds one slice |
+| 2026-09-28 | `findExistingPosition` also finds commands of several events (`uuidv5(key:0)`) | A repeated `placeOrder` (three events) with the same `Idempotency-Key` was decided again |
 
 ## Progress
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 15 — Automations (restaurant orders) | 🚧 Top priority | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27/28: the Restaurant Orders chapter (25 slices, 63 scenarios, 15 mockups) on prooph board, with stock and an internal automation (the Stock Returner); emcli push fixes (lanes, links, skipped deletions). 15.8 added: deciding from a growing event stream. 15.2 done 2026-09-28 (library PR #29 merged). Next: 15.3 `build-automation` with Temporal. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) |
+| 15 — Automations (restaurant orders) | 🚧 Top priority | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27/28: the Restaurant Orders chapter (25 slices, 63 scenarios, 15 mockups) on prooph board, with stock and an internal automation (the Stock Returner); emcli push fixes (lanes, links, skipped deletions). 15.8 added: deciding from a growing event stream. 15.2 done 2026-09-28 (library PR #29 merged). 15.3 kit built 2026-09-28 (ADR-033 runtime, ADR-034 Braintree as a commercial directive); next: the loop proof on restaurant-orders. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) |
 | 1 — Stack Scaffolding | ✅ Complete | Verified: init, npm install, tsc, 21/21 unit tests |
 | 2 — State Change Skill | ✅ Complete | 9-step SKILL.md with full DCB patterns |
 | 3 — State View Skill | ✅ Complete | 5-step SKILL.md with Pongo + preferWait patterns |

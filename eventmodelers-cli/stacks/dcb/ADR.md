@@ -1031,7 +1031,8 @@ Gary wants services built with the kit deployable to any cloud or on premises.
 ### ADR-031: Automations are to-do lists worked by a processor group; external work runs in Temporal
 
 **Status:** Accepted, 2026-09-27. Temporal as the executor for external work is subject to PLAN 15.3's proof
-(running in containers and tested under vitest).
+(running in containers and tested under vitest). Temporal under vitest was proven in a spike on 2026-09-28; the kit's
+runtime is ADR-033, and the loop proof is recorded in PLAN 15.3.
 **Date:** 2026-09-27
 **Blueprint:** [`docs/case-studies/automation-todo-list.md`](../../../docs/case-studies/automation-todo-list.md)
 
@@ -1200,3 +1201,148 @@ missing dependency. That's fixed by a deploy or by restarting the dependency, no
   slice.
 - `build-automation` (15.3) and the `event-model` skill (15.1) learn that shape.
 - Temporal's reuse policy is set in the kit's workflow starter.
+
+**Added 2026-09-28 (PLAN 15.3, ADR-034):**
+- **A declined card isn't work Temporal gave up on.** Braintree answers a sale at once. A decline is a business
+  result, and the Payment Requester's workflow records it (`markOrderPaymentFailed`), which closes the item.
+- **Paying again after a decline needs a new card nonce from the customer.** The first nonce is single use and
+  already spent. So retrying a declined payment is the **customer's** action, from their order screen, not an
+  operator's redrive.
+- **The operator's redrive** is left for work Temporal gave up on after technical errors: the gateway down or
+  timing out beyond the retry policy. That's the case this ADR decides.
+
+
+### ADR-033: The kit's automation runtime: Temporal on our Postgres, a to-do list processor helper
+
+**Status:** Accepted, 2026-09-28 (PLAN 15.3). Proven once the restaurant domain's two automations have run
+through the loop (PLAN 15.3's record).
+**Date:** 2026-09-28
+
+**Context:** ADR-031 settles what an automation is: a to-do list and one processor, which runs the list step and
+then the automation step for each event. Internal work runs in that processor, and external work runs in Temporal.
+The kit had none of the parts. The library's processor now fails fast and says when it's rebuilding (PLAN 15.2).
+Temporal's TypeScript SDK (1.24.0) was proven under vitest in a spike (2026-09-28): a worker bundling a `.ts`
+workflow ran against Temporal's time-skipping server and against a `temporalio/temporal` dev-server container, and
+a second start with the same workflow id returned the same run.
+
+**Decision:**
+- **Temporal runs on our Postgres, in `docker compose`.**
+  - `temporalio/admin-tools` creates Temporal's own databases (`temporal`, `temporal_visibility`) on the project's
+    Postgres server, then `temporalio/server` and `temporalio/ui` start (the UI on :8080).
+  - Versions are pinned, following Temporal's `samples-server/compose` (its `auto-setup` image is retired).
+- **The worker runs in the API's process.** There's one image and one `npm start`.
+  - The worker connects lazily and retries with backoff, so the API still serves when Temporal is down.
+  - Meanwhile an automation that needs Temporal blocks its processor (fail fast, ADR-031) and shows it, until
+    Temporal is back.
+  - The worker is split into its own process only when load says so.
+- **The helper, `defineAutomation`** (`src/shared/automations.ts`):
+  - takes the automation's to-do list (a `database-projected` read model), its triggers (the model's `reacts-to`
+    events) and its `act`;
+  - its processor takes the list's projection name, so the list's bookmark is the automation's progress;
+  - for each event it runs the list step. Then, unless the processor is rebuilding and only for a trigger event, it
+    reads the item **as it stands now** and calls `act` if the item is open;
+  - "as it stands now" is a live fold of that key's events with the list's own definition (`readLive`, ADR-022).
+    Once the processor has caught up, that's the list's row. While it catches up on history (a new automation
+    deployed onto old events), it differs: the stored row reflects only the events up to this one, so an order paid
+    long ago would still look open and be charged again. The live fold already sees the later `orderPaid`. This is
+    also how a GIVEN/THEN spec reads ("given the payment was initiated and the order was paid, nothing happens"),
+    and the book's to-do list, which is judged on its current state;
+  - `act` gets `issue` (our command, with the idempotency key) and `start` (a Temporal workflow);
+  - it never catches an error.
+- **Keys:**
+  - a command's idempotency key is `uuidv5("<automation>:<item key>")`. Before handling it, the helper looks for an
+    earlier append under that key or its `:0` variant (commands that record several events);
+  - a workflow's id is `<automation>:<item key>`, started with `USE_EXISTING` on conflict and `REJECT_DUPLICATE`
+    on reuse. An "already started" error counts as done. PLAN 15.4 revisits the reuse policy for redrive (ADR-032).
+- **An external automation's workflow** calls the outside system in an activity, using the provider's official
+  SDK.
+  - A business answer (paid, declined) is a result, and the workflow issues our command for it through an
+    activity, with the idempotency key.
+  - A technical error (network, 5xx) is thrown, so Temporal retries it by the workflow's configuration.
+  - An answer that arrives later, by webhook, would come in through a translation route. None is proven yet, so
+    the skill doesn't teach it.
+- **External systems are mocked after the real provider's published API and SDK**, in `mocks/<system>/`: a small
+  Node server, a Dockerfile and a compose service.
+  - It serves only what our SDK calls, and it answers the provider's documented sandbox test values.
+  - The host is config, so pointing at the provider's sandbox or production is a config change.
+  - The loop builds the mock in the external automation's job.
+- **Tests run Temporal in a container** (a `temporalio/temporal` dev server), reached through
+  `@temporalio/testing`'s `createFromExistingServer` (ADR-030: real engines in containers). The time-skipping
+  binary isn't used: nothing of ours waits on long timers.
+- **`GET /health/processors`** returns every processor's status (`consumer.status()`), so a blocked automation is
+  visible now. PLAN 15.4's screen builds on it.
+
+**Why:**
+- **Only one new engine.** Everything else is the library's processor, a read model and idempotent appends.
+- **The whole system runs locally** (ADR-030). Tests use the same engines as production.
+- **A mock that follows the real API** means the code that calls it is the production code. Only the host changes.
+
+**Alternatives considered:**
+- **A separate worker process from day one.** Rejected for now: a second entry point and image, with no load to
+  justify them.
+- **Temporal's time-skipping test server.** Rejected as the default: it's a binary downloaded outside containers,
+  and we have no long timers to skip.
+- **Our own mock payload shapes.** Rejected (Gary): a real provider's shapes make the example realistic, and make
+  the gateway swap a config change.
+
+**Consequences:**
+- The scaffold gains Temporal services in compose, the SDK packages, `automations.ts`, `temporal.ts`, the
+  automation and Temporal test harnesses, and an `automations` array in `index.ts`.
+- The loop's scope check allows `src/workflows.ts` (the worker's workflows; append-only, checked by
+  `18-workflows-append-only`), `mocks/<system>/`, and a mock's compose service.
+- The export (emcli) queues an automation's job after the jobs for its to-do list and the commands it issues.
+- `build-automation` is rewritten around the helper.
+
+
+### ADR-034: The restaurant domain's payment gateway is Braintree (a commercial directive)
+
+**Status:** Accepted, 2026-09-28 (Gary). A commercial directive, not a technical preference.
+**Date:** 2026-09-28
+
+**Context:** PLAN 15.3 mocks the payment gateway after a real provider's API. Stripe was chosen first. Gary's
+company is based in the Isle of Man, and Stripe doesn't serve the Crown dependencies (Isle of Man, Jersey,
+Guernsey). Gary wants the example domain aligned with a commercial gateway he can actually use. The Isle of Man
+developer community recommends Braintree (PayPal).
+
+**Decision:** the restaurant domain pays through **Braintree**, and the gateway mock follows Braintree's API and its
+official Node SDK (`braintree`).
+
+**What Braintree changes in the design** (researched 2026-09-28):
+- **The card is tokenized in the customer's browser.** Braintree's Drop-in UI, with a tokenization key, turns it
+  into a single-use **payment method nonce**, valid for 3 hours.
+  - `placeOrder` takes the nonce, and `paymentInitiated` carries it to the Payment Requester, which reads it from
+    the trigger event.
+  - It isn't card data, and it's dead after use. It never goes on a read model or screen.
+- **The sale's answer is synchronous.** `transaction.sale({ amount, paymentMethodNonce, orderId, options: {
+  submitForSettlement: true } })` answers with `submitted_for_settlement`, `processor_declined` (a processor text
+  such as *Do Not Honor*), `gateway_rejected` or a validation error.
+  - The Payment Requester's workflow issues `markOrderPaid` or `markOrderPaymentFailed` itself.
+  - Braintree's transaction webhooks cover only ACH and SEPA. There's **no card webhook**, and no translation
+    slice.
+- **No idempotency key.** The activity combines Braintree's own guards:
+  - it searches for a transaction by `orderId` before charging;
+  - a nonce can be used once;
+  - duplicate checking (on by default: the same amount, order id and card within 30 s → `gateway_rejected`).
+
+  A duplicate or "nonce already used" rejection means searching again, not a decline.
+- **The amount** is a decimal string (`"12.00"`), as in our model. The currency comes from the merchant account.
+- **The mock** answers the sandbox's documented test nonces (`fake-valid-nonce`,
+  `fake-processor-declined-visa-nonce`, …), and the model's scenarios use them.
+
+**Why:** examples should match providers the business can contract, so the demo code is usable for real. It's also a
+simpler design: a synchronous answer needs no webhook and no signal.
+
+**Alternatives considered:**
+- **Stripe.** It has an `Idempotency-Key` header and signed webhooks. Set aside because it isn't available in the
+  Crown dependencies.
+- **Paddle.** It's checkout-only (the customer pays on Paddle's page) and documents no idempotency key. Set aside.
+
+**Open:** Gary confirms Braintree's availability for an Isle of Man merchant account with Braintree. Third-party lists
+include the Isle of Man, Jersey and Guernsey, but Braintree's own country page couldn't be read.
+
+**Consequences:**
+- A 15.1 model amendment: `paymentMethodNonce` on `placeOrder` and `paymentInitiated`; the Payment Requester
+  relates-to `markOrderPaid` and `markOrderPaymentFailed`; the gateway lane's `paymentReceived` and the *translate
+  payment result* slice are removed.
+- ADR-032 gains a point: paying again after a decline is the customer's action, with a new nonce.
+- Any later third-party provider is checked for Isle of Man availability first.

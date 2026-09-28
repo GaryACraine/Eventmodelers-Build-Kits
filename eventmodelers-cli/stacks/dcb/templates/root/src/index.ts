@@ -1,4 +1,5 @@
 import { Pool } from "pg"
+import { fileURLToPath } from "node:url"
 import { getApplication, onShutdown, startAPI, stopAPI } from "@dcb-es/event-store-express"
 
 import {
@@ -12,6 +13,9 @@ import {
 
 import { configureCors } from "./shared/cors.js"
 import { startReadModels, type ReadModel, type StoredProjectionRegistration } from "./shared/readModels.js"
+import { automationProcessors, type Automation } from "./shared/automations.js"
+import { startWorker, temporalClient, temporalConfig, temporalWorkflowStarter } from "./shared/temporal.js"
+import { configureProcessorStatusRoute } from "./shared/health.js"
 
 import { configureRegisterCourseRoute } from "./contexts/enrollment/slices/register-course/route.js"
 import { configureRegisterStudentRoute } from "./contexts/enrollment/slices/register-student/route.js"
@@ -43,10 +47,27 @@ const imperative: StoredProjectionRegistration[] = [
     { projection: studentDetailsProjection, type: "database-projected" }
 ]
 
+// Every automation (ADR-031, ADR-033): a to-do list worked by one processor. Its list is also in `readModels`, as
+// database-projected; its automation's processor runs it. Internal ones issue our commands; external ones start a
+// Temporal workflow (TEMPORAL_ADDRESS, default localhost:7233; `npm run infra:start`).
+const automations: Automation[] = []
+const temporal = temporalConfig()
+const workflows = temporalWorkflowStarter(temporalClient(temporal), temporal.taskQueue)
+
 // Creates the event store with the inline projections, brings stored projections up to date
 // (rebuilds on a changed fingerprint, backfills new inline ones) and starts the async consumer.
-const readModelRuntime = await startReadModels(pool, readModels, imperative)
+const readModelRuntime = await startReadModels(pool, readModels, imperative, {
+    processorFor: automationProcessors(automations, readModels, { pool, workflows })
+})
 const eventStore = readModelRuntime.eventStore
+
+// The external automations' activities (each slice's `activities.ts`), run by the Temporal worker in this process
+// with the workflows in `workflows.ts`. No activities, no worker.
+const activities = {}
+const worker =
+    Object.keys(activities).length > 0
+        ? startWorker({ config: temporal, workflowsPath: fileURLToPath(new URL("./workflows.js", import.meta.url)), activities })
+        : undefined
 
 // Read-your-writes waits for the imperative projections (current as of a position, PLAN 14.10b).
 const courseWaitFn = readModelRuntime.waitFor(COURSE_PROJECTION_NAME)
@@ -57,6 +78,7 @@ const deps = { store: eventStore, pool, readModels: readModelRuntime }
 const app = getApplication({
     apis: [
         configureCors(),
+        configureProcessorStatusRoute(() => readModelRuntime.consumer),
         configureRegisterCourseRoute(deps),
         configureRegisterStudentRoute(deps),
         configureSubscribeStudentRoute(deps),
@@ -76,6 +98,7 @@ server.on("listening", () => {
     const addr = server.address() as { port: number }
     console.log(`course-manager listening on http://localhost:${addr.port}`)
     console.log(`  GET  http://localhost:${addr.port}/health/live`)
+    console.log(`  GET  http://localhost:${addr.port}/health/processors`)
     console.log(`  GET  http://localhost:${addr.port}/course-list`)
     console.log(`  GET  http://localhost:${addr.port}/openapi.json`)
     console.log(`  GET  http://localhost:${addr.port}/events   (SSE)`)
@@ -86,6 +109,7 @@ server.on("listening", () => {
 onShutdown(async () => {
     console.log("Shutting down…")
     await stopAPI(server)
+    await worker?.stop()
     await readModelRuntime.stop()
     await pool.end()
 })

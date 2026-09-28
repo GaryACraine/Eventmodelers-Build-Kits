@@ -7,8 +7,10 @@ import {
     ensureHandlersInstalled,
     pongoProjection,
     projectionToProcessor,
+    type ConsumerProcessorConfig,
     type PongoProjectionContext,
     type Projection,
+    type ProjectionProcessorOptions,
     type RunningConsumer,
     waitUntilProcessed
 } from "@dcb-es/event-store-postgres"
@@ -381,6 +383,18 @@ const waitForProjection =
     (position: SequencePosition, timeoutMs: number) =>
         waitUntilProcessed(pool, projectionName, position, { timeoutMs })
 
+export interface StartReadModelsOptions {
+    /**
+     * The processor to run an async projection with, when it isn't the plain one: an automation's to-do list runs in
+     * its automation's processor (`automationProcessors`, ADR-033). Undefined keeps the plain processor.
+     */
+    processorFor?: (
+        projection: Projection,
+        eventStore: PostgresEventStore,
+        options: ProjectionProcessorOptions
+    ) => ConsumerProcessorConfig | undefined
+}
+
 /**
  * Start every read model by its type: async ones on the consumer, inline ones inside the event
  * store's append transaction, live ones as event store reads. Brings stored projections up to date
@@ -389,7 +403,8 @@ const waitForProjection =
 export async function startReadModels(
     pool: Pool,
     readModels: ReadModel<any, any>[],
-    imperative: StoredProjectionRegistration[] = []
+    imperative: StoredProjectionRegistration[] = [],
+    options: StartReadModelsOptions = {}
 ): Promise<ReadModelRuntime> {
     const asyncProjections = [
         ...readModels.filter(r => r.type === "database-projected").map(r => r.projection),
@@ -435,7 +450,10 @@ export async function startReadModels(
             ? createConsumer({
                   pool,
                   eventStore,
-                  processors: asyncProjections.map(p => projectionToProcessor(p, { batchSize: 100, startFrom: "BEGINNING" }))
+                  processors: asyncProjections.map(p => {
+                      const processorOptions: ProjectionProcessorOptions = { batchSize: 100, startFrom: "BEGINNING" }
+                      return options.processorFor?.(p, eventStore, processorOptions) ?? projectionToProcessor(p, processorOptions)
+                  })
               })
             : undefined
 
