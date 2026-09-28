@@ -384,7 +384,18 @@ designed later.
     - all 24 slices planned and exported: backend first, each automation after what it needs (*request payment*
       12th, *return failed order stock* 16th); the API contract has 15 operations. Run the loop with `--concern
       backend` (the UI is 15.5).
-  - **Next:** Gary runs the loop; then the end-to-end and failure paths.
+  - **Built by the loop 2026-09-28:** all 24 slices.
+  - **End to end 2026-09-28** (the real stack: Postgres, Temporal, the Braintree mock and the API with its worker).
+    The cases, the harness and their results are kept in restaurant-orders' `e2e/` (Gary: to reuse when this flow
+    goes to production):
+    - pass: a card accepted, a card declined (stock returned), the gateway down then back (1 charge), the API killed
+      mid-charge and before the workflow started (1 charge each), both to-do lists rebuilt (nothing repeated), an
+      order over zero without a nonce (400);
+    - **fixed:** a real nonce spent by another order was retried until the workflow gave up, holding the order and
+      its stock. ADR-034 and the skill now bound the "look again" to 3 attempts, then decline;
+    - **open:** Temporal down leaves `/health/processors` saying `running` for the Payment Requester, not `blocked`;
+    - **for 15.4:** a workflow whose retries run out leaves its order `CREATED` with its stock held;
+    - `paymentMethodNonce` stays optional in the model on purpose: an order of zero total is exempt from payment.
   - Temporal's server and UI in `docker compose` (ADR-030, on our Postgres) and in testcontainers, and a worker
     in the kit's runtime.
   - Vitest proven against Temporal's test server.
