@@ -1,7 +1,11 @@
 import { Pool } from "pg"
+import { fileURLToPath } from "node:url"
 import { getApplication, onShutdown, startAPI, stopAPI } from "@dcb-es/event-store-express"
 
 import { startReadModels, type ReadModel, type StoredProjectionRegistration } from "./shared/readModels.js"
+import { automationProcessors, type Automation } from "./shared/automations.js"
+import { startWorker, temporalClient, temporalConfig, temporalWorkflowStarter } from "./shared/temporal.js"
+import { configureProcessorStatusRoute } from "./shared/health.js"
 import type { SliceDependencies } from "./shared/dependencies.js"
 import { configureCors } from "./shared/cors.js"
 import { configureEventFeedRoute } from "./contexts/enrollment/slices/event-feed/route.js"
@@ -26,10 +30,27 @@ const readModels: ReadModel[] = []
 // Imperative projections that can't be keyed folds (stored only: async or inline).
 const imperative: StoredProjectionRegistration[] = []
 
+// Every automation (ADR-031, ADR-033): a to-do list worked by one processor. Its list is also in `readModels`, as
+// database-projected; its automation's processor runs it. Internal ones issue our commands; external ones start a
+// Temporal workflow (TEMPORAL_ADDRESS, default localhost:7233; `npm run infra:start`).
+const automations: Automation[] = []
+const temporal = temporalConfig()
+const workflows = temporalWorkflowStarter(temporalClient(temporal), temporal.taskQueue)
+
 // Creates the event store with the inline projections, brings stored projections up to date
 // (rebuilds on a changed fingerprint, backfills new inline ones) and starts the async consumer.
-const readModelRuntime = await startReadModels(pool, readModels, imperative)
+const readModelRuntime = await startReadModels(pool, readModels, imperative, {
+    processorFor: automationProcessors(automations, readModels, { pool, workflows })
+})
 const eventStore = readModelRuntime.eventStore
+
+// The external automations' activities (each slice's `activities.ts`), run by the Temporal worker in this process
+// with the workflows in `workflows.ts`. No activities, no worker.
+const activities = {}
+const worker =
+    Object.keys(activities).length > 0
+        ? startWorker({ config: temporal, workflowsPath: fileURLToPath(new URL("./workflows.js", import.meta.url)), activities })
+        : undefined
 
 // Read-your-writes for an async imperative projection, by name: current as of a position (PLAN 14.10b).
 export const waitFor = (projectionName: string) => readModelRuntime.waitFor(projectionName)
@@ -39,6 +60,7 @@ const deps: SliceDependencies = { store: eventStore, pool, readModels: readModel
 const app = getApplication({
     apis: [
         configureCors(),
+        configureProcessorStatusRoute(() => readModelRuntime.consumer),
         configureEventFeedRoute(eventStore),
         configureOpenApiRoute()
     ]
@@ -50,6 +72,7 @@ server.on("listening", () => {
     const addr = server.address() as { port: number }
     console.log(`enrollment listening on http://localhost:${addr.port}`)
     console.log(`  GET  http://localhost:${addr.port}/openapi.json`)
+    console.log(`  GET  http://localhost:${addr.port}/health/processors`)
 })
 
 void deps
@@ -59,6 +82,7 @@ void deps
 onShutdown(async () => {
     console.log("Shutting down…")
     await stopAPI(server)
+    await worker?.stop()
     await readModelRuntime.stop()
     await pool.end()
 })
