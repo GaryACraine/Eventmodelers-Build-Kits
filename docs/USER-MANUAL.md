@@ -39,7 +39,7 @@ data already in your database when you do.
 18. [Model by talking](#18-model-by-talking)
 19. [Command reference](#19-command-reference)
 20. [Known limits](#20-known-limits)
-21. [Automations in depth: how they behave, fail and recover](#21-automations-in-depth-how-they-behave-fail-and-recover)
+21. [Automations in depth: restaurant orders and card payments](#21-automations-in-depth-restaurant-orders-and-card-payments)
 
 ---
 
@@ -2469,9 +2469,9 @@ instantaneous in this example, and it grows with your event store.
 | a UI commit is rejected by `api-types` | `web/src/lib/api-types.ts` isn't what the contract generates (edited by hand, or the contract changed after it was generated) | `npm run gen:api`, stage it, commit again. Never edit it by hand |
 | after a write, the page's other views take 5 s and fail (500), then recover | read-your-writes in a project from before PLAN 14.10b: a read model that doesn't handle the written event waited for it | pull and build `dcb-event-store` (§4), then update the kit's `src/shared/readModels.ts`, **both together**: the new library answers at once and a real timeout answers 504, but with the old kit file a timeout answers 500 |
 | stopping the app needs two Ctrl-C and ends with `Called end on pool more than once` | a project from before PLAN 14.10b: the library's `startAPI` and the app both handled the signal, and the event feed kept the server open | pull and build `dcb-event-store`, and register the shutdown with `onShutdown` in `src/index.ts` as the kit's does |
-| an order stays `CREATED` and never becomes paid or failed | its payment workflow is still retrying, or ran out of retries | `node e2e/workflow.mjs <orderId>` shows which, with the step's last error. Still retrying: fix the cause (§21.2); the next attempt picks it up. Failed: redrive is PLAN 15.4 |
-| `/health/processors` says `running` but an automation's list lags behind the others | the processor is waiting to start a workflow while Temporal is unreachable (it doesn't show `blocked` yet: PLAN 15.3) | check Temporal (`docker compose ps`, the log's `poll_workflow_task_queue retried` warnings); it catches up by itself once Temporal is back |
-| a payment step retries *"rejected … as a repeat, but no earlier transaction was found"* until it gives up | a project from before the bounded look-again: a nonce spent on another order was retried forever | update the kit (ADR-034) and rebuild the slice, or bound the look-again in its `activities.ts` as §21.3 says |
+| an order stays `CREATED` and never becomes paid or failed | its payment is still retrying (Braintree unreachable), or ran out of retries | `node e2e/workflow.mjs <orderId>` shows which, with the step's last error. Still retrying: fix the cause (§21.3, §21.5); the next attempt picks it up. Failed: redrive is PLAN 15.4 |
+| an automation is `blocked` on `/health/processors` with *"Temporal didn't answer … within 5000 ms"* | Temporal is down or unreachable; `temporal.reachable` is `false` too | bring Temporal back (`docker compose ps`, `npm run infra:start`): the processor starts the waiting work by itself (§21.3, §21.6). Raise `TEMPORAL_CALL_TIMEOUT_MS` only if Temporal is up but slow |
+| a payment step retries *"rejected … as a repeat, but no earlier transaction was found"* until it gives up | a project from before the bounded look-again: a nonce spent on another order was retried forever | update the kit (ADR-034) and rebuild the slice, or bound the look-again in its `activities.ts` as §21.4 says |
 | `docker compose up` fails: port 5432 is already allocated | another project's Postgres holds it | run with an override that moves it, as restaurant-orders' `e2e/compose.e2e.yml` does |
 | `progress.txt` has entries | a job is blocked or was interrupted; each entry is tagged with its slice and concern | read them with the job's `blockedReason`. They go away by themselves once that job is Done |
 | a slice is **Blocked** after an interruption | the agent committed part of the slice but was interrupted before marking it Done. `progress.txt` names the commits | check them with `git log`. If the slice is complete, set it to Done. Otherwise `git revert` them and set it back to Planned |
@@ -2707,87 +2707,178 @@ left out once `emcli use chapter` / `use slice` / `use spec` has set them (§4, 
   an edited wireframe back as the card's mockup but drops board-made links; run `element mockup <card>` to check
   it.
 - **The board draws arrows from the layout,** not from a screen's dependencies (§13.5).
-- **Failed automation work isn't redriven yet.** A workflow that ran out of retries leaves its item stuck, with
-  whatever it reserved. Redrive from the UI is PLAN 15.4.
-- **Health doesn't flag an automation that can't start its workflow** (Temporal down): it says `running` and falls
-  behind. Look at its position against the others (§21.2).
+- **Failed automation work isn't redriven yet.** A payment that ran out of retries leaves its order `CREATED`,
+  holding its stock. Redrive from the UI is PLAN 15.4.
 - **The loop's lessons are only as good as their pruning.** A job writes lessons and corrects wrong ones, but
   nothing checks them against the kit automatically: a lesson made obsolete by a kit change stays until the kit
   update or the end-of-phase review removes it (ADR-028).
 
 ---
 
-## 21. Automations in depth: how they behave, fail and recover
+## 21. Automations in depth: restaurant orders and card payments
 
-An **automation** is work that happens by itself when something happens: charge the card when an order is placed,
-give the stock back when a payment fails. The kit builds each one as a **to-do list** (a read model of the items
-waiting) worked by one **processor** (ADR-031, ADR-033). This chapter is what we learned running one for real.
+A customer orders food and pays by card. The restaurant has four things it must never get wrong:
 
-> Everything here was run on the restaurant-orders example (PLAN 15.3) against the real stack: Postgres, Temporal,
-> a mock of the Braintree payment gateway and the API. The cases, the scripts that run them and every result are in
-> that project's `e2e/README.md`. Run them again whenever you change an automation.
+- **Never lose a paid order.** Once the card is charged, the kitchen must get the order, whatever crashes.
+- **Never charge a customer twice**, even when a network call fails halfway and we can't tell whether it worked.
+- **Never sell food it doesn't have.** Stock is taken when the order is placed.
+- **Never hold stock for an order that won't be paid.** A failed payment gives the stock back.
 
-### 21.1 What runs where
+Two **automations** do this work by themselves. An automation is work that happens because something happened,
+built as a **to-do list** (a read model of the items waiting) worked by one **processor** (ADR-031, ADR-033):
 
-| Piece | What it is | Where it runs |
-|---|---|---|
-| the to-do list | a stored read model: one item per thing waiting (`PaymentsAwaiting`: an order whose payment was initiated) | the app's async consumer, like any read model |
-| the processor | reads each new item and acts on it: issues our command (**internal**) or starts a workflow (**external**) | the same consumer, right after the list |
-| the workflow | the outside work, in steps: charge the card, then record the answer as our own command | **Temporal**, a separate server that remembers every step |
-| the worker | runs the workflow's steps (Temporal calls them **activities**) | inside the app's process |
+- the **Payment Requester** charges the card. It calls someone else's service, **Braintree**, so its work runs
+  in **Temporal**, a workflow engine that carries it through crashes and outages;
+- the **Stock Returner** gives stock back when a payment fails. It never leaves our system, so it needs no
+  Temporal.
 
-- **Internal automations** (the Stock Returner) never leave our system, so they need no Temporal: the processor
-  issues the command itself.
-- **External ones** (the Payment Requester) call someone else's service, which can be slow, down, or answer
-  twice. Temporal carries that work through crashes and outages. Each workflow is named `<automation>:<item>`
-  (`payment-request:<orderId>`), so the same item can never start two.
-- **Temporal keeps its data in our Postgres** (its own databases on the same server), and its web UI is on
-  <http://localhost:8080> after `npm run infra:start`.
+> Everything in this chapter was run on the restaurant-orders example (PLAN 15.3), on the real stack: Postgres,
+> Temporal, a mock of Braintree, and the app. Each outage was forced on purpose. The cases, the scripts that run
+> them and every result are in that project's `e2e/README.md`. Run them again whenever you change an automation.
 
-### 21.2 What happens when something fails
+### 21.1 An order's journey
 
-Every row was forced on purpose and checked: the order's status, its events, and how many times the card was
-charged.
+1. **The customer pays in the page.** Braintree's Drop-in (or Hosted Fields) takes the card and gives the page a
+   **nonce**: a single-use token for that card, valid for 3 hours. The card never reaches our server, and our
+   server can't make a nonce. The page sends the nonce with the order (`paymentMethodNonce`).
+2. **We accept the order, or refuse it at the door.** The restaurant must exist, the dishes must be on its menu,
+   and there must be enough stock. An order over zero with no nonce is refused (400: *"A payment method is required
+   for an order over zero"*). An order of **zero** total needs no payment: it's `paymentExempted` and goes straight
+   to the kitchen. That's why the nonce is optional in the model.
+3. **Placing it takes the stock at once.** One append records `restaurantOrderPlaced`, `paymentInitiated` and
+   `stockDeducted`. The order is `CREATED`, and it now waits on **Payments Awaiting**, the Payment Requester's to-do
+   list.
+4. **The Payment Requester starts the payment.** It starts a Temporal workflow named `payment-request:<orderId>`.
+   The name makes it one per order, ever: a second start joins the first, or is refused once it has finished.
+5. **The workflow charges the card.** Its first step asks Braintree for a sale (submitted for settlement). A card
+   charge answers straight away, paid or declined, so card payments need no webhook.
+6. **The answer becomes our command.**
+   - **Paid:** `markOrderPaid`. The order is `PAID`, leaves Payments Awaiting and appears on **Kitchen Orders**.
+   - **Declined:** `markOrderPaymentFailed`, with Braintree's reason (*"Payment declined: Do Not Honor"*). The order
+     is `PAYMENT_FAILED`, never reaches the kitchen, and waits on **Stock To Return** until the Stock Returner
+     records `stockReturned`.
 
-| What fails | What you see | What happens | Charged |
+| Outcome | The customer | The kitchen | The stock |
 |---|---|---|---|
-| the gateway is down | the order stays `CREATED` and on Payments Awaiting | the charge step fails; Temporal retries it (after 1 s, doubling up to 1 minute, 10 attempts) and the order is paid once the gateway is back | once |
-| Temporal is down | the order stays `CREATED`; the app log fills with `poll_workflow_task_queue retried …` warnings | the processor can't start the workflow, so it waits on that item, and the items behind it wait too; everything catches up once Temporal is back | once |
-| the app is killed mid-charge (even `kill -9`) | nothing, until it's back | the workflow lives in Temporal, not in the app; the restarted worker carries on | once |
-| the app is killed before the workflow started | nothing, until it's back | the processor starts again from its last saved position, and starts the workflow then | once |
-| a to-do list is rebuilt (a changed definition, §16) | `Rebuilding PaymentsAwaitingProjection …` at startup | the list is rebuilt from the whole history, but nothing is redone: before acting, the processor reads the item's state as it is now, and a paid order isn't waiting any more | no new charge |
-| the card is declined | `PAYMENT_FAILED` with the gateway's reason | a decline is an **answer**, not an error: it's recorded at once, with no retry, and the Stock Returner gives the stock back | no |
-| every retry fails | the order stays `CREATED` for good, its stock held | after the 10th attempt Temporal gives up and the workflow fails. Nothing retries it yet: redriving failed work is PLAN 15.4 | no |
+| paid | order `PAID` | sees it on Kitchen Orders | taken |
+| declined | order `PAYMENT_FAILED`, with the reason | never sees it | given back |
+| zero total | order goes straight through | sees it | taken |
+| over zero, no nonce | refused (400) | never sees it | never taken |
 
-**Fixing a bug in a step while orders are stuck.** Change the activity's code (`activities.ts`), build and restart
-the app: a workflow that's still retrying runs the new code on its next attempt. That's how the stuck order in
-case 7 recovered. Workflow code (`workflow.ts`) is different. Temporal replays a running workflow's history
-through it, so changing it under running workflows needs Temporal's versioning (its documented rule; we didn't
-test it). Keep workflows short, with the logic in activities.
+### 21.2 What runs where
 
-### 21.3 Errors: which to retry and which to answer
+| Piece | In the restaurant | Where it runs |
+|---|---|---|
+| to-do lists | Payments Awaiting, Stock To Return: stored read models, one item per order waiting | the app's async consumer, like any read model |
+| processors | the Payment Requester and the Stock Returner: each acts on its list's new items | the same consumer, right after its list |
+| the workflow | `payment-request:<orderId>`: charge the card, then record the answer | **Temporal**, which remembers every step |
+| the worker | runs the workflow's steps (Temporal calls them **activities**: `chargeCard`, `recordPaid`, `recordFailed`) | inside the app's process |
+| the gateway | Braintree, or its mock on port 4010 in development | outside |
 
-The step that calls the outside service decides, for each outcome, whether Temporal should try again:
+Temporal keeps its data in our Postgres (its own databases on the same server). Its web UI is on
+<http://localhost:8080> after `npm run infra:start`.
 
-- **Retry (throw):** anything a later attempt could change. A network error, a timeout, a 5xx.
-- **Answer (return):** anything it can't change. A decline, a card that's expired, an invalid amount. The answer
-  becomes our command (`markOrderPaymentFailed`), so the business carries on.
-- **Never throw what no retry can fix.** It looks safe, but it holds the item, and whatever it reserved, until
-  Temporal gives up, and then leaves it stuck. The case that taught us this is below.
+### 21.3 When things go wrong during service
 
-**When the service has no idempotency key.** Some services (Braintree among them) can't be told "this is the same
-request as before". So the step makes itself safe to repeat:
+Every row was forced on purpose and checked: the order's status, its events, the stock, and how many times
+Braintree charged the card.
 
-1. **Look before acting.** Search the service for an earlier attempt by our own reference (Braintree: a
-   transaction search by `orderId`). If one charged, the answer is "paid"; if one was declined, it's that decline.
-2. **Single-use tokens.** The payment token (a *nonce*) can be used once, so a repeat can't charge twice.
-3. **The service's duplicate check** rejects the same amount, order and card within 30 seconds.
+| Situation | What the customer and kitchen see | What happens underneath | Charged | Stock |
+|---|---|---|---|---|
+| **Braintree is unreachable** (their outage, our network) | the order waits as `CREATED`; the kitchen doesn't see it yet | `chargeCard` fails and Temporal retries it: after 1 s, doubling up to 1 minute, 10 attempts (about 5 minutes). Once Braintree answers, the order is paid | once | held, then taken |
+| **Temporal is unreachable** | new orders wait as `CREATED` | the Payment Requester can't start the workflow. The start fails at our deadline (5 s) and the processor shows `blocked`, naming it; orders behind it wait in line. Health says Temporal is unreachable within one check (§21.6). When Temporal is back, every waiting order is paid | once each | held, then taken |
+| **our app crashes mid-payment** (even `kill -9`) | nothing changes until it's back | the workflow lives in Temporal, not in the app. The restarted worker carries on from the step it was on | once | held, then taken |
+| **our app crashes before the payment started** | the same | the processor starts again from its last saved position and starts the workflow then | once | held, then taken |
+| **the card is declined** | `PAYMENT_FAILED` with Braintree's reason, at once | a decline is an **answer**, not an error: it's recorded straight away, with no retry | no | given back |
+| **the same card token is used for two orders** (a page that resubmits, a double click) | the first order is paid; the second is `PAYMENT_FAILED`, *"payment method already used"* | Braintree refuses the reused nonce (error 93107). We look for a charge of ours for the second order a few times; finding none, it's a decline (§21.4) | first only | second's given back |
+| **the lists are rebuilt** after a change (§16) | nothing | the lists are rebuilt from the whole history, but nothing is redone: before acting, the processor reads the order as it is now, and a paid order isn't waiting any more | no new charge | unchanged |
+| **every retry fails** (Braintree down for more than about 5 minutes) | the order stays `CREATED` for good | after the 10th attempt Temporal gives up and the workflow fails. Nothing retries it yet: redriving failed payments from the UI is PLAN 15.4 | no | **held** until redriven |
+
+### 21.4 Never charging a customer twice
+
+Braintree has no idempotency key: there's no way to tell it "this is the same request as before". Yet a retry can
+happen after Braintree charged the card, if the network fails before its answer reaches us. So the charge step
+makes itself safe to repeat, with Braintree's own guards:
+
+1. **Look before charging.** Search Braintree for a transaction with this order's id. If one charged, the answer
+   is "paid" without calling again; if one was declined, it's that decline.
+2. **Single-use nonces.** A nonce can pay once, so a repeat can't charge the card twice.
+3. **Braintree's duplicate check** rejects the same amount, order and card within 30 seconds.
 4. **A "duplicate" or "already used" rejection means look again, a few times only.** If our own earlier attempt
-   charged, the search finds it: that attempt's answer stands. If three attempts find nothing of ours, the token
-   went on something else, and the step answers with a decline: "payment method already used". Case 7 found
-   the unbounded version holding an order and its stock for the ten retries until Temporal gave up.
+   charged, the search finds it and that answer stands (search may lag a moment, hence a few looks). If three
+   attempts find nothing for this order, the nonce went on something else. Then it's a decline, *"payment method
+   already used"*, and the stock goes back.
 
-### 21.4 Checking it yourself
+**Which failures to retry, and which to answer.** Temporal retries whatever the step throws. So:
+
+- **Throw** what a later attempt could change: Braintree unreachable, a timeout, a 5xx.
+- **Answer** what it can't: a declined card, an expired card, a nonce spent elsewhere. The answer becomes
+  `markOrderPaymentFailed`, and the restaurant carries on.
+- **Never throw what no retry can fix.** It looks safe, but the order and its stock wait for ten retries and are
+  then stuck. That's what the first version did with a nonce spent on another order (e2e case 7): the customer's
+  second order sat `CREATED`, holding its stock, until we fixed the step.
+
+### 21.5 Fixing a problem while orders are waiting
+
+Change the step's code (`requestpayment/activities.ts`), build and restart the app. A payment that's still retrying
+runs the new code on its next attempt, with no restart of the workflow: case 7's stuck order was declined that way,
+and its stock came back.
+
+Workflow code (`workflow.ts`) is different. Temporal replays a running workflow's history through it, so changing it
+while payments are in flight needs Temporal's versioning (its documented rule; we didn't test it). That's why the
+payment workflow stays short: charge, then record. The decisions live in activities.
+
+### 21.6 Knowing it's healthy: `/health/processors`
+
+Health reports every processor, and Temporal itself. This is it while Temporal was down, with one order waiting to
+be paid (trimmed):
+
+```json
+{
+  "processors": [
+    { "processorName": "PaymentsAwaitingProjection", "state": "blocked", "position": "95",
+      "blocked": { "error": "Temporal didn't answer starting workflow payment-request:c108… within 5000 ms (4 DEADLINE_EXCEEDED …)",
+                   "eventType": "paymentInitiated", "attempts": 1, "since": "…", "nextAttemptAt": "…" } }
+  ],
+  "temporal": { "address": "localhost:7233", "reachable": false,
+                "error": "Temporal didn't answer the health check within 5000 ms (…)", "checkedAt": "…",
+                "worker": { "state": "running", "since": "…" } }
+}
+```
+
+- **`blocked`** says which order's event the Payment Requester is stuck on, why, and when it tries again. It stays
+  `blocked` through every retry, until the start succeeds.
+- **`temporal.reachable`** is the app asking Temporal directly, in the background, every 5 seconds. It shows an
+  outage even when no order is waiting. It's `null` just after startup, until the first check answers. Health never
+  waits on Temporal: it answers at once with the latest check (`checkedAt`).
+- **`temporal.worker`** is the app's worker as Temporal's SDK sees it: `starting`, `running`, `restarting` (with
+  why) or `stopped`. The SDK keeps polling through an outage, so it can say `running` while Temporal is down.
+  `reachable` is the answer about Temporal itself.
+
+**The deadlines are ours to set**, as environment variables:
+
+| Variable | Default | What it bounds |
+|---|---|---|
+| `TEMPORAL_CALL_TIMEOUT_MS` | 5000 | any one call to Temporal: starting a payment, the health check. Without it, the client's own retries decide, and a start took about 21 s to fail |
+| `TEMPORAL_HEALTH_INTERVAL_MS` | 5000 | how often health checks Temporal |
+
+### 21.7 Braintree for the restaurant
+
+Payments use Braintree (ADR-034), a commercial choice: the business is in the Isle of Man, which Stripe doesn't
+serve.
+
+- **Test nonces.** `fake-valid-nonce` is paid, and `fake-processor-declined-visa-nonce` is declined (2000 *"Do Not
+  Honor"*). Both work in Braintree's sandbox and on the mock, and can be reused. Any other nonce is single-use:
+  using it again is error 93107, a validation error that creates no transaction.
+- **Where the app sends payments** comes from the environment. By default it uses the mock (`BRAINTREE_HOST`,
+  `BRAINTREE_PORT`, default `localhost:4010`). For the sandbox, set `BRAINTREE_ENVIRONMENT=Sandbox` and the
+  `BRAINTREE_MERCHANT_ID`, `BRAINTREE_PUBLIC_KEY` and `BRAINTREE_PRIVATE_KEY` from your sandbox account.
+- **The amount** is the order's total as a decimal string (`"12.00"`). The currency is the merchant account's.
+- **The mock** (`mocks/braintree/`, in `docker compose`) answers the SDK the way Braintree does: sales, searches by
+  order id, single-use nonces and the 30-second duplicate check. It keeps its transactions in memory, so
+  restarting it forgets them. It has no switch for a 5xx or a lost reply; stopping it stands in for an outage.
+
+### 21.8 Checking it yourself
 
 The restaurant's `e2e/` folder is a harness to copy for any automation:
 
@@ -2795,38 +2886,20 @@ The restaurant's `e2e/` folder is a harness to copy for any automation:
 |---|---|
 | `compose.e2e.yml` | runs the stack with Postgres on port 5433, when another project already holds 5432 |
 | `start-api.sh` | starts the built app against that stack, logging to `e2e/api.log` |
-| `order.sh <nonce>` | a restaurant, stock, and an order paid with that nonce; then every read model for it |
+| `order.sh <nonce> [STATUS]` | a restaurant, stock, and an order paid with that nonce; given a status, waits for it, then prints every read model for the order |
+| `wait-for.mjs` | waits until an order has a status, a processor a state, or Temporal is (un)reachable; fails at a deadline, saying what it last saw |
 | `events.sh <orderId>` | the order's events, in order |
-| `charges.mjs <orderId>` | the gateway's transactions for the order: the "charged once" check |
-| `workflow.mjs <orderId>` | the order's workflow in Temporal: running, completed or failed, and a pending step's attempt and last error |
-| `totals.sh` | a snapshot of every event count and charge, to compare before and after (a rebuild, a restart) |
+| `charges.mjs <orderId>` | Braintree's transactions for the order: the "charged once" check |
+| `workflow.mjs <orderId>` | the order's payment workflow: running, completed or failed, and a pending step's attempt and last error |
+| `totals.sh` | every event count and charge, to compare before and after (a rebuild, a restart) |
 
-Things that tripped us up:
-
-- **Stop a container to simulate an outage:** `docker compose -p ro-e2e stop braintree-mock` (or `temporal`),
+- **Wait for a state, never for a guessed time.** A check that sleeps and then looks reports a bug that isn't
+  there when things are slower than the guess. That happened in case 4: health was checked before the processor
+  had failed its first start. `wait-for.mjs` polls until the state is reached; its deadline is generous, and only
+  turns a hang into a failure.
+- **Simulate an outage by stopping a container:** `docker compose -p ro-e2e stop braintree-mock` (or `temporal`),
   then `start` it again.
-- **The gateway mock keeps its charges in memory.** Restarting it forgets them, so compare charge counts only
-  across checks that don't restart it.
-- **The mock has no switch for a 5xx or a lost reply.** A stopped gateway stands in for an outage.
 - **`GET /events` never ends** (it's a live feed): don't `curl` it without a timeout.
 - **The Temporal server image has no `temporal` command.** Use `workflow.mjs` or the web UI on port 8080.
-- **The app can die too fast to catch.** To kill it between an order and its workflow's start, stop Temporal
-  first.
-
-### 21.5 Payments with Braintree
-
-Payments use **Braintree** (ADR-034), a commercial choice: the business is in the Isle of Man, which Stripe
-doesn't serve. What matters when you build against it:
-
-- **The card never reaches us.** The page gets a single-use **nonce** from Braintree's Drop-in or Hosted Fields
-  (valid for 3 hours) and sends it with the order (`paymentMethodNonce`). Our server can't make one.
-- **An order of zero total needs no nonce.** It's exempted from payment (`paymentExempted`), so the model keeps
-  `paymentMethodNonce` optional. An order over zero without one is refused with 400: *"A payment method is required
-  for an order over zero"*.
-- **A card charge answers at once**, paid or declined, so card payments need no webhook.
-- **Test nonces:** `fake-valid-nonce` is paid, `fake-processor-declined-visa-nonce` is declined (2000 "Do Not
-  Honor"). Both work in Braintree's sandbox and on the mock, and can be reused. Any other nonce is single-use:
-  using it again is error 93107.
-- **Point the app elsewhere with environment variables.** By default it uses the mock (`BRAINTREE_HOST`,
-  `BRAINTREE_PORT`, default `localhost:4010`). For the sandbox, set `BRAINTREE_ENVIRONMENT=Sandbox` and the
-  `BRAINTREE_MERCHANT_ID` / `_PUBLIC_KEY` / `_PRIVATE_KEY` from your sandbox account.
+- **The app can die too fast to catch.** A whole payment takes well under a second, so to kill the app between an
+  order and its payment's start, stop Temporal first.

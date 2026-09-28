@@ -393,10 +393,17 @@ designed later.
       order over zero without a nonce (400);
     - **fixed:** a real nonce spent by another order was retried until the workflow gave up, holding the order and
       its stock. ADR-034 and the skill now bound the "look again" to 3 attempts, then decline;
-    - **open:** Temporal down leaves `/health/processors` saying `running` for the Payment Requester, not `blocked`;
+    - **Temporal down, and the deadline (case 4):** a first check slept 10 s and reported health not showing the
+      block. That was wrong: the start failed only after about 21 s, the Temporal client's own retries. So every
+      call to Temporal now has a deadline of ours (`TEMPORAL_CALL_TIMEOUT_MS`, 5000), and health checks Temporal in
+      the background (`TEMPORAL_HEALTH_INTERVAL_MS`, 5000) and reports it with the worker's state, answering at once.
+      Rerun with `e2e/wait-for.mjs` (waiting for states, never sleeping): blocked 5.1 s after the order, Temporal
+      reachable 3.3 s after its restart, both waiting orders paid once (ADR-033);
     - **for 15.4:** a workflow whose retries run out leaves its order `CREATED` with its stock held;
     - `paymentMethodNonce` stays optional in the model on purpose: an order of zero total is exempt from payment;
-    - what we learned is in the manual's new §21 *Automations in depth* and `e2e/README.md`'s *What we learned*.
+    - what we learned is in the manual's §21 *Automations in depth: restaurant orders and card payments* and
+      `e2e/README.md`'s *What we learned*, both framed by the restaurant's business (Gary: Temporal and Braintree
+      behaviour within the restaurant's payments).
   - Temporal's server and UI in `docker compose` (ADR-030, on our Postgres) and in testcontainers, and a worker
     in the kit's runtime.
   - Vitest proven against Temporal's test server.
