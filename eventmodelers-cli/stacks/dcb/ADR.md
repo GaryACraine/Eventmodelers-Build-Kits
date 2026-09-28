@@ -1324,7 +1324,11 @@ official Node SDK (`braintree`).
   - a nonce can be used once;
   - duplicate checking (on by default: the same amount, order id and card within 30 s → `gateway_rejected`).
 
-  A duplicate or "nonce already used" rejection means searching again, not a decline.
+  A duplicate or "nonce already used" rejection means searching again, not a decline, **while that search can still
+  find our own charge**. A "nonce already used" with nothing for this order after a few attempts (3; search may lag
+  behind a charge) means the nonce was spent on something else: a decline, "payment method already used", so the
+  order's stock goes back. Retrying it forever would hold the order and its stock until the workflow gave up (found
+  by 15.3's end-to-end case 7, a real nonce used on two orders).
 - **The amount** is a decimal string (`"12.00"`), as in our model. The currency comes from the merchant account.
 - **The mock** answers the sandbox's documented test nonces (`fake-valid-nonce`,
   `fake-processor-declined-visa-nonce`, …), and the model's scenarios use them.

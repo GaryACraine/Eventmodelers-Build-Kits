@@ -188,7 +188,9 @@ export type PaymentRequestActivities = ReturnType<typeof paymentRequestActivitie
 - **Never do the outside work twice.** Pass our key as the provider's idempotency key if it has one. If it has none,
   combine what it does have, as the slice's description says: look for an earlier attempt by our reference (e.g. a
   search by order id) before calling again; treat a "duplicate" or "already used" rejection as "look again", not as a
-  decline.
+  decline. But bound it: when looking again still finds nothing of ours after a few attempts (Temporal's
+  `Context.current().info.attempt`, injectable so tests can set it), the value was spent elsewhere, so return a
+  decline. An error that no retry can fix must never be thrown for Temporal to retry.
 - **Config comes from the environment**, with defaults that point at the mock (`localhost:<its port>`), so the
   provider's sandbox or production is a config change. Read how the SDK is pointed at a host from its own source in
   `node_modules`: some take it only from environment variables or constants.
