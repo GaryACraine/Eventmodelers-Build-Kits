@@ -302,9 +302,9 @@ designed later.
       OpenAPI), while this chapter's code goes to `src/contexts/restaurant/`;
     - the pre-commit slice guard blocks the scaffold's own first commit (event-feed and openapi are slice
       folders), so **manual §4's first commit fails**. It was committed with `--no-verify`.
-- [ ] **15.2 The library's processor failure policy** (dcb-event-store phase 19; Gary merges library PRs).
-  **Built 2026-09-28: [dcb-event-store PR #29](https://github.com/GaryACraine/dcb-event-store/pull/29), waiting for
-  Gary's merge.** Tick when merged.
+- [x] **15.2 The library's processor failure policy** (dcb-event-store phase 19; Gary merges library PRs).
+  **Done 2026-09-28: [dcb-event-store PR #29](https://github.com/GaryACraine/dcb-event-store/pull/29), merged by
+  Gary.**
   - Run `pnpm upstream:emmett` first. *Done: no new Emmett PRs to triage.*
   - **Fail fast by default:** log, back off, retry the same event, and block only that processor, with its
     blocked status and error visible.
@@ -2956,7 +2956,7 @@ What each `build-*` skill generates and what it verifies:
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 15 — Automations (restaurant orders) | 🚧 Top priority | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27/28: the Restaurant Orders chapter (25 slices, 63 scenarios, 15 mockups) on prooph board, with stock and an internal automation (the Stock Returner); emcli push fixes (lanes, links, skipped deletions). 15.8 added: deciding from a growing event stream. 15.2 built 2026-09-28 (library PR #29, awaiting Gary's merge). Next: 15.3 `build-automation` with Temporal. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) |
+| 15 — Automations (restaurant orders) | 🚧 Top priority | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27/28: the Restaurant Orders chapter (25 slices, 63 scenarios, 15 mockups) on prooph board, with stock and an internal automation (the Stock Returner); emcli push fixes (lanes, links, skipped deletions). 15.8 added: deciding from a growing event stream. 15.2 done 2026-09-28 (library PR #29 merged). Next: 15.3 `build-automation` with Temporal. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) |
 | 1 — Stack Scaffolding | ✅ Complete | Verified: init, npm install, tsc, 21/21 unit tests |
 | 2 — State Change Skill | ✅ Complete | 9-step SKILL.md with full DCB patterns |
 | 3 — State View Skill | ✅ Complete | 5-step SKILL.md with Pongo + preferWait patterns |
