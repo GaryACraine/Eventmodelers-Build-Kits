@@ -53,8 +53,9 @@ Inspect `sliceStatus`:
 2. Read the slice definition from `.build-kit/.slices/<contextSlug>/<sliceFolder>/slice.json`.
 
 3. Determine the **slice type**:
-   - **Translation** — `sliceType === "TRANSLATION"` → default to `/build-automation`
-   - **Automation** — `processors` array is non-empty → `/build-automation`
+   - **Translation** — `sliceType === "TRANSLATION"`, or an automation with `processorType: "synchronous"` →
+     `/build-automation` (not yet proven, ADR-033: block with `request-feedback` if the skill has no section for it)
+   - **Automation** — `processors` array is non-empty → `/build-automation` (a to-do list worked by one processor)
    - **State-view** — `projections` or `queries` array is non-empty → `/build-state-view`
    - **State-change** — default → `/build-state-change`
 
