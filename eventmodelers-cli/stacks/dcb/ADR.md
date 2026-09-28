@@ -1234,6 +1234,9 @@ a second start with the same workflow id returned the same run.
   - The worker connects lazily and retries with backoff, so the API still serves when Temporal is down.
   - Meanwhile an automation that needs Temporal blocks its processor (fail fast, ADR-031) and shows it, until
     Temporal is back.
+  - **Every call to Temporal has a deadline we set**, `TEMPORAL_CALL_TIMEOUT_MS` (default 5000). Without it, the
+    client's own retries (10 attempts, backing off ×1.7) decide: a start failed after about 21 s. With it, a start
+    fails at the deadline, naming it, and the processor shows `blocked` then (PLAN 15.3, e2e case 4: 5.1 s).
   - The worker is split into its own process only when load says so.
 - **The helper, `defineAutomation`** (`src/shared/automations.ts`):
   - takes the automation's to-do list (a `database-projected` read model), its triggers (the model's `reacts-to`
@@ -1271,6 +1274,13 @@ a second start with the same workflow id returned the same run.
   binary isn't used: nothing of ours waits on long timers.
 - **`GET /health/processors`** returns every processor's status (`consumer.status()`), so a blocked automation is
   visible now. PLAN 15.4's screen builds on it.
+  - With external automations it also reports **Temporal** (`watchTemporal`): `reachable` (`null` until the first
+    check), the error, `checkedAt`, and this process's worker (`starting`, `running`, `restarting` with why,
+    `stopped`). It's checked in the background every `TEMPORAL_HEALTH_INTERVAL_MS` (default 5000), each check
+    within the call deadline (Temporal's `GetSystemInfo`), so health answers at once. Asking on each request made
+    health take the whole deadline while Temporal was down (5.5 s a request).
+  - Temporal down shows within one interval, whether or not any work is waiting. The worker's own state can say
+    `running` through an outage (the SDK keeps polling), so `reachable` is the answer about Temporal itself.
 
 **Why:**
 - **Only one new engine.** Everything else is the library's processor, a read model and idempotent appends.

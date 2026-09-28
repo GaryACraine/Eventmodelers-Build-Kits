@@ -14,7 +14,7 @@ import {
 import { configureCors } from "./shared/cors.js"
 import { startReadModels, type ReadModel, type StoredProjectionRegistration } from "./shared/readModels.js"
 import { automationProcessors, type Automation } from "./shared/automations.js"
-import { startWorker, temporalClient, temporalConfig, temporalWorkflowStarter } from "./shared/temporal.js"
+import { startWorker, temporalClient, temporalConfig, temporalWorkflowStarter, watchTemporal } from "./shared/temporal.js"
 import { configureProcessorStatusRoute } from "./shared/health.js"
 
 import { configureRegisterCourseRoute } from "./contexts/enrollment/slices/register-course/route.js"
@@ -49,10 +49,12 @@ const imperative: StoredProjectionRegistration[] = [
 
 // Every automation (ADR-031, ADR-033): a to-do list worked by one processor. Its list is also in `readModels`, as
 // database-projected; its automation's processor runs it. Internal ones issue our commands; external ones start a
-// Temporal workflow (TEMPORAL_ADDRESS, default localhost:7233; `npm run infra:start`).
+// Temporal workflow (TEMPORAL_ADDRESS, default localhost:7233; `npm run infra:start`). Every call to Temporal has a
+// deadline, TEMPORAL_CALL_TIMEOUT_MS (default 5000): past it a start fails and the processor shows `blocked`.
 const automations: Automation[] = []
 const temporal = temporalConfig()
-const workflows = temporalWorkflowStarter(temporalClient(temporal), temporal.taskQueue)
+const temporalApi = temporalClient(temporal)
+const workflows = temporalWorkflowStarter(temporalApi, temporal.taskQueue, { callTimeoutMs: temporal.callTimeoutMs })
 
 // Creates the event store with the inline projections, brings stored projections up to date
 // (rebuilds on a changed fingerprint, backfills new inline ones) and starts the async consumer.
@@ -68,6 +70,8 @@ const worker =
     Object.keys(activities).length > 0
         ? startWorker({ config: temporal, workflowsPath: fileURLToPath(new URL("./workflows.js", import.meta.url)), activities })
         : undefined
+// Health asks Temporal in the background (TEMPORAL_HEALTH_INTERVAL_MS, default 5000), so it never waits on it
+const temporalWatch = worker ? watchTemporal(temporalApi, temporal, worker) : undefined
 
 // Read-your-writes waits for the imperative projections (current as of a position, PLAN 14.10b).
 const courseWaitFn = readModelRuntime.waitFor(COURSE_PROJECTION_NAME)
@@ -78,7 +82,10 @@ const deps = { store: eventStore, pool, readModels: readModelRuntime }
 const app = getApplication({
     apis: [
         configureCors(),
-        configureProcessorStatusRoute(() => readModelRuntime.consumer),
+        configureProcessorStatusRoute(() => readModelRuntime.consumer, {
+            // With external automations, health also asks Temporal directly and reports this process's worker
+            ...(temporalWatch ? { temporal: () => temporalWatch.status() } : {})
+        }),
         configureRegisterCourseRoute(deps),
         configureRegisterStudentRoute(deps),
         configureSubscribeStudentRoute(deps),
@@ -109,6 +116,7 @@ server.on("listening", () => {
 onShutdown(async () => {
     console.log("Shutting down…")
     await stopAPI(server)
+    temporalWatch?.stop()
     await worker?.stop()
     await readModelRuntime.stop()
     await pool.end()
