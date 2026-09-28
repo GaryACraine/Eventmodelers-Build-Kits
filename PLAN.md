@@ -343,8 +343,8 @@ designed later.
     - The automation helper reads `rebuilding` to skip its automation step.
     - Show `consumer.status()` or `readProcessorStatuses` on a health or status route. That's decided with 15.3 and
       15.4's redrive screen.
-- [ ] **15.3 `build-automation`, with Temporal from day one.** *Kit built 2026-09-28 (the loop proof on
-  restaurant-orders is next).* Decisions: ADR-033 (the runtime), ADR-034 (Braintree, a commercial directive).
+- [x] **15.3 `build-automation`, with Temporal from day one.** *Done 2026-09-28: the kit built; the loop built the
+  whole restaurant backend (24 slices); all 8 end-to-end cases pass on the real stack (restaurant-orders `e2e/`).* Decisions: ADR-033 (the runtime), ADR-034 (Braintree, a commercial directive).
   - **Research:** Temporal TS SDK 1.24.0; compose from `temporalio/samples-server` (`admin-tools` sets up Temporal's
     databases on our Postgres; `auto-setup` is retired); a vitest spike passed against the time-skipping server and a
     `temporalio/temporal` container.
@@ -3061,7 +3061,7 @@ What each `build-*` skill generates and what it verifies:
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 15 — Automations (restaurant orders) | 🚧 Top priority | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27/28: the Restaurant Orders chapter (25 slices, 63 scenarios, 15 mockups) on prooph board, with stock and an internal automation (the Stock Returner); emcli push fixes (lanes, links, skipped deletions). 15.8 added: deciding from a growing event stream. 15.2 done 2026-09-28 (library PR #29 merged). 15.3 kit built 2026-09-28 (ADR-033 runtime, ADR-034 Braintree as a commercial directive); next: the loop proof on restaurant-orders. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) |
+| 15 — Automations (restaurant orders) | 🚧 Top priority | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27/28: the Restaurant Orders chapter (25 slices, 63 scenarios, 15 mockups) on prooph board, with stock and an internal automation (the Stock Returner); emcli push fixes (lanes, links, skipped deletions). 15.8 added: deciding from a growing event stream. 15.2 done 2026-09-28 (library PR #29 merged). 15.3 done 2026-09-28 (ADR-033 runtime, ADR-034 Braintree as a commercial directive; the loop built the restaurant backend; 8 end-to-end cases pass, with our own Temporal call deadline and Temporal in health; manual §21). Next: 15.4 redrive, then 15.5 the UI on Sonnet. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) |
 | 1 — Stack Scaffolding | ✅ Complete | Verified: init, npm install, tsc, 21/21 unit tests |
 | 2 — State Change Skill | ✅ Complete | 9-step SKILL.md with full DCB patterns |
 | 3 — State View Skill | ✅ Complete | 5-step SKILL.md with Pongo + preferWait patterns |
