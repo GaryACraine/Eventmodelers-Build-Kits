@@ -376,8 +376,15 @@ designed later.
   - **Found:** the library's `dist` predated 15.2, so linked projects didn't have the failure policy until it was
     rebuilt (`pnpm -r build`); the Temporal test server outlives each test's database, so tests need their own item
     keys.
-  - **Next:** kit update into restaurant-orders (kit-drift; add the `braintree` SDK, which a slice commit can't),
-    export the whole backend, and Gary runs the loop; then the end-to-end and failure paths.
+  - **Handed to the loop 2026-09-28** (restaurant-orders, branch `increment/15-3-backend`):
+    - kit update (merge `6642a1d`): kit-drift 49 same, 0 differ; the scaffold's runtime files, and
+      `scripts/empty/index.ts` with the automation wiring (Build-Kits PR #80: new projects get it too); `braintree`
+      3.40.0 and `@types/braintree` (the SDK has no types, and a slice commit can't add either); 65 tests passing;
+    - the Payment Requester's scenarios now give the order placed (`markOrderPaid` rejects an unknown order);
+    - all 24 slices planned and exported: backend first, each automation after what it needs (*request payment*
+      12th, *return failed order stock* 16th); the API contract has 15 operations. Run the loop with `--concern
+      backend` (the UI is 15.5).
+  - **Next:** Gary runs the loop; then the end-to-end and failure paths.
   - Temporal's server and UI in `docker compose` (ADR-030, on our Postgres) and in testcontainers, and a worker
     in the kit's runtime.
   - Vitest proven against Temporal's test server.
