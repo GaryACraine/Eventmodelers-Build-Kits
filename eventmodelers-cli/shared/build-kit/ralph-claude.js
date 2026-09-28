@@ -3,6 +3,7 @@
 // Usage: node ralph-claude.js [project_dir]
 
 import { startRalph, loadLocalConfig } from './lib/ralph.js';
+import { describeSettings, jobSettings, settingsArgs, usageLimit } from './lib/runner.js';
 import { spawn } from 'child_process';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
@@ -26,9 +27,10 @@ const inlineHeader = !localOnly && cfg.boardId
 const verbose = process.env.RALPH_VERBOSE === '1';
 
 const claudeArgs = ['--dangerously-skip-permissions', '--output-format', 'stream-json', '--verbose'];
-// A model per routine (PLAN 14.7b): `"models": { "ui": "…", "backend": "…" }` in .eventmodelers/config.json picks
-// the model for that concern's jobs; `"model"` is the default for everything else.
-const modelFor = (concern) => (concern && cfg.models?.[concern]) || cfg.model;
+// The model, effort and per-job budget for each routine (PLAN 14.7b, 15.9), pinned in .eventmodelers/config.json:
+// `"models": { "backend": "sonnet", "ui": "sonnet" }, "effort": "medium", "maxBudgetUsd": 2` (lib/runner.js).
+// Unset, a job inherits the developer's own ~/.claude/settings.json.
+for (const concern of ['backend', 'ui']) console.log(`         ${concern} jobs: ${describeSettings(jobSettings(cfg, concern))}`);
 const claudeEnv = {
   ...process.env,
   ...(cfg.anthropicBaseUrl ? { ANTHROPIC_BASE_URL: cfg.anthropicBaseUrl } : {}),
@@ -71,10 +73,15 @@ function describeToolUse(block) {
   }
 }
 
+// Resolves with the run's result message (cost, turns, usage), with `model` (the one Claude reported) and `settings`
+// added, for the loop's per-job metrics (.build-kit/metrics/runs.jsonl). A failed run rejects with the same on
+// `error.result`, and `error.usageLimit` when the account's usage limit ended it (the loop then waits for the reset).
 function runClaude(prompt, { concern } = {}) {
-  const model = modelFor(concern);
+  const settings = jobSettings(cfg, concern);
   return new Promise((resolve, reject) => {
-    const proc = spawn('claude', [...claudeArgs, ...(model ? ['--model', model] : []), '-p', inlineHeader + prompt], {
+    let model;
+    let result;
+    const proc = spawn('claude', [...claudeArgs, ...settingsArgs(settings), '-p', inlineHeader + prompt], {
       cwd: projectDir,
       stdio: ['inherit', 'pipe', 'inherit'],
       env: claudeEnv,
@@ -90,7 +97,9 @@ function runClaude(prompt, { concern } = {}) {
         let msg;
         try { msg = JSON.parse(line); } catch { continue; }
 
-        if (msg.type === 'assistant') {
+        if (msg.type === 'system' && msg.subtype === 'init') {
+          model = msg.model;
+        } else if (msg.type === 'assistant') {
           for (const block of msg.message?.content ?? []) {
             if (block.type === 'text' && block.text && verbose) console.log(block.text);
             if (block.type === 'tool_use') {
@@ -100,12 +109,22 @@ function runClaude(prompt, { concern } = {}) {
             }
           }
         } else if (msg.type === 'result') {
-          console.log(`done (${msg.duration_ms}ms${msg.total_cost_usd ? `, $${msg.total_cost_usd.toFixed(4)}` : ''}${tokens(msg.usage)})`);
+          result = { ...msg, model, settings };
+          const on = [model, settings.effort && `effort ${settings.effort}`].filter(Boolean).join(', ');
+          console.log(`done (${msg.duration_ms}ms${msg.total_cost_usd ? `, $${msg.total_cost_usd.toFixed(4)}` : ''}${tokens(msg.usage)}${on ? `, ${on}` : ''})`);
+          if (msg.is_error) console.log(`[ralph] Claude reported: ${String(msg.result ?? msg.subtype ?? '').slice(0, 200)}`);
         }
       }
     });
 
-    proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`Claude exited ${code}`))));
+    proc.on('close', (code) => {
+      if (code === 0 && !result?.is_error) return resolve(result);
+      const limit = usageLimit(result);
+      const error = new Error(limit ? `usage limit reached (${limit.text})` : `Claude exited ${code}`);
+      error.result = result;
+      error.usageLimit = limit;
+      reject(error);
+    });
     proc.on('error', reject);
   });
 }

@@ -60,6 +60,23 @@ export function journalEntries(text) {
 }
 
 /**
+ * The journal with a note for a job added (`tag`, journalTag). When it already has notes with this heading for the same
+ * job, they're replaced by one that counts them ("Interrupted slice reset to Planned (×3)"): a job interrupted over and
+ * over (a usage limit, a crash loop) leaves one note, not one per attempt, and the next job's memory stays small.
+ */
+export function withRepeatedNote(text, { heading, tag, lines, at = new Date() }) {
+  const { preamble, entries } = journalEntries(text);
+  const headingOf = (e) => e.text.split('\n', 1)[0];
+  const same = (e) => headingOf(e).trimEnd().endsWith(tag) && headingOf(e).includes(`— ${heading}`);
+  const earlier = entries.filter(same);
+  const count = earlier.reduce((n, e) => n + (Number(headingOf(e).match(/\(×(\d+)\)/)?.[1]) || 1), 0) + 1;
+  const title = count > 1 ? `${heading} (×${count})` : heading;
+  const kept = entries.filter((e) => !same(e)).map((e) => e.text).join('');
+  const body = kept && !kept.endsWith('\n') ? `${kept}\n` : kept;
+  return `${preamble}${body}\n## ${at.toISOString()} — ${title} ${tag}\n\n${lines.join('\n')}\n---\n`;
+}
+
+/**
  * Removes the journal entries whose tagged concern is Done in `indexEntries` (index.json's slices). Untagged
  * entries, and entries for slices the index doesn't know, are kept. Returns how many were removed.
  */
