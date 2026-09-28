@@ -13,7 +13,8 @@ import { randomUUID } from 'crypto';
 import { execFileSync } from 'child_process';
 import { createRealtimeAdapter } from './adapters/realtime-adapter.js';
 import { concernsOf, inProgressConcerns, nextWork, setConcernStatus, settleEntries } from './concerns.js';
-import { LEARNINGS_CAP, contractPath, journalPath, journalTag, memoryBlock, pruneJournal, usesLearnings } from './memory.js';
+import { LEARNINGS_CAP, contractPath, journalPath, journalTag, memoryBlock, pruneJournal, usesLearnings, withRepeatedNote } from './memory.js';
+import { appendMetrics, metricsLine, usageLimitWaitMs } from './runner.js';
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 
@@ -736,7 +737,14 @@ function noteInterrupted(kitDir, run, stale, names, heading, rest) {
     return;
   }
   for (const s of stale) {
-    appendProgressNote(kitDir, heading, [`Slice: "${s.title}"${s.concern === 'ui' ? ' (UI)' : ''} (context=${run.ctx})`, ...rest], s);
+    const lines = [`Slice: "${s.title}"${s.concern === 'ui' ? ' (UI)' : ''} (context=${run.ctx})`, ...rest];
+    try {
+      const progressPath = journalPath(kitDir);
+      const existing = existsSync(progressPath) ? readFileSync(progressPath, 'utf-8') : '';
+      writeFileSync(progressPath, withRepeatedNote(existing, { heading, tag: journalTag(s), lines }), 'utf-8');
+    } catch (err) {
+      console.error('[ralph] Failed to write the progress.txt note:', err.message);
+    }
   }
 }
 
@@ -779,9 +787,39 @@ async function runWithRetry(label, fn) {
       await fn();
       return;
     } catch (err) {
+      if (err.usageLimit) {
+        // The account's usage limit, not a crash: wait for its reset rather than retrying every minute (PLAN 15.9).
+        const waitMs = usageLimitWaitMs(err.usageLimit);
+        console.error(`[ralph] Usage limit reached — waiting until ${new Date(Date.now() + waitMs).toLocaleTimeString()} before retrying.`);
+        await new Promise((r) => setTimeout(r, waitMs));
+        continue;
+      }
       console.error(`[ralph] Error — retrying in 60s:`, err.message);
       await new Promise((r) => setTimeout(r, 60_000));
     }
+  }
+}
+
+// One line per agent run in .build-kit/metrics/runs.jsonl (PLAN 15.9): what the job ran on, what it cost and how it
+// ended, so a slice's cost is kept with the project. `failure` is the run's error, when it failed.
+function recordRun(kitDir, projectDir, planned, run, result, failure) {
+  try {
+    let outcome;
+    if (failure?.usageLimit) outcome = 'usage-limit';
+    else if (failure) outcome = 'error';
+    else {
+      const index = JSON.parse(readFileSync(join(kitDir, '.slices', planned.ctx, 'index.json'), 'utf-8'));
+      const entry = (index.slices ?? []).find((e) => e.id === planned.id);
+      outcome = (entry && concernsOf(entry)[planned.concern ?? 'backend']?.status) ?? 'unknown';
+    }
+    let commit = null;
+    try {
+      const head = git(projectDir, ['rev-parse', 'HEAD']).trim();
+      if (head !== run?.worktree?.head) commit = head.slice(0, 7);
+    } catch {}
+    appendMetrics(kitDir, metricsLine({ planned, settings: result?.settings, result, outcome, commit }));
+  } catch (err) {
+    console.error('[ralph] Failed to record the run in metrics/runs.jsonl:', err.message);
   }
 }
 
@@ -898,10 +936,16 @@ async function ralphLoop(kitDir, projectDir, cfg, onTask, onPlannedSlice, localO
           return;
         }
         const run = beginRun(kitDir, projectDir, planned.ctx);
+        let result;
+        let failure;
         try {
           // The loop claims the job (after the run marker, so an interrupted claim is recovered).
           setLocalSliceStatus(kitDir, planned.ctx, planned.id, 'InProgress', {}, planned.concern);
-          await onPlannedSlice(jobPrompt(kitDir, projectDir, planned, true, routine), { concern: planned.concern });
+          result = await onPlannedSlice(jobPrompt(kitDir, projectDir, planned, true, routine), { concern: planned.concern });
+        } catch (err) {
+          failure = err;
+          result = err.result;
+          throw err;
         } finally {
           try {
             recoverInterruptedRun(kitDir, projectDir, run);
@@ -909,6 +953,7 @@ async function ralphLoop(kitDir, projectDir, cfg, onTask, onPlannedSlice, localO
             console.error(`[ralph] Interrupted-slice recovery failed:`, err.message);
           }
           settleIndex(kitDir, planned.ctx);
+          recordRun(kitDir, projectDir, planned, run, result, failure);
           endRun(kitDir);
         }
       });

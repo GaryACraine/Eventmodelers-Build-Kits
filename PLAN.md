@@ -395,6 +395,33 @@ designed later.
   - Kit wiring and checks.
   - Proven through the loop on restaurant-orders, on both paths: the **Stock Returner** (internal, in the
     processor) and the **Payment Requester** (external, in Temporal).
+- [ ] **15.9 Token discipline for the loop** (Gary, 2026-09-28: a standing concern to keep a close eye on).
+  - **Why:** the restaurant backend ran on whatever `~/.claude/settings.json` said, because nothing in the kit or
+    project pinned it: Opus at low effort.
+    - **Baseline** (the whole backend, 2026-09-28): 24 finished jobs cost $20.14 (median $0.79, range $0.38–$1.47),
+      and 4 runs that didn't finish a job cost $2.20 (3 blocks, 1 usage-limit interruption), about $22.34 in all.
+    - Each job read 0.25–1.8M tokens, mostly the same context re-read turn after turn (skill text, the loop's
+      memory, files), against 3–23k written. The model's price is the biggest lever, then what each turn carries.
+  - **Built** (kit, `shared/build-kit`):
+    - `lib/runner.js`: the model, effort and per-job budget per concern from `.eventmodelers/config.json`
+      (`models`/`model`, `efforts`/`effort`, `maxBudgetsUsd`/`maxBudgetUsd`), overridden for one run by
+      `RALPH_MODEL`, `RALPH_EFFORT` and `RALPH_MAX_BUDGET_USD` → `claude --model --effort --max-budget-usd`;
+    - the startup line and every `done (…)` line say what a job runs on;
+    - one line per agent run in `.build-kit/metrics/runs.jsonl` (slice, concern, model, effort, cost, turns, tokens,
+      outcome, commit), committed with the model; `docs/tools/loop-costs.mjs <project>` summarises it per slice,
+      per kind of slice and per model and effort, with what unfinished runs cost;
+    - a usage-limit exit waits for the reset (else 15 minutes) instead of retrying every minute;
+    - a job interrupted again and again keeps one note, counting the attempts (the 91 copies on restaurant-orders).
+    - Only the shared kit (which the DCB kit installs). The React and Bridge stacks' older runners are unchanged.
+  - **Now:** restaurant-orders runs on **Sonnet at medium effort, up to $2 a job**, for the rest of Phase 15.
+  - **Deferred to the next new project** (Gary: no overhead now, finish the restaurant feature first):
+    - an A/B of models and efforts on representative slices (write, read with a lookup, extension, both
+      automations), comparing cost, turns, pass rate, blocks and review;
+    - distilling the skills for Sonnet, `build-automation` first: shorter procedural steps, exact templates, one
+      worked example per path, references loaded on demand, decision tables (the first concrete use of 15.6);
+    - trimming what each turn carries (memory caps, no re-reading files just written, prompt size per job);
+    - the default model and effort per concern and slice type, in the Decisions Log and the manual.
+  - Every phase close reports the loop's cost (`loop-costs.mjs`).
 - [ ] **15.4 Redrive failed work** (after 15.3): a UI action and a command that start an open item's workflow
   again. The design questions and their current leanings are in **ADR-032 (Proposed)**. Decide it, move it to
   Accepted, then build it.
@@ -3007,6 +3034,8 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-28 | 15.3 runs the whole restaurant backend through the loop; 15.5 keeps the UI, the domain-bleed review and the manual | Gary: both automations proven end to end need the slices they depend on |
 | 2026-09-28 | The export queues an automation's job after its to-do list and the commands it issues (emcli `buildOrder`) | On the timeline an automation precedes its command, and one job builds one slice |
 | 2026-09-28 | `findExistingPosition` also finds commands of several events (`uuidv5(key:0)`) | A repeated `placeOrder` (three events) with the same `Idempotency-Key` was decided again |
+| 2026-09-28 | The loop's model, effort and per-job budget are pinned per project (restaurant-orders: Sonnet, medium, $2), not inherited from the developer's own settings; each run's cost is recorded per slice (PLAN 15.9) | Gary: token usage is a standing concern. The restaurant backend ran on Opus by accident (about $22). Pinned runs are cheaper and reproducible, and per-slice costs show where the skills need work |
+| 2026-09-28 | Model A/B testing and skill distillation for Sonnet are deferred to the next new project | Gary: finish the restaurant feature first, without the overhead |
 
 ## Progress
 

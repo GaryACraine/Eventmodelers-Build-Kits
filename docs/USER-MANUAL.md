@@ -2356,6 +2356,39 @@ exceptions:
 
 ---
 
+### What the loop runs on, and what it costs
+
+**"Run the loop on Sonnet":** pin the model, effort and a per-job spending cap in the project's
+`.eventmodelers/config.json`. Without it, every job runs on whatever your own `~/.claude/settings.json` says:
+
+```json
+{ "models": { "backend": "sonnet", "ui": "sonnet" }, "effort": "medium", "maxBudgetUsd": 2 }
+```
+
+The loop's first lines say what each concern will use (`backend jobs: sonnet, effort medium, up to $2 a job`), and
+every `done (…)` line names the model and effort. A per-concern form (`efforts`, `maxBudgetsUsd`) sets the UI apart
+from the backend.
+
+**"Try one run on another model":** override it for that run only, with no config edit:
+
+```bash
+RALPH_MODEL=opus RALPH_EFFORT=high eventmodelers run --local --concern backend 2>&1 | tee ralph.log
+```
+
+**"What did that slice cost?":** each agent run adds one line to `.build-kit/metrics/runs.jsonl`: the slice, its
+concern, the model and effort, the cost, turns, tokens, how it ended and the commit it made. Commit the file with
+the model. For a summary per slice, per kind of slice and per model:
+
+```bash
+node <Build-Kits>/docs/tools/loop-costs.mjs .
+```
+
+It also shows what runs that didn't finish a job cost (a block, an interruption, a usage limit).
+
+**"The loop stopped on my usage limit":** it says so (`Usage limit reached — waiting until …`) and waits for the reset,
+then carries on with the same job. A job interrupted again and again leaves one note in `progress.txt`, counting the
+attempts.
+
 ## 16. Rebuilds in depth
 
 A projection reads only the event types in its `canHandle` list, and only from its bookmark onward. The bookmark
@@ -2619,6 +2652,8 @@ left out once `emcli use chapter` / `use slice` / `use spec` has set them (§4, 
 | `bash scripts/start-empty.sh` | remove the bundled example and start empty |
 | `eventmodelers run --local 2>&1 \| tee ralph.log` | run the build loop |
 | `eventmodelers run --local --concern ui\|backend 2>&1 \| tee ralph.log` | run the loop for one discipline only (screens first, §13.9) |
+| `RALPH_MODEL=… RALPH_EFFORT=… eventmodelers run --local …` | run the loop once on another model or effort (§15) |
+| `node docs/tools/loop-costs.mjs <project>` (Build-Kits) | what each slice cost the loop, per slice, kind and model (§15) |
 | `npm run run:checks -- --staged` | run the commit checks by hand |
 | `npm run gen:api` | generate the frontend's API types from the API contract (`api/openapi.json`; no backend needed) |
 | `npm run contract:check` | compare the routes the code serves with the API contract: match, pending (not built yet), differ |

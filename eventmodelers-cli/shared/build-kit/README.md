@@ -61,9 +61,23 @@ ADR-027): a slice's work is two jobs, its **backend** and its **UI**, each with 
 (`concerns: { backend: { status, blockedReason?, blockedAt? }, ui: {…} }`); the entry's `status` is derived from
 them. The loop picks the next job (`lib/concerns.js` `nextWork`: a Planned backend, or a Planned UI), claims it (InProgress), and runs that job's routine (`backend-prompt.md` or `screen-prompt.md`) with
 the job named in a "Your task" header; the agent sets its concern Done or Blocked, and the loop derives the
-slice's status after each run. `models: { ui, backend }` in `.eventmodelers/config.json` gives a routine its own
-model (`ralph-claude.js`). Entries without `concerns` (other kits' exports) run exactly as before: the agent
+slice's status after each run. Entries without `concerns` (other kits' exports) run exactly as before: the agent
 picks and claims the slice itself.
+
+**Model, effort and cost** (PLAN 15.9, `lib/runner.js`): pin what the loop runs on in the project's
+`.eventmodelers/config.json`, or a job inherits the developer's own `~/.claude/settings.json`:
+
+```json
+{ "models": { "backend": "sonnet", "ui": "sonnet" }, "effort": "medium", "maxBudgetUsd": 2 }
+```
+
+Each setting has a per-concern form (`models`, `efforts`, `maxBudgetsUsd`: `{ backend, ui }`) and a default
+(`model`, `effort`, `maxBudgetUsd`). `RALPH_MODEL`, `RALPH_EFFORT` and `RALPH_MAX_BUDGET_USD` override them for one
+run. The loop prints each concern's settings at startup, and every `done (…)` line names the model and effort.
+After each job it appends a line to `.build-kit/metrics/runs.jsonl` (slice, concern, model, effort, cost, turns,
+tokens, outcome, commit); commit it with the model, and summarise it with Build-Kits' `docs/tools/loop-costs.mjs`.
+A run that ends on the account's usage limit waits for the reset instead of retrying every minute, and a job
+interrupted again and again keeps one note in `progress.txt`, counting the attempts.
 
 **Contract-first** (DCB ADR-029): when the project has an API contract, `api/openapi.json` (emcli writes it from
 the model at export), a UI job waits for nothing, since it builds from the contract. Without one, a UI waits until

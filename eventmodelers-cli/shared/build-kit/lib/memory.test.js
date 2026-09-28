@@ -130,3 +130,21 @@ test("the backend commit is found by either subject, never the screen's or anoth
   assert.equal(backendCommitBody(root, 'course (ratings)'), '');
   assert.equal(backendCommitBody(join(tmpdir(), 'not-a-repo-xyz'), 'rate course'), '');
 });
+
+test('a job interrupted over and over keeps one note, counting the attempts', async () => {
+  const { withRepeatedNote } = await import('./memory.js');
+  const tag = journalTag({ id: 's1', concern: 'backend' });
+  const other = journalTag({ id: 's2', concern: 'backend' });
+  let text = '# Progress\n';
+  text = withRepeatedNote(text, { heading: 'Interrupted slice reset to Planned', tag, lines: ['- first'], at: new Date('2026-09-28T10:00:00Z') });
+  text = withRepeatedNote(text, { heading: 'Interrupted slice reset to Planned', tag: other, lines: ['- other job'], at: new Date('2026-09-28T10:00:30Z') });
+  text = withRepeatedNote(text, { heading: 'Interrupted slice reset to Planned', tag, lines: ['- second'], at: new Date('2026-09-28T10:01:00Z') });
+  text = withRepeatedNote(text, { heading: 'Interrupted slice reset to Planned', tag, lines: ['- third'], at: new Date('2026-09-28T10:02:00Z') });
+  const { preamble, entries } = journalEntries(text);
+  assert.equal(preamble, '# Progress\n\n');
+  assert.equal(entries.length, 2);
+  assert.match(entries[0].text, /other job/);
+  assert.match(entries[1].text, /^## 2026-09-28T10:02:00.000Z — Interrupted slice reset to Planned \(×3\) \[slice:s1 concern:backend\]/);
+  assert.match(entries[1].text, /- third/);
+  assert.equal(entries[1].slice, 's1');
+});
