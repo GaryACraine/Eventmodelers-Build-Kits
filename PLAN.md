@@ -244,8 +244,8 @@ designed later.
     - **Payment Gateway Webhook** is a **translation** (synchronous). The gateway's `paymentReceived` (in its own
       *Payment Gateway* lane, fields mapped `webhook:`) leads to `markOrderPaid` or `markOrderPaymentFailed`,
       with the idempotency key `payment-result:<orderId>`.
-    - **The domain has no internal automation** (an event of ours leading to a command of ours). 15.3 proves
-      that path some other way, or not at all. That's a question for Gary.
+    - **The reference has no internal automation** (an event of ours leading to a command of ours), so stock
+      was added on 2026-09-28 to have one: the **Stock Returner** (below).
   - **Differences from the reference:**
     - **`menu` is flattened** to `menuId`, `cuisine` and `menuItems`, because emcli nests only one level
       (`Custom` subfields).
@@ -255,15 +255,40 @@ designed later.
     - **A `restaurants` query** (sorted by name) feeds Place Order's restaurant picker.
     - **The gateway simulator isn't in the model.** It's the gateway's own page, not ours, so it belongs to
       15.3's container mock of the gateway.
-  - **Open, for Gary:**
-    - the hotspot *"What records that the gateway was asked?"* (on `request payment`; it blocks planning that
-      slice): leave it to Temporal's workflow id, or add a business event such as `paymentRequested`;
-    - kept as in the reference, but worth a decision: `placeOrder` takes each item's name and **price from the
-      customer's request**. It only checks that the ids are on the menu, and `paymentInitiated.amount` is the sum
-      of those prices.
+  - **Rulings (Gary, 2026-09-28):**
+    - **No `paymentRequested` event: it's left to Temporal.** The list holds "needs payment" until the order is
+      settled. Temporal's workflow, named for the order, is never started twice, and its UI shows where the
+      request is. The ruling is on the Payment Requester's description, and the hotspot is removed.
+    - **Prices stay as the reference has them**, from the customer's request (for brevity).
+  - **Stock, added 2026-09-28** (project commit `9291b82`). The chapter is now 25 slices, 63 scenarios and 15
+    mockups (a Stock page, `/restaurants/:restaurantId/stock`).
+    - **`restockMenuItem` → `menuItemRestocked`.** It checks the dish is on the current menu.
+    - **`placeOrder` rejects an order when stock is short** (`Not enough stock for m1`), and records
+      **`stockDeducted`** in the same decision, so two orders can't both take the last portion.
+    - **The decision comes from the event stream,** never a read model, which is eventually consistent:
+      `placeOrder` folds the restaurant's `menuItemRestocked`, `stockDeducted` and `stockReturned` events. How that
+      scales is **15.8**.
+    - **The Stock Returner is internal** (our event → our command, in the processor, no Temporal):
+      - it's opened by `orderPaymentFailed` and closed by `stockReturned`;
+      - it works from the `StockToReturn` to-do list, and its idempotency key is `stock-returner:<orderId>`;
+      - it issues `returnStock` → `stockReturned`.
+    - **One read model is current inventory, `StockLevels`.** Its two later cards are copies of it (extension
+      slices), not further tables.
+    - **Rejected:** a Stock Keeper automation that deducted when the order was prepared. It would let orders
+      oversell between placing and deducting.
   - **Found in emcli** (its `ISSUES.md`):
     - **Fixed** (merged, `fc4a1b3`): pushing a new chapter with two user lanes failed halfway (the board refuses
       a user lane at the information-flow lane's index). It was recovered with a hand-written baseline.
+    - **Fixed** (merged, `4d7e7a9`):
+      - a push left every copy's `copyOf` and scenario step's `linkedId` naming the local ids the board replaced
+        (6 copies and 119 steps here), which broke extension export and the Place Order query binding;
+      - a `--safe` push forgot the deletions it skipped (the removed hotspot stayed on the board).
+
+      Now `rewriteId` covers both links, the baseline keeps skipped deletions, `emcli workspace relink` repairs old
+      models (here, 125 relinked), and `completeness` reports dangling links (a copy link is an error, a step link
+      a warning). After the stock push, no links were dangling.
+    - **Follow-up:** course-enrollment has 71 dangling step links from the same bug. Run `emcli workspace
+      relink` there while its loop is idle, then commit.
     - **Open:** a copy made before its origin has fields gets none.
     - **Open:** a List field's inputs inside a `data-list` don't count as its input (a warning on all three menu
       forms).
@@ -294,7 +319,8 @@ designed later.
     (the gateway's webhook), and a container mock of the gateway. The reference's Cloudflare workflow rules are
     adapted to Temporal.
   - Kit wiring and checks.
-  - Proven through the loop on restaurant-orders.
+  - Proven through the loop on restaurant-orders, on both paths: the **Stock Returner** (internal, in the
+    processor) and the **Payment Requester** (external, in Temporal).
 - [ ] **15.4 Redrive failed work** (after 15.3): a UI action and a command that start an open item's workflow
   again. The design questions and their current leanings are in **ADR-032 (Proposed)**. Decide it, move it to
   Accepted, then build it.
@@ -313,6 +339,20 @@ designed later.
   - Replayed in a fresh project.
   - The result diffed against 15.1's model.
   - The gaps fed into the skill.
+- [ ] **15.8 Deciding from a growing event stream** (a pattern Gary wants to actively investigate; after 15.5, so
+  there's a working baseline).
+  - **The problem.** `placeOrder` decides stock from the event stream (never a read model), folding every
+    `menuItemRestocked`, `stockDeducted` and `stockReturned` event of the restaurant on every order. The fold
+    grows with the restaurant's history, and the `restaurantId` tag makes every order of a restaurant contend for
+    one append condition.
+  - **Options to research** (the DCB spec, Axon 5, Emmett and the book first, as for ADR-031):
+    - tags per menu item (tags from a List field, which the kit doesn't support yet);
+    - snapshots or cached folds of the decision state;
+    - "closing the books", i.e. a periodic `stockCounted` event, so a decision reads back only to the last count;
+    - an immediately consistent (inline, ADR-021) read model read inside the decision's transaction, and whether
+      that still counts as deciding from events;
+    - measure fold and append cost against the stream's size with the library's bench.
+  - The design questions go into a Proposed ADR when this starts.
 
 ### Phase 13: Model by talking (an emcli modeling skill)
 
@@ -2880,12 +2920,16 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-27 | Restaurant Orders (15.1) keeps the reference's command names, and its event names without the `Event` suffix in camelCase (`restaurantCreated`) | "As they are", in the kit's identifier style; no `…Was…`, so 15.5 shows whether the kit relied on course-enrollment's naming |
 | 2026-09-27 | The reference's nested `menu` is flattened to `menuId`, `cuisine`, `menuItems`; fmodel's `final` flag is dropped | emcli nests one level only; `final` is library machinery, not a business fact |
 | 2026-09-27 | The gateway simulator is not in the model; the gateway's `paymentReceived` sits in its own *Payment Gateway* lane and is translated at the webhook | The simulator is the gateway's page, not ours: it belongs to 15.3's container mock of the gateway |
+| 2026-09-28 | No `paymentRequested` event: whether the gateway was asked is left to Temporal | Gary. The to-do list holds "needs payment" until settled; the workflow named for the order is never started twice, and Temporal's UI shows where the request is |
+| 2026-09-28 | `placeOrder` keeps taking prices from the customer's request, as in the reference | Gary: for brevity |
+| 2026-09-28 | Stock added to Restaurant Orders: `placeOrder` rejects short stock, deciding from the stock events (never a read model), and records `stockDeducted` in the same decision; the Stock Returner (internal) gives a failed order's stock back | Gary: the domain needed an internal automation, and a decision must not rest on an eventually consistent read model. Deducting in the same decision can't oversell; a later deduction (at preparation) could |
+| 2026-09-28 | Deciding from a growing event stream is a pattern to investigate (PLAN 15.8) | Gary: revise later how to make the decision efficient when the stream grows large |
 
 ## Progress
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 15 — Automations (restaurant orders) | 🚧 Top priority | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27: the Restaurant Orders chapter (17 slices, 43 scenarios, 11 mockups) on prooph board; emcli push fix for two user lanes. Next: 15.2 the library's failure policy. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) |
+| 15 — Automations (restaurant orders) | 🚧 Top priority | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27/28: the Restaurant Orders chapter (25 slices, 63 scenarios, 15 mockups) on prooph board, with stock and an internal automation (the Stock Returner); emcli push fixes (lanes, links, skipped deletions). 15.8 added: deciding from a growing event stream. Next: 15.2 the library's failure policy. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) |
 | 1 — Stack Scaffolding | ✅ Complete | Verified: init, npm install, tsc, 21/21 unit tests |
 | 2 — State Change Skill | ✅ Complete | 9-step SKILL.md with full DCB patterns |
 | 3 — State View Skill | ✅ Complete | 5-step SKILL.md with Pongo + preferWait patterns |
