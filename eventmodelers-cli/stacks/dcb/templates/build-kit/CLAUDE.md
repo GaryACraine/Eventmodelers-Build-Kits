@@ -96,7 +96,8 @@ When asked to build a slice, always follow this flow:
    - **Rebuild** — any slice whose slice.json has a `rebuild` block: it's already built, and its model changed since
      (`rebuild.changes` says what, in plain words). Use the slice type's skill as usual, but **update the existing
      files** in its folder to the new slice.json (fields, rules, scenarios), don't write them anew; keep what still
-     holds, add a test per new scenario, and drop tests of removed ones. The commit says `feat: [<slice>] updated`.
+     holds, add a test per new scenario, and drop tests of removed ones. Change a line in place rather than adding a
+     new one before it: remove any code the change supersedes, so no branch is left that can never run. The commit says `feat: [<slice>] updated`.
    - **Retype** — a state-view slice whose slice.json has a `retype` block: the model switched a built read model's
      type → `/build-state-view` ("Changing a read model's type"). It changes the `type:` line only.
    - **Queries** — a state-view slice whose slice.json has `addQueries`: its specs now run queries the built read
