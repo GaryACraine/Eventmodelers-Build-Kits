@@ -18,7 +18,7 @@ import { getTestPgDatabasePool } from "@test/testPgDbPool"
 import { automationTestApp, recordingWorkflowStarter } from "@test/automationHarness"
 import { startTemporalTestServer, withWorker, type TemporalTestServer } from "@test/temporalHarness"
 import { defineReadModel, startReadModels, withType, type ReadModelRuntime } from "./readModels.js"
-import { automationProcessors, defineAutomation, issueOnce, type Automation } from "./automations.js"
+import { automationProcessors, defineAutomation, issueOnce, workKey, type Automation } from "./automations.js"
 import { temporalWorkflowStarter } from "./temporal.js"
 import { configureProcessorStatusRoute } from "./health.js"
 
@@ -120,6 +120,47 @@ describe("issueOnce", () => {
         await issueOnce({ eventStore, pool: db }, "shipper:p1", shipParcel, { type: "shipParcel", data: { parcelId: "p1" } })
         const r = await db.query("SELECT type FROM events")
         expect(r.rows).toEqual([{ type: "parcelShipped" }])
+    })
+})
+
+// ─── Work done again on the same item: one key per attempt (ADR-032) ─────────
+
+describe("an automation whose item can be worked again", () => {
+    const booked = (parcelId: string, attempt: number): TaggedEvent<ParcelBooked> => ({
+        event: { type: "parcelBooked", data: { parcelId, address: "1 Main St", attempt } as ParcelBooked["data"] },
+        tags: Tags.fromObj({ parcelId })
+    })
+    const attemptOf = (event: { event: { data: unknown } }) => (event.event.data as { attempt: number }).attempt
+    const printer = defineAutomation<ParcelToShip>({
+        name: "label-printer",
+        todoList: ParcelsToShip,
+        triggers: ["parcelBooked"],
+        act: async ({ item, event, start }) => start("printParcelLabel", [item.parcelId], { attempt: attemptOf(event) })
+    })
+    const app = automationTestApp({ readModels: [ParcelsToShip], automations: [printer] })
+
+    test("starts one workflow per attempt, <automation>:<key>:<attempt>", async () => {
+        await app.given(booked("p1", 1), booked("p1", 2))
+        expect(app.started().map(s => s.workflowId)).toEqual(["label-printer:p1:1", "label-printer:p1:2"])
+    })
+
+    test("issues one command per attempt: a later attempt isn't taken for a repeat", async () => {
+        const db = app.pool()
+        const eventStore = app.runtime().eventStore
+        // No rule: every command is accepted, so only the key decides whether it's appended
+        const note = decider<Command<"noteParcel", { parcelId: string }>, { notes: EventHandlerWithState<any, number> }>({
+            handlers: cmd => ({
+                notes: { tagFilter: Tags.fromObj({ parcelId: cmd.data.parcelId }), init: 0, when: { parcelNoted: (_e: unknown, n: number) => n + 1 } }
+            }),
+            decide: cmd => ({ event: { type: "parcelNoted", data: cmd.data }, tags: Tags.fromObj({ parcelId: cmd.data.parcelId }) })
+        })
+        const command = { type: "noteParcel" as const, data: { parcelId: "p9" } }
+        await issueOnce({ eventStore, pool: db }, workKey("noter", "p9", { attempt: 1 }), note, command)
+        await issueOnce({ eventStore, pool: db }, workKey("noter", "p9", { attempt: 1 }), note, command)
+        await issueOnce({ eventStore, pool: db }, workKey("noter", "p9", { attempt: 2 }), note, command)
+        const r = await db.query("SELECT type FROM events WHERE type = 'parcelNoted'")
+        expect(r.rows).toHaveLength(2)
+        expect(workKey("noter", "p9")).toBe("noter:p9")
     })
 })
 

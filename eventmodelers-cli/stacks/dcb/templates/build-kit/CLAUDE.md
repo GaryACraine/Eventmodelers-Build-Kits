@@ -85,7 +85,9 @@ When asked to build a slice, always follow this flow:
      system's event translated at a webhook) → `/build-automation`. Not yet proven in a project (ADR-033): if the skill
      has no section for it, block the slice with `request-feedback`.
    - **Automation** — `processors` array is non-empty → invoke `/build-automation`: a to-do list worked by one
-     processor, internal (our command) or external (a Temporal workflow) (ADR-031, ADR-033)
+     processor, internal (our command) or external (a Temporal workflow) (ADR-031, ADR-033). An external automation
+     also reads the outside system's **provider skill** (`/provider-<system>`, e.g. `/provider-braintree`), named in
+     its description: that skill holds the system's specifics; `/build-automation` stays general (PLAN 15.4e)
    - **State-view** — `sliceType === "STATE_VIEW"`, or `projections`/`queries` array is non-empty → invoke `/build-state-view`
      - Every read model type goes to `/build-state-view`: `database-projected` (async, the default), `inline-projected`
        (updated inside the append transaction) and `live-report` (folded from the event store per read). It writes one

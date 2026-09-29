@@ -27,6 +27,10 @@ import { findExistingPosition, idempotencyKeyFor } from "./idempotency.js"
  * `<automation>:<item key>`), `start` for a Temporal workflow (external work, the workflow id `<automation>:<item
  * key>`). Neither catches an error: a failure blocks the processor, which retries the same event (the library's
  * fail fast) and shows it on `GET /health/processors`.
+ *
+ * An item whose work can be done again (a payment tried again after a decline or a stall, ADR-032) passes the
+ * **attempt** its trigger belongs to: the key becomes `<automation>:<item key>:<attempt>`, so each attempt is worked
+ * once and a later attempt isn't mistaken for a repeat of the first.
  */
 
 export interface AutomationContext<TItem extends ReadModelDoc> {
@@ -36,10 +40,20 @@ export interface AutomationContext<TItem extends ReadModelDoc> {
     key: string
     /** The trigger event being handled */
     event: SequencedEvent
-    /** Issue one of our commands, once: the idempotency key is `<automation>:<item key>` */
-    issue<C extends Command>(decider: Decider<C, any>, command: C): Promise<void>
-    /** Start a Temporal workflow, once: its id is `<automation>:<item key>` */
-    start(workflowType: string, args: unknown[]): Promise<void>
+    /** Issue one of our commands, once: the idempotency key is `<automation>:<item key>[:<attempt>]` */
+    issue<C extends Command>(decider: Decider<C, any>, command: C, options?: AttemptOptions): Promise<void>
+    /** Start a Temporal workflow, once: its id is `<automation>:<item key>[:<attempt>]` */
+    start(workflowType: string, args: unknown[], options?: AttemptOptions): Promise<void>
+}
+
+export interface AttemptOptions {
+    /** The attempt the trigger belongs to, for work that can be done again on the same item (e.g. a payment's attempt) */
+    attempt?: number
+}
+
+/** The key an item's work is done once under: `<automation>:<item key>`, plus `:<attempt>` when given. */
+export function workKey(automation: string, key: string, options?: AttemptOptions): string {
+    return options?.attempt === undefined ? `${automation}:${key}` : `${automation}:${key}:${options.attempt}`
 }
 
 export interface Automation<TItem extends ReadModelDoc = any> {
@@ -112,17 +126,17 @@ export function automationProcessor(
                         for (const key of tagValues(event, automation.todoList.key)) {
                             const item = await readLive(deps.eventStore, automation.todoList, key)
                             if (!item) continue
-                            const itemKey = `${automation.name}:${key}`
                             await automation.act({
                                 item,
                                 key,
                                 event,
-                                issue: (decider, command) => issueOnce(deps, itemKey, decider, command),
-                                start: async (workflowType, args) => {
+                                issue: (decider, command, options) =>
+                                    issueOnce(deps, workKey(automation.name, key, options), decider, command),
+                                start: async (workflowType, args, options) => {
                                     if (!deps.workflows) {
                                         throw new Error(`${automation.name}: no workflow starter (is TEMPORAL_ADDRESS set?)`)
                                     }
-                                    await deps.workflows.start(workflowType, itemKey, args)
+                                    await deps.workflows.start(workflowType, workKey(automation.name, key, options), args)
                                 }
                             })
                         }

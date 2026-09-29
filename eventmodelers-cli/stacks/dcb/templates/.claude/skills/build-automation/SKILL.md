@@ -31,7 +31,11 @@ write only `act`**, plus, for external work, a Temporal workflow and its activit
 | Where the work runs | in the processor | in a Temporal workflow (`workflow.ts`, `activities.ts`) |
 | Retries | the processor retries the event (fail fast) | Temporal retries, by the workflow's configuration only |
 
-Never catch an error in `act`, a workflow or an activity to "log and carry on". A thrown error in `act` blocks the
+**This skill is general.** What's true of one outside system (its SDK, which answers mean what, its error codes, its
+test values, its quirks) is in that system's **provider skill**, `.claude/skills/provider-<system>/SKILL.md` (e.g.
+`provider-braintree`). Changing provider changes that skill, not this one.
+
+Never catch an error in `act` or an activity to "log and carry on". A thrown error in `act` blocks the
 processor on that event, retries it with backoff and shows it on `GET /health/processors`. A thrown activity error is
 retried by Temporal. Swallowing either loses the work silently.
 
@@ -47,8 +51,9 @@ retried by Temporal. Swallowing either loses the work silently.
     - `INBOUND relates-to READMODEL`: the **to-do list**;
     - `OUTBOUND relates-to COMMAND`: the **commands** it leads to.
   - `description`: whether it's **internal** or **external**, the idempotency key (`stock-returner:<orderId>`), the
-    workflow id (`payment-request:<orderId>`), what to call and what its answers mean, and any rulings. Follow it to
-    the letter.
+    workflow id (`payment-request:<orderId>:<attempt>`), **the outside system** (read its provider skill), what its
+    answers mean, and any rulings. Follow it to the letter. An outside system with no provider skill: block the job
+    asking for one.
 - `events[]`: the trigger events with their fields (the data `act` gets).
 - `specifications[]`: GIVEN/THEN scenarios, with no WHEN. THEN is the command it issues, or nothing.
 
@@ -103,6 +108,10 @@ export const stockReturner = defineAutomation<StockToReturnDoc>({
   mappings in slice.json say (`stockDeducted.menuItems` → the list's `menuItems`).
 - `issue` gives the command the idempotency key `<name>:<item key>`. A repeat (a retry after a crash, the same event
   handled again) is recognised and not decided again.
+- **An item worked again** (a payment declined, paid again, declined again: the stock goes back each time) passes the
+  attempt its trigger belongs to: `issue(decider, command, { attempt })` keys it `<name>:<item key>:<attempt>`.
+  Without it, the second attempt looks like a repeat of the first and is silently skipped. The trigger event carries
+  the attempt when the model gives it one.
 
 ### Wiring (`src/index.ts`, committed separately: `chore: wire <Slice Name>`)
 
@@ -119,33 +128,64 @@ const automations: Automation[] = [stockReturner]
 The work is a call to a system we don't control, so it runs in a **Temporal workflow** named after the item. The
 workflow calls the system in an activity, then records the answer as our command.
 
-### The provider's SDK
+### The provider
 
-Use the provider's **official SDK**, the one production will use. `package.json` can't change in a slice commit
-(blocked-paths): if the SDK isn't installed, block the job, asking for it (`npm install <sdk>`) to be added.
+Read the outside system's provider skill first: it gives the SDK and its setup from the environment, what each answer
+and error means, how to never do the work twice, and the mock. Use the provider's **official SDK**, the one
+production will use. `package.json` can't change in a slice commit (blocked-paths): if the SDK isn't installed, block
+the job, asking for it (`npm install <sdk>`) to be added.
 
 ### `workflow.ts`: deterministic, no I/O
 
 ```typescript
-import { proxyActivities } from "@temporalio/workflow"
+import { ActivityFailure, ApplicationFailure, TimeoutFailure, proxyActivities } from "@temporalio/workflow"
 import type { PaymentRequestActivities } from "./activities.js"
 
 export interface PaymentRequestInput {
     orderId: string
+    attempt: number
     amount: string
     paymentMethodNonce: string
 }
 
-// Retries, backoff and timeouts are configuration: no retry loops of our own.
-const { chargeCard, recordPaid, recordFailed } = proxyActivities<PaymentRequestActivities>({
+// The outside call: retries, backoff and timeouts are configuration, bounded (about 5 minutes), no loops of our own
+const { chargeCard } = proxyActivities<PaymentRequestActivities>({
     startToCloseTimeout: "30 seconds",
     retry: { initialInterval: "1 second", backoffCoefficient: 2, maximumInterval: "1 minute", maximumAttempts: 10 }
 })
+// Recording in our own store: retried until it succeeds (our database back is the only fix). A command our rules
+// refuse (the order already paid) is an answer, not an outage: never retried
+const { recordPaid, recordFailed, recordStalled } = proxyActivities<PaymentRequestActivities>({
+    startToCloseTimeout: "30 seconds",
+    retry: {
+        initialInterval: "1 second",
+        backoffCoefficient: 2,
+        maximumInterval: "1 minute",
+        nonRetryableErrorTypes: ["IllegalStateError", "NotFoundError", "ValidationError"]
+    }
+})
 
 export async function paymentRequest(input: PaymentRequestInput): Promise<void> {
-    const answer = await chargeCard(input)
-    if (answer.outcome === "paid") await recordPaid(input.orderId)
-    else await recordFailed(input.orderId, answer.reason)
+    let answer
+    try {
+        answer = await chargeCard(input)
+    } catch (err) {
+        // Temporal gave up: the outcome is unknown. Record a stall, never a decline (ADR-032)
+        await recordStalled(input.orderId, input.attempt, stallOf(err))
+        return
+    }
+    if (answer.outcome === "paid") await recordPaid(input.orderId, input.attempt)
+    else await recordFailed(input.orderId, input.attempt, answer)
+}
+
+/** configuration: a non-retryable failure of that type; unavailable: retryable ones ran out, or timed out; else unknown */
+function stallOf(err: unknown): { category: "configuration" | "unavailable" | "unknown"; error: string } {
+    const cause = err instanceof ActivityFailure ? err.cause : err
+    const error = cause instanceof Error ? cause.message : String(cause)
+    if (cause instanceof ApplicationFailure && (cause.type === "configuration" || cause.type === "unavailable"))
+        return { category: cause.type, error }
+    if (cause instanceof TimeoutFailure) return { category: "unavailable", error }
+    return { category: "unknown", error }
 }
 ```
 
@@ -155,6 +195,9 @@ The workflow runs in Temporal's sandbox and is replayed from its history:
 - **business state stays in our events**: the workflow calls, then records the answer as a command, and never keeps
   the answer to itself. It doesn't wait for a later answer either: one that arrives later comes in through a webhook
   and a command, not a signal the workflow waits for.
+- **catching the outside call's final failure is the one catch allowed**, and it must record the stall: that turns
+  "Temporal gave up" into a business fact a person can act on (retry or give up), instead of an item that looks in
+  progress forever.
 
 ### `activities.ts`: the calls
 
@@ -162,38 +205,63 @@ The workflow runs in Temporal's sandbox and is replayed from its history:
 import type { EventStore } from "@dcb-es/event-store"
 import type { Pool } from "pg"
 import { issueOnce } from "../../../../shared/automations.js"
+import { alert as defaultAlert, type Alert } from "../../../../shared/alerts.js"
 import { markOrderPaidDecider } from "../markorderpaid/decider.js"
 import { markOrderPaymentFailedDecider } from "../markorderpaymentfailed/decider.js"
+import { markPaymentStalledDecider } from "../markpaymentstalled/decider.js"
 
-export type ChargeAnswer = { outcome: "paid" } | { outcome: "declined"; reason: string }
+// The business answer and its details: the provider skill says how each of the provider's answers maps to them
+export type ChargeAnswer =
+    | { outcome: "paid" }
+    | { outcome: "declined"; reason: string; kind: string; code?: string; card?: string }
 
-export function paymentRequestActivities(deps: { eventStore: EventStore; pool: Pool; gateway: Gateway }) {
+export function paymentRequestActivities(deps: { eventStore: EventStore; pool: Pool; gateway: Gateway; alert?: (a: Alert) => void }) {
+    const alert = deps.alert ?? defaultAlert
     return {
-        async chargeCard(input: PaymentRequestInput): Promise<ChargeAnswer> { /* the SDK call, below */ },
-        recordPaid: (orderId: string) =>
-            issueOnce(deps, `payment-result:${orderId}`, markOrderPaidDecider, { type: "markOrderPaid", data: { orderId } }),
-        recordFailed: (orderId: string, reason: string) =>
-            issueOnce(deps, `payment-result:${orderId}`, markOrderPaymentFailedDecider, {
+        async chargeCard(input: PaymentRequestInput): Promise<ChargeAnswer> { /* the provider skill's call and reading */ },
+        recordPaid: (orderId: string, attempt: number) =>
+            issueOnce(deps, `payment-result:${orderId}:${attempt}`, markOrderPaidDecider, { type: "markOrderPaid", data: { orderId } }),
+        recordFailed: (orderId: string, attempt: number, answer: Extract<ChargeAnswer, { outcome: "declined" }>) =>
+            issueOnce(deps, `payment-result:${orderId}:${attempt}`, markOrderPaymentFailedDecider, {
                 type: "markOrderPaymentFailed",
-                data: { orderId, reason }
+                data: { orderId, attempt, reason: answer.reason, kind: answer.kind, code: answer.code, card: answer.card }
+            }),
+        async recordStalled(orderId: string, attempt: number, stall: { category: string; error: string }) {
+            await issueOnce(deps, `payment-stalled:${orderId}:${attempt}`, markPaymentStalledDecider, {
+                type: "markPaymentStalled",
+                data: { orderId, attempt, ...stall }
             })
+            alert({
+                code: "payment-stalled",
+                severity: stall.category === "configuration" ? "critical" : "warning",
+                message: `The payment of order ${orderId} (attempt ${attempt}) stalled: ${stall.error}`,
+                details: { orderId, attempt, ...stall }
+            })
+        }
     }
 }
 export type PaymentRequestActivities = ReturnType<typeof paymentRequestActivities>
 ```
 
-- **A business answer is a result, a technical failure is thrown.** A decline (a refused card, an unknown address) is
-  returned, and the workflow records it with our command. A network error, timeout or 5xx is thrown, so Temporal
-  retries it.
+- **A business answer is a result, a technical failure is thrown**, and each is classified by the provider skill:
+  - a decline (a refused card, an unknown address) is **returned**, with a `kind` (what the user can do about it) and
+    the provider's `code`, and the workflow records it with our command;
+  - a failure a retry can fix (network, busy, down) is thrown as `ApplicationFailure.retryable(message,
+    "unavailable")` (or as it is), so Temporal retries it;
+  - a failure no retry can fix (keys refused, not permitted, an SDK too old) is thrown as
+    `ApplicationFailure.nonRetryable(message, "configuration")`: the workflow stalls at once, and the administrator is
+    alerted as critical. When the provider can report such a failure spuriously, the skill says how many attempts
+    first;
+  - anything unclassified is thrown as it is (a stall after the retries is `unknown`).
 - **Never do the outside work twice.** Pass our key as the provider's idempotency key if it has one. If it has none,
-  combine what it does have, as the slice's description says: look for an earlier attempt by our reference (e.g. a
-  search by order id) before calling again; treat a "duplicate" or "already used" rejection as "look again", not as a
-  decline. But bound it: when looking again still finds nothing of ours after a few attempts (Temporal's
-  `Context.current().info.attempt`, injectable so tests can set it), the value was spent elsewhere, so return a
-  decline. An error that no retry can fix must never be thrown for Temporal to retry.
+  the provider skill says what to combine instead (typically: look for an earlier attempt by our reference before
+  calling again, and treat a "duplicate" or "already used" rejection as "look again", bounded by the attempt
+  (Temporal's `Context.current().info.attempt`, injectable so tests can set it)).
+- **Keys per attempt:** the answer's idempotency key is `<result>:<item key>:<attempt>`, and the stall's
+  `<stalled>:<item key>:<attempt>`, so a later attempt records its own answer.
 - **Config comes from the environment**, with defaults that point at the mock (`localhost:<its port>`), so the
-  provider's sandbox or production is a config change. Read how the SDK is pointed at a host from its own source in
-  `node_modules`: some take it only from environment variables or constants.
+  provider's sandbox or production is a config change. **Our deadline per call**, below the activity's
+  `startToCloseTimeout`, never the SDK's default.
 
 ### `processor.ts`
 
@@ -202,21 +270,26 @@ import { defineAutomation } from "../../../../shared/automations.js"
 import { paymentsAwaiting, type PaymentsAwaitingDoc } from "../paymentsawaiting/readModel.js"
 import type { PaymentRequestInput } from "./workflow.js"
 
-/** Payment Requester (external): one workflow per order, payment-request:<orderId>. */
+/** Payment Requester (external): one workflow per payment attempt, payment-request:<orderId>:<attempt>. */
 export const paymentRequester = defineAutomation<PaymentsAwaitingDoc>({
     name: "payment-request",
     todoList: paymentsAwaiting,
     triggers: ["paymentInitiated"],
     act: async ({ event, start }) => {
         const data = event.event.data as PaymentRequestInput
-        const input: PaymentRequestInput = { orderId: data.orderId, amount: data.amount, paymentMethodNonce: data.paymentMethodNonce }
-        await start("paymentRequest", [input])
+        const input: PaymentRequestInput = {
+            orderId: data.orderId,
+            attempt: data.attempt,
+            amount: data.amount,
+            paymentMethodNonce: data.paymentMethodNonce
+        }
+        await start("paymentRequest", [input], { attempt: data.attempt })
     }
 })
 ```
 
-`start` names the workflow `<name>:<item key>`. Temporal runs it once: a repeated start joins it or, once it has
-finished, does nothing.
+`start` names the workflow `<name>:<item key>:<attempt>`. Temporal runs it once: a repeated start joins it or, once
+it has finished, does nothing. A later attempt (a retry after a stall, the customer paying again) is a new id.
 
 ### Registering it
 
@@ -225,7 +298,7 @@ finished, does nothing.
 - `src/index.ts` (the wiring commit): add the automation to `automations`, and its activities to `activities`:
   ```typescript
   const activities = {
-      ...paymentRequestActivities({ eventStore, pool, gateway: braintreeGateway() })
+      ...paymentRequestActivities({ eventStore, pool, gateway: braintreeGateway() })   // the provider skill's gateway
   }
   ```
 
@@ -236,14 +309,36 @@ in this job:
 
 - **Follow the provider's published API**, only the endpoints our SDK calls. Read the SDK's request and response code
   in `node_modules` for the exact paths, formats (JSON or XML) and fields.
-- **Answer as the provider's sandbox does**, using its documented test values (test card nonces, amounts that
-  decline), so the model's scenarios run against it unchanged. Honour its duplicate rules and single-use values.
+- **Answer as the provider's sandbox does**, with the test values, rules and codes its provider skill lists, so the
+  model's scenarios run against it unchanged.
+- **Reach every failure**: switches for the errors the provider skill classifies (busy, down, keys refused), so the
+  tests can prove each retry and each stall.
 - **Keep what it was asked**, so a test can check nothing was charged twice.
 - **Files:** `mocks/{system}/server.ts` (Node's `http`, no dependencies, erasable TypeScript only, so `node server.ts`
   runs it; export a `startMock(port)` for tests) and a `Dockerfile` (`FROM node:24-alpine`, `CMD ["node",
   "server.ts"]`), plus a service in `docker-compose.yml` publishing its port.
 
 ---
+
+---
+
+## Stalls: when the outside system can't be reached (ADR-032)
+
+An external item can end three ways: a **business answer** (the item closes), **our side blocked** (the processor
+retries; a deploy or the dependency returning fixes it), or **stalled**: Temporal gave up with the outcome unknown.
+Nothing runs on a timer, so a stall must be recorded, or the item looks in progress forever.
+
+- The model gives the automation a **stall command** (e.g. `markPaymentStalled` → `paymentStalled`) with the item's key,
+  the attempt, a **category** (`configuration`, `unavailable`, `unknown`) and the last error; the to-do list marks the
+  item stalled. Its slice is a normal write slice, built before the automation.
+- The workflow catches the outside call's final failure and records the stall (`workflow.ts` above). The recording
+  activities retry without limit: only our own store can stop them.
+- The stall-recording activity **alerts the administrator** (`src/shared/alerts.ts`): `critical` for
+  `configuration`, else `warning`. Best-effort; the stalled item is the record.
+- A person then **retries** (a command recording the next attempt's trigger, e.g. a new `paymentInitiated`) or **gives
+  up** (a command recording the automation's failure outcome, kind `abandoned`). Both are ordinary write slices from
+  the to-do list's screen; the automation needs nothing more for them.
+- A workflow **terminated by hand** in Temporal's UI records no stall: say so in the manual; *give up* is the tool.
 
 ## `processor.tests.ts`: one test per specification
 
@@ -299,7 +394,7 @@ describe("request payment", () => {
 
     test("charges the card and marks the order paid", () =>
         run(async () => {
-            await app.given(paymentInitiated({ orderId: "o1", amount: "12.00", paymentMethodNonce: "fake-valid-nonce" }))
+            await app.given(paymentInitiated({ orderId: "o1", amount: "12.00", paymentMethodNonce: "fake-valid-nonce", attempt: 1 }))
             expect(await app.waitForAppended(1)).toEqual([{ type: "orderPaid", data: { orderId: "o1" } }])
         }))
 })
@@ -313,7 +408,10 @@ describe("request payment", () => {
   `[]` (no workflow was started).
 - **The Temporal server lives for the whole file**, beyond each test's database, and a workflow id that has run
   can't run again. Give each test its own item keys (`o1`, `o2`, …).
-- **External: also test the activity against the mock**: a repeated call for the same order charges once.
+- **External: also test the activity against the mock**: a repeated call for the same order charges once; each
+  classified failure (the provider skill's table) is retried, stalls with its category, or declines with its kind.
+- **External: a stall.** With the mock failing past the retries (shorten them in the test's workflow options, or use a
+  non-retryable `configuration` failure), the stall command's events appear, and the alert was called (inject `alert`).
 
 ---
 
@@ -338,7 +436,11 @@ docker-compose.yml        ← the mock's service
 - [ ] Every field of the command comes from the item or the trigger event, per slice.json's mappings
 - [ ] External: the workflow is deterministic, its retries are configuration, and business answers are recorded as
       our commands through `issueOnce` with the key from the description
-- [ ] External: the provider's official SDK, host from the environment, never charging or sending twice
+- [ ] External: the provider skill read and followed; its official SDK, host and our deadline from the environment,
+      never charging or sending twice
+- [ ] External: the outside call's final failure is caught only to record the stall (with its category) and alert;
+      the recording activities retry without limit
+- [ ] An item worked again passes its `attempt` to `issue`/`start`, and answers are keyed per attempt
 - [ ] External: the mock follows the provider's API and sandbox test values, with a Dockerfile and compose service
 - [ ] One `test(...)` per specification, through `automationTestApp`
 - [ ] `src/workflows.ts` only gains a line; `src/index.ts` wiring in its own commit

@@ -486,6 +486,16 @@ designed later.
     - `chargeCard` classifies Braintree's errors (ADR-034's table);
     - `BRAINTREE_TIMEOUT_MS` (20 s, below the activity's 30 s);
     - the mock answers by the sandbox's test amounts, with switches for 401, 403, 426, 429 and 5xx.
+  - **Progress (2026-09-29):**
+    - **modelled** in restaurant-orders (branch `model/15-4-stalls-and-pay-again`, pushed to the board): the 5
+      operator slices and 3 customer slices, `kind`/`code`/`card`/`attempt` on the failure, stock returned per
+      attempt;
+    - **the kit:** `workKey` (attempt-numbered keys and workflow ids), `alert()`, stalls in `build-automation`,
+      `provider-braintree` (15.4e), and the loop's instructions point to provider skills. The restaurant suite
+      passes (250);
+    - **emcli:** `field add` reaches a command's or event's copies; `event-model` proposes stall, retry, give up,
+      kind and attempt for every external automation;
+    - **next:** the hand-off (plan the 8 draft slices, export) and Gary's loop run (Sonnet), then the e2e cases.
   - **End-to-end cases 9 onwards:**
     - a stall and a retry;
     - charged but not recorded, then a retry (no second charge);
@@ -530,7 +540,11 @@ designed later.
       so licences would be ours or Keygen's;
     - **to decide:** web-app seats (users in our app; seat assignment is our domain, so Paddle) or installed
       software with keys (Dodo).
-- [ ] **15.4e Keep `build-automation` general; each third-party API in its own skill** (Gary, 2026-09-29).
+- [ ] **15.4e Keep `build-automation` general; each third-party API in its own skill** (Gary, 2026-09-29). *Split
+  done 2026-09-29: `provider-braintree` holds the SDK setup, the answers and errors tables, 91564, search first,
+  the mock and the sandbox; `build-automation` holds stalls, attempts and the categories, and points to provider
+  skills; the loop's CLAUDE.md names them. Proof pending: the loop building 15.4's external automation from the
+  split skills.*
   - **The concern:** `build-automation` was written while building the restaurant's payments. Braintree may be baked
     into it. A first look (2026-09-29) finds its worked example is the Payment Requester: `chargeCard`,
     `paymentMethodNonce`, `braintreeGateway()`, `fake-valid-nonce`, and a mock "as the provider's sandbox does".
