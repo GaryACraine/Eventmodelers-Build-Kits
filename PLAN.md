@@ -82,11 +82,24 @@ model and build only what's ours.
     - the owner and admin roles.
   - **Out:** a comparison (`docs/case-studies/seat-licensing.md`), and the licensing model's decisions in a Proposed
     ADR.
+- [ ] **16.2b Paddle's lifecycle in the sandbox** (after 16.2, before 16.3: these can change the model's shape). One
+  sandbox session through the Paddle plugin, with results in `docs/case-studies/paddle.md` §11:
+  - **a failed renewal:** what `past_due` looks like, the recovery emails, and whether it ends in pause or cancel.
+    This decides what access a customer keeps while payment fails. The sandbox can't wait a month, so use a very
+    short billing cycle or Paddle's webhook simulator; Retain's smarter recovery is live-only;
+  - **trials,** with and without a payment method, and changing seats during one. This decides whether "trialing"
+    is a state of ours;
+  - **an immediate cancel, and pause and resume:** which states and events exist;
+  - **renewal after the `tax_mode` change:** whether the test subscription, bought under `location`, renews on the
+    new `external` basis.
 - [ ] **16.3 Model the licensing domain** from 16.1 and 16.2, through `event-model`: our events and commands first,
   then Paddle as the automation and translations that produce side effects.
 - [ ] **16.4 Translation slices in the kit** (the main kit work). Another system's webhook becomes our event: verify
   the signature, ignore a repeat by its key, record our event named for the business. `build-automation` still
   blocks a `synchronous` processor as "not proven": make it proven.
+  - **Tested against Paddle's real delivery** (from 16.1's to-try list): a notification destination pointed at our
+    backend (a tunnel in development); repeated and out-of-order delivery, identical `occurred_at`, and signature
+    checks. The saved payloads become the translations' test fixtures.
 - [ ] **16.5 A `provider-paddle` skill** (15.4e's pattern), from 16.1's knowledge:
   - Paddle.js in our Vite React SPA (the Next.js starter is a reference only);
   - webhook signatures and events;

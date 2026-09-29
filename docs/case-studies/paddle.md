@@ -327,7 +327,7 @@ So:
     including £8.33 VAT);
   - still to check: whether the existing test subscription, bought under `location`, renews on the new basis.
 
-**Still to try**
+**Still to try** (scheduled: the lifecycle checks in PLAN 16.2b, the webhook delivery checks in PLAN 16.4)
 - a declined renewal;
 - trials;
 - an immediate cancel;
