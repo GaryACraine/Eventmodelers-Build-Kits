@@ -1,6 +1,6 @@
 # Paddle: a working knowledge, for selling a web app by seats (PLAN 16.1)
 
-> **Status: desk research, 2026-09-29.** Taken from Paddle's developer docs (sources at the end). Everything marked
+> **Status: desk research, then sandbox results (§11), 2026-09-29.** Taken from Paddle's developer docs (sources at the end). Everything marked
 > **to verify** is checked in the sandbox once Gary's accounts exist, and the results are added here. Decisions go in
 > ADRs (ADR-036 chose Paddle); this note is what we know about Paddle.
 
@@ -200,6 +200,84 @@ and can't do, so the model asks it for the right things.
 - [ ] A declined renewal: what the sandbox can simulate, given Retain is live-only.
 - [ ] Trials: with and without a payment method, and changing the quantity during one.
 - [ ] Out-of-order and repeated delivery (the simulator, or replay).
+
+## 11. Sandbox results (2026-09-29, through the Paddle plugin's sandbox API and a test card)
+
+The setup: a product "Team (per seat)" (`tax_category: saas`), with prices of £10 per seat monthly and £100 per seat
+yearly (placeholders), and quantity 1 to 1,000. A customer (a UK business) with `custom_data.organisationId =
+org-test-1`. Checkout opened from a local page (`paddle-sandbox/checkout.html`, which loads Paddle.js with the
+sandbox client-side token and calls `Paddle.Checkout.open({ transactionId })`), paid with 4242… for 5 seats.
+
+**Setup lessons**
+- **The default payment link** must be set before *any* transaction, even an invoiced one. The dashboard refused
+  `https://localhost/`, despite Paddle's docs saying it's fine in the sandbox; `https://crainelabs.ai/` was accepted.
+  That link only builds the URLs Paddle generates (`checkout.url` is `<link>?_ptxn=txn_…`), and the page there must
+  run Paddle.js. Our own pages open checkouts directly with `Paddle.Checkout.open`, on localhost too.
+- **Invoiced (manual) collection** refused every address ("must be suitable for the transaction's collection
+  mode"), even a full London one. We don't need it: our buyers pay by card.
+- **The Isle of Man** has its own country code, `IM`, which matters for addresses and tax.
+- On macOS, a local page server needs Python allowed through the firewall dialog.
+
+**Prices and tax**
+- `tax_mode` came back `location`: for a UK buyer the £10 **includes VAT**. 5 seats cost £50.00, of which VAT is
+  £8.33, **Paddle's fee £2.88**, and **our earnings £38.79**. So the fee is about 6.9% of the £41.67 net, more than
+  the headline 5% + 50¢. Check it at the real seat price (ADR-036's condition).
+
+**One purchase's webhooks, in the order they happened**
+1. `transaction.created` and `transaction.ready`: 5 seats, £50, `organisationId` on it;
+2. `address.created`: the checkout took the buyer's address again, as a new address;
+3. `transaction.updated` (paid), then `transaction.paid`;
+4. `subscription.activated` **and** `subscription.created`: active, 5 seats, **`custom_data.organisationId` copied
+   onto the subscription**, next billed a month later. **Both have the same `occurred_at`**, to the microsecond;
+5. `transaction.updated` (linked to the subscription; fee and earnings added), then `transaction.updated`
+   (completed), then `transaction.completed`.
+
+So:
+- **ordering by `occurred_at` needs a tie-break**: order by (`occurred_at`, `event_id`), since event ids increase in
+  time order;
+- **every change fires a generic `*.updated` beside the specific event**: listen to the specific ones.
+
+**Changing seats**
+- **Proration modes:** `prorated_immediately`, `prorated_next_billing_period`, `full_immediately`,
+  `full_next_billing_period` and `do_not_bill`.
+- **Preview**, for 5 to 8 seats a few minutes into the period:
+  - an immediate mode charges £30.00 now;
+  - a next-period mode adds £30.00 to the renewal (£110 instead of £80);
+  - `do_not_bill` gives the seats until renewal.
+
+  `update_summary` gives the credit, the charge and the result (`charge` or `credit`, with the amount), which is
+  exactly what our confirm screen shows.
+- **Increase applied** (5 to 8, `prorated_immediately`):
+  - a new transaction, `origin: subscription_update`, for 3 seats at a proration rate of 0.99998, went created,
+    billed, paid, completed;
+  - `subscription.updated` (8 seats) arrived with the payment;
+  - the API call returned only after the charge succeeded, so a change we make is confirmed when the call returns.
+- **Decrease applied** (8 to 6):
+  - a transaction for −2 seats (−£20.00), then `subscription.updated` (6 seats);
+  - **no refund to the card: £20.00 goes on the customer's credit balance** (`available`), which Paddle spends on
+    later renewals;
+  - no adjustment is created.
+
+**Cancelling**
+- `cancel` with `next_billing_period` leaves the status `active`, sets `scheduled_change: { action: "cancel",
+  effective_at }`, and clears `next_billed_at`.
+- **The only webhook is `subscription.updated`**; there's no "cancel scheduled" event, so our translation reads
+  `scheduled_change`.
+- Undoing it (`scheduled_change: null`) restores `next_billed_at`.
+
+**The customer portal links**
+- A subscription carries `management_urls` (`update_payment_method`, `view_subscription`, `cancel`): signed links
+  with a customer token that lasts about 24 hours.
+- **Mint them when needed; never store or log them.**
+
+**Still to try**
+- open the portal and confirm it has no seat change;
+- a declined card at checkout (`4000 0000 0000 0002`);
+- a declined renewal;
+- trials;
+- an immediate cancel;
+- pause and resume;
+- repeated and out-of-order delivery through a real notification destination.
 
 ## 10. For onboarding (Gary)
 
