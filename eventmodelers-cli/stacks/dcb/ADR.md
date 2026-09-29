@@ -1475,7 +1475,8 @@ include the Isle of Man, Jersey and Guernsey, but Braintree's own country page c
 
 ### ADR-035: The customer pays again after a decline
 
-**Status:** Proposed (PLAN 15.4c). One point is decided (stock, below); the rest is decided when 15.4c starts.
+**Status:** Accepted, 2026-09-29 (Gary, PLAN 15.4c), **for the restaurant demo** (ADR-036). A digital-products shop
+leaves all of this to its merchant of record's checkout.
 **Date:** 2026-09-29
 
 **Context:**
@@ -1502,6 +1503,36 @@ include the Isle of Man, Jersey and Guernsey, but Braintree's own country page c
 and a customer whose card is accepted meanwhile has priority. Holding stock for a declined customer would need a
 hold that expires, which is a timer (rejected, ADR-030). If the dish has sold out, the customer is told so plainly.
 
+**Decided (Gary, 2026-09-29), after comparing Amazon ("Payment revision needed": the same order, retry or change
+the payment method) and food delivery (the basket kept, another card chosen):**
+- **The same order.** Paying again is a command on the declined order (*Pay For Order Again*, with a new nonce).
+  - It keeps the order's id, dishes, total and history.
+  - It records `paymentInitiated` (attempt n) and `stockDeducted` under the ordering rules. A sold-out dish is
+    refused by name, and the customer can cancel or order again without it.
+- **Every attempt is shown on the order, newest first:** the card (type and last four digits, taken from
+  Braintree's transaction; `card` on `orderPaymentFailed`), the `kind`, and the reason. From that, the customer
+  knows whether to change card or add funds.
+- **The message and actions follow `kind`:**
+
+  | `kind` | Message | Actions |
+  |---|---|---|
+  | `declined-hard` | another card is needed | pay with another card; cancel |
+  | `declined-soft` | add funds or use another card | pay again; cancel |
+  | `gateway-unavailable` | not charged; try again | try again; cancel |
+  | `payment-method-unusable` | enter the card again | enter card; cancel |
+  | `abandoned` | our problem, not charged | pay again; cancel |
+  | a stall | taking longer than usual; nothing to do | none |
+
+- **At most 5 payment attempts per order** (against card testing). After that, the order offers only *Cancel* and
+  "please contact the restaurant".
+- **The customer can cancel** an order that is awaiting payment (*Cancel Order*), but not while a payment is in
+  progress or stalled.
+- **No time limit on an unpaid order.** It holds no stock, so no timer is needed.
+- **Stock goes back at a decline, on purpose, to show a compensating action.** The real-world best practice is
+  Amazon's: hold the stock for a limited time while the customer revises payment. It is **deliberately not
+  followed** in this demo.
+- **The order page follows the order live** through the event feed.
+
 **Leaning:**
 - **Card entry uses Hosted Fields**, wrapped in one small React component of the kit's (`CardFields`: create on
   mount, `tokenize()` → nonce, tear down on unmount), not Drop-in and not a community wrapper. We lean on Braintree
@@ -1513,9 +1544,86 @@ hold that expires, which is a timer (rejected, ADR-030). If the dish has sold ou
   workflow id). **Alternative:** a new order with the same dishes, which reuses `placeOrder` whole but loses the
   order's history.
 
-**Open:**
-- the same order or a new one;
-- how many times a customer may pay again;
-- whether the page watches the order live (the event feed) or asks again;
-- where the component lives in the kit's `web/`.
+**Open:** where the card component lives in the kit's `web/` (15.5).
+
+
+### ADR-036: Selling digital products: a merchant of record with a hosted checkout (the restaurant stays a demo)
+
+**Status:** Proposed (PLAN 15.4d). Leaning: **Paddle**, with Dodo Payments as the alternative. Decided when Gary has
+confirmed onboarding with the provider.
+**Date:** 2026-09-29
+
+**Context:**
+- **How the scope grew.** The aim was to invest in the `build-automation` skill. That grew into Temporal as the
+  workflow engine, and then into calling a payment provider ourselves.
+- **Why Braintree, and what it cost us.** Braintree was chosen on a fellow engineer's recommendation, for its Isle
+  of Man availability (ADR-034). It is a gateway for merchants who build their own checkout. So we took on the
+  charge in our own workflow, searching before charging, reading declines by kind, our own card component,
+  "pay again", and duplicate handling (ADR-032 to ADR-035).
+- **What Gary actually needs.** He will most likely sell **digital products**: no stock, no reservation, nothing
+  to return.
+- **What software vendors typically do.** They use a **hosted checkout from a merchant of record (MoR)**. The MoR
+  is the legal seller, so it handles:
+  - card entry, 3D Secure, and declines, where the customer tries another card inside its checkout;
+  - fraud, receipts, refunds and chargebacks;
+  - **sales tax and VAT everywhere**, which matters for digital goods sold to UK and EU consumers.
+
+  It then tells us by signed webhook that the product was paid for, and we deliver it.
+
+**Decision (Gary, 2026-09-29):**
+- **The restaurant is a demo.** It shows automations, Temporal, compensating actions (stock returned) and
+  redriving stalls: the kit's teaching example.
+  - It is **rounded out, not extended**.
+  - It is labelled a demo in the manual and PLAN: "not how a digital-products vendor would take payments".
+  - It deliberately returns stock at a decline, to show a compensating action. The real-world best practice,
+    Amazon's time-limited reservation while the customer revises payment, is not followed.
+- **Digital products use an MoR with a hosted checkout.** Its integration is small:
+  - *start checkout*: open the MoR's checkout in the page;
+  - *payment completed*: the webhook, translated into our event (a translation slice);
+  - *fulfil the order*: an automation that delivers the licence or download.
+
+**The providers, researched 2026-09-29** (Gary's criteria: Isle of Man availability, merchant of record, tax,
+webhooks, fees, React-based UI support):
+
+| Provider | Isle of Man seller | MoR and tax | Checkout UI and React | Webhooks | Fees (published or reported) | Notes |
+|---|---|---|---|---|---|---|
+| **Paddle** | ✅ Paddle supports sellers everywhere except a sanctions list, and the Isle of Man isn't on it ([help](https://www.paddle.com/help/start/intro-to-paddle/which-countries-are-supported-by-paddle)) | ✅ MoR; global sales tax and VAT included | ✅ overlay or **inline** checkout (Paddle.js, npm `@paddle/paddle-js`, typed); an **official Next.js/React starter kit** ([PaddleHQ/paddle-nextjs-starter-kit](https://github.com/PaddleHQ/paddle-nextjs-starter-kit)); page events such as `checkout.completed` and `checkout.payment.failed`. The customer retries a decline inside Paddle's checkout | ✅ signed; `transaction.completed`, `transaction.payment_failed`; a webhook simulator | 5% + 50¢ per transaction, all-in (the 50¢ weighs on cheap items) | Established (since 2012); sellers of software and digital products are reviewed at onboarding |
+| **Dodo Payments** | ✅ explicitly listed, with Jersey and Guernsey ([accepted countries](https://docs.dodopayments.com/miscellaneous/accepted-countries-and-territories)) | ✅ MoR; tax in 190+ jurisdictions | ✅ overlay and inline checkout SDK with React support ([overlay checkout](https://docs.dodopayments.com/developer-resources/overlay-checkout)) | ✅ `payment.succeeded` and others | about 4% + 40¢ (reported; to confirm) | Young company (2024); less track record |
+| **Freemius** | ✅ listed ([supported countries](https://freemius.com/help/documentation/selling-with-freemius/supported-countries/)) | ✅ MoR | a JavaScript checkout; no official React component found | ✅ | around 7% (reported) | Built for WordPress plugins and SaaS; narrower fit |
+| **FastSpring** | not confirmed ("anywhere in the world" in its marketing) | ✅ MoR | popup checkout, no-code links; no official React component found | ✅ | about 5.9% + 95¢ (reported); fees kept on refunds | Established; higher cost |
+| **Lemon Squeezy** | ❌ not in its bank-payout list ([supported countries](https://docs.lemonsqueezy.com/help/getting-started/supported-countries)) | ✅ MoR | overlay checkout | ✅ | 5% + 50¢ | **Acquired by Stripe** (July 2024, not PayPal). Sellers are being moved to Stripe Managed Payments ([2026 update](https://www.lemonsqueezy.com/blog/2026-update)), which runs on Stripe, and Stripe doesn't serve the Isle of Man |
+| **Polar** | ❌ not listed; payouts via Stripe Connect Express ([supported countries](https://polar.sh/docs/merchant-of-record/supported-countries)) | ✅ MoR | checkout links and an embed | ✅ | 5% + 50¢ (reported) | |
+| **Stripe Managed Payments** | ❌ Stripe doesn't serve the Crown dependencies | ✅ MoR | Stripe's | ✅ | | |
+| **PayPal Checkout** | ✅ PayPal serves the Isle of Man | ❌ **not an MoR**: we remain the seller, and VAT is ours | ✅ official React components (`@paypal/react-paypal-js`), PayPal's buttons and card fields | ✅ | PayPal's rates | See below |
+| **Braintree** (ADR-034) | ✅ in use | ❌ not an MoR | Hosted Fields; no official React component; Drop-in deprecated from 1 October 2026 | card sales answer at once; no card webhook | Braintree's rates | What the restaurant demo uses |
+
+**PayPal Checkout and Braintree: the difference.** Both belong to PayPal, and neither is a merchant of record:
+- **Braintree** gives us our own merchant account and a gateway to integrate: we build the checkout (ADR-034).
+- **PayPal Checkout** is PayPal's own quicker product: its buttons and card fields, where PayPal is the processor.
+
+Either way the business stays the seller, and VAT on digital goods is ours to handle. That's why neither is the
+leaning for digital products.
+
+**Why Paddle (the leaning):**
+- it meets every criterion, including the Isle of Man;
+- it has the most established MoR track record;
+- its official React starter kit gives the most UI leverage;
+- its checkout handles declines, 3D Secure and retries itself, which removes ADR-035's customer-side work
+  outright.
+
+Dodo Payments is the alternative: it explicitly lists the Isle of Man and its fees are lower, but it's younger.
+
+**To confirm before Accepted:**
+- Gary's onboarding with Paddle, as a business in the Isle of Man selling his kind of digital product;
+- the fee on his typical price, because the fixed 50¢ weighs on cheap items;
+- payout to an Isle of Man bank account in GBP.
+
+**Consequences:**
+- ADR-035 (the customer pays again) applies to the demo only. An MoR's checkout does this for a digital-products
+  shop.
+- The kit gains a **hosted-checkout pattern** for `build-automation`:
+  - a translation slice for the MoR's signed webhook;
+  - a fulfilment automation, internal or through Temporal.
+- Stall and redrive (ADR-032) still apply to fulfilment's outside calls.
+- ADR-034 stays: Braintree for the restaurant demo.
 

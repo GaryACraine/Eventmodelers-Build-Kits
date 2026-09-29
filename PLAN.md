@@ -495,7 +495,10 @@ designed later.
     - a soft decline and a hard decline;
     - an expired nonce;
     - a double-clicked retry.
-- [ ] **15.4c The customer pays again after a decline** (ADR-035, Proposed). Gary: when a decline is actionable
+- [x] **15.4c designed: the customer pays again after a decline** (ADR-035, Accepted 2026-09-29, **the restaurant
+  demo only**). The same order; every attempt shown, with its card, kind and reason; at most 5 attempts; cancel
+  while awaiting payment; stock returned on purpose, as a compensating action. Built with 15.4's modelling. Earlier
+  notes: Gary: when a decline is actionable
   (another card, funds added, try again), the customer gets another chance.
   - **Decided:** paying again takes the stock afresh. A customer whose card was accepted meanwhile has priority, and
     no hold with a timer.
@@ -505,6 +508,21 @@ designed later.
     - the order's screen explains the decline by `kind`, and offers *Pay again* with a new nonce.
   - **Open:** the same order or a new one; the number of retries; live or polled status.
   - After 15.4 and with the UI (15.5).
+- [ ] **15.4d Digital products: a merchant of record, and no physical inventory** (ADR-036, Proposed; Gary,
+  2026-09-29).
+  - Gary will likely adapt this sample to sell digital products. **The restaurant is rounded out as a demo**:
+    - it's labelled "not how a digital-products vendor would take payments";
+    - it isn't extended beyond 15.4 and 15.4c.
+  - **Provider (leaning Paddle; Dodo Payments the alternative):** the comparison against Gary's criteria (Isle of
+    Man, MoR, tax, webhooks, fees, React UI support) is in ADR-036. To confirm: Paddle onboarding for an Isle of
+    Man business, the fee at Gary's price point, and GBP payout.
+  - **To investigate: handling digital products with no physical inventory.** What drops out, and what stays:
+    - drops out: `stockDeducted`, the Stock Returner, the sold-out refusal, reservation, and compensating stock;
+    - stays: checkout, the "paid" webhook as a translation slice, fulfilment (a licence, a download link) as an
+      automation, and stall and redrive for fulfilment's outside calls;
+    - to settle: refunds (the MoR handles them; what they mean for a licence already delivered), and whether
+      fulfilment needs Temporal.
+  - **The kit:** a hosted-checkout pattern in `build-automation`, alongside the restaurant's self-built one.
 - [ ] **15.4b A circuit breaker for the payment gateway** (deferred; its place is decided in ADR-032). If Braintree
   is known to be down, placing an order says "card payments are unavailable right now" before any stock is taken.
   It would be fed by a gateway-health check kept like Temporal's (runtime state, not an event). Decide from a real
@@ -3131,6 +3149,9 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-29 | Charges go to a named merchant account (`BRAINTREE_MERCHANT_ACCOUNT_ID`, GBP); Braintree's duplicate window is 600 s | The account's currency, not the sale's, decides the charge, and the sandbox began in EUR. 600 s covers the payment's retry budget |
 | 2026-09-29 | A customer who pays again after a decline takes the stock afresh; a concurrent paying customer has priority (ADR-035) | Gary: fair to the customer whose card was accepted, and no stock hold with a timer |
 | 2026-09-29 | Card entry will use Braintree's Hosted Fields in a small kit React component, not Drop-in (ADR-035, leaning) | Drop-in is deprecated from 1 October 2026; no official React card component exists; Hosted Fields keep PCI SAQ A |
+| 2026-09-29 | Paying again after a decline uses the same order, shows every attempt (card, kind, reason), allows 5 attempts, and lets the customer cancel while awaiting payment (ADR-035, the demo) | Gary: the user's experience first. Keep the order's particulars, and tell the customer why so they can change card or add funds, as Amazon and food-delivery apps do |
+| 2026-09-29 | The restaurant returns stock at a decline on purpose, as an example of a compensating action; Amazon's time-limited reservation is recorded as the real-world best practice, and not followed | Gary: the sample isn't a real restaurant; it teaches compensation |
+| 2026-09-29 | The restaurant is a demo, rounded out and not extended; digital products will use a merchant of record's hosted checkout, leaning Paddle (ADR-036, Proposed) | Gary: the aim was the `build-automation` skill. Braintree made us build checkout infrastructure a merchant of record provides, including VAT on digital goods. Paddle meets every criterion, including the Isle of Man, and has an official React starter |
 
 ## Progress
 
