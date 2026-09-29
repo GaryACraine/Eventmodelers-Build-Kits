@@ -1554,8 +1554,10 @@ the payment method) and food delivery (the basket kept, another card chosen):**
 
 ### ADR-036: Selling digital products: a merchant of record with a hosted checkout (the restaurant stays a demo)
 
-**Status:** Proposed (PLAN 15.4d). Leaning: **Paddle**, with Dodo Payments as the alternative. Decided when Gary has
-confirmed onboarding with the provider.
+**Status:** Accepted, 2026-09-29 (Gary): **Paddle**, with Dodo Payments as the alternative (PLAN Phase 16). Conditions
+still to confirm with Paddle: onboarding as an Isle of Man business, the fee at Gary's price, and payout in GBP.
+The product is a web app sold as a subscription with seats, so Paddle's quantity-based seats fit, and seat
+assignment is our own domain logic.
 **Date:** 2026-09-29
 
 **Context:**
@@ -1609,7 +1611,15 @@ webhooks, fees, React-based UI support):
 Either way the business stays the seller, and VAT on digital goods is ours to handle. That's why neither is the
 leaning for digital products.
 
-**Why Paddle (the leaning):**
+**The stack stays a client-side React SPA** (Gary asked, 2026-09-29, whether Paddle's Next.js starter means moving to
+Next.js with SSR):
+- Paddle.js (`@paddle/paddle-js`) is a browser library, so its checkout runs in our Vite React SPA. The starter is a
+  reference only, and its server parts (the webhook, creating a checkout, reading a subscription) are our backend's
+  slices.
+- SSR needs a running server, so it would rule out plain S3 hosting. Next.js's static export works on S3, but
+  without SSR or API routes. A logged-in app gains little from SSR, so the SPA stays on S3 and CloudFront (14.8).
+
+**Why Paddle:**
 - it meets every criterion, including the Isle of Man;
 - it has the most established MoR track record;
 - its official React starter kit gives the most UI leverage;
