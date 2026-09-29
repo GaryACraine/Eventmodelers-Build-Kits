@@ -92,14 +92,19 @@ export function setConcernStatus(entry, concern, status, extra = {}) {
  * After an agent's run: every Blocked concern gets a `blockedAt` if it has none (so planning the slice again can
  * be compared with it), and every entry's status is derived again from its concerns (an agent that set only its
  * concern leaves the slice's status to the loop). Returns the ids whose entry changed.
+ *
+ * The job just run (`justRun`: { id, concern }), if Blocked, is stamped with the loop's own clock whatever the agent
+ * wrote: an agent wrote local time labelled UTC, so planning the slice again soon after didn't count as later.
  */
-export function settleEntries(entries, now = new Date().toISOString()) {
+export function settleEntries(entries, now = new Date().toISOString(), justRun) {
   const changed = [];
   for (const entry of entries ?? []) {
     const before = JSON.stringify(entry);
     if (hasConcerns(entry)) {
-      for (const state of Object.values(entry.concerns)) {
-        if (norm(state?.status) === 'blocked' && !state.blockedAt) state.blockedAt = now;
+      for (const [concern, state] of Object.entries(entry.concerns)) {
+        if (norm(state?.status) !== 'blocked') continue;
+        const ours = justRun && entry.id === justRun.id && concern === (justRun.concern ?? 'backend');
+        if (ours || !state.blockedAt) state.blockedAt = now;
       }
       entry.status = deriveStatus(entry.concerns, entry.status);
       if (entry.definition) entry.definition.status = entry.status;

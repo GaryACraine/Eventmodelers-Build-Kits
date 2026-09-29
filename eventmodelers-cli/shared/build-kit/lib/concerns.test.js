@@ -87,3 +87,11 @@ test('settling after a run stamps blockedAt where missing and derives the status
   assert.equal(agentSetOnlyItsConcern.concerns.ui.blockedAt, 'T');
   assert.equal(legacy.blockedAt, 'T');
 });
+
+test("the job just run is stamped with the loop's clock, whatever the agent wrote", () => {
+  const agentStamped = entry('a', { backend: { status: 'Blocked', blockedReason: 'x', blockedAt: '2026-09-29T11:45:00Z' } });
+  const other = entry('b', { backend: { status: 'Blocked', blockedReason: 'y', blockedAt: 'EARLIER' } });
+  settleEntries([agentStamped, other], 'LOOP', { id: 'a', concern: 'backend' });
+  assert.equal(agentStamped.concerns.backend.blockedAt, 'LOOP');
+  assert.equal(other.concerns.backend.blockedAt, 'EARLIER');
+});
