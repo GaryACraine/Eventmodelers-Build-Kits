@@ -39,29 +39,63 @@
 employees), through **Paddle**, a merchant of record. Paddle takes the payment, the tax and the declines; we
 model and build only what's ours.
 
-- [ ] **16.0 Record.** This phase, ADR-036 Accepted, the Decisions Log.
-- [ ] **16.1 Model the domain by voice** (15.7, fulfilling 13.6), in a new project: a spoken-style transcript
-  through `event-model`, then reviewed. The domain:
-  - a customer subscribes for N seats (the checkout, started in the page);
-  - Paddle's webhooks: subscription created, updated (seats changed), payment failed, cancelled;
-  - **seats are our own logic:** invite an employee, assign and remove seats, never beyond the quantity;
-  - access follows the subscription's state.
-- [ ] **16.2 Translation slices in the kit** (the main kit work). Another system's webhook becomes our event:
-  verify the signature, ignore a repeat by its key, record our event named for the business.
-  `build-automation` still blocks a `synchronous` processor as "not proven": make it proven.
-- [ ] **16.3 A `provider-paddle` skill** (15.4e's pattern):
-  - Paddle.js (`@paddle/paddle-js`), overlay or inline checkout, **in our Vite React SPA**. The official Next.js
-    starter is a reference only (see below);
+- **The principle (Gary, 2026-09-29):** **the licensing model is ours**. Customers, subscriptions, seats, assignments
+  and access are our domain. Paddle is an outside system: in the model, an automation (and translations of its
+  webhooks) that produces a side effect. So the model is designed first, from how other vendors do it, and Paddle is
+  fitted to it, not the other way round.
+- [x] **16.0 Record.** *Done 2026-09-29*: this phase, its order, ADR-036 Accepted, the Decisions Log.
+- [ ] **16.1 Paddle: onboarding, and a working knowledge of its UI and API** (first priority). Gary starts the
+  onboarding, since whether we can use Paddle, and how, may shape the model.
+  - **Onboarding:**
+    - Gary's account as an Isle of Man business selling a web app;
+    - the sandbox;
+    - ADR-036's conditions: the fee at his price point, and payout in GBP.
+  - **UI:**
+    - what Paddle.js's overlay and inline checkout show and let the buyer do;
+    - how seats (quantity) are chosen at checkout;
+    - Paddle's customer portal: what a customer can change themselves (seats, payment method, cancel) and what
+      needs our UI.
+  - **API:**
+    - products and prices (per seat);
+    - subscriptions: create through checkout, update quantity, proration, pause and cancel;
+    - customers;
+    - transactions;
+    - webhooks: which events, their signatures, retries and order.
+  - **Out:** a knowledge note (`docs/case-studies/paddle.md`), sandbox experiments kept as scripts, and questions
+    for the model.
+- [ ] **16.2 How other vendors license a web app by seats through a merchant of record** (second).
+  - Collect from vendors that sell seat-based subscriptions, especially through a merchant of record (Paddle's and
+    others' customers, and their public docs):
+    - who buys (an organisation) and who uses (its members);
+    - invitations;
+    - assigning and removing seats;
+    - what happens at the quantity limit (block, or bill the overage);
+    - adding and removing seats mid-term (proration);
+    - trials;
+    - failed renewals and grace periods;
+    - cancellation and access;
+    - the owner and admin roles.
+  - **Out:** a comparison (`docs/case-studies/seat-licensing.md`), and the licensing model's decisions in a Proposed
+    ADR.
+- [ ] **16.3 Model the licensing domain** from 16.1 and 16.2, through `event-model`: our events and commands first,
+  then Paddle as the automation and translations that produce side effects.
+- [ ] **16.4 Translation slices in the kit** (the main kit work). Another system's webhook becomes our event: verify
+  the signature, ignore a repeat by its key, record our event named for the business. `build-automation` still
+  blocks a `synchronous` processor as "not proven": make it proven.
+- [ ] **16.5 A `provider-paddle` skill** (15.4e's pattern), from 16.1's knowledge:
+  - Paddle.js in our Vite React SPA (the Next.js starter is a reference only);
   - webhook signatures and events;
   - the sandbox;
-  - a webhook mock for tests, if the sandbox isn't enough (ADR-030).
-- [ ] **16.4 The loop builds it on Sonnet**, with 15.9's deferred work on real new slices:
+  - a webhook mock for tests, if needed (ADR-030).
+- [ ] **16.6 The loop builds it on Sonnet**, with 15.9's deferred work on real new slices:
   - the model and effort A/B test;
   - distilling `build-automation` for Sonnet;
   - trimming what each turn carries;
   - defaults per concern and per kind of slice.
-- [ ] **16.5 Domain-bleed review** (from 15.5) of `build-state-change`, `build-state-view` and `build-screen`,
-  against a third domain.
+- [ ] **16.7 Domain-bleed review** (from 15.5) of `build-state-change`, `build-state-view` and `build-screen`.
+- [ ] **16.8 Voice modelling** (15.7, fulfilling 13.6), **deferred until the model is established** (Gary): a
+  spoken-style transcript of the established model, replayed through `event-model` in a fresh project, and the
+  result diffed against 16.3's model; the gaps feed the skill.
 - **The stack stays** (Gary asked, 2026-09-29, whether Paddle's Next.js starter means moving to Next.js with SSR):
   - Paddle.js is a browser library and runs in a client-side React app.
   - SSR needs a running server, so it would rule out plain S3 hosting. Next.js's static export works on S3, but
@@ -3291,12 +3325,13 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-29 | Phase 15 closed; the restaurant is a demo, not extended further (its e2e 9 onwards, UI, circuit breaker and 15.8 dropped) | Gary: both aims (automations, the loop's cost and efficiency) are met; what's left exists only because the demo takes card payments itself |
 | 2026-09-29 | The real product is a web app sold with seats, through Paddle, a merchant of record (ADR-036 Accepted); Phase 16 | Paddle serves the Isle of Man, handles checkout, declines and VAT, and bills seats as a quantity; seat assignment stays our domain logic |
 | 2026-09-29 | The web app stays a client-side React SPA on S3/CloudFront; Paddle.js runs in it, and Paddle's Next.js starter is a reference only | SSR would need a running server; a logged-in app gains little from it; Paddle's server side maps onto our backend's slices |
+| 2026-09-29 | Phase 16's order: Paddle onboarding and a working knowledge of its UI and API first, then research into how other vendors license seats through a merchant of record, then our licensing model; voice modelling deferred until the model is established | Gary: the licensing model is ours, and Paddle is only an automation producing side effects; knowing Paddle's capabilities and the market's patterns first gives a model worth building |
 
 ## Progress
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. Model by voice (16.1), translation slices in the kit (16.2), `provider-paddle` (16.3), the loop on Sonnet with the A/B test and distillation (16.4), domain-bleed review (16.5). ADR-036 Accepted |
+| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
 | 15 — Automations (restaurant orders) | ✅ Closed 2026-09-29 (a demo) | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27/28: the Restaurant Orders chapter (25 slices, 63 scenarios, 15 mockups) on prooph board, with stock and an internal automation (the Stock Returner); emcli push fixes (lanes, links, skipped deletions). 15.8 added: deciding from a growing event stream. 15.2 done 2026-09-28 (library PR #29 merged). 15.3 done 2026-09-28 (ADR-033 runtime, ADR-034 Braintree as a commercial directive; the loop built the restaurant backend; 8 end-to-end cases pass, with our own Temporal call deadline and Temporal in health; manual §21). Next: 15.4 redrive, then 15.5 the UI on Sonnet. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) | **Closed 2026-09-29:** 15.4 and 15.4c built through the loop (stalls, retry, give up, attempts, pay again, cancel); 15.4e provider skills; 15.9 on Sonnet at medium, about 2.5–3× cheaper per job; emcli re-queues changed built slices. The rest dropped or moved to Phase 16 |
 | 1 — Stack Scaffolding | ✅ Complete | Verified: init, npm install, tsc, 21/21 unit tests |
 | 2 — State Change Skill | ✅ Complete | 9-step SKILL.md with full DCB patterns |
