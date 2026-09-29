@@ -2738,8 +2738,9 @@ built as a **to-do list** (a read model of the items waiting) worked by one **pr
 
 ### 21.1 An order's journey
 
-1. **The customer pays in the page.** Braintree's Drop-in (or Hosted Fields) takes the card and gives the page a
-   **nonce**: a single-use token for that card, valid for 3 hours. The card never reaches our server, and our
+1. **The customer pays in the page.** Braintree's Hosted Fields (card inputs Braintree hosts inside our page) take
+   the card and give the page a **nonce**: a single-use token for that card, valid for 3 hours. (Braintree's
+   Drop-in is deprecated from 1 October 2026, so it isn't used; PLAN 15.4c.) The card never reaches our server, and our
    server can't make a nonce. The page sends the nonce with the order (`paymentMethodNonce`).
 2. **We accept the order, or refuse it at the door.** The restaurant must exist, the dishes must be on its menu,
    and there must be enough stock. An order over zero with no nonce is refused (400: *"A payment method is required
@@ -2869,14 +2870,43 @@ serve.
 
 - **Test nonces.** `fake-valid-nonce` is paid, and `fake-processor-declined-visa-nonce` is declined (2000 *"Do Not
   Honor"*). Both work in Braintree's sandbox and on the mock, and can be reused. Any other nonce is single-use:
-  using it again is error 93107, a validation error that creates no transaction.
+  using it again is error **91564**, a validation error that creates no transaction. (The PaymentMethod API's 93107
+  is a different code; the step first checked for it, and the sandbox showed the mistake.)
 - **Where the app sends payments** comes from the environment. By default it uses the mock (`BRAINTREE_HOST`,
-  `BRAINTREE_PORT`, default `localhost:4010`). For the sandbox, set `BRAINTREE_ENVIRONMENT=Sandbox` and the
-  `BRAINTREE_MERCHANT_ID`, `BRAINTREE_PUBLIC_KEY` and `BRAINTREE_PRIVATE_KEY` from your sandbox account.
-- **The amount** is the order's total as a decimal string (`"12.00"`). The currency is the merchant account's.
+  `BRAINTREE_PORT`, default `localhost:4010`). For the sandbox, set `BRAINTREE_ENVIRONMENT=Sandbox`, the
+  `BRAINTREE_MERCHANT_ID`, `BRAINTREE_PUBLIC_KEY` and `BRAINTREE_PRIVATE_KEY` from your sandbox account, and
+  `BRAINTREE_MERCHANT_ACCOUNT_ID`. Keep them in a gitignored file (the restaurant's `e2e/.env.sandbox`), never in
+  the repository.
+- **The amount** is the order's total as a decimal string (`"12.00"`). **The currency is the merchant account's**,
+  not the sale's: a sandbox account made from outside the UK may start in EUR. The app passes
+  `BRAINTREE_MERCHANT_ACCOUNT_ID` on every sale, so the currency is chosen, not inherited from the default.
 - **The mock** (`mocks/braintree/`, in `docker compose`) answers the SDK the way Braintree does: sales, searches by
   order id, single-use nonces and the 30-second duplicate check. It keeps its transactions in memory, so
   restarting it forgets them. It has no switch for a 5xx or a lost reply; stopping it stands in for an outage.
+
+**Setting up the Braintree account** (sandbox <https://sandbox.braintreegateway.com>; production has the same
+menus). Each setting, where it is, and why the restaurant needs it:
+
+| Setting | Where in the control panel | The restaurant's value | Why |
+|---|---|---|---|
+| A merchant account in pounds | gear icon → **Business** → *Merchant Accounts* → *New Sandbox Merchant Account* | GBP, made the default | the currency of every charge |
+| Duplicate Transaction Checking | **Account Settings** → *Processing Options* → *Transactions* → *Duplicate Transaction Checking* → **Options** | on, **600 seconds** (the default is 30; the maximum 3600) | Braintree refuses a second *successful* sale with the same card, order id and amount within the window. 600 s covers a payment's whole retry budget (about 5 minutes). Our search before every charge stays the main guard (21.4) |
+| 3D Secure, AVS, CVV, Risk Thresholds | **Fraud Management** → *Basic* → each one's **Options** | as the account comes | when switched on, they add `gateway_rejected` reasons (`three_d_secure`, `avs`, `cvv`, `risk_threshold`), which the payment step reads as declines |
+| API keys | gear icon → **API** → *API Keys* | in the environment only | generate new ones if they are ever shown or shared |
+| Erase all test data (sandbox) | **Account Settings** → *Processing Options* → *Test Data* → **Erase** | not used | it locks the account until the purge ends, and can't be undone |
+
+**What Braintree's sandbox actually answers** (checked 2026-09-29 with the restaurant's `e2e/sandbox-probe.mjs`;
+the whole table is in its `e2e/README.md`):
+- **A decline says whether trying again can help.** `processorResponseType` is `soft_declined` (insufficient funds
+  2001, Do Not Honor 2000, the card network down 3000) or `hard_declined` (an expired card, 2004). A soft decline
+  may pass later on the same card; a hard one needs another card.
+- **Every sale that reaches the bank spends its nonce**, even a decline or a failed 3000. Paying again always needs
+  a new nonce from the customer.
+- **An unknown or expired nonce** is 91565.
+- **The sandbox's authentication is unreliable:** a wrong private key was sometimes accepted, and correct keys once
+  got a 401. So the payment step is to retry a 401 or 403 a few times (`PAYMENT_GATEWAY_AUTH_ATTEMPTS`, default 3)
+  before it stalls the payment as a configuration problem (ADR-034, built in PLAN 15.4). Test bad keys against the mock, not the
+  sandbox.
 
 ### 21.8 Checking it yourself
 
@@ -2892,6 +2922,7 @@ The restaurant's `e2e/` folder is a harness to copy for any automation:
 | `charges.mjs <orderId>` | Braintree's transactions for the order: the "charged once" check |
 | `workflow.mjs <orderId>` | the order's payment workflow: running, completed or failed, and a pending step's attempt and last error |
 | `totals.sh` | every event count and charge, to compare before and after (a rebuild, a restart) |
+| `sandbox-probe.mjs` | what Braintree's real sandbox answers for each failure the payment step reads: the check behind 21.7's table |
 
 - **Wait for a state, never for a guessed time.** A check that sleeps and then looks reports a bug that isn't
   there when things are slower than the guess. That happened in case 4: health was checked before the processor
