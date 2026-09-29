@@ -270,9 +270,36 @@ So:
   with a customer token that lasts about 24 hours.
 - **Mint them when needed; never store or log them.**
 
+**A declined card at checkout** (`4000 0000 0000 0002`, 1 seat)
+- The buyer saw "This payment was declined by your bank. Please try again, or use a different payment method…",
+  and stayed in the checkout to retry.
+- Paddle recorded the attempt on the transaction (`payments[]`: `status: error`, `error_code: declined`, Visa
+  •••• 0002) and sent **`transaction.payment_failed`**.
+- The transaction stayed `ready`, payable again, and **no subscription was created**.
+- **So a decline at checkout needs nothing from us:** no subscription, no seats, no access. The restaurant's
+  decline kinds, paying again and the card component are all Paddle's job here.
+  `transaction.payment_failed` could at most feed a report of abandoned checkouts.
+
+**The customer portal, seen by Gary**
+- **It offers only cancel and update the payment method. The seat quantity is fixed; there's no way to change it
+  there.** (The API's description says customers can make "changes", but not to seats.)
+- **Confirmed: changing seats is our own screen**, through the preview and update API.
+
+**VAT (Gary is not VAT-registered)**
+- As merchant of record, **Paddle is the seller**: it charges VAT, GST and sales tax wherever the law requires,
+  whatever the vendor's registration. That can't be turned off, and it isn't the vendor's charge (Paddle's help:
+  "How Paddle handles VAT on your behalf").
+- **The vendor chooses `tax_mode` per price:**
+  - `external`: tax added on top, so the buyer sees £10 + VAT and our net stays £10;
+  - `internal`: tax included, so the buyer pays £10 and our net is £8.33 in the UK;
+  - `location`: follows each country's custom, and gave VAT-included in the UK.
+- **Business buyers:** an EU business with a valid VAT number isn't charged VAT (the reverse charge). A UK business
+  pays UK VAT and normally reclaims it. So for B2B seats, "ex VAT" prices (`external`) are the usual and more
+  competitive display. A pricing decision for 16.3.
+- **The vendor's own VAT status** matters for how it invoices Paddle for payouts (Paddle's help: "Should I charge
+  Paddle VAT/tax for payouts?"). That's a question for an accountant, not the model.
+
 **Still to try**
-- open the portal and confirm it has no seat change;
-- a declined card at checkout (`4000 0000 0000 0002`);
 - a declined renewal;
 - trials;
 - an immediate cancel;
