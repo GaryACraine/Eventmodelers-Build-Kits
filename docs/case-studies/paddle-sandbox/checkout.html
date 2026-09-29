@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Paddle sandbox checkout (PLAN 16.1)</title>
+  <style>
+    body { font: 15px/1.5 system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; }
+    button { font-size: 1rem; padding: .6rem 1.2rem; }
+    pre { background: #f4f4f4; padding: .8rem; overflow: auto; max-height: 50vh; }
+    .error { color: #b00020; }
+  </style>
+</head>
+<body>
+  <h1>Paddle sandbox checkout</h1>
+  <p>Opens the checkout for a transaction our backend created (<code>?txn=txn_…</code>), as the real app will.
+     Test card: <code>4242 4242 4242 4242</code>, any future expiry, CVC <code>100</code>.</p>
+  <p>Transaction: <code id="txn"></code></p>
+  <button id="open">Open checkout</button>
+  <h2>Paddle.js events</h2>
+  <pre id="log"></pre>
+
+  <script src="config.js"></script>
+  <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
+  <script>
+    const log = (label, data) => {
+      document.getElementById("log").textContent += `${new Date().toISOString()} ${label}\n${data ? JSON.stringify(data, null, 2) + "\n" : ""}`
+    }
+    const fail = message => {
+      document.getElementById("log").innerHTML = `<span class="error">${message}</span>`
+      document.getElementById("open").disabled = true
+      throw new Error(message)
+    }
+    // Never default the environment: fail loudly rather than run against the wrong Paddle account
+    if (!window.PADDLE_ENV) fail("PADDLE_ENV isn't set: copy config.example.js to config.js")
+    if (!window.PADDLE_CLIENT_TOKEN) fail("PADDLE_CLIENT_TOKEN isn't set: copy config.example.js to config.js")
+    const transactionId = new URLSearchParams(location.search).get("txn") ?? new URLSearchParams(location.search).get("_ptxn")
+    if (!transactionId) fail("Add ?txn=txn_… to the address")
+    document.getElementById("txn").textContent = transactionId
+
+    if (window.PADDLE_ENV === "sandbox") Paddle.Environment.set("sandbox")
+    Paddle.Initialize({ token: window.PADDLE_CLIENT_TOKEN, eventCallback: event => log(event.name, event.data) })
+    log("initialised", { environment: window.PADDLE_ENV })
+
+    document.getElementById("open").onclick = () =>
+      Paddle.Checkout.open({ transactionId, settings: { displayMode: "overlay", variant: "one-page" } })
+  </script>
+</body>
+</html>
