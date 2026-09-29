@@ -441,9 +441,52 @@ designed later.
     - trimming what each turn carries (memory caps, no re-reading files just written, prompt size per job);
     - the default model and effort per concern and slice type, in the Decisions Log and the manual.
   - Every phase close reports the loop's cost (`loop-costs.mjs`).
-- [ ] **15.4 Redrive failed work** (after 15.3): a UI action and a command that start an open item's workflow
-  again. The design questions and their current leanings are in **ADR-032 (Proposed)**. Decide it, move it to
-  Accepted, then build it.
+- [ ] **15.4 Stalled work: seen, retried or given up by a person** (after 15.3). **Decided 2026-09-29: ADR-032,
+  Accepted; ADR-034 gains how the payment step reads Braintree's failures.**
+  - **The principle:** no item stays stuck silently.
+    - An external item ends in one of three ways:
+      - a business answer (the item closes);
+      - our side blocked (it self-heals, or a deploy fixes it);
+      - **stalled**: Temporal gave up with the outcome unknown.
+    - Only a stall needs a person. It's general to every external automation, not only to payments.
+  - **Gary's choices:**
+    - the operator can **retry or give up**;
+    - the pattern is a **kit default** for every external automation;
+    - the **customer sees** the stall on their order (the screen comes in 15.5);
+    - the administrator is **alerted** on a stall. For now that's a structured log line through the kit's
+      `alert()`; in the cloud, a log-based alert or an email transport, whose provider is checked for Isle of Man
+      availability first;
+    - the to-do list can be **filtered to stalled items**, to retry or give up on them from that screen.
+  - **To verify in Braintree's sandbox first:**
+    - whether `processorResponseType` (soft/hard decline) is sent;
+    - whether a `failed` 3000 spends the nonce;
+    - that an expired nonce gives 93108.
+  - **The kit:**
+    - the workflow template records a stall on its final failure;
+    - the category comes from the step: non-retryable `ApplicationFailure` for `configuration`;
+    - workflow ids `<automation>:<key>:<attempt>`;
+    - `src/shared/alerts.ts`;
+    - `build-automation` and the `event-model` skill learn the pattern.
+  - **The restaurant:**
+    - *Payment Stalled*, *Retry Payment* and *Give Up Payment* (give up records `orderPaymentFailed`, so the stock
+      comes back);
+    - Payments Awaiting gains `stalled`, its category, reason and attempt, and a `stalled` query;
+    - `chargeCard` classifies Braintree's errors (ADR-034's table);
+    - `BRAINTREE_TIMEOUT_MS` (20 s, below the activity's 30 s);
+    - the mock answers by the sandbox's test amounts, with switches for 401, 403, 426, 429 and 5xx.
+  - **End-to-end cases 9 onwards:**
+    - a stall and a retry;
+    - charged but not recorded, then a retry (no second charge);
+    - a stall and a give-up (the stock comes back);
+    - bad keys (an immediate `configuration` stall and an alert);
+    - a 3000;
+    - a soft decline and a hard decline;
+    - an expired nonce;
+    - a double-clicked retry.
+- [ ] **15.4b A circuit breaker for the payment gateway** (deferred; its place is decided in ADR-032). If Braintree
+  is known to be down, placing an order says "card payments are unavailable right now" before any stock is taken.
+  It would be fed by a gateway-health check kept like Temporal's (runtime state, not an event). Decide from a real
+  outage's volume, once 15.4's stalls show it.
 - [ ] **15.5 The whole restaurant domain through the loop** (backend and UI).
   - A domain-bleed review of `build-state-change`, `build-state-view` and `build-screen`: every course-enrollment
     assumption the loop relied on is found and generalised.
@@ -3056,6 +3099,10 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-28 | The loop's model, effort and per-job budget are pinned per project (restaurant-orders: Sonnet, medium, $2), not inherited from the developer's own settings; each run's cost is recorded per slice (PLAN 15.9) | Gary: token usage is a standing concern. The restaurant backend ran on Opus by accident (about $22). Pinned runs are cheaper and reproducible, and per-slice costs show where the skills need work |
 | 2026-09-28 | Model A/B testing and skill distillation for Sonnet are deferred to the next new project | Gary: finish the restaurant feature first, without the overhead |
 | 2026-09-28 | What running automations taught us goes in the manual (§21, general) and the project's `e2e/README.md` (specific, next to the cases that proved it), not only in commits | Gary: the Temporal and Braintree knowledge is valuable and mustn't be lost; §21 is appended so the chapters that PLAN and the manual cite keep their numbers |
+| 2026-09-29 | Work Temporal gives up on is recorded as a business stall event; a person retries (a new workflow id per attempt) or gives up (the automation's failure outcome) from a to-do list filtered to stalled items; a kit default for every external automation (ADR-032, Accepted) | Gary: nothing may stay stuck unseen, and a person decides. With no timers, a stalled item was otherwise open forever, indistinguishable from work in progress, holding the order's stock |
+| 2026-09-29 | The payment step classifies the gateway's errors: transient ones are retried, configuration ones (401, 403, 426) stall at once as non-retryable, and a 3000 is not the card's fault (ADR-034) | Gary: know why a payment failed. Braintree's SDK separates these precisely, and 5 minutes of retries can't fix expired keys |
+| 2026-09-29 | A stall alerts the administrator through the kit's `alert()`: a structured log line now; a log-based alert or an email transport in the cloud | Gary: a person must know when the gateway is down or the SDK needs upgrading. There's no email infrastructure yet, and cloud log alerting needs no code of ours |
+| 2026-09-29 | A payment circuit breaker is deferred (15.4b); if built, it sits where orders are placed, fed by gateway health, not in the processor | Temporal's retries are cheap; the cost of an outage is customers waiting and stock held, which only refusing at the door prevents. Filtered retry and give-up handle an outage meanwhile |
 
 ## Progress
 
