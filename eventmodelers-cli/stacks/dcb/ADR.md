@@ -1613,6 +1613,30 @@ leaning for digital products.
 
 Dodo Payments is the alternative: it explicitly lists the Isle of Man and its fees are lower, but it's younger.
 
+**Subscriptions, seats and licences (researched 2026-09-29; Gary's most likely model: a customer subscribes for a
+number of seats for its employees, alongside one-off purchases):**
+
+| | Paddle | Dodo Payments |
+|---|---|---|
+| One-off payments | ✅ | ✅ |
+| Subscriptions | ✅ Paddle Billing: trials, pause, cancel, one-time charges on a subscription ([subscriptions API](https://developer.paddle.com/api-reference/subscriptions/overview)) | ✅ monthly, annual and custom intervals; free or paid trials ([subscriptions](https://docs.dodopayments.com/features/subscription)) |
+| Seats | ✅ the **quantity** of a subscription item; changing it is prorated (`proration_billing_mode`); multi-seat plans plus add-ons. The customer portal changing quantities is claimed in marketing, not yet confirmed in the docs. Quantity can't change during a trial | ✅ **add-ons** with quantities (up to 10 per product); four proration modes. Seat changes go through our UI and the API, not the customer portal |
+| Failed renewals | ✅ automatic retries, recovery (Paddle Retain) | ✅ retries and dunning, an optional grace period (`past_due` for 1–30 days), then `on_hold` |
+| Licence keys | ❌ **not built in** (Paddle Billing): we generate and verify them on `transaction.completed`, ourselves or with Keygen ([Keygen + Paddle](https://keygen.sh/integrate/paddle/)) | ✅ **built in** ([license keys](https://docs.dodopayments.com/features/license-keys)): one key per seat (`subscriptions.quantity`), valid while the subscription is active and disabled when it ends; a seat change disables the old keys and issues new ones; an activation limit per key; public activate, validate and deactivate endpoints (no secret key), meant for desktop apps and plugins |
+| Lifecycle webhooks | ✅ subscription and transaction events | ✅ `subscription.active`, `renewed`, `past_due`, `on_hold`, `plan_changed`, `cancelled`, `expired` |
+
+- **Which seat model matters.**
+  - **A web app:** a seat is a user in our system. The provider bills for the quantity, and **assigning seats to
+    employees is our own domain logic** (invite, assign, revoke, limit to the quantity). That is a good fit for
+    event modelling, and both providers serve it equally. Paddle's older platform and track record count for more
+    here.
+  - **Installed software (desktop, plugins):** Dodo's built-in per-seat keys and activation limits save building
+    a licence server. With Paddle we'd add Keygen or our own.
+  - One caveat for Dodo: a seat change **reissues every key**, so each employee must enter a new key. That's
+    awkward for a team product; to test.
+- **So the leaning holds, with a condition:** **Paddle** for a web app with seats, or **Dodo** if the product is
+  installed software needing licence keys. To settle in 15.4d once Gary knows which kind of product he'll sell.
+
 **To confirm before Accepted:**
 - Gary's onboarding with Paddle, as a business in the Isle of Man selling his kind of digital product;
 - the fee on his typical price, because the fixed 50¢ weighs on cheap items;

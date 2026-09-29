@@ -523,6 +523,13 @@ designed later.
     - to settle: refunds (the MoR handles them; what they mean for a licence already delivered), and whether
       fulfilment needs Temporal.
   - **The kit:** a hosted-checkout pattern in `build-automation`, alongside the restaurant's self-built one.
+  - **Subscriptions and seats** (Gary's likely model: a customer pays for seats for its employees; ADR-036's second
+    table):
+    - both Paddle and Dodo bill subscriptions with seat quantities and proration;
+    - Dodo also issues **licence keys** per seat (activation limits; keys follow the subscription). Paddle doesn't,
+      so licences would be ours or Keygen's;
+    - **to decide:** web-app seats (users in our app; seat assignment is our domain, so Paddle) or installed
+      software with keys (Dodo).
 - [ ] **15.4b A circuit breaker for the payment gateway** (deferred; its place is decided in ADR-032). If Braintree
   is known to be down, placing an order says "card payments are unavailable right now" before any stock is taken.
   It would be fed by a gateway-health check kept like Temporal's (runtime state, not an event). Decide from a real
