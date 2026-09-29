@@ -306,6 +306,26 @@ So:
   competitive display. A pricing decision for 16.3.
 - **The vendor's own VAT status** matters for how it invoices Paddle for payouts (Paddle's help: "Should I charge
   Paddle VAT/tax for payouts?"). That's a question for an accountant, not the model.
+- **What the vendor keeps depends on `tax_mode`:**
+
+  | Price setting (`tax_mode`) | UK customer pays for a "£10" seat | Vendor receives (before Paddle's fee) |
+  |---|---|---|
+  | `external` (tax on top) | £10 + £2 VAT = £12 | £10 |
+  | `internal` (tax included) | £10 | £8.33 |
+
+  The VAT goes from the customer to Paddle to the tax authority. It never passes through the vendor, so the
+  vendor's VAT registration doesn't affect it, and there's nothing for the vendor to reclaim.
+- **Recommended for B2B seats: `external`, advertised "excl. VAT"** ("£10 per seat per month, excluding VAT").
+  - An EU business with a VAT number pays no VAT (the reverse charge), and a UK VAT-registered business reclaims it.
+  - Show "excl. VAT" beside every price, or show the visitor's own total with `Paddle.PricePreview()`. Paddle's
+    checkout shows the tax as its own line.
+  - For consumers, UK rules expect VAT-inclusive display: use `internal`, or show the inclusive figure.
+  - To confirm with an accountant.
+- **Applied in the sandbox (Gary, 2026-09-29):**
+  - both seat prices switched to `external` (`prices.update`);
+  - Paddle's pricing preview for 5 seats to a UK buyer now gives **£50.00 + £10.00 VAT = £60.00** (before: £50.00
+    including £8.33 VAT);
+  - still to check: whether the existing test subscription, bought under `location`, renews on the new basis.
 
 **Still to try**
 - a declined renewal;
@@ -314,11 +334,33 @@ So:
 - pause and resume;
 - repeated and out-of-order delivery through a real notification destination.
 
+## 12. Getting paid
+
+Sources: Paddle help, [When and how do I get paid?](https://www.paddle.com/help/manage/get-paid/when-and-how-do-i-get-paid),
+[What statements will I receive?](https://www.paddle.com/help/manage/get-paid/what-statements-will-i-receive) and
+[Should I charge Paddle VAT/tax for payouts?](https://www.paddle.com/help/manage/get-paid/should-i-charge-paddle-vattax-for-payouts).
+
+- **Automatic, once set up.** The vendor enters the bank details once, in the live dashboard's **Payout settings**.
+  Paddle then pays out **monthly**:
+  - the balance becomes a payout on the **1st**, is sent by the **15th**, and arrives within 3 working days;
+  - only when the balance is over the vendor's **threshold** (minimum $100 / £100 / €100; below it, the balance
+    carries over to the next month).
+- **Currency and method:** payouts in GBP, USD or EUR, by wire transfer (or Payoneer). Usually no payout fee; some
+  countries pay a $15 SWIFT fee, and the vendor's own bank may charge.
+- **The vendor raises no invoices.** Paddle generates:
+  - a **reverse invoice** (self-billing, from the vendor to Paddle, for the payout amount);
+  - a **remittance advice**;
+  - a **monthly statement** (gross sales, taxes withheld, fees, adjustments, balance).
+- **Tax on the payout:** the vendor charges Paddle no VAT. It's a B2B supply, taxed in Paddle's country by the
+  reverse charge. An accountant should confirm this for a non-registered Isle of Man company.
+
 ## 10. For onboarding (Gary)
 
 - [ ] Live account review: the business in the Isle of Man, the web app, the website's pricing and terms pages.
 - [ ] The fee at the intended seat price.
 - [ ] Payout currency (GBP) and bank.
+- [ ] Once approved: **Payout settings** in the live dashboard (GBP, the bank account, the threshold). After that,
+      payouts and their paperwork are automatic (§12).
 - [ ] Anything Paddle asks of a seat-based SaaS (refund policy, terms) that the model or the site must provide.
 
 ## Tools Paddle offers for working with an AI assistant
