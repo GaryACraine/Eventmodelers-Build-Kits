@@ -63,6 +63,11 @@ model and build only what's ours.
     - webhooks: which events, their signatures, retries and order.
   - **Out:** a knowledge note (`docs/case-studies/paddle.md`), sandbox experiments kept as scripts, and questions
     for the model.
+  - *Desk research done 2026-09-29: [`docs/case-studies/paddle.md`](docs/case-studies/paddle.md), with a to-verify list
+    for the sandbox and one for onboarding. Found: seats are a quantity our page sets; the customer portal can't
+    change seats, so that's our screen, using Paddle's preview and update API; `customData` carries our organisation
+    id onto the subscription; webhooks can arrive out of order and more than once, so we ignore repeats by
+    `event_id` and compare `occurred_at`.*
 - [ ] **16.2 How other vendors license a web app by seats through a merchant of record** (second).
   - Collect from vendors that sell seat-based subscriptions, especially through a merchant of record (Paddle's and
     others' customers, and their public docs):
