@@ -284,6 +284,14 @@ So:
 - **It offers only cancel and update the payment method. The seat quantity is fixed; there's no way to change it
   there.** (The API's description says customers can make "changes", but not to seats.)
 - **Confirmed: changing seats is our own screen**, through the preview and update API.
+- **From Gary's screenshot of the portal:**
+  - it's branded with the vendor's name ("Craine Labs Limited");
+  - the next payment shows the credit applied: 6 seats at £60.00 including VAT (£50.00 + £10.00 at 20%), less
+    £20.00 credit, so **£40.00 due at renewal**;
+  - the payments list calls the mid-month seat changes **"Renewal"**: the £30.00 increase, and the decrease as a
+    £0.00 "Paid" renewal. That's confusing, so our own screen should explain seat changes and their cost in our
+    words;
+  - the only actions are "Update payment method" and "Cancel subscription".
 
 **VAT (Gary is not VAT-registered)**
 - As merchant of record, **Paddle is the seller**: it charges VAT, GST and sales tax wherever the law requires,
