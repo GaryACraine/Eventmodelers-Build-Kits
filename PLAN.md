@@ -495,7 +495,20 @@ designed later.
       passes (250);
     - **emcli:** `field add` reaches a command's or event's copies; `event-model` proposes stall, retry, give up,
       kind and attempt for every external automation;
-    - **next:** the hand-off (plan the 8 draft slices, export) and Gary's loop run (Sonnet), then the e2e cases.
+    - **round 1 built (2026-09-29):** 5 new write slices and 13 changed built slices, re-queued by emcli's new
+      rebuild of changed built slices. 7 jobs first blocked on a modelling error (the Payment Requester's fields marked
+      generated, so the contract left them out of the request body); fixed and rebuilt. 319 tests pass;
+      `payments awaiting settled` waits for round 2;
+    - **cost on Sonnet at medium (15.9):** $0.33 per job on average, median $0.31 for finished jobs, against about
+      $0.88 on Opus at low effort before (roughly 2.5 to 3 times cheaper; new write slices $0.44 to $0.81). The dearest
+      job, `request payment`, cost $0.92 over 2 runs. Blocks cost 36% of round 1a: model errors, not the model;
+    - **fixed after review:** the loop didn't recognise "You've hit your session limit · resets 12:40pm (zone)" and
+      retried every minute (31 runs at $0); it now waits until the stated time in that zone. The gateway got our
+      20 s timeout, and the mock's failure switch works over HTTP;
+    - **to fix:** a blocked job's `blockedAt` is written by the agent, in local time labelled UTC, so planning again
+      soon after doesn't count as later; the loop should stamp it itself;
+    - **next:** round 2 (stalled payments, order details payment attempts, payments awaiting settled), then the e2e
+      cases.
   - **End-to-end cases 9 onwards:**
     - a stall and a retry;
     - charged but not recorded, then a retry (no second charge);

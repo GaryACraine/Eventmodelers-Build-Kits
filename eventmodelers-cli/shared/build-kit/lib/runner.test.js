@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import {
-  appendMetrics, describeSettings, jobSettings, metricsLine, metricsPath, settingsArgs, usageLimit, usageLimitWaitMs,
+  appendMetrics, describeSettings, jobSettings, metricsLine, metricsPath, resetTime, settingsArgs, usageLimit, usageLimitWaitMs,
 } from './runner.js';
 
 test("a project pins its jobs' model, effort and budget; a concern's own setting wins over the default", () => {
@@ -40,6 +40,17 @@ test('a usage limit is told apart from other failures, with its reset time when 
   assert.equal(usageLimit({ is_error: true, result: 'Tests failed' }), null);
   assert.equal(usageLimit({ is_error: false, result: 'usage limit reached' }), null);
   assert.equal(usageLimit(undefined), null);
+});
+
+test("a session limit is a usage limit, and its reset time is read in its time zone", () => {
+  const now = Date.UTC(2026, 8, 29, 11, 6, 0); // 12:06 in the Isle of Man (BST, UTC+1)
+  const limit = usageLimit({ is_error: true, result: "You've hit your session limit · resets 12:40pm (Europe/Isle_of_Man)" }, now);
+  assert.ok(limit);
+  assert.equal(limit.resetAt.toISOString(), '2026-09-29T11:40:00.000Z');
+  assert.equal(resetTime('resets 3pm (Europe/London)', now).toISOString(), '2026-09-29T14:00:00.000Z');
+  // Already past today: tomorrow
+  assert.equal(resetTime('resets 9am (Europe/London)', now).toISOString(), '2026-09-30T08:00:00.000Z');
+  assert.equal(resetTime('resets 12:40pm (Not/AZone)', now), undefined);
 });
 
 test('the loop waits until the reset (plus a minute), or 15 minutes when it is unknown', () => {

@@ -47,12 +47,45 @@ export function describeSettings({ model, effort, maxBudgetUsd }) {
  * Whether a run ended on the account's usage limit, from its result message (`is_error`, the text naming a limit).
  * Returns `{ resetAt }` (a Date when the text carries one: "…|<epoch seconds>"), or null for any other outcome.
  */
-export function usageLimit(result) {
+export function usageLimit(result, now = Date.now()) {
   if (!result?.is_error) return null;
   const text = String(result.result ?? result.error ?? '');
-  if (!/usage limit|rate limit|hit your limit|limit reached|limit will reset|resets? at/i.test(text)) return null;
+  // "usage limit reached|<epoch>", "You've hit your limit · resets 3pm (Europe/London)",
+  // "You've hit your session limit · resets 12:40pm (Europe/Isle_of_Man)"
+  if (!/usage limit|rate limit|hit your (?:\w+ )?limit|limit reached|limit will reset|resets? (?:at )?\d/i.test(text)) return null;
   const epoch = text.match(/\|(\d{10})\b/);
-  return { resetAt: epoch ? new Date(Number(epoch[1]) * 1000) : undefined, text: text.trim().slice(0, 200) };
+  const resetAt = epoch ? new Date(Number(epoch[1]) * 1000) : resetTime(text, now);
+  return { resetAt, text: text.trim().slice(0, 200) };
+}
+
+/** "resets 12:40pm (Europe/Isle_of_Man)" → the next such wall-clock time in that zone, or undefined. */
+export function resetTime(text, now = Date.now()) {
+  const m = text.match(/resets?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:\(([^)]+)\))?/i);
+  if (!m) return undefined;
+  let hour = Number(m[1]) % 12;
+  if (!m[3]) hour = Number(m[1]);
+  else if (m[3].toLowerCase() === 'pm') hour += 12;
+  const minute = Number(m[2] ?? 0);
+  const zone = m[4] ?? 'UTC';
+  let offsetAt;
+  try {
+    const f = new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' });
+    offsetAt = (t) => {
+      const p = Object.fromEntries(f.formatToParts(new Date(t)).map((x) => [x.type, Number(x.value)]));
+      return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute) - Math.floor(t / 60_000) * 60_000;
+    };
+    offsetAt(now);
+  } catch {
+    return undefined;
+  }
+  // Today's date in that zone, at the given wall time; tomorrow's if that has passed
+  const wall = new Date(now + offsetAt(now));
+  for (const days of [0, 1]) {
+    const local = Date.UTC(wall.getUTCFullYear(), wall.getUTCMonth(), wall.getUTCDate() + days, hour, minute);
+    const at = local - offsetAt(local - offsetAt(now));
+    if (at > now) return new Date(at);
+  }
+  return undefined;
 }
 
 /** How long to wait on a usage limit: until its reset (plus a minute), else 15 minutes. */
