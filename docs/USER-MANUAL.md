@@ -2732,6 +2732,11 @@ built as a **to-do list** (a read model of the items waiting) worked by one **pr
 - the **Stock Returner** gives stock back when a payment fails. It never leaves our system, so it needs no
   Temporal.
 
+> **A demo, not a recipe for selling online.** The restaurant takes card payments itself through Braintree, a
+> gateway, to show automations, Temporal, compensating actions and redrive. A shop selling digital products would
+> normally use a **merchant of record's hosted checkout** instead (Paddle, for example). That checkout handles card
+> entry, declines, retries, refunds and VAT, and our side shrinks to a webhook and delivering the product (ADR-036).
+>
 > Everything in this chapter was run on the restaurant-orders example (PLAN 15.3), on the real stack: Postgres,
 > Temporal, a mock of Braintree, and the app. Each outage was forced on purpose. The cases, the scripts that run
 > them and every result are in that project's `e2e/README.md`. Run them again whenever you change an automation.
