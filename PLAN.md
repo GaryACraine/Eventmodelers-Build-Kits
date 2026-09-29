@@ -107,6 +107,12 @@ ourselves. For the real product, a merchant of record does that (ADR-036, Paddle
   - ADR-031 to ADR-036, and manual §21 in business terms;
   - the e2e harness, and Braintree's sandbox findings and settings.
 
+**Loop fixes found at the close (2026-09-29):**
+- the loop stamps `blockedAt` for the job it ran, with its own clock; an agent had written local time labelled UTC
+  (PR #98);
+- emcli's `completeness` warns when a command issued by an automation has generated fields only the automation
+  can supply. On the model as it stood at round 1 it gives the 5 warnings that would have saved the 7 blocked jobs.
+
 **Carried over:** 15.5's domain-bleed review and 15.7's voice transcript go to Phase 16. 15.9's deferred A/B test
 and skill distillation go there too, with 15.4d. Dropped: 15.4b, 15.5's UI, 15.8, and 15.4's e2e cases 9
 onwards.
