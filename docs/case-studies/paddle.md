@@ -20,6 +20,10 @@ and can't do, so the model asks it for the right things.
   - that Gary's business and product are accepted;
   - the fee at his price point (5% + 50¢ published; the fixed 50¢ weighs on small amounts);
   - payout in GBP to an Isle of Man bank.
+- **Before a checkout can open:** set a **default payment link** (Checkout settings), which Paddle uses for its
+  payment and subscription links. `https://localhost/` will do in the sandbox.
+- **Catalog:** "everything you offer is a product". Plans, add-ons and one-time charges each have prices; "additional
+  seats" can be a product of its own, or the quantity of a plan's price (to decide in 16.3).
 - **Keys:**
   - API keys, server side: sandbox keys contain `_sdbx`, and the API is at `sandbox-api.paddle.com`;
   - a **client-side token** for Paddle.js, prefixed `test_` in the sandbox;
@@ -49,6 +53,8 @@ and can't do, so the model asks it for the right things.
 - **Our reference travels with the purchase.** `customData` passed at checkout is kept on the transaction, and
   **copied onto the subscription** when it's created. Our organisation's id goes there, which ties every later
   webhook to our records.
+- **Our pricing page** can show Paddle's localised prices (the visitor's currency, with estimated tax) through
+  `Paddle.PricePreview()`, so the page never hard-codes a price.
 - **Business buyers:** `customer.business` (name, tax id) lets a company buy with its VAT number.
 - **The page's events** come through `eventCallback`, e.g. `checkout.completed` and `checkout.payment.failed`.
   They're for the page only. **Access is granted from webhooks, never from the page's event.**
@@ -135,6 +141,14 @@ and can't do, so the model asks it for the right things.
   - `transaction.completed`, `payment_failed`, `past_due`;
   - `customer.created` and `updated`;
   - `adjustment.created` (refunds and credits).
+- **One purchase, in the order Paddle creates things** (from its quickstart; delivery order still isn't guaranteed):
+  1. `transaction.created`: the checkout opens a transaction and updates it as the buyer goes;
+  2. `customer.created`: the email is entered;
+  3. `address.created`: the country and postal code;
+  4. `business.created`: only if a tax or VAT number is entered;
+  5. `transaction.paid`: **the payment went through; provisioning can start**;
+  6. `subscription.created`: for recurring items, `active` or `trialing`;
+  7. `transaction.completed`: invoice number, fees and payouts added.
 - **The envelope:** `event_id`, `event_type`, `occurred_at`, `notification_id`, and `data` (the whole entity as it
   now stands).
 - **Signature:** the `Paddle-Signature` header is `ts=<unix>;h1=<hex>`. `h1` is the HMAC-SHA256 of `ts + ":" + raw
@@ -148,6 +162,9 @@ and can't do, so the model asks it for the right things.
 - **Not in order, and possibly more than once.** Paddle says so. So:
   - **ignore a repeat by `event_id`** (our idempotency key);
   - **compare `occurred_at`**: an older event must not overwrite a newer state.
+- **Notification destinations** have a usage type. **Platform** (or both) receives real events; *simulation* only
+  receives the simulator's. **Hookdeck Console** shows webhooks with no endpoint of our own, which is handy for a
+  first look.
 - **A webhook simulator** (with scenario configuration) sends sample events to a destination, for tests.
 
 ## 8. What this means for our model (input to 16.2 and 16.3)
@@ -172,7 +189,8 @@ and can't do, so the model asks it for the right things.
 
 ## 9. To verify in the sandbox
 
-- [ ] Signup and keys: sandbox API key, client-side token, webhook destination and secret.
+- [ ] Signup and keys: sandbox API key, client-side token, webhook destination (usage type platform) and secret;
+      the default payment link set.
 - [ ] A per-seat monthly price (quantity maximum raised); checkout, overlay and inline, with the quantity set by our
       page; `customData` on the resulting subscription.
 - [ ] The webhooks of one purchase, in the order they arrive, with their payloads kept as fixtures.
@@ -190,7 +208,17 @@ and can't do, so the model asks it for the right things.
 - [ ] Payout currency (GBP) and bank.
 - [ ] Anything Paddle asks of a seat-based SaaS (refund policy, terms) that the model or the site must provide.
 
+## Tools Paddle offers for working with an AI assistant
+
+- the **Paddle MCP server** (its API: catalog, customers, subscriptions), to drive the sandbox in experiments;
+- the **docs MCP server**, and the docs index at <https://developer.paddle.com/llms.txt>, so the `provider-paddle`
+  skill (PLAN 16.5) can point to the docs instead of copying them.
+
+Installing either is Gary's decision. The API server is pointed at the sandbox only.
+
 ## Sources
+
+- Quickstart (sandbox, catalog, pricing page, checkout, webhooks): <https://developer.paddle.com/get-started/quickstart>
 
 - Overlay checkout: <https://developer.paddle.com/build/checkout/build-overlay-checkout>
 - `Paddle.Checkout.open`: <https://developer.paddle.com/paddlejs/methods/paddle-checkout-open>
