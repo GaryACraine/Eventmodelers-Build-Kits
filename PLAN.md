@@ -530,6 +530,26 @@ designed later.
       so licences would be ours or Keygen's;
     - **to decide:** web-app seats (users in our app; seat assignment is our domain, so Paddle) or installed
       software with keys (Dodo).
+- [ ] **15.4e Keep `build-automation` general; each third-party API in its own skill** (Gary, 2026-09-29).
+  - **The concern:** `build-automation` was written while building the restaurant's payments. Braintree may be baked
+    into it. A first look (2026-09-29) finds its worked example is the Payment Requester: `chargeCard`,
+    `paymentMethodNonce`, `braintreeGateway()`, `fake-valid-nonce`, and a mock "as the provider's sandbox does".
+  - **The principle:**
+    - `build-automation` holds only what's true of every automation: the to-do list and processor, internal vs
+      external, Temporal, idempotency, a business answer vs a thrown failure, stall and redrive, and mocks after
+      the provider's API;
+    - each third-party API gets **its own skill** (for example `provider-braintree`, later `provider-paddle`), which
+      holds that provider's SDK calls, error codes and their classification (ADR-034's table), sandbox test values,
+      settings, and quirks (91564, search-first, flaky sandbox auth);
+    - changing provider then changes one skill, not the automation skill.
+  - **The review:**
+    - read `build-automation` line by line for provider-specific content;
+    - move that content into a provider skill;
+    - replace the worked example with a neutral one, or keep payments while pointing to the provider skill for
+      every SDK detail;
+    - check that the `event-model` skill doesn't assume a provider either.
+  - Prove it by rebuilding one external automation from the split skills (loop, Sonnet), and record its cost against
+    the baseline (15.9).
 - [ ] **15.4b A circuit breaker for the payment gateway** (deferred; its place is decided in ADR-032). If Braintree
   is known to be down, placing an order says "card payments are unavailable right now" before any stock is taken.
   It would be fed by a gateway-health check kept like Temporal's (runtime state, not an event). Decide from a real
@@ -3159,6 +3179,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-29 | Paying again after a decline uses the same order, shows every attempt (card, kind, reason), allows 5 attempts, and lets the customer cancel while awaiting payment (ADR-035, the demo) | Gary: the user's experience first. Keep the order's particulars, and tell the customer why so they can change card or add funds, as Amazon and food-delivery apps do |
 | 2026-09-29 | The restaurant returns stock at a decline on purpose, as an example of a compensating action; Amazon's time-limited reservation is recorded as the real-world best practice, and not followed | Gary: the sample isn't a real restaurant; it teaches compensation |
 | 2026-09-29 | The restaurant is a demo, rounded out and not extended; digital products will use a merchant of record's hosted checkout, leaning Paddle (ADR-036, Proposed) | Gary: the aim was the `build-automation` skill. Braintree made us build checkout infrastructure a merchant of record provides, including VAT on digital goods. Paddle meets every criterion, including the Isle of Man, and has an official React starter |
+| 2026-09-29 | `build-automation` keeps only general automation principles; each third-party API's specifics live in its own provider skill (PLAN 15.4e) | Gary: isolate change. Switching provider (Braintree to Paddle) must not mean rewriting the automation skill |
 
 ## Progress
 
