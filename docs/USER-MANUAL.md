@@ -2736,6 +2736,7 @@ built as a **to-do list** (a read model of the items waiting) worked by one **pr
 > gateway, to show automations, Temporal, compensating actions and redrive. A shop selling digital products would
 > normally use a **merchant of record's hosted checkout** instead (Paddle, for example). That checkout handles card
 > entry, declines, retries, refunds and VAT, and our side shrinks to a webhook and delivering the product (ADR-036).
+> The restaurant demo is closed (PLAN Phase 15); selling a web app with seats through Paddle is PLAN Phase 16.
 >
 > Everything in this chapter was run on the restaurant-orders example (PLAN 15.3), on the real stack: Postgres,
 > Temporal, a mock of Braintree, and the app. Each outage was forced on purpose. The cases, the scripts that run

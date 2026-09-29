@@ -30,11 +30,86 @@
 
 ## Phases
 
-### Phase 15: Automations, proven on a second domain (restaurant orders)
+### Phase 16: Selling a web app with seats, through Paddle (top priority from 2026-09-29)
+
+> **Top priority** (Gary, 2026-09-29), after Phase 15 closed. It absorbs 15.4d, the work 15.9 deferred to "the next
+> new project", 15.5's domain-bleed review and 15.7's voice transcript. Decision: ADR-036 (Accepted: Paddle).
+
+**Goal:** Gary's real product: **a web app sold as a subscription with seats** (a customer buys seats for its
+employees), through **Paddle**, a merchant of record. Paddle takes the payment, the tax and the declines; we
+model and build only what's ours.
+
+- [ ] **16.0 Record.** This phase, ADR-036 Accepted, the Decisions Log.
+- [ ] **16.1 Model the domain by voice** (15.7, fulfilling 13.6), in a new project: a spoken-style transcript
+  through `event-model`, then reviewed. The domain:
+  - a customer subscribes for N seats (the checkout, started in the page);
+  - Paddle's webhooks: subscription created, updated (seats changed), payment failed, cancelled;
+  - **seats are our own logic:** invite an employee, assign and remove seats, never beyond the quantity;
+  - access follows the subscription's state.
+- [ ] **16.2 Translation slices in the kit** (the main kit work). Another system's webhook becomes our event:
+  verify the signature, ignore a repeat by its key, record our event named for the business.
+  `build-automation` still blocks a `synchronous` processor as "not proven": make it proven.
+- [ ] **16.3 A `provider-paddle` skill** (15.4e's pattern):
+  - Paddle.js (`@paddle/paddle-js`), overlay or inline checkout, **in our Vite React SPA**. The official Next.js
+    starter is a reference only (see below);
+  - webhook signatures and events;
+  - the sandbox;
+  - a webhook mock for tests, if the sandbox isn't enough (ADR-030).
+- [ ] **16.4 The loop builds it on Sonnet**, with 15.9's deferred work on real new slices:
+  - the model and effort A/B test;
+  - distilling `build-automation` for Sonnet;
+  - trimming what each turn carries;
+  - defaults per concern and per kind of slice.
+- [ ] **16.5 Domain-bleed review** (from 15.5) of `build-state-change`, `build-state-view` and `build-screen`,
+  against a third domain.
+- **The stack stays** (Gary asked, 2026-09-29, whether Paddle's Next.js starter means moving to Next.js with SSR):
+  - Paddle.js is a browser library and runs in a client-side React app.
+  - SSR needs a running server, so it would rule out plain S3 hosting. Next.js's static export works on S3, but
+    without SSR or API routes, so it's an SPA like ours.
+  - A web app behind a login gains little from SSR. We keep the SPA on S3 and CloudFront (14.8), with Paddle's
+    server side as our backend's slices.
+  - If SEO is ever needed, a static marketing site sits beside the app.
+
+### Phase 15: Automations, proven on a second domain (restaurant orders) ✅ closed 2026-09-29
 
 > **Top priority** (recorded 2026-09-27, Gary), ahead of every outstanding task: 14.8 deploy and the t14 chapter,
 > 13.5b, 13.6 (now 15.7), 9.7 and 9.11b. Each subtask is delivered and proven on its own, in order. The most
 > important is the automation itself (15.2–15.3).
+
+**Closed 2026-09-29 (Gary).** The restaurant is a **demo**, and it has done its job: both of the phase's aims were
+to improve the kit and the loop, and both are met. What's left on its track (e2e cases 9 onwards, the UI, the
+circuit breaker, the card component, stock from a growing stream) exists only because we took card payments
+ourselves. For the real product, a merchant of record does that (ADR-036, Paddle: Phase 16).
+
+**Achieved:**
+- **Automations are first class:**
+  - a to-do list worked by one processor (ADR-031, ADR-033), with Temporal for external work;
+  - the library's fail-fast policy (15.2), our own deadline on every call to Temporal, and Temporal on the health
+    check;
+  - stalls recorded as business events, retried or given up by a person (ADR-032), and work keyed per attempt
+    (`workKey`);
+  - `alert()` for the administrator, and a failure's `kind` and `code`;
+  - `build-automation` stays general, with a provider skill per outside system (`provider-braintree`, 15.4e).
+  - The loop built both automations and all 31 slices: 347 tests pass, and e2e cases 1 to 8 ran on the real stack.
+- **The loop costs less and reports its cost** (15.9):
+  - the model, effort and budget are pinned per project; `runs.jsonl` and `loop-costs.mjs` report them;
+  - usage and session limits are waited out.
+  - **On Sonnet at medium effort, a finished job costs a median of $0.33**, against about $0.88 on Opus at low
+    effort, **roughly 2.5 to 3 times cheaper** at the same quality. The rest of the restaurant's build cost $9.66 in
+    60 runs, 21 of them finished jobs.
+  - Most of the avoidable cost was **blocks caused by model errors** ($2.14), not the model the loop ran on.
+- **Less wasted and wrong work:**
+  - emcli re-queues a built slice whose model changed, saying what changed (a versioned fingerprint);
+  - the loop updates such a slice in place and removes the code the change replaces;
+  - `field add` reaches every copy of a command or event;
+  - `event-model` proposes stall, retry, give up, kind and attempt for every external automation.
+- **Knowledge kept:**
+  - ADR-031 to ADR-036, and manual §21 in business terms;
+  - the e2e harness, and Braintree's sandbox findings and settings.
+
+**Carried over:** 15.5's domain-bleed review and 15.7's voice transcript go to Phase 16. 15.9's deferred A/B test
+and skill distillation go there too, with 15.4d. Dropped: 15.4b, 15.5's UI, 15.8, and 15.4's e2e cases 9
+onwards.
 
 **Goal:** make automations first class, next to the state-change and state-view patterns. `build-automation` is
 still Phase 4's template, and no automation has been through the loop. The vehicle is a second domain,
@@ -414,7 +489,7 @@ designed later.
   - Kit wiring and checks.
   - Proven through the loop on restaurant-orders, on both paths: the **Stock Returner** (internal, in the
     processor) and the **Payment Requester** (external, in Temporal).
-- [ ] **15.9 Token discipline for the loop** (Gary, 2026-09-28: a standing concern to keep a close eye on).
+- [x] **15.9 Token discipline for the loop** *(built and proven 2026-09-29; the A/B test and distillation moved to 16.4)* (Gary, 2026-09-28: a standing concern to keep a close eye on).
   - **Why:** the restaurant backend ran on whatever `~/.claude/settings.json` said, because nothing in the kit or
     project pinned it: Opus at low effort.
     - **Baseline** (the whole backend, 2026-09-28): 24 finished jobs cost $20.14 (median $0.79, range $0.38–$1.47),
@@ -441,7 +516,7 @@ designed later.
     - trimming what each turn carries (memory caps, no re-reading files just written, prompt size per job);
     - the default model and effort per concern and slice type, in the Decisions Log and the manual.
   - Every phase close reports the loop's cost (`loop-costs.mjs`).
-- [ ] **15.4 Stalled work: seen, retried or given up by a person** (after 15.3). **Decided 2026-09-29: ADR-032,
+- [x] **15.4 Stalled work: seen, retried or given up by a person** (after 15.3). *Built 2026-09-29 through the loop (rounds 1 and 2; e2e cases 9 onwards dropped when the demo closed).* **Decided 2026-09-29: ADR-032,
   Accepted; ADR-034 gains how the payment step reads Braintree's failures.**
   - **The principle:** no item stays stuck silently.
     - An external item ends in one of three ways:
@@ -531,7 +606,7 @@ designed later.
     - the order's screen explains the decline by `kind`, and offers *Pay again* with a new nonce.
   - **Open:** the same order or a new one; the number of retries; live or polled status.
   - After 15.4 and with the UI (15.5).
-- [ ] **15.4d Digital products: a merchant of record, and no physical inventory** (ADR-036, Proposed; Gary,
+- [x] **15.4d Digital products: a merchant of record, and no physical inventory** *(moved to Phase 16, 2026-09-29; ADR-036 Accepted: Paddle)* (ADR-036; Gary,
   2026-09-29).
   - Gary will likely adapt this sample to sell digital products. **The restaurant is rounded out as a demo**:
     - it's labelled "not how a digital-products vendor would take payments";
@@ -553,7 +628,7 @@ designed later.
       so licences would be ours or Keygen's;
     - **to decide:** web-app seats (users in our app; seat assignment is our domain, so Paddle) or installed
       software with keys (Dodo).
-- [ ] **15.4e Keep `build-automation` general; each third-party API in its own skill** (Gary, 2026-09-29). *Split
+- [x] **15.4e Keep `build-automation` general; each third-party API in its own skill** (Gary, 2026-09-29). *Split
   done 2026-09-29: `provider-braintree` holds the SDK setup, the answers and errors tables, 91564, search first,
   the mock and the sandbox; `build-automation` holds stalls, attempts and the categories, and points to provider
   skills; the loop's CLAUDE.md names them. Proof pending: the loop building 15.4's external automation from the
@@ -577,11 +652,11 @@ designed later.
     - check that the `event-model` skill doesn't assume a provider either.
   - Prove it by rebuilding one external automation from the split skills (loop, Sonnet), and record its cost against
     the baseline (15.9).
-- [ ] **15.4b A circuit breaker for the payment gateway** (deferred; its place is decided in ADR-032). If Braintree
+- [x] **15.4b A circuit breaker for the payment gateway** *(dropped 2026-09-29: the demo is closed; a merchant of record's checkout owns outages)* (deferred; its place is decided in ADR-032). If Braintree
   is known to be down, placing an order says "card payments are unavailable right now" before any stock is taken.
   It would be fed by a gateway-health check kept like Temporal's (runtime state, not an event). Decide from a real
   outage's volume, once 15.4's stalls show it.
-- [ ] **15.5 The whole restaurant domain through the loop** (backend and UI).
+- [x] **15.5 The whole restaurant domain through the loop** (backend and UI). *(Backend done; the UI dropped 2026-09-29 with the demo; the domain-bleed review moved to 16.5.)*
   - A domain-bleed review of `build-state-change`, `build-state-view` and `build-screen`: every course-enrollment
     assumption the loop relied on is found and generalised.
   - A manual chapter.
@@ -591,12 +666,12 @@ designed later.
   - a distilled `references/` folder per skill, with its provenance;
   - a ledger like `UPSTREAM.md`;
   - a review routine at phase close.
-- [ ] **15.7 Voice-modeling transcript** (last; fulfils 13.6).
+- [x] **15.7 Voice-modeling transcript** (last; fulfils 13.6). *(Moved to 16.1, 2026-09-29.)*
   - A spoken-style transcript that models the whole restaurant domain through `event-model`.
   - Replayed in a fresh project.
   - The result diffed against 15.1's model.
   - The gaps fed into the skill.
-- [ ] **15.8 Deciding from a growing event stream** (a pattern Gary wants to actively investigate; after 15.5, so
+- [x] **15.8 Deciding from a growing event stream** *(dropped 2026-09-29: specific to physical stock; revisit if a product needs it)* (a pattern Gary wants to actively investigate; after 15.5, so
   there's a working baseline).
   - **The problem.** `placeOrder` decides stock from the event stream (never a read model), folding every
     `menuItemRestocked`, `stockDeducted` and `stockReturned` event of the restaurant on every order. The fold
@@ -3207,12 +3282,16 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-29 | The restaurant returns stock at a decline on purpose, as an example of a compensating action; Amazon's time-limited reservation is recorded as the real-world best practice, and not followed | Gary: the sample isn't a real restaurant; it teaches compensation |
 | 2026-09-29 | The restaurant is a demo, rounded out and not extended; digital products will use a merchant of record's hosted checkout, leaning Paddle (ADR-036, Proposed) | Gary: the aim was the `build-automation` skill. Braintree made us build checkout infrastructure a merchant of record provides, including VAT on digital goods. Paddle meets every criterion, including the Isle of Man, and has an official React starter |
 | 2026-09-29 | `build-automation` keeps only general automation principles; each third-party API's specifics live in its own provider skill (PLAN 15.4e) | Gary: isolate change. Switching provider (Braintree to Paddle) must not mean rewriting the automation skill |
+| 2026-09-29 | Phase 15 closed; the restaurant is a demo, not extended further (its e2e 9 onwards, UI, circuit breaker and 15.8 dropped) | Gary: both aims (automations, the loop's cost and efficiency) are met; what's left exists only because the demo takes card payments itself |
+| 2026-09-29 | The real product is a web app sold with seats, through Paddle, a merchant of record (ADR-036 Accepted); Phase 16 | Paddle serves the Isle of Man, handles checkout, declines and VAT, and bills seats as a quantity; seat assignment stays our domain logic |
+| 2026-09-29 | The web app stays a client-side React SPA on S3/CloudFront; Paddle.js runs in it, and Paddle's Next.js starter is a reference only | SSR would need a running server; a logged-in app gains little from it; Paddle's server side maps onto our backend's slices |
 
 ## Progress
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 15 — Automations (restaurant orders) | 🚧 Top priority | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27/28: the Restaurant Orders chapter (25 slices, 63 scenarios, 15 mockups) on prooph board, with stock and an internal automation (the Stock Returner); emcli push fixes (lanes, links, skipped deletions). 15.8 added: deciding from a growing event stream. 15.2 done 2026-09-28 (library PR #29 merged). 15.3 done 2026-09-28 (ADR-033 runtime, ADR-034 Braintree as a commercial directive; the loop built the restaurant backend; 8 end-to-end cases pass, with our own Temporal call deadline and Temporal in health; manual §21). Next: 15.4 redrive, then 15.5 the UI on Sonnet. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) |
+| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. Model by voice (16.1), translation slices in the kit (16.2), `provider-paddle` (16.3), the loop on Sonnet with the A/B test and distillation (16.4), domain-bleed review (16.5). ADR-036 Accepted |
+| 15 — Automations (restaurant orders) | ✅ Closed 2026-09-29 (a demo) | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27/28: the Restaurant Orders chapter (25 slices, 63 scenarios, 15 mockups) on prooph board, with stock and an internal automation (the Stock Returner); emcli push fixes (lanes, links, skipped deletions). 15.8 added: deciding from a growing event stream. 15.2 done 2026-09-28 (library PR #29 merged). 15.3 done 2026-09-28 (ADR-033 runtime, ADR-034 Braintree as a commercial directive; the loop built the restaurant backend; 8 end-to-end cases pass, with our own Temporal call deadline and Temporal in health; manual §21). Next: 15.4 redrive, then 15.5 the UI on Sonnet. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) | **Closed 2026-09-29:** 15.4 and 15.4c built through the loop (stalls, retry, give up, attempts, pay again, cancel); 15.4e provider skills; 15.9 on Sonnet at medium, about 2.5–3× cheaper per job; emcli re-queues changed built slices. The rest dropped or moved to Phase 16 |
 | 1 — Stack Scaffolding | ✅ Complete | Verified: init, npm install, tsc, 21/21 unit tests |
 | 2 — State Change Skill | ✅ Complete | 9-step SKILL.md with full DCB patterns |
 | 3 — State View Skill | ✅ Complete | 5-step SKILL.md with Pongo + preferWait patterns |
