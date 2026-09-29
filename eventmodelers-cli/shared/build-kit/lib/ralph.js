@@ -494,12 +494,12 @@ function setLocalSliceStatus(kitDir, ctx, id, status, extra = {}, concern = 'bac
 // After each run: a Blocked concern without a `blockedAt` gets one (planning the slice again is compared with it:
 // emcli's export re-queues a concern planned after its block), and every entry's status is derived again from
 // its concerns, since an agent sets only the concern it built (concerns.js settleEntries).
-function settleIndex(kitDir, ctx) {
+function settleIndex(kitDir, ctx, justRun) {
   const indexPath = join(kitDir, '.slices', ctx, 'index.json');
   if (!existsSync(indexPath)) return;
   try {
     const indexData = JSON.parse(readFileSync(indexPath, 'utf-8'));
-    const changed = settleEntries(indexData.slices ?? []);
+    const changed = settleEntries(indexData.slices ?? [], new Date().toISOString(), justRun);
     // The journal keeps only open problems: a note on a job that is now Done goes (its outcome is in git).
     if (usesLearnings(kitDir)) {
       const removed = pruneJournal(journalPath(kitDir), indexData.slices ?? []);
@@ -834,8 +834,8 @@ function taskHeader(planned, claimed) {
     claimed
       ? `The loop has claimed it: \`concerns.${concern}.status\` is "InProgress" in \`.build-kit/.slices/${planned.ctx}/index.json\`.`
       : `Claim it first: set \`concerns.${concern}.status\` to "InProgress" in \`.build-kit/.slices/${planned.ctx}/index.json\`.`,
-    `When you finish, set \`concerns.${concern}.status\` there to "Done", or to "Blocked" with \`blockedReason\` and ` +
-      '`blockedAt` (ISO 8601). The loop derives the slice\'s `status` from its concerns.',
+    `When you finish, set \`concerns.${concern}.status\` there to "Done", or to "Blocked" with \`blockedReason\` ` +
+      '(the loop stamps `blockedAt` itself). The loop derives the slice\'s `status` from its concerns.',
     '',
     '---',
     '',
@@ -925,7 +925,7 @@ async function ralphLoop(kitDir, projectDir, cfg, onTask, onPlannedSlice, localO
             } catch (err) {
               console.error(`[ralph] Interrupted-slice recovery failed:`, err.message);
             }
-            settleIndex(kitDir, planned.ctx);
+            settleIndex(kitDir, planned.ctx, { id: planned.id, concern: planned.concern });
             endRun(kitDir);
           }
           return;
@@ -952,7 +952,7 @@ async function ralphLoop(kitDir, projectDir, cfg, onTask, onPlannedSlice, localO
           } catch (err) {
             console.error(`[ralph] Interrupted-slice recovery failed:`, err.message);
           }
-          settleIndex(kitDir, planned.ctx);
+          settleIndex(kitDir, planned.ctx, { id: planned.id, concern: planned.concern });
           recordRun(kitDir, projectDir, planned, run, result, failure);
           endRun(kitDir);
         }

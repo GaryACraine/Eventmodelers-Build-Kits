@@ -68,7 +68,7 @@ the loop, read `learnings/shared.md` and the file for the concern you're working
 git (each slice commit's body); `progress.txt` is a journal of open problems only (blocked or interrupted jobs), and
 the loop removes an entry once its job is Done.
 
-The loop claims each job (its concern's status InProgress) before the agent starts. Finish it by setting that concern's status in `index.json`: `Done`, or `Blocked` with `blockedReason` and `blockedAt`.
+The loop claims each job (its concern's status InProgress) before the agent starts. Finish it by setting that concern's status in `index.json`: `Done`, or `Blocked` with `blockedReason` (the loop stamps `blockedAt` itself).
 
 ## Building a Slice
 
@@ -115,7 +115,7 @@ When asked to build a slice, always follow this flow:
 5. Run quality checks (backend: `npm run build`, then the slice tests only; UI: the `web/` checks in `build-screen`).
 6. If checks pass, commit with `feat: [Slice Name]` (backend) or `feat: [Slice Name] screen` (UI).
 7. Set the job's concern to `Done` in `index.json` (`concerns.backend` or `concerns.ui`). When blocked instead,
-   `Blocked` with `blockedReason` and `blockedAt`. The loop derives the slice's status.
+   `Blocked` with `blockedReason` (the loop stamps `blockedAt`). The loop derives the slice's status.
 
 After you are done, automatically run the tests for the slice that was edited.
 
