@@ -457,10 +457,22 @@ designed later.
       `alert()`; in the cloud, a log-based alert or an email transport, whose provider is checked for Isle of Man
       availability first;
     - the to-do list can be **filtered to stalled items**, to retry or give up on them from that screen.
-  - **To verify in Braintree's sandbox first:**
-    - whether `processorResponseType` (soft/hard decline) is sent;
-    - whether a `failed` 3000 spends the nonce;
-    - that an expired nonce gives 93108.
+  - **Checked in Braintree's sandbox (2026-09-29, restaurant-orders `e2e/sandbox-probe.mjs`):**
+    - `processorResponseType` is sent: `soft_declined` (2000, 2001, 3000) or `hard_declined` (2004);
+    - every sale that reaches the bank spends its nonce, including a failed 3000;
+    - a spent nonce is **91564** (the step checked 93107, the PaymentMethod API's code: **fixed**, restaurant-orders
+      `ce8dd7f`), and an unknown or expired one is 91565;
+    - the sandbox's authentication is unreliable (a wrong key sometimes accepted; one 401 on good keys).
+  - **The sandbox is set up** (Gary, 2026-09-29):
+    - a GBP merchant account `crainelabslimited-gbp`, passed on every sale (`BRAINTREE_MERCHANT_ACCOUNT_ID`);
+    - duplicate checking at 600 s;
+    - the control-panel paths are in manual §21.7;
+    - the keys are only in the project's gitignored `e2e/.env.sandbox`.
+  - **Also decided (Gary, 2026-09-29):**
+    - `orderPaymentFailed` gains **`kind`** (`declined-hard`, `declined-soft`, `gateway-unavailable`,
+      `payment-method-unusable`, `abandoned`) and **`code`** (ADR-032 decision 9, ADR-034);
+    - a 401/403 is **retried first**, in every environment: `PAYMENT_GATEWAY_AUTH_ATTEMPTS`, default 3, then a
+      `configuration` stall.
   - **The kit:**
     - the workflow template records a stall on its final failure;
     - the category comes from the step: non-retryable `ApplicationFailure` for `configuration`;
@@ -483,6 +495,16 @@ designed later.
     - a soft decline and a hard decline;
     - an expired nonce;
     - a double-clicked retry.
+- [ ] **15.4c The customer pays again after a decline** (ADR-035, Proposed). Gary: when a decline is actionable
+  (another card, funds added, try again), the customer gets another chance.
+  - **Decided:** paying again takes the stock afresh. A customer whose card was accepted meanwhile has priority, and
+    no hold with a timer.
+  - **Leaning:**
+    - card entry through Braintree's **Hosted Fields** in one small kit React component. Drop-in is deprecated
+      from 1 October 2026, and there's no official React component;
+    - the order's screen explains the decline by `kind`, and offers *Pay again* with a new nonce.
+  - **Open:** the same order or a new one; the number of retries; live or polled status.
+  - After 15.4 and with the UI (15.5).
 - [ ] **15.4b A circuit breaker for the payment gateway** (deferred; its place is decided in ADR-032). If Braintree
   is known to be down, placing an order says "card payments are unavailable right now" before any stock is taken.
   It would be fed by a gateway-health check kept like Temporal's (runtime state, not an event). Decide from a real
@@ -3103,6 +3125,12 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-29 | The payment step classifies the gateway's errors: transient ones are retried, configuration ones (401, 403, 426) stall at once as non-retryable, and a 3000 is not the card's fault (ADR-034) | Gary: know why a payment failed. Braintree's SDK separates these precisely, and 5 minutes of retries can't fix expired keys |
 | 2026-09-29 | A stall alerts the administrator through the kit's `alert()`: a structured log line now; a log-based alert or an email transport in the cloud | Gary: a person must know when the gateway is down or the SDK needs upgrading. There's no email infrastructure yet, and cloud log alerting needs no code of ours |
 | 2026-09-29 | A payment circuit breaker is deferred (15.4b); if built, it sits where orders are placed, fed by gateway health, not in the processor | Temporal's retries are cheap; the cost of an outage is customers waiting and stock held, which only refusing at the door prevents. Filtered retry and give-up handle an outage meanwhile |
+| 2026-09-29 | Braintree's answers are checked against its real sandbox before the step relies on them (`e2e/sandbox-probe.mjs`); the spent-nonce code is 91564, not 93107 | The mock had copied our assumption, so case 7 passed on a wrong code. With 93107, a lost reply's retry could have declined a paid order |
+| 2026-09-29 | The payment failure event keeps one type but gains `kind` and `code` (ADR-032, ADR-034) | Gary: the customer's next step differs by cause (another card, the same card later, try again), while the stock return and kitchen react the same way |
+| 2026-09-29 | A gateway 401/403 is retried a few times (`PAYMENT_GATEWAY_AUTH_ATTEMPTS`, default 3) before a configuration stall, in every environment, not branched on sandbox vs production | Gary's question. The sandbox's auth was flaky, and production can have a brief 401 when keys are switched. One behaviour keeps the production path tested; the setting can tighten it |
+| 2026-09-29 | Charges go to a named merchant account (`BRAINTREE_MERCHANT_ACCOUNT_ID`, GBP); Braintree's duplicate window is 600 s | The account's currency, not the sale's, decides the charge, and the sandbox began in EUR. 600 s covers the payment's retry budget |
+| 2026-09-29 | A customer who pays again after a decline takes the stock afresh; a concurrent paying customer has priority (ADR-035) | Gary: fair to the customer whose card was accepted, and no stock hold with a timer |
+| 2026-09-29 | Card entry will use Braintree's Hosted Fields in a small kit React component, not Drop-in (ADR-035, leaning) | Drop-in is deprecated from 1 October 2026; no official React card component exists; Hosted Fields keep PCI SAQ A |
 
 ## Progress
 

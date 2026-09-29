@@ -1228,6 +1228,12 @@ customer (the first is spent), so it's the customer's action from their order, n
    domain names the events, and decides what giving up means and which errors are which category.
 8. **The customer sees the stall** on their order, for example "your payment is delayed", not "pending" forever.
    The screen comes with 15.5.
+9. **An automation's failure outcome says what the user can do** (Gary, 2026-09-29). Its event keeps one type
+   (every reaction to it is the same), with a structured **`kind`** and the provider's **`code`** beside the
+   reason text. The domain defines the kinds; the restaurant's are in ADR-034 (`declined-hard`, `declined-soft`,
+   `gateway-unavailable`, `payment-method-unusable`, `abandoned`). A screen then tells the user their next step,
+   and a report can separate the provider's declines from our own failures. What the customer can do about a
+   decline is ADR-035.
 
 **Deferred, with its place decided: a circuit breaker.**
 - **What it would prevent.** During a Braintree outage, every new order is accepted, holds its stock, retries for
@@ -1404,28 +1410,49 @@ official Node SDK (`braintree`).
   `fake-processor-declined-visa-nonce`, …), and the model's scenarios use them.
 
 **Added 2026-09-29 (PLAN 15.4, ADR-032): how the payment step reads Braintree's failures.** Taken from the Node SDK
-(`braintree` 3.40.0: `http.js` maps HTTP status codes to errors; `validation_error_codes.js`; `transaction.js`).
+(`braintree` 3.40.0: `http.js` maps HTTP status codes to errors; `validation_error_codes.js`; `transaction.js`),
+then **checked against Braintree's sandbox** the same day (restaurant-orders `e2e/sandbox-probe.mjs`; its results
+are in that project's `e2e/README.md`). A decline's `kind` and Braintree's `code` go on `orderPaymentFailed` (below).
 
-| What happened | How the SDK says it | The step's answer |
-|---|---|---|
-| Charged | `result.success` | paid |
-| Hard decline | `processor_declined` (codes 2000–2999); `gateway_rejected` for `avs`, `cvv`, `fraud`, `risk_threshold`, `three_d_secure` | declined, with Braintree's text and code |
-| Soft decline (insufficient funds, "try again") | `processor_declined` with `processorResponseType` `soft_declined` (**to check in the sandbox**) | declined, worded so the customer knows the same card may work later |
-| Card network unavailable | status `failed`, code **3000** | declined as "card payments couldn't be completed, please try again", **not as the card's fault**. Until the sandbox shows whether a failed sale spends the nonce, a retry can't be relied on, so it's the customer's action |
-| Nonce already used | validation **93107** | search again, then decline after 3 attempts (above) |
-| Nonce unknown or expired (after 3 hours) | validation **93108** | declined, "please pay again" (**to check in the sandbox**) |
-| Our keys wrong or expired | `AuthenticationError` (HTTP 401) | `ApplicationFailure.nonRetryable`, type `PaymentGatewayAuthentication`: stalls at once, `configuration` |
-| Not permitted (merchant account suspended, a feature off) | `AuthorizationError` (403); merchant-account validation codes | non-retryable, `PaymentGatewayAuthorization`: `configuration` |
-| SDK too old | `UpgradeRequired` (426) | non-retryable, `PaymentGatewayUpgradeRequired`: `configuration` |
-| Braintree busy or down | `TooManyRequestsError` (429), `ServerError` (500), `ServiceUnavailableError` (503), `GatewayTimeoutError` (504) | thrown; Temporal retries; `unavailable` if the retries run out |
-| The network (refused, reset, DNS, timeout) | `UnexpectedError`, "Unexpected request error…" / "Request timed out" | thrown and retried. The charge may have gone through, and the search-first finds it |
-| Anything else | | thrown and retried; `unknown` if the retries run out |
+| What happened | How Braintree says it (sandbox-checked ✅) | The step's answer | `kind` |
+|---|---|---|---|
+| Charged | `result.success` ✅ | paid | |
+| Hard decline (expired card, closed account) | `processor_declined`, `processorResponseType` **`hard_declined`** (2004 Expired Card) ✅ | declined, with Braintree's text and code | `declined-hard`: another card is needed |
+| Soft decline (insufficient funds, Do Not Honor) | `processor_declined`, **`soft_declined`** (2001, and 2000) ✅ | declined; the same card may work later | `declined-soft` |
+| A gateway rule | `gateway_rejected` for `avs`, `cvv`, `fraud`, `risk_threshold`, `three_d_secure` | declined | `declined-hard` |
+| Card network unavailable | status **`failed`**, code **3000**, `soft_declined` ✅ | declined as "card payments couldn't be completed, please try again", **not as the card's fault**. The failed sale **spends the nonce** ✅, so only the customer can try again | `gateway-unavailable` |
+| Nonce already used | validation **91564** ✅ (not 93107, the PaymentMethod API's code, which the step first checked) | search again; decline after 3 attempts, "payment method already used" | `payment-method-unusable` |
+| Nonce unknown or expired (after 3 hours) | validation **91565** ✅ | declined, "please pay again" | `payment-method-unusable` |
+| Keys wrong or expired | `AuthenticationError` (HTTP 401) ✅ | retried up to `PAYMENT_GATEWAY_AUTH_ATTEMPTS` (default 3), then `ApplicationFailure.nonRetryable` type `PaymentGatewayAuthentication`: stalls, `configuration` | (a stall, not a decline) |
+| Not permitted (merchant account suspended, a feature off) | `AuthorizationError` (403); merchant-account validation codes | as a 401, type `PaymentGatewayAuthorization` | (a stall) |
+| SDK too old | `UpgradeRequired` (426) | non-retryable at once, `PaymentGatewayUpgradeRequired`: `configuration` | (a stall) |
+| Braintree busy or down | `TooManyRequestsError` (429), `ServerError` (500), `ServiceUnavailableError` (503), `GatewayTimeoutError` (504) | thrown; Temporal retries; `unavailable` if the retries run out | (a stall) |
+| The network (refused, reset, DNS, timeout) | `UnexpectedError`, "Unexpected request error…" / "Request timed out" | thrown and retried. The charge may have gone through, and the search-first finds it | (a stall) |
+| Anything else | | thrown and retried; `unknown` if the retries run out | (a stall) |
+| The restaurant gave up on a stall (ADR-032) | | `orderPaymentFailed` by *Give Up Payment* | `abandoned` |
 
+- **The failure event carries `kind` and `code`** (Gary, 2026-09-29). `orderPaymentFailed` keeps one event type,
+  because the Stock Returner and the kitchen react the same way to every failure. But the customer's next step
+  differs by `kind` (another card; the same card later; try again; pay again; the restaurant's fault). The order's
+  screen and any reporting (decline rate against our own failures) read it from `kind`. `code` is Braintree's
+  (`2004`, `3000`, `91564`, …) and `reason` stays the text.
+- **A 401 or 403 is retried a few times first, in every environment** (Gary). The sandbox's authentication proved
+  unreliable: a wrong private key was sometimes accepted, and correct keys once got a 401. Production may have a
+  brief one too, for example while switching to new keys. Retrying a truly bad key costs about 3 s before the
+  stall and the critical alert; not retrying a passing 401 stalls a good payment and raises a false alert. One
+  behaviour everywhere, so the production path is the tested path. `PAYMENT_GATEWAY_AUTH_ATTEMPTS` can be set to 1
+  where brief auth failures are proven not to happen. Branching on the environment was rejected for that reason.
+- **The merchant account sets the currency**, not the sale. The restaurant's sandbox account began in EUR; a GBP
+  merchant account was added, and the step passes `BRAINTREE_MERCHANT_ACCOUNT_ID` on every sale, so the currency is
+  chosen, not the account's default.
+- **Braintree's duplicate check covers the retry budget:** its window is set to 600 s (the default is 30), longer
+  than a payment's retries (about 5 minutes). The search before every charge remains the main guard. Where each
+  setting is in the control panel: the manual, §21.7.
 - **Our deadline, not the SDK's.** The SDK waits 60 s by default (`config.js`), longer than the activity's
   30 s `startToCloseTimeout`. The gateway is configured with `BRAINTREE_TIMEOUT_MS` (default 20000), below it.
-- **The mock follows the sandbox's test amounts.** The amount decides the answer: 2000.00–2999.99 give a
-  processor decline with that code, and 3000.00 gives a `failed` 3000. Switches give 401, 403, 426, 429 and 5xx, so
-  every row can be reached end to end.
+- **The mock follows the sandbox's test amounts.** The amount decides the answer: 2000.00–2999.99 give a processor
+  decline with that code and its soft/hard type, and 3000.00 gives a `failed` 3000. It answers 91564 and 91565 as
+  the sandbox does. Switches give 401, 403, 426, 429 and 5xx, so every row can be reached end to end.
 
 **Why:** examples should match providers the business can contract, so the demo code is usable for real. It's also a
 simpler design: a synchronous answer needs no webhook and no signal.
@@ -1444,3 +1471,51 @@ include the Isle of Man, Jersey and Guernsey, but Braintree's own country page c
   payment result* slice are removed.
 - ADR-032 gains a point: paying again after a decline is the customer's action, with a new nonce.
 - Any later third-party provider is checked for Isle of Man availability first.
+
+
+### ADR-035: The customer pays again after a decline
+
+**Status:** Proposed (PLAN 15.4c). One point is decided (stock, below); the rest is decided when 15.4c starts.
+**Date:** 2026-09-29
+
+**Context:**
+- A decline is a business answer (ADR-032). The order is `PAYMENT_FAILED` and its stock has gone back.
+- Often the customer can do something about it:
+  - use another card (`declined-hard`);
+  - add funds and use the same card (`declined-soft`);
+  - simply try again (`gateway-unavailable`);
+  - enter the card again (`payment-method-unusable`).
+- Every sale that reached the bank spent its nonce (Braintree's sandbox, 2026-09-29). Paying again always needs a
+  new nonce from the customer's page. Gary: when something is actionable, the customer gets another chance.
+- **Braintree's browser UI, researched 2026-09-29:**
+  - **Drop-in is deprecated from 1 October 2026:** no fixes after that, and unsupported (processing may stop) from
+    1 October 2027. Braintree says to move to its JavaScript SDK (`braintree-web`).
+  - **Hosted Fields** (in `braintree-web`) are Braintree-hosted iframes for the card number, expiry, CVV and postal
+    code, styled by us, and eligible for PCI SAQ A (the lightest). Not deprecated.
+  - **No official React component for card entry.** `@paypal/react-paypal-js` has `BraintreePayPalButtons` (the
+    PayPal button only). The community wrappers (`braintree-web-drop-in-react`, `react-braintree-fields`) are
+    unofficial and unmaintained.
+  - **Neither UI knows about our decline.** Our charge runs on the server later, in the Payment Requester's
+    workflow, so the page learns the answer from the order (its status, `kind` and reason), not from Braintree's UI.
+
+**Decided (Gary, 2026-09-29): paying again takes the stock afresh.** A declined order's stock has already gone back,
+and a customer whose card is accepted meanwhile has priority. Holding stock for a declined customer would need a
+hold that expires, which is a timer (rejected, ADR-030). If the dish has sold out, the customer is told so plainly.
+
+**Leaning:**
+- **Card entry uses Hosted Fields**, wrapped in one small React component of the kit's (`CardFields`: create on
+  mount, `tokenize()` → nonce, tear down on unmount), not Drop-in and not a community wrapper. We lean on Braintree
+  for the card fields, their validation and 3D Secure; we own only the component around them.
+- **The order's screen shows the decline by `kind`,** with the next step in plain words, and a *Pay again* action
+  where one is possible (not for `abandoned`, which the restaurant decided).
+- **Pay again** is a command on the same order (e.g. *Retry Order Payment* with a new nonce). It takes the stock
+  again under the same rules as placing an order, and starts a new payment attempt (ADR-032's attempt-numbered
+  workflow id). **Alternative:** a new order with the same dishes, which reuses `placeOrder` whole but loses the
+  order's history.
+
+**Open:**
+- the same order or a new one;
+- how many times a customer may pay again;
+- whether the page watches the order live (the event feed) or asks again;
+- where the component lives in the kit's `web/`.
+
