@@ -1148,68 +1148,128 @@ failed automation is either skipped for good or stops silently. We looked at fiv
 - **The model** marks each automation as internal or external.
 
 
-### ADR-032: Redriving automation work that Temporal gave up on
+### ADR-032: Stalled automation work: seen, retried or given up by a person
 
-**Status:** Proposed. To be decided in PLAN 15.4, after 15.3 has run external work through Temporal.
-**Date:** 2026-09-27
+**Status:** Accepted, 2026-09-29 (Gary, PLAN 15.4). The circuit breaker (below) is deferred, with its place decided.
+**Date:** 2026-09-27; decided 2026-09-29
 
-**Context:** ADR-031 sends external work to a Temporal workflow named after the to-do item. Temporal retries it
-by configuration. When the retries run out, the workflow fails, the item stays open on the to-do list, and
-Temporal's UI shows the reason. Something must then start the work again. Gary wants this done from the UI, with
-a command. There must be no schedules or timers, so it stays event-driven like the rest of ADR-031.
+**Context:**
+- ADR-031 sends external work to a Temporal workflow named after the to-do item, and Temporal retries it by
+  configuration.
+- An external automation's item can end in one of three ways:
 
-This is different from a **blocked processor** (ADR-031's fail fast), which stops because of our own bug or a
-missing dependency. That's fixed by a deploy or by restarting the dependency, not by a person redriving an item.
+  | How it ends | Example (the restaurant) | What closes it |
+  |---|---|---|
+  | **A business answer** | paid; declined | the workflow records our command, and the item closes |
+  | **Our side blocked** | Temporal down; a bug in our processor | the dependency returning, or a deploy (ADR-031 fail fast) |
+  | **The work stalled**: Temporal gave up, and the outcome is still unknown | Braintree down beyond the retry budget (about 5 minutes); our API keys expired; the SDK needs an upgrade; a bug in a step that outlived the retries; the card charged but recording it failed | **nothing.** No new event arrives, so nothing ever looks at the item again |
 
-**Open questions, with the current leaning:**
-1. **How does the list know that the work failed?** Today it knows only *open* and *closed*, from events.
-   - **(a) Leaning.** The workflow's last step, on giving up, issues a command that records an **outcome event
-     named for the business** (e.g. *Payment Request Failed*). The list step marks the item *failed*. It's
-     visible in the model and on screens, and it's the failure-as-event practice from Emmett and the book. It
-     isn't a technical event (rejected in ADR-031): it records what happened to the business.
-   - **(b)** The UI asks Temporal for the workflow's status by the item key. No event, but the list and the
-     screen then depend on Temporal for status, which ADR-031 keeps out of business state.
-2. **What does redrive do?**
-   - **Leaning:** a command from the UI, e.g. *Retry Payment Request* for order 42, records its event. The
-     automation's processor handles that event like any other: the list step marks the item open again, and the
-     automation step starts the workflow again.
-   - **Leaning:** the same `workflowId` (the item key), with Temporal's reuse policy
-     `ALLOW_DUPLICATE_FAILED_ONLY`. A failed run can then be started again, but a completed one never can, so a
-     redrive of finished work is a no-op.
-   - It's event-driven, with no timers, and it uses the path ADR-031 already has.
-3. **Is the redrive command idempotent?** It carries an idempotency key per redrive request (the UI's
-   `Idempotency-Key`, as for every command, ADR-025). A double click redrives once.
-4. **Who may redrive?** The kit has no real sign-in yet (`session:` from a stub user, PLAN 14.6). Until it does,
-   anyone who sees the screen can. When sign-in arrives, it becomes a role on the command. This needs deciding
-   with authentication.
-5. **What does the model show?**
-   - The redrive command and its event are an ordinary write slice, issued by a screen: the to-do list's screen,
-     which shows failed items with a *Retry* button.
-   - The failure outcome event (1a) is an event of the automation's command slice.
-   - Whether every external automation gets this pair automatically, or models it each time, is still to be
-     decided.
+- Before this decision, a stalled item stayed open forever and looked exactly like one still in progress. The
+  restaurant's order stayed `CREATED`, holding its stock, with the customer waiting (15.3's end-to-end record).
+- The third row belongs to any external automation, not only to payments.
 
-**Constraints already decided (ADR-030, ADR-031):**
-- nothing runs on a timer;
-- no technical events;
-- no dead-letter queue;
-- Temporal holds execution state only;
-- everything runs in containers.
+**Principle:** no item stays stuck silently. Every open item is either being worked on, or visibly **stalled**, with
+its reason, and a person able to act on it.
 
-**Consequences, if the leanings hold:**
-- Each external automation gains a failure outcome event, a *failed* state on its list, and a redrive write
-  slice.
-- `build-automation` (15.3) and the `event-model` skill (15.1) learn that shape.
-- Temporal's reuse policy is set in the kit's workflow starter.
+**Not a stall:** a declined card is a business answer, and the item closes. Paying again needs a new nonce from the
+customer (the first is spent), so it's the customer's action from their order, not an operator's retry (ADR-034).
 
-**Added 2026-09-28 (PLAN 15.3, ADR-034):**
-- **A declined card isn't work Temporal gave up on.** Braintree answers a sale at once. A decline is a business
-  result, and the Payment Requester's workflow records it (`markOrderPaymentFailed`), which closes the item.
-- **Paying again after a decline needs a new card nonce from the customer.** The first nonce is single use and
-  already spent. So retrying a declined payment is the **customer's** action, from their order screen, not an
-  operator's redrive.
-- **The operator's redrive** is left for work Temporal gave up on after technical errors: the gateway down or
-  timing out beyond the retry policy. That's the case this ADR decides.
+**Decision:**
+1. **A stall is recorded as an event named for the business.**
+   - The workflow catches its step's final failure. Its last step issues the automation's stall command (the
+     restaurant's is *Payment Stalled*), carrying:
+     - a **category**: `configuration`, `unavailable` or `unknown` (ADR-034 lists how the restaurant's step decides);
+     - the last error's text;
+     - the attempt number.
+   - That's the failure-as-event practice of Emmett and the book. It isn't a technical event (rejected in ADR-031),
+     because it records what happened to the business: the payment couldn't be taken, for now.
+   - The to-do list step marks the item `stalled`, with the category and the reason. The screen never asks Temporal
+     for business state.
+2. **What decides the category is the step, not Temporal.**
+   - An error that retrying can fix (network, 429, 5xx) is thrown as it is, and Temporal retries it. If the retries
+     run out, the stall's category is `unavailable`.
+   - An error that no retry can fix (bad keys, not permitted, SDK too old) is thrown as Temporal's
+     `ApplicationFailure.nonRetryable`, with a type. The workflow then gives up **at once**, not after 5 minutes,
+     and the stall's category is `configuration`.
+   - Anything the step can't classify is retried, and a stall after that is `unknown`.
+3. **A person decides: retry or give up.** Both are ordinary write slices, issued from the to-do list's screen.
+   - **Retry** (*Retry Payment*) is allowed only on a stalled item. Its event reopens the item and raises its attempt
+     number. The automation's processor handles that event like any other: the list step marks the item open, and
+     the automation step starts the workflow again.
+   - **Give up** (*Give Up Payment*) is allowed only on a stalled item. It records the automation's own failure
+     outcome. In the restaurant that's `orderPaymentFailed`, with a reason saying the restaurant gave up and why, so
+     the existing Stock Returner gives the stock back and the customer sees the order failed.
+   - Both carry the UI's `Idempotency-Key` (ADR-006), so a double click acts once. Neither is allowed on a paid,
+     declined or in-progress item: the decider refuses, saying why.
+4. **Each attempt has its own workflow id: `<automation>:<key>:<attempt>`.**
+   - A stall completes the workflow (the failure is caught and recorded), so a retry can't reuse the same id under
+     `REJECT_DUPLICATE`. The attempt number comes from the item, which the retry event raised.
+   - A replayed event starts the same id again, which is a no-op (`USE_EXISTING`), as before.
+   - Temporal's UI shows every attempt separately.
+   - The stall command's idempotency key includes the attempt too (`payment-stalled:<orderId>:<attempt>`), so each
+     attempt can stall once.
+   - **Retrying never charges twice.** The step's search-first (ADR-034) finds any charge an earlier attempt made,
+     including the case where the card was charged but recording it failed. The retry then just records the payment.
+5. **The to-do list can be filtered by state.** `GET /<list>/stalled?category=…` is a query read model (ADR-025
+   naming), newest first, with the reason and attempt. The operator can quickly find every stalled item, for
+   example all those left by one Braintree outage, and retry or give up on them from that screen. A bulk action
+   issues one command per item, each with its own idempotency key, so the model stays one command per item.
+6. **The administrator is alerted on a stall.** This is an operational signal, not a business event.
+   - The kit's `alert({ code, severity, message, details })` port is called by the stall-recording step. It is
+     best-effort: the stalled list is the durable record, and the alert only draws attention to it.
+   - By default it writes one structured line to the log (`{"level":"alert","code":"payment-stalled",…}`).
+   - In the cloud, a log-based alert rule turns that line into an email or a page, with no code of ours.
+     Alternatively, an email transport is plugged in behind the port. **Any provider is checked for Isle of Man
+     availability first.**
+   - `configuration` stalls are `critical`, because a person must act (fix keys, upgrade the SDK). `unavailable`
+     and `unknown` stalls are `warning`. Grouping repeated alerts belongs to the alerting service, not our code.
+7. **Every external automation gets this pattern by default** (Gary): the `event-model` skill proposes the stall
+   event, the stalled state on the list, and the retry and give-up slices. `build-automation` builds them. The
+   domain names the events, and decides what giving up means and which errors are which category.
+8. **The customer sees the stall** on their order, for example "your payment is delayed", not "pending" forever.
+   The screen comes with 15.5.
+
+**Deferred, with its place decided: a circuit breaker.**
+- **What it would prevent.** During a Braintree outage, every new order is accepted, holds its stock, retries for
+  about 5 minutes, and stalls. Temporal makes those retries cheap. The cost is to the business: customers waiting,
+  stock held, and a list of stalls to work through.
+- **Where it would sit: at the door, not in the processor.** A breaker that paused the Payment Requester would
+  stop its list step too (they share one processor, ADR-031). It would also only move the waiting from Temporal to
+  the list. The honest place is where the order is placed: "card payments are unavailable right now", before any
+  stock is taken.
+- **What would feed it:** a gateway-health signal kept like Temporal's health (ADR-033: a background check, runtime
+  state, never an event), or the recent stalls of category `unavailable`.
+- **Why deferred.** Filtered retry and give-up (5) already make an outage manageable. The breaker is a business
+  choice about refusing orders, and needs evidence from a real outage's volume. It's recorded as PLAN 15.4b.
+
+**Alternatives considered:**
+- **The UI asks Temporal for each item's status.** Rejected: business state would then depend on the executor
+  (ADR-031).
+- **The same workflow id with `ALLOW_DUPLICATE_FAILED_ONLY`.** Rejected: a caught stall completes the workflow, and
+  a workflow that fails instead of recording its stall would leave the item looking in progress.
+- **A timer that sweeps for stalled items.** Rejected: no timers (ADR-030, ADR-031).
+- **A dead-letter queue.** Rejected: the stalled list is the visible record (ADR-031).
+- **An alert as an automation reacting to the stall event** (its own to-do list, and email through Temporal).
+  Rejected for now: it's heavy for an operational nudge, and the stalled list is already the durable record. It
+  can be reconsidered if alerts must be guaranteed.
+
+**Known limit:** a workflow **terminated by hand** in Temporal's UI records no stall, so its item looks in progress.
+Use *Give Up* instead. The manual says so.
+
+**Who may retry or give up:** anyone who sees the screen, until the kit has real sign-in (PLAN 14.6). It then becomes a
+role on both commands.
+
+**Consequences:**
+- **The kit:**
+  - the workflow template catches the final failure and records the stall;
+  - the starter takes the attempt in the workflow id;
+  - `alert()` in `src/shared/alerts.ts`, with the console transport;
+  - `build-automation` and the `event-model` skill learn the pattern.
+- **The restaurant:**
+  - *Payment Stalled*, *Retry Payment* and *Give Up Payment*;
+  - the stalled state and query on Payments Awaiting;
+  - its step classifies Braintree's errors (ADR-034).
+- **End-to-end cases 9 onwards** (PLAN 15.4).
 
 
 ### ADR-033: The kit's automation runtime: Temporal on our Postgres, a to-do list processor helper
@@ -1256,7 +1316,7 @@ a second start with the same workflow id returned the same run.
   - a command's idempotency key is `uuidv5("<automation>:<item key>")`. Before handling it, the helper looks for an
     earlier append under that key or its `:0` variant (commands that record several events);
   - a workflow's id is `<automation>:<item key>`, started with `USE_EXISTING` on conflict and `REJECT_DUPLICATE`
-    on reuse. An "already started" error counts as done. PLAN 15.4 revisits the reuse policy for redrive (ADR-032).
+    on reuse. An "already started" error counts as done. A retry after a stall starts a new id with the attempt number (ADR-032, decision 4).
 - **An external automation's workflow** calls the outside system in an activity, using the provider's official
   SDK.
   - A business answer (paid, declined) is a result, and the workflow issues our command for it through an
@@ -1342,6 +1402,30 @@ official Node SDK (`braintree`).
 - **The amount** is a decimal string (`"12.00"`), as in our model. The currency comes from the merchant account.
 - **The mock** answers the sandbox's documented test nonces (`fake-valid-nonce`,
   `fake-processor-declined-visa-nonce`, …), and the model's scenarios use them.
+
+**Added 2026-09-29 (PLAN 15.4, ADR-032): how the payment step reads Braintree's failures.** Taken from the Node SDK
+(`braintree` 3.40.0: `http.js` maps HTTP status codes to errors; `validation_error_codes.js`; `transaction.js`).
+
+| What happened | How the SDK says it | The step's answer |
+|---|---|---|
+| Charged | `result.success` | paid |
+| Hard decline | `processor_declined` (codes 2000–2999); `gateway_rejected` for `avs`, `cvv`, `fraud`, `risk_threshold`, `three_d_secure` | declined, with Braintree's text and code |
+| Soft decline (insufficient funds, "try again") | `processor_declined` with `processorResponseType` `soft_declined` (**to check in the sandbox**) | declined, worded so the customer knows the same card may work later |
+| Card network unavailable | status `failed`, code **3000** | declined as "card payments couldn't be completed, please try again", **not as the card's fault**. Until the sandbox shows whether a failed sale spends the nonce, a retry can't be relied on, so it's the customer's action |
+| Nonce already used | validation **93107** | search again, then decline after 3 attempts (above) |
+| Nonce unknown or expired (after 3 hours) | validation **93108** | declined, "please pay again" (**to check in the sandbox**) |
+| Our keys wrong or expired | `AuthenticationError` (HTTP 401) | `ApplicationFailure.nonRetryable`, type `PaymentGatewayAuthentication`: stalls at once, `configuration` |
+| Not permitted (merchant account suspended, a feature off) | `AuthorizationError` (403); merchant-account validation codes | non-retryable, `PaymentGatewayAuthorization`: `configuration` |
+| SDK too old | `UpgradeRequired` (426) | non-retryable, `PaymentGatewayUpgradeRequired`: `configuration` |
+| Braintree busy or down | `TooManyRequestsError` (429), `ServerError` (500), `ServiceUnavailableError` (503), `GatewayTimeoutError` (504) | thrown; Temporal retries; `unavailable` if the retries run out |
+| The network (refused, reset, DNS, timeout) | `UnexpectedError`, "Unexpected request error…" / "Request timed out" | thrown and retried. The charge may have gone through, and the search-first finds it |
+| Anything else | | thrown and retried; `unknown` if the retries run out |
+
+- **Our deadline, not the SDK's.** The SDK waits 60 s by default (`config.js`), longer than the activity's
+  30 s `startToCloseTimeout`. The gateway is configured with `BRAINTREE_TIMEOUT_MS` (default 20000), below it.
+- **The mock follows the sandbox's test amounts.** The amount decides the answer: 2000.00–2999.99 give a
+  processor decline with that code, and 3000.00 gives a `failed` 3000. Switches give 401, 403, 426, 429 and 5xx, so
+  every row can be reached end to end.
 
 **Why:** examples should match providers the business can contract, so the demo code is usable for real. It's also a
 simpler design: a synchronous answer needs no webhook and no signal.
