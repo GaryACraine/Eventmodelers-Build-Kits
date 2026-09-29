@@ -1323,6 +1323,11 @@ a second start with the same workflow id returned the same run.
     earlier append under that key or its `:0` variant (commands that record several events);
   - a workflow's id is `<automation>:<item key>`, started with `USE_EXISTING` on conflict and `REJECT_DUPLICATE`
     on reuse. An "already started" error counts as done. A retry after a stall starts a new id with the attempt number (ADR-032, decision 4).
+  - **Added 2026-09-29 (PLAN 15.4):** work that can be done again on the same item passes its attempt:
+    `issue(decider, command, { attempt })` and `start(type, args, { attempt })` key it `<automation>:<item key>:<attempt>`
+    (`workKey`). Without it, a second declined attempt's stock return was silently skipped as a repeat of the first.
+  - **`src/shared/alerts.ts`** (ADR-032 decision 6): `alert({ code, severity, message, details })` writes one JSON line to
+    stderr, best-effort; a sink can be passed.
 - **An external automation's workflow** calls the outside system in an activity, using the provider's official
   SDK.
   - A business answer (paid, declined) is a result, and the workflow issues our command for it through an
