@@ -1670,7 +1670,8 @@ number of seats for its employees, alongside one-off purchases):**
 
 ### ADR-037: The licensing model: seats bought by an organisation, assigned by its admins
 
-**Status:** Proposed, 2026-09-30 (PLAN 16.2). Each decision below is a recommendation for Gary. Decisions 6 and 7
+**Status:** Proposed, 2026-09-30 (PLAN 16.2). **Decision 1 Accepted, 2026-09-30 (Gary): seats are bought, then
+assigned.** Each other decision below is a recommendation for Gary. Decisions 6 and 7
 wait on Paddle's lifecycle in the sandbox (16.2b). Accepted decisions feed the model (16.3).
 **Date:** 2026-09-30
 
