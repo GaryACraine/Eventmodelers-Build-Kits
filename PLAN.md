@@ -113,8 +113,18 @@ model and build only what's ours.
   - **renewal after the `tax_mode` change:** whether the test subscription, bought under `location`, renews on the
     new `external` basis.
   - *Done 2026-09-30 (`paddle.md` §11b), except two checks that need time:*
-    - **the end of a one-day trial,** on 2026-10-01 (`org-test-5`);
-    - **the `tax_mode` renewal,** on 2026-10-29 (`org-test-1`).
+  - [ ] **The one-day trial's end: read after 2026-10-01 14:51 UTC** (15:51 UK time). The subscription is
+    `sub_01m3scrrqe6vt18zrm39e3vzf1` (`org-test-5`). Check:
+    - its status goes from `trialing` to `active`, and which events arrive, in what order;
+    - the first charge: **£36** if Paddle bills the seats held at the end (2 web, after 1 → 2 during the trial, and 2
+      mobile), or £24 if it bills the seats at checkout;
+    - both items in one charge, with VAT.
+
+    Record it in `paddle.md` §11b. It decides the promise on our trial screen: the first bill is for the seats held
+    when the trial ends.
+  - [ ] **The `tax_mode` renewal: read after 2026-10-29 15:29 UTC.** The subscription is
+    `sub_01m3pwhwcxgpcfptbyceh09dv2` (`org-test-1`). Check whether a renewal bought under `location` (VAT included) is
+    charged on the new `external` basis (VAT on top). It doesn't block 16.3.
   - *Found:*
     - a declined seat increase is refused, and Paddle cancels the leftover charge itself;
     - Paddle refuses any change while `past_due`;
