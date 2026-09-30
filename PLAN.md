@@ -112,6 +112,19 @@ model and build only what's ours.
     later; preview and update with both, and what the webhooks carry;
   - **renewal after the `tax_mode` change:** whether the test subscription, bought under `location`, renews on the
     new `external` basis.
+  - *Done 2026-09-30 (`paddle.md` §11b), except two checks that need time:*
+    - **the end of a one-day trial,** on 2026-10-01 (`org-test-5`);
+    - **the `tax_mode` renewal,** on 2026-10-29 (`org-test-1`).
+  - *Found:*
+    - a declined seat increase is refused, and Paddle cancels the leftover charge itself;
+    - Paddle refuses any change while `past_due`;
+    - recovery sends `subscription.activated`, with no "recovered" event;
+    - trials need both seat types from the start (no items added, matching trial periods, minimum 1 per item);
+    - the checkout lets a buyer change seat numbers and remove the web item (to lock in 16.5);
+    - `subscription.created` can be missing, so treat `activated` as the same confirmation;
+    - an immediate cancel gives no refund, and resuming from a pause charges a new month;
+    - Payment Recovery's settings are live-only (`paddle.md` §10).
+  - *These fed ADR-037 decision 6 (trials).*
 - [ ] **16.3 Model the licensing domain** from 16.1 and 16.2, through `event-model`: our events and commands first,
   then Paddle as the automation and translations that produce side effects.
 - [ ] **16.4 Translation slices in the kit** (the main kit work). Another system's webhook becomes our event: verify
