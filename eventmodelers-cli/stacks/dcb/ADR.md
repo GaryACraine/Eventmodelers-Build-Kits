@@ -1668,9 +1668,10 @@ number of seats for its employees, alongside one-off purchases):**
 
 
 
-### ADR-037: The licensing model: seats bought by an organisation, assigned by its admins
+### ADR-037: The licensing model: seats bought by an organisation, given to people through roles
 
-**Status:** **Accepted, 2026-09-30 (Gary), except decision 6.** Decisions 1–5 and 8 as written; decision 7 with the
+**Status:** **Accepted, 2026-09-30 (Gary), except decision 6.** Decisions 1–5 and 8 as written, with decision 2 revised for roles (admin
+and engineer; the owner controls billing; whether admins may invite is open); decision 7 with the
 14-day grace period, which 16.2b confirms Paddle can be set to. **Decision 6 (trials) stays Proposed** until
 Paddle's lifecycle in the sandbox (16.2b). **Seat types** (web portal and mobile, priced differently) are recorded
 below, with Gary's answers. Accepted decisions feed the model (16.3).
@@ -1686,21 +1687,32 @@ below, with Gary's answers. Accepted decisions feed the model (16.3).
 - **Polar**, a merchant of record with seats built in, is B. It separates the customer (who pays) from members
   (who use), with pending, claimed and revoked seats.
 
-**Decision (proposed):**
+**Decision:**
 
-1. **Family B: an organisation buys seats, and its admins assign them.**
+1. **Family B: an organisation buys seats, and they're given to people through roles.**
    - The seat count is Paddle's subscription quantity. Assigning a seat is ours alone and never calls Paddle.
    - **The seat count we enforce is the one Paddle confirms** (`paddle.md` §8), so a failed charge never gives
      seats away.
-2. **Roles: owner, admin and member all hold a seat,** because they use the app.
-   - The buyer becomes the owner. There's always at least one owner, and the last owner can't leave without
-     handing over.
-   - Owners and admins invite people, assign and revoke seats, and change the seat count.
+2. **Roles: admin and engineer, and the role decides the seat type** (Gary, 2026-09-30). The roles become the
+   sign-in roles when authentication is built.
+   - **An admin works in the web portal and holds a web seat. An engineer works in the mobile app and holds a
+     mobile seat.** Giving someone a role gives them a seat of its type, and needs a free one. Changing a role moves
+     the person from one seat type to the other.
+   - **A person can have both roles,** holding a web seat and a mobile seat, both paid for.
+   - **Owner is a mark on one admin, not a third role.** In the app, the owner can do what any admin can. What's
+     different is the account: the owner is the person Paddle bills, can't be removed, and must hand over to
+     another admin before leaving. The first person to sign up becomes an admin marked as owner.
+   - **Only the owner controls billing** (Gary, 2026-09-30): buying and removing seats, the payment method, and
+     cancelling. So no one else can run up the bill.
+   - **Inviting people and assigning bought seats:** *open (Gary)*. Gary leans to the owner only, for safety.
+     Claude's view: billing, yes; but invitations spend nothing (they use seats already paid for), so letting
+     admins invite avoids the owner becoming the only way to add an engineer, for instance when the owner is away.
+   - **Later roles fit the same pattern:** each role gets a seat type, and the seat rules apply unchanged.
    - No billing-only role for now: it's a later addition if a customer asks.
 3. **An invitation holds a seat while it's pending,** as with Polar and GitHub Team.
    - Accepting it gives access. Revoking it, or letting it expire, frees the seat.
    - It lasts **7 days** and can be sent again.
-4. **At the limit, assigning a seat is blocked,** with an offer to add seats (owners and admins).
+4. **At the limit, assigning a seat is blocked,** with an offer to add seats, made to the owner.
    - Adding seats is our screen: Paddle's preview first, then the update with `prorated_immediately`.
    - Figma-style requests and automatic purchase are left for later.
 5. **Removing seats takes effect at once, with Paddle's prorated credit.**
@@ -1747,16 +1759,15 @@ below, with Gary's answers. Accepted decisions feed the model (16.3).
   - **At least one web seat, always.** Much of the platform's configuration is done in the web portal. So a
     purchase has at least one web seat, and mobile seats are optional.
   - **The first person gets a web seat automatically.** Whoever signs up and pays for a block of seats becomes the
-    owner and is given a web seat as soon as the purchase is confirmed.
+    owner, in the admin role, and is given a web seat as soon as the purchase is confirmed.
 - **What follows from the answers:**
   - **Checkout:** the web seat price has a minimum of 1; the mobile seat price can be left off or added later.
-  - **The owner's web seat** is assigned by an automation reacting to the purchase being confirmed (Paddle's
+  - **The owner's admin role and web seat** are assigned by an automation reacting to the purchase being confirmed (Paddle's
     `subscription.created`, translated), not by a person.
   - **The web seat count can never reach 0:** the owner holds one, and seats in use can't be removed (decision 5).
     Likewise, the last owner's web seat can't be revoked.
-  - **Managing the organisation needs a web seat,** because it's done in the web portal. Owners always have one.
-    *To confirm (Gary): whether an admin must hold a web seat too, or whether an admin with only a mobile seat is
-    allowed.*
+  - **Managing the organisation needs a web seat,** because it's done in the web portal. That's the admin role
+    (decision 2), and the owner is an admin.
 - **How it fits Paddle:** one subscription with **two price items**, a web seat price and a mobile seat price, each
   with its own quantity. Paddle supports several items on one subscription, each with a quantity (its guide *Add or
   remove items from a subscription*). 16.2b tries it in the sandbox, including adding the mobile item to a
