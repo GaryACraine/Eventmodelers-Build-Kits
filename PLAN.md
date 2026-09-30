@@ -547,7 +547,7 @@ designed later.
   - Kit wiring and checks.
   - Proven through the loop on restaurant-orders, on both paths: the **Stock Returner** (internal, in the
     processor) and the **Payment Requester** (external, in Temporal).
-- [x] **15.9 Token discipline for the loop** *(built and proven 2026-09-29; the A/B test and distillation moved to 16.4)* (Gary, 2026-09-28: a standing concern to keep a close eye on).
+- [x] **15.9 Token discipline for the loop** *(built and proven 2026-09-29; the A/B test and distillation moved to 16.6)* (Gary, 2026-09-28: a standing concern to keep a close eye on).
   - **Why:** the restaurant backend ran on whatever `~/.claude/settings.json` said, because nothing in the kit or
     project pinned it: Opus at low effort.
     - **Baseline** (the whole backend, 2026-09-28): 24 finished jobs cost $20.14 (median $0.79, range $0.38–$1.47),
@@ -714,7 +714,7 @@ designed later.
   is known to be down, placing an order says "card payments are unavailable right now" before any stock is taken.
   It would be fed by a gateway-health check kept like Temporal's (runtime state, not an event). Decide from a real
   outage's volume, once 15.4's stalls show it.
-- [x] **15.5 The whole restaurant domain through the loop** (backend and UI). *(Backend done; the UI dropped 2026-09-29 with the demo; the domain-bleed review moved to 16.5.)*
+- [x] **15.5 The whole restaurant domain through the loop** (backend and UI). *(Backend done; the UI dropped 2026-09-29 with the demo; the domain-bleed review moved to 16.7.)*
   - A domain-bleed review of `build-state-change`, `build-state-view` and `build-screen`: every course-enrollment
     assumption the loop relied on is found and generalised.
   - A manual chapter.
@@ -724,7 +724,7 @@ designed later.
   - a distilled `references/` folder per skill, with its provenance;
   - a ledger like `UPSTREAM.md`;
   - a review routine at phase close.
-- [x] **15.7 Voice-modeling transcript** (last; fulfils 13.6). *(Moved to 16.1, 2026-09-29.)*
+- [x] **15.7 Voice-modeling transcript** (last; fulfils 13.6). *(Moved to 16.8, 2026-09-29.)*
   - A spoken-style transcript that models the whole restaurant domain through `event-model`.
   - Replayed in a fresh project.
   - The result diffed against 15.1's model.
@@ -3349,7 +3349,7 @@ What each `build-*` skill generates and what it verifies:
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
+| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
 | 15 — Automations (restaurant orders) | ✅ Closed 2026-09-29 (a demo) | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27/28: the Restaurant Orders chapter (25 slices, 63 scenarios, 15 mockups) on prooph board, with stock and an internal automation (the Stock Returner); emcli push fixes (lanes, links, skipped deletions). 15.8 added: deciding from a growing event stream. 15.2 done 2026-09-28 (library PR #29 merged). 15.3 done 2026-09-28 (ADR-033 runtime, ADR-034 Braintree as a commercial directive; the loop built the restaurant backend; 8 end-to-end cases pass, with our own Temporal call deadline and Temporal in health; manual §21). Next: 15.4 redrive, then 15.5 the UI on Sonnet. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) | **Closed 2026-09-29:** 15.4 and 15.4c built through the loop (stalls, retry, give up, attempts, pay again, cancel); 15.4e provider skills; 15.9 on Sonnet at medium, about 2.5–3× cheaper per job; emcli re-queues changed built slices. The rest dropped or moved to Phase 16 |
 | 1 — Stack Scaffolding | ✅ Complete | Verified: init, npm install, tsc, 21/21 unit tests |
 | 2 — State Change Skill | ✅ Complete | 9-step SKILL.md with full DCB patterns |
