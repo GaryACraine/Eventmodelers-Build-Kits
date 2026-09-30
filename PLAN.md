@@ -137,6 +137,10 @@ model and build only what's ours.
   - *These fed ADR-037 decision 6 (trials).*
 - [ ] **16.3 Model the licensing domain** from 16.1 and 16.2, through `event-model`: our events and commands first,
   then Paddle as the automation and translations that produce side effects.
+  - **The project: `~/Projects/supply-hub-v1/licensing`** (Gary, 2026-09-30). It's a sibling of Supply Hub's
+    `backend-for-frontend`, `admin-portal` and van stock apps: the product whose seats ADR-037 licenses. Supply Hub was
+    moved from `~/Documents` (iCloud) to `~/Projects` for this. Named `licensing`, not `license-server`: it's about
+    subscriptions, seats and roles, not licence keys, and it matches ADR-037's wording.
 - [ ] **16.4 Translation slices in the kit** (the main kit work). Another system's webhook becomes our event: verify
   the signature, ignore a repeat by its key, record our event named for the business. `build-automation` still
   blocks a `synchronous` processor as "not proven": make it proven.
