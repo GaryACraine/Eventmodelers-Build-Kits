@@ -330,13 +330,96 @@ So:
     including £8.33 VAT);
   - still to check: whether the existing test subscription, bought under `location`, renews on the new basis.
 
-**Still to try** (scheduled: the lifecycle checks in PLAN 16.2b, the webhook delivery checks in PLAN 16.4)
-- a declined renewal;
-- trials;
-- an immediate cancel, and what cancelling from the portal sends;
-- pause and resume;
-- a declined card on an immediate seat-increase charge;
-- the webhook destination, with payloads kept as fixtures, and repeated and out-of-order delivery through a real notification destination.
+### 11b. The lifecycle (PLAN 16.2b, 2026-09-30)
+
+**The setup:**
+- Products **"Web seat (admin)"** (£10) and **"Mobile seat (engineer)"** (£5), monthly, `external` tax, 1 to 1,000 each
+  (ADR-037's seat types).
+- Test organisations:
+  - `org-test-2`: 2 web seats, paid at checkout with Paddle's "success then decline" card `4000 0027 6000 3184`;
+  - `org-test-3`: a 14-day cardless trial, made through the API;
+  - `org-test-4`: a trial with both seat types;
+  - `org-test-5`: a one-day trial with a card, 1 web and 2 mobile seats.
+- **Tools:**
+  - `subscriptions.update({ next_billed_at })` brings a renewal forward, but **at least 30 minutes ahead** ("new
+    next_billed_at needs to be 30m0s from now");
+  - `events.list` is the event stream: every webhook Paddle would send, readable with no destination set up.
+
+**Two seat types on one subscription**
+- **Web seats only, then mobile seats added later:** both work. Adding the mobile item is a normal update. With
+  `prorated_immediately` it charged 3 × £5 for the rest of the month (£14.99 + £3.00 VAT = £17.99), for the new item
+  only.
+- **A price can't have a minimum of 0** ("Invalid request"), so every item on a subscription has at least 1 seat. To
+  have no mobile seats, leave the item off.
+- **Paddle's checkout shows each line's total with VAT** ("£12.00/month" for 2 mobile seats), not the price per
+  seat. It also lets the buyer change the numbers with + and −, and **remove the web item with a bin icon**. So our
+  page chooses the seats, and we must lock the numbers in Paddle's checkout or check them when the purchase arrives
+  (ADR-037: at least one web seat). For `provider-paddle` (16.5).
+
+**A declined card when adding seats** (`prorated_immediately`, the default `on_payment_failure: prevent_change`)
+- The API call fails ("payment declined"), and **the subscription keeps its seats**.
+- A transaction for the charge is left `past_due` (`transaction.payment_failed`, `transaction.past_due`), and
+  **Paddle cancels it by itself about 45 seconds later** (`transaction.canceled`). Nothing is left to retry, and the
+  subscription stays `active`.
+- The error code was `authentication_failed`: this test card fails later charges by asking for 3D Secure, which
+  can't happen without the customer present. The card also asked for 3D Secure at checkout.
+
+**A failed renewal, and recovery**
+1. At the renewal, `subscription.updated` (still `active`): **the period moves on first**.
+2. `transaction.created` and `transaction.billed` (`origin: subscription_recurring`), then
+   `transaction.payment_failed` and `transaction.past_due`.
+3. `subscription.updated` **and** `subscription.past_due`, with the same `occurred_at`.
+- **While `past_due`, Paddle refuses any change:** "cannot update subscription, as the subscription status is
+  'past_due'". ADR-037's rule of no seat changes while payment is overdue matches Paddle's own.
+- **Recovery:** `subscriptions.updatePaymentMethodTransaction.get` returns the unpaid renewal. Paid through Paddle.js
+  with a good card, it sent `transaction.paid`, then `subscription.activated` **and** `subscription.updated`
+  (`active`), then `transaction.completed`. **There's no "recovered" event.** Our translation reads
+  `subscription.activated` after `past_due` as "payment recovered".
+- **Payment Recovery's settings** (the retry window, and pause or cancel at the end) **aren't in the sandbox.** Retain
+  there has only Cancellation Flows, and Checkout Settings' "Recovery" is for abandoned checkouts. So ADR-037's
+  14-day window is checked in the live dashboard (§10).
+
+**Trials**
+- **Cardless** (`requires_payment_method: false`): our backend creates a transaction with `status: "billed"`. Paddle
+  completes it at £0 and creates a `trialing` subscription. There's no `next_billed_at` until a card is added.
+  `subscriptions.activate` is refused without a card.
+- **With a card** (the choice in ADR-037 decision 6): the checkout shows "1 day free trial", £0.00 today, the amount
+  due on the end date, and "Cancel anytime". Events: `subscription.created` and `subscription.trialing`, together.
+- **Seats during a trial:** a quantity change works only with `do_not_bill` (any other mode is refused). **Items
+  can't be added or removed** ("You can't add or remove items for a subscription in trial"), and **every item must
+  share the same trial period** ("prices that have differing trial period intervals"). So a trial starts with both
+  seat types, each price having its own trial version.
+- *Still to watch:* a trial ending. `org-test-5`'s one-day trial ends on **2026-10-01 at 14:51 UTC**, with web
+  changed 1 → 2 during it. If Paddle bills the seats held then, the first charge is **£36** (2 × £10 + 2 × £5 + VAT),
+  not the £24 the checkout showed.
+
+**Cancelling**
+- **From the customer portal:** only a confirm dialog, with no reason asked and no offer, because no Cancellation Flow
+  is set up (Retain has them, in the sandbox too). It cancels **at the period's end**: `scheduled_change: cancel`,
+  status `active`, and only `subscription.updated`, the same as through the API. Undone with `scheduled_change: null`.
+- **Immediately:** `subscription.canceled` and `subscription.updated`, together. **No refund and no credit**, even
+  for a month charged minutes before.
+
+**Pause and resume**
+- **Pause immediately:** `subscription.paused` and `subscription.updated`, together. The status is `paused`, with no
+  `next_billed_at`.
+- **Resume immediately** (the default, `start_new_billing_period`): `subscription.resumed` and `subscription.updated`,
+  then **a full new month charged at once** (£42), **with no credit for the unused paid period**. To keep the paid
+  period, use `on_resume: continue_existing_billing_period`. ADR-037 doesn't offer pausing.
+
+**What the webhooks mean for the translations** (16.4)
+- **`subscription.created` can be missing.** None ever came for `org-test-2`'s checkout purchase, the only one paid
+  with a card that asked for 3D Secure; `subscription.activated` did. Every other subscription got both. So treat
+  whichever of `created` and `activated` arrives first as the purchase being confirmed.
+- **Paddle often sends a specific event and `subscription.updated` with the same `occurred_at`:** activated,
+  past_due, paused, resumed and canceled all do. Order by (`occurred_at`, `event_id`) and listen to the specific one.
+  A scheduled cancel comes only as `subscription.updated`, so read `scheduled_change` there.
+- **`subscriptions.history.list` failed** ("URL called is invalid") through the plugin.
+
+**Still to try**
+- The end of `org-test-5`'s trial (2026-10-01): which seats are billed, and its events.
+- The renewal of `org-test-1` (2026-10-29) after the switch to `tax_mode: external`.
+- The webhook destination, with payloads kept as fixtures, and repeated and out-of-order delivery (PLAN 16.4).
 
 ## 12. Getting paid
 
@@ -365,6 +448,8 @@ Sources: Paddle help, [When and how do I get paid?](https://www.paddle.com/help/
 - [ ] Payout currency (GBP) and bank.
 - [ ] Once approved: **Payout settings** in the live dashboard (GBP, the bank account, the threshold). After that,
       payouts and their paperwork are automatic (§12).
+- [ ] **Retain → Payment Recovery** (live only, not in the sandbox): set the recovery window to **14 days** and the
+      end action to **cancel** (ADR-037 decision 7), and see whether yearly plans can have their own window.
 - [ ] Anything Paddle asks of a seat-based SaaS (refund policy, terms) that the model or the site must provide.
 
 ## Tools Paddle offers for working with an AI assistant
