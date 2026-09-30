@@ -89,8 +89,8 @@ model and build only what's ours.
   - *Desk research done 2026-09-30: [`docs/case-studies/seat-licensing.md`](docs/case-studies/seat-licensing.md)
     (Slack, Linear, Notion, GitHub, Figma, Zoom, Polar, Laravel Spark, Paddle's guidance), and **ADR-037 Proposed**
     with eight decisions for Gary. It recommends seats that are bought and then assigned (Polar's and Figma's
-    family), not seats that follow membership. Decisions 6 (trials) and 7 (failed renewal) wait on 16.2b. Open:
-    Gary's review of ADR-037.*
+    family), not seats that follow membership. Decisions 6 (trials) and 7 (failed renewal) wait on 16.2b. Gary accepted
+    decision 1 (bought, then assigned) on 2026-09-30; the rest open.*
 - [ ] **16.2b Paddle's lifecycle in the sandbox** (after 16.2, before 16.3: these can change the model's shape). One
   sandbox session through the Paddle plugin, with results in `docs/case-studies/paddle.md` §11:
   - **a failed renewal:** what `past_due` looks like, the recovery emails, and whether it ends in pause or cancel.
