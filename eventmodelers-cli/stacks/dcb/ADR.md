@@ -1671,8 +1671,9 @@ number of seats for its employees, alongside one-off purchases):**
 ### ADR-037: The licensing model: seats bought by an organisation, assigned by its admins
 
 **Status:** Proposed, 2026-09-30 (PLAN 16.2). **Decision 1 Accepted, 2026-09-30 (Gary): seats are bought, then
-assigned.** Each other decision below is a recommendation for Gary. Decisions 6 and 7
-wait on Paddle's lifecycle in the sandbox (16.2b). Accepted decisions feed the model (16.3).
+assigned.** Each other decision below is a recommendation for Gary. Decision 6 waits on
+Paddle's lifecycle in the sandbox (16.2b). Decision 7's 14-day grace period is Gary's (2026-09-30); 16.2b confirms
+Paddle can be set that way. Accepted decisions feed the model (16.3).
 **Date:** 2026-09-30
 
 **Context:**
@@ -1711,10 +1712,20 @@ wait on Paddle's lifecycle in the sandbox (16.2b). Accepted decisions feed the m
 6. **Trials** (to confirm in 16.2b): a **free trial with a card, 14 days**. A trial is treated as active, with a
    banner showing its end date. A cardless trial is the alternative, because Paddle cancels it by itself when no
    card arrives. Whether seats can change during a trial is for 16.2b to settle.
-7. **A failed renewal** (to confirm in 16.2b):
+7. **A failed renewal: a 14-day grace period** (Gary, 2026-09-30; Paddle's settings to confirm in 16.2b):
    - **full access while `past_due`**, with a banner for owners and admins linking to Paddle's page to update the
      payment method, as Paddle recommends;
-   - after Paddle's recovery window (30 days), **cancel** rather than pause, so that there's one way to end.
+   - **Paddle's recovery window is set to 14 days**, and at its end Paddle **cancels** rather than pauses, so that
+     there's one way to end. Then every seat's access ends together: a failed renewal ends the subscription, it
+     doesn't take seats away one by one;
+   - **Paddle keeps the time, not us.** We keep no timer of our own: `past_due` means access with a banner,
+     `canceled` means access ends, and a recovered payment clears the banner;
+   - **why 14 days:** most failed renewals recover in the first week (Paddle's retries and emails fall on about days
+     1, 3, 5 and 7), and a replacement card arrives in 7–10 days. Paddle's default of 30 days would give a lapsed
+     team a month free;
+   - **yearly plans could have 30 days** (more money at stake, and a finance team may need to approve a new card),
+     but only if Paddle allows a window per plan. Otherwise 14 days for everyone;
+   - **seat changes are blocked while `past_due`** (proposed), until the payment recovers.
 8. **After cancellation:**
    - access ends at the paid period's end (`scheduled_change.effective_at`);
    - the organisation and its data are kept, and owners can still sign in to subscribe again;
