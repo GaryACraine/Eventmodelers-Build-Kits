@@ -90,12 +90,15 @@ model and build only what's ours.
     (Slack, Linear, Notion, GitHub, Figma, Zoom, Polar, Laravel Spark, Paddle's guidance), and **ADR-037 Proposed**
     with eight decisions for Gary. It recommends seats that are bought and then assigned (Polar's and Figma's
     family), not seats that follow membership. Decisions 6 (trials) and 7 (failed renewal) wait on 16.2b. Gary accepted
-    decision 1 (bought, then assigned) on 2026-09-30; the rest open.*
+    decision 1 (bought, then assigned) and set decision 7's grace period to 14 days, on 2026-09-30; the rest
+    open.*
 - [ ] **16.2b Paddle's lifecycle in the sandbox** (after 16.2, before 16.3: these can change the model's shape). One
   sandbox session through the Paddle plugin, with results in `docs/case-studies/paddle.md` §11:
   - **a failed renewal:** what `past_due` looks like, the recovery emails, and whether it ends in pause or cancel.
     This decides what access a customer keeps while payment fails. The sandbox can't wait a month, so use a very
     short billing cycle or Paddle's webhook simulator; Retain's smarter recovery is live-only;
+    also check what Payment Recovery's window can be set to (**14 days**, ADR-037 decision 7), whether it can
+    differ for yearly plans, and whether seats can be changed while `past_due`;
   - **trials,** with and without a payment method, and changing seats during one. This decides whether "trialing"
     is a state of ours;
   - **an immediate cancel, and pause and resume:** which states and events exist;
