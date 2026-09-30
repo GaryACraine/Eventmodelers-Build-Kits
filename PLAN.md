@@ -46,6 +46,10 @@ model and build only what's ours.
 - [x] **16.0 Record.** *Done 2026-09-29*: this phase, its order, ADR-036 Accepted, the Decisions Log.
 - [ ] **16.1 Paddle: onboarding, and a working knowledge of its UI and API** (first priority). Gary starts the
   onboarding, since whether we can use Paddle, and how, may shape the model.
+  - **Status (2026-09-30):** the knowledge work is done (desk research and the sandbox, PRs #101–#106,
+    `paddle.md` §11–12), so 16.2 is next. **Open: only Gary's live onboarding** (`paddle.md` §10: the account
+    review, the fee at the real seat price, GBP payout settings); it doesn't block 16.2. The sandbox checks not yet
+    run moved to 16.2b (lifecycle) and 16.4 (delivery).
   - **Onboarding:**
     - Gary's account as an Isle of Man business selling a web app;
     - the sandbox;
@@ -90,6 +94,10 @@ model and build only what's ours.
   - **trials,** with and without a payment method, and changing seats during one. This decides whether "trialing"
     is a state of ours;
   - **an immediate cancel, and pause and resume:** which states and events exist;
+  - **a declined card on an immediate seat increase** (`prorated_immediately`): whether the update is refused and the
+    seats stay as they were;
+  - **cancelling from the customer portal:** which webhooks it sends, and whether it cancels now or at the period's
+    end;
   - **renewal after the `tax_mode` change:** whether the test subscription, bought under `location`, renews on the
     new `external` basis.
 - [ ] **16.3 Model the licensing domain** from 16.1 and 16.2, through `event-model`: our events and commands first,
@@ -3349,7 +3357,7 @@ What each `build-*` skill generates and what it verifies:
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
+| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. **Next: 16.2** (16.1's knowledge work done 2026-09-30; only Gary's live onboarding open). Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
 | 15 — Automations (restaurant orders) | ✅ Closed 2026-09-29 (a demo) | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27/28: the Restaurant Orders chapter (25 slices, 63 scenarios, 15 mockups) on prooph board, with stock and an internal automation (the Stock Returner); emcli push fixes (lanes, links, skipped deletions). 15.8 added: deciding from a growing event stream. 15.2 done 2026-09-28 (library PR #29 merged). 15.3 done 2026-09-28 (ADR-033 runtime, ADR-034 Braintree as a commercial directive; the loop built the restaurant backend; 8 end-to-end cases pass, with our own Temporal call deadline and Temporal in health; manual §21). Next: 15.4 redrive, then 15.5 the UI on Sonnet. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) | **Closed 2026-09-29:** 15.4 and 15.4c built through the loop (stalls, retry, give up, attempts, pay again, cancel); 15.4e provider skills; 15.9 on Sonnet at medium, about 2.5–3× cheaper per job; emcli re-queues changed built slices. The rest dropped or moved to Phase 16 |
 | 1 — Stack Scaffolding | ✅ Complete | Verified: init, npm install, tsc, 21/21 unit tests |
 | 2 — State Change Skill | ✅ Complete | 9-step SKILL.md with full DCB patterns |
