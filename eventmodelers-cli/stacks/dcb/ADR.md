@@ -1666,3 +1666,85 @@ number of seats for its employees, alongside one-off purchases):**
 - Stall and redrive (ADR-032) still apply to fulfilment's outside calls.
 - ADR-034 stays: Braintree for the restaurant demo.
 
+
+
+### ADR-037: The licensing model: seats bought by an organisation, assigned by its admins
+
+**Status:** Proposed, 2026-09-30 (PLAN 16.2). Each decision below is a recommendation for Gary. Decisions 6 and 7
+wait on Paddle's lifecycle in the sandbox (16.2b). Accepted decisions feed the model (16.3).
+**Date:** 2026-09-30
+
+**Context:**
+- **The licensing model is ours** (PLAN Phase 16). Paddle bills a **quantity** of seats, and takes the payment, the
+  tax and the declines (ADR-036, `docs/case-studies/paddle.md`). Who may use the app is our own domain.
+- **The vendors fall into two families** (`docs/case-studies/seat-licensing.md` §1):
+  - **A, seats follow membership** (Slack, Linear, Notion, GitHub): every member is billed, and there's no limit;
+  - **B, seats are bought and then assigned** (Figma, Zoom, Polar): the customer buys N seats, and admins give
+    them to people.
+- **Polar**, a merchant of record with seats built in, is B. It separates the customer (who pays) from members
+  (who use), with pending, claimed and revoked seats.
+
+**Decision (proposed):**
+
+1. **Family B: an organisation buys seats, and its admins assign them.**
+   - The seat count is Paddle's subscription quantity. Assigning a seat is ours alone and never calls Paddle.
+   - **The seat count we enforce is the one Paddle confirms** (`paddle.md` §8), so a failed charge never gives
+     seats away.
+2. **Roles: owner, admin and member all hold a seat,** because they use the app.
+   - The buyer becomes the owner. There's always at least one owner, and the last owner can't leave without
+     handing over.
+   - Owners and admins invite people, assign and revoke seats, and change the seat count.
+   - No billing-only role for now: it's a later addition if a customer asks.
+3. **An invitation holds a seat while it's pending,** as with Polar and GitHub Team.
+   - Accepting it gives access. Revoking it, or letting it expire, frees the seat.
+   - It lasts **7 days** and can be sent again.
+4. **At the limit, assigning a seat is blocked,** with an offer to add seats (owners and admins).
+   - Adding seats is our screen: Paddle's preview first, then the update with `prorated_immediately`.
+   - Figma-style requests and automatic purchase are left for later.
+5. **Removing seats takes effect at once, with Paddle's prorated credit.**
+   - It's Paddle's default. The sandbox showed the credit going on the customer's balance, not back to the card
+     (`paddle.md` §11). There's nothing for us to schedule.
+   - **The count can't go below the seats in use** (assigned or invited): people are revoked first.
+   - Our screen says plainly that the credit goes toward the next renewal, because Paddle's portal calls it
+     "Renewal".
+6. **Trials** (to confirm in 16.2b): a **free trial with a card, 14 days**. A trial is treated as active, with a
+   banner showing its end date. A cardless trial is the alternative, because Paddle cancels it by itself when no
+   card arrives. Whether seats can change during a trial is for 16.2b to settle.
+7. **A failed renewal** (to confirm in 16.2b):
+   - **full access while `past_due`**, with a banner for owners and admins linking to Paddle's page to update the
+     payment method, as Paddle recommends;
+   - after Paddle's recovery window (30 days), **cancel** rather than pause, so that there's one way to end.
+8. **After cancellation:**
+   - access ends at the paid period's end (`scheduled_change.effective_at`);
+   - the organisation and its data are kept, and owners can still sign in to subscribe again;
+   - how long data is kept is Gary's decision (terms and privacy), not the model's.
+
+**Alternatives considered:**
+- **Family A, seats following membership:**
+  - It's the smoothest sale: no limit, no admin step.
+  - But every join and leave becomes a Paddle update, and an increase charges the card at once, so a declined card
+    would block a person joining.
+  - Laravel Spark does it on Paddle. It stays possible later as automatic purchase (decision 4).
+- **Removing seats at renewal** (Notion, Figma):
+  - It avoids small credits.
+  - But Paddle's `scheduled_change` can't express it, so we'd have to remember the change and make it at renewal: a
+    to-do list item with its own failure handling (ADR-031, ADR-032).
+- **Locking at once on a failed payment** (GitHub): a card expiring would lock out a whole team, when Paddle
+  recovers most failed renewals in the first days.
+
+**Consequences:**
+- **Our events** (16.3 names them):
+  - the organisation is created, and its owner is set;
+  - seats are bought, and the seat count changes (both confirmed by Paddle);
+  - a member is invited, accepts, or the invitation is revoked or expires;
+  - a seat is assigned or revoked;
+  - a role changes;
+  - the subscription runs into payment trouble, recovers, or ends.
+- **The automations** call Paddle to change the seat count. **The translations** turn Paddle's webhooks into the
+  confirmations (16.4).
+- **Each rule becomes a spec in the model:**
+  - assigning is blocked at the limit;
+  - the count can't go below the seats in use;
+  - the last owner can't leave;
+  - access checks the subscription's state.
+- **The invitation's expiry** is a time-based automation, the kit's first.
