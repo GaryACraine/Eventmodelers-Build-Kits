@@ -89,9 +89,9 @@ model and build only what's ours.
   - *Desk research done 2026-09-30: [`docs/case-studies/seat-licensing.md`](docs/case-studies/seat-licensing.md)
     (Slack, Linear, Notion, GitHub, Figma, Zoom, Polar, Laravel Spark, Paddle's guidance), and **ADR-037 Proposed**
     with eight decisions for Gary. It recommends seats that are bought and then assigned (Polar's and Figma's
-    family), not seats that follow membership. Decisions 6 (trials) and 7 (failed renewal) wait on 16.2b. Gary accepted
-    decision 1 (bought, then assigned) and set decision 7's grace period to 14 days, on 2026-09-30; the rest
-    open.*
+    family), not seats that follow membership. Decisions 6 (trials) and 7 (failed renewal) wait on 16.2b. **ADR-037 Accepted
+    2026-09-30 (Gary)** except decision 6 (trials, after 16.2b), with a 14-day grace period on a failed renewal.
+    Gary added **seat types**: web portal and mobile users, priced differently (details open, ADR-037).*
 - [ ] **16.2b Paddle's lifecycle in the sandbox** (after 16.2, before 16.3: these can change the model's shape). One
   sandbox session through the Paddle plugin, with results in `docs/case-studies/paddle.md` §11:
   - **a failed renewal:** what `past_due` looks like, the recovery emails, and whether it ends in pause or cancel.
@@ -106,6 +106,8 @@ model and build only what's ours.
     seats stay as they were;
   - **cancelling from the customer portal:** which webhooks it sends, and whether it cancels now or at the period's
     end;
+  - **two seat types on one subscription** (ADR-037: web portal and mobile seats): two prices on one product, or two
+    products, each with its own quantity; checkout, preview and update with both, and what the webhooks carry;
   - **renewal after the `tax_mode` change:** whether the test subscription, bought under `location`, renews on the
     new `external` basis.
 - [ ] **16.3 Model the licensing domain** from 16.1 and 16.2, through `event-model`: our events and commands first,
@@ -3359,6 +3361,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-29 | Phase 15 closed; the restaurant is a demo, not extended further (its e2e 9 onwards, UI, circuit breaker and 15.8 dropped) | Gary: both aims (automations, the loop's cost and efficiency) are met; what's left exists only because the demo takes card payments itself |
 | 2026-09-29 | The real product is a web app sold with seats, through Paddle, a merchant of record (ADR-036 Accepted); Phase 16 | Paddle serves the Isle of Man, handles checkout, declines and VAT, and bills seats as a quantity; seat assignment stays our domain logic |
 | 2026-09-29 | The web app stays a client-side React SPA on S3/CloudFront; Paddle.js runs in it, and Paddle's Next.js starter is a reference only | SSR would need a running server; a logged-in app gains little from it; Paddle's server side maps onto our backend's slices |
+| 2026-09-30 | The licensing model: an organisation buys seats and its admins assign them (ADR-037 Accepted, except trials) | Paddle bills a quantity we set, so assigning seats never calls Paddle and a declined card never blocks a person joining; a 14-day grace period on a failed renewal, timed by Paddle; web and mobile seat types are priced differently, details open |
 | 2026-09-29 | Phase 16's order: Paddle onboarding and a working knowledge of its UI and API first, then research into how other vendors license seats through a merchant of record, then our licensing model; voice modelling deferred until the model is established | Gary: the licensing model is ours, and Paddle is only an automation producing side effects; knowing Paddle's capabilities and the market's patterns first gives a model worth building |
 
 ## Progress

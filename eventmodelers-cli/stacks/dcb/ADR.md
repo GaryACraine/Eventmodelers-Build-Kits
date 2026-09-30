@@ -1670,10 +1670,10 @@ number of seats for its employees, alongside one-off purchases):**
 
 ### ADR-037: The licensing model: seats bought by an organisation, assigned by its admins
 
-**Status:** Proposed, 2026-09-30 (PLAN 16.2). **Decision 1 Accepted, 2026-09-30 (Gary): seats are bought, then
-assigned.** Each other decision below is a recommendation for Gary. Decision 6 waits on
-Paddle's lifecycle in the sandbox (16.2b). Decision 7's 14-day grace period is Gary's (2026-09-30); 16.2b confirms
-Paddle can be set that way. Accepted decisions feed the model (16.3).
+**Status:** **Accepted, 2026-09-30 (Gary), except decision 6.** Decisions 1–5 and 8 as written; decision 7 with the
+14-day grace period, which 16.2b confirms Paddle can be set to. **Decision 6 (trials) stays Proposed** until
+Paddle's lifecycle in the sandbox (16.2b). **Seat types** (web portal and mobile, priced differently) are a known
+requirement, recorded below; their details are open. Accepted decisions feed the model (16.3).
 **Date:** 2026-09-30
 
 **Context:**
@@ -1730,6 +1730,25 @@ Paddle can be set that way. Accepted decisions feed the model (16.3).
    - access ends at the paid period's end (`scheduled_change.effective_at`);
    - the organisation and its data are kept, and owners can still sign in to subscribe again;
    - how long data is kept is Gary's decision (terms and privacy), not the model's.
+
+**Seat types: web portal and mobile (Gary, 2026-09-30; details open):**
+- **The requirement:** the platform will have web portal users and mobile users, and **the two kinds of seat cost
+  different amounts**.
+- **Why it's recorded now:** a seat's type is part of the model's events (seats bought, a seat assigned), so it's
+  cheap to include from the start and costly to add to recorded events later. Prices and the exact rules can wait.
+- **How it fits the decisions above:** every seat rule applies **per type**:
+  - an organisation buys a number of web seats and a number of mobile seats;
+  - assigning a seat names its type, and is blocked when that type's seats are all taken (decision 4);
+  - removing seats can't go below that type's seats in use (decision 5);
+  - an invitation holds a seat of the type it offers (decision 3).
+- **How it fits Paddle:** one subscription with **two price items**, a web seat price and a mobile seat price, each
+  with its own quantity. Paddle supports several items on one subscription, each with a quantity (its guide *Add or
+  remove items from a subscription*). 16.2b tries it in the sandbox.
+- **Open questions** (before or during 16.3):
+  - can one person hold both kinds of seat, and do they then pay for both?
+  - does a web seat include mobile use (a bundle), or are they separate?
+  - can a customer buy only mobile seats, or must there be at least one web seat (say, for the owner)?
+  - what does each role need: does an owner or admin always need a web seat to manage the organisation?
 
 **Alternatives considered:**
 - **Family A, seats following membership:**
