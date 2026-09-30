@@ -1671,7 +1671,7 @@ number of seats for its employees, alongside one-off purchases):**
 ### ADR-037: The licensing model: seats bought by an organisation, given to people through roles
 
 **Status:** **Accepted, 2026-09-30 (Gary), except decision 6.** Decisions 1–5 and 8 as written, with decision 2 revised for roles (admin
-and engineer; the owner controls billing; whether admins may invite is open); decision 7 with the
+and engineer; the owner controls billing; admins invite); decision 7 with the
 14-day grace period, which 16.2b confirms Paddle can be set to. **Decision 6 (trials) stays Proposed** until
 Paddle's lifecycle in the sandbox (16.2b). **Seat types** (web portal and mobile, priced differently) are recorded
 below, with Gary's answers. Accepted decisions feed the model (16.3).
@@ -1704,9 +1704,9 @@ below, with Gary's answers. Accepted decisions feed the model (16.3).
      another admin before leaving. The first person to sign up becomes an admin marked as owner.
    - **Only the owner controls billing** (Gary, 2026-09-30): buying and removing seats, the payment method, and
      cancelling. So no one else can run up the bill.
-   - **Inviting people and assigning bought seats:** *open (Gary)*. Gary leans to the owner only, for safety.
-     Claude's view: billing, yes; but invitations spend nothing (they use seats already paid for), so letting
-     admins invite avoids the owner becoming the only way to add an engineer, for instance when the owner is away.
+   - **Admins invite people and assign bought seats** (Gary, 2026-09-30). Invitations spend nothing, because they
+     use seats already paid for, so the owner isn't the only way to add an engineer. When the seats run out, the
+     offer to add more goes to the owner (decision 4).
    - **Later roles fit the same pattern:** each role gets a seat type, and the seat rules apply unchanged.
    - No billing-only role for now: it's a later addition if a customer asks.
 3. **An invitation holds a seat while it's pending,** as with Polar and GitHub Team.
