@@ -1670,10 +1670,10 @@ number of seats for its employees, alongside one-off purchases):**
 
 ### ADR-037: The licensing model: seats bought by an organisation, given to people through roles
 
-**Status:** **Accepted, 2026-09-30 (Gary), except decision 6.** Decisions 1–5 and 8 as written, with decision 2 revised for roles (admin
-and engineer; the owner controls billing; admins invite); decision 7 with the
-14-day grace period, which 16.2b confirms Paddle can be set to. **Decision 6 (trials) stays Proposed** until
-Paddle's lifecycle in the sandbox (16.2b). **Seat types** (web portal and mobile, priced differently) are recorded
+**Status:** **Accepted, 2026-09-30 (Gary).** Decisions 1–5 and 8 as written, with decision 2 revised for roles (admin
+and engineer; the owner controls billing; admins invite); decision 6 (trials) after the sandbox tests in 16.2b;
+decision 7 with the 14-day grace period, whose Paddle setting can only be checked in the live dashboard (the sandbox
+has no Payment Recovery). **Seat types** (web portal and mobile, priced differently) are recorded
 below, with Gary's answers. Accepted decisions feed the model (16.3).
 **Date:** 2026-09-30
 
@@ -1721,9 +1721,20 @@ below, with Gary's answers. Accepted decisions feed the model (16.3).
    - **The count can't go below the seats in use** (assigned or invited): people are revoked first.
    - Our screen says plainly that the credit goes toward the next renewal, because Paddle's portal calls it
      "Renewal".
-6. **Trials** (to confirm in 16.2b): a **free trial with a card, 14 days**. A trial is treated as active, with a
-   banner showing its end date. A cardless trial is the alternative, because Paddle cancels it by itself when no
-   card arrives. Whether seats can change during a trial is for 16.2b to settle.
+6. **Trials: a free trial with a card, 14 days** (Gary, 2026-09-30, after the sandbox tests in 16.2b):
+   - **Through Paddle's checkout at £0, with the card saved.** At the end Paddle charges automatically and the
+     subscription becomes active. A trial is treated as active, with a banner showing its end date.
+   - **The trial starts with both seat types,** at least 1 web seat (the owner) and at least 1 mobile seat. Paddle
+     requires it: a trial can't add or remove items, every item on it must share the same trial period, and a
+     price's minimum is 1 seat (a minimum of 0 is refused). So every seat price has a 14-day trial version, and the
+     mobile seats can be removed after the trial if the customer wants none.
+   - **Seat numbers can change during the trial at no charge** (`do_not_bill`, the only mode Paddle allows then).
+     The first bill is for the seats held when the trial ends, and our screen says so.
+   - **Trial seats are capped** (our rule; Paddle has none), so a trial can't grow to hundreds of seats and then be
+     billed for them. **The cap values are configuration, to be set later.**
+   - **Not chosen:** a cardless trial (easier to start, but fewer convert, we'd have to chase a card before day 14,
+     and Paddle still calls it early access), and our own trial outside Paddle (we'd keep the clock and handle
+     conversion, which this ADR avoids).
 7. **A failed renewal: a 14-day grace period** (Gary, 2026-09-30; Paddle's settings to confirm in 16.2b):
    - **full access while `past_due`**, with a banner for owners and admins linking to Paddle's page to update the
      payment method, as Paddle recommends;
