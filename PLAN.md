@@ -86,6 +86,11 @@ model and build only what's ours.
     - the owner and admin roles.
   - **Out:** a comparison (`docs/case-studies/seat-licensing.md`), and the licensing model's decisions in a Proposed
     ADR.
+  - *Desk research done 2026-09-30: [`docs/case-studies/seat-licensing.md`](docs/case-studies/seat-licensing.md)
+    (Slack, Linear, Notion, GitHub, Figma, Zoom, Polar, Laravel Spark, Paddle's guidance), and **ADR-037 Proposed**
+    with eight decisions for Gary. It recommends seats that are bought and then assigned (Polar's and Figma's
+    family), not seats that follow membership. Decisions 6 (trials) and 7 (failed renewal) wait on 16.2b. Open:
+    Gary's review of ADR-037.*
 - [ ] **16.2b Paddle's lifecycle in the sandbox** (after 16.2, before 16.3: these can change the model's shape). One
   sandbox session through the Paddle plugin, with results in `docs/case-studies/paddle.md` §11:
   - **a failed renewal:** what `past_due` looks like, the recovery emails, and whether it ends in pause or cancel.
@@ -3357,7 +3362,7 @@ What each `build-*` skill generates and what it verifies:
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. **Next: 16.2** (16.1's knowledge work done 2026-09-30; only Gary's live onboarding open). Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
+| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. **Next: Gary's review of ADR-037 (16.2), then 16.2b** (16.1's knowledge work done 2026-09-30; only Gary's live onboarding open; 16.2's research done 2026-09-30). Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
 | 15 — Automations (restaurant orders) | ✅ Closed 2026-09-29 (a demo) | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27/28: the Restaurant Orders chapter (25 slices, 63 scenarios, 15 mockups) on prooph board, with stock and an internal automation (the Stock Returner); emcli push fixes (lanes, links, skipped deletions). 15.8 added: deciding from a growing event stream. 15.2 done 2026-09-28 (library PR #29 merged). 15.3 done 2026-09-28 (ADR-033 runtime, ADR-034 Braintree as a commercial directive; the loop built the restaurant backend; 8 end-to-end cases pass, with our own Temporal call deadline and Temporal in health; manual §21). Next: 15.4 redrive, then 15.5 the UI on Sonnet. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) | **Closed 2026-09-29:** 15.4 and 15.4c built through the loop (stalls, retry, give up, attempts, pay again, cancel); 15.4e provider skills; 15.9 on Sonnet at medium, about 2.5–3× cheaper per job; emcli re-queues changed built slices. The rest dropped or moved to Phase 16 |
 | 1 — Stack Scaffolding | ✅ Complete | Verified: init, npm install, tsc, 21/21 unit tests |
 | 2 — State Change Skill | ✅ Complete | 9-step SKILL.md with full DCB patterns |
