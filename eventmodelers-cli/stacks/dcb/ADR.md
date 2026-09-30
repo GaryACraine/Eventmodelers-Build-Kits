@@ -1784,6 +1784,24 @@ below, with Gary's answers. Accepted decisions feed the model (16.3).
   remove items from a subscription*). 16.2b tries it in the sandbox, including adding the mobile item to a
   subscription that started with web seats only.
 
+**Platform admin: our own staff (Gary, 2026-09-30):**
+- **A third role, held by someone from Gary's team,** who helps customers with platform issues and setup. It
+  **belongs to no organisation**: admin and engineer are the customer's roles, and platform admin is ours.
+- **It holds no seat and isn't billed.** Seat counts, the seat limit and Paddle's quantities count only admins and
+  engineers.
+- **It works across organisations, both inside and on licensing** (Gary): setup and configuration inside a customer's
+  organisation (the web portal), and licensing support (for example extending a trial, fixing an invitation, or
+  replaying a failed Paddle webhook).
+- **What follows for the model:**
+  - **Every event records who acted,** and whether it was the customer's person or platform staff, so an
+    organisation's history shows what our team did in it.
+  - **Platform staff act through the same commands** as the customer's admins where one exists, marked as platform
+    staff, rather than through a copy of each command. Actions only staff can take are a chapter of their own,
+    "Platform Support", modelled after the customer's chapters.
+  - **Signing in as platform staff** is part of authentication, like the other roles (decision 2).
+- **Open, for later:** whether a customer must allow our team in (a consent or an "allow support access" switch), and
+  whether the customer's admins are told when our team acts. Both are trust and terms questions, not model shape.
+
 **Alternatives considered:**
 - **Family A, seats following membership:**
   - It's the smoothest sale: no limit, no admin step.

@@ -141,6 +141,22 @@ model and build only what's ours.
     `backend-for-frontend`, `admin-portal` and van stock apps: the product whose seats ADR-037 licenses. Supply Hub was
     moved from `~/Documents` (iCloud) to `~/Projects` for this. Named `licensing`, not `license-server`: it's about
     subscriptions, seats and roles, not licence keys, and it matches ADR-037's wording.
+  - **Reference:** the eventmodelers platform's own licensing model (a community sample), exported with a review in
+    the project's `reference/REVIEW.md`. We take its ideas, not its shapes. Most useful: the organisation is activated
+    before checkout, so Paddle's `customData` carries its id, and their "claim the payment" chapter isn't needed.
+  - **Chapters:**
+    - [ ] **Organisation:** activation, invitations, roles, members. First storm done 2026-09-30 (7 events).
+    - [ ] **Subscription:** the trial, seats bought, adding and removing, failed renewal and grace, cancelling, with
+      Paddle's lane.
+    - [ ] **Platform Support** (ADR-037, platform admin): our own staff's actions across organisations. After the
+      customer's chapters.
+  - *Setting up the project found a kit bug:* the pre-commit guard blocked every new project's first commit (the
+    scaffold's slice folders made it run checks that compare with `HEAD`, which doesn't exist yet), including manual
+    §4's. The guard now lets a first commit through (`check-commit-scope.cjs`). Proven in `licensing`: the first
+    commit passed, and the kit-drift check shows 0 files differing.
+  - *A project one folder down* (`supply-hub-v1/licensing`) can't reach `../dcb-event-store`, so a link
+    `supply-hub-v1/dcb-event-store → ../dcb-event-store` keeps the scaffold unchanged. Manual §4 says projects sit in
+    `~/Projects`; worth a line there if nesting becomes common.
 - [ ] **16.4 Translation slices in the kit** (the main kit work). Another system's webhook becomes our event: verify
   the signature, ignore a repeat by its key, record our event named for the business. `build-automation` still
   blocks a `synchronous` processor as "not proven": make it proven.

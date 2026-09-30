@@ -81,6 +81,15 @@ function loadChecks() {
 
 function main() {
   const staged = process.argv.includes('--staged');
+
+  // The project's first commit is the scaffold itself (manual §4): nothing to guard, and the checks
+  // compare against HEAD, which doesn't exist yet.
+  try {
+    execSync('git rev-parse --verify --quiet HEAD', { stdio: 'ignore' });
+  } catch {
+    process.exit(0);
+  }
+
   let changes;
   try {
     changes = staged ? stagedChanges() : allChanges();
