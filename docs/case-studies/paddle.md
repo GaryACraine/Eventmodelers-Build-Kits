@@ -189,17 +189,20 @@ and can't do, so the model asks it for the right things.
 
 ## 9. To verify in the sandbox
 
-- [ ] Signup and keys: sandbox API key, client-side token, webhook destination (usage type platform) and secret;
-      the default payment link set.
-- [ ] A per-seat monthly price (quantity maximum raised); checkout, overlay and inline, with the quantity set by our
-      page; `customData` on the resulting subscription.
-- [ ] The webhooks of one purchase, in the order they arrive, with their payloads kept as fixtures.
-- [ ] Preview and update the quantity: both proration modes, and the declined card on an immediate charge.
-- [ ] The customer portal: confirm there's no seat change, and what cancelling from it sends.
-- [ ] Cancel at the period's end, undo it, then cancel immediately.
-- [ ] A declined renewal: what the sandbox can simulate, given Retain is live-only.
-- [ ] Trials: with and without a payment method, and changing the quantity during one.
-- [ ] Out-of-order and repeated delivery (the simulator, or replay).
+Results in §11. What's left is scheduled: the lifecycle in PLAN 16.2b, webhook delivery in PLAN 16.4.
+
+- [x] Signup and keys: sandbox API key, client-side token, the default payment link set (§11, setup lessons).
+      *The webhook destination and its secret: moved to 16.4.*
+- [x] A per-seat monthly price (quantity maximum raised); checkout with the quantity set by our page; `customData`
+      on the resulting subscription (§11). *Overlay only; the inline checkout is 16.5's.*
+- [x] The webhooks of one purchase, in the order they arrive (§11). *Their payloads kept as fixtures: moved to 16.4.*
+- [x] Preview and update the quantity: every proration mode previewed, increase and decrease applied (§11).
+      *The declined card on an immediate charge: moved to 16.2b.*
+- [x] The customer portal: confirmed there's no seat change (§11). *What cancelling from it sends: moved to 16.2b.*
+- [x] Cancel at the period's end, and undo it (§11). *Cancel immediately: moved to 16.2b.*
+- [ ] A declined renewal: what the sandbox can simulate, given Retain is live-only. *16.2b.*
+- [ ] Trials: with and without a payment method, and changing the quantity during one. *16.2b.*
+- [ ] Out-of-order and repeated delivery (the simulator, or replay). *16.4.*
 
 ## 11. Sandbox results (2026-09-29, through the Paddle plugin's sandbox API and a test card)
 
@@ -330,9 +333,10 @@ So:
 **Still to try** (scheduled: the lifecycle checks in PLAN 16.2b, the webhook delivery checks in PLAN 16.4)
 - a declined renewal;
 - trials;
-- an immediate cancel;
+- an immediate cancel, and what cancelling from the portal sends;
 - pause and resume;
-- repeated and out-of-order delivery through a real notification destination.
+- a declined card on an immediate seat-increase charge;
+- the webhook destination, with payloads kept as fixtures, and repeated and out-of-order delivery through a real notification destination.
 
 ## 12. Getting paid
 
