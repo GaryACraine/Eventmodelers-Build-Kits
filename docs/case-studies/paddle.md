@@ -389,9 +389,26 @@ So:
   can't be added or removed** ("You can't add or remove items for a subscription in trial"), and **every item must
   share the same trial period** ("prices that have differing trial period intervals"). So a trial starts with both
   seat types, each price having its own trial version.
-- *Still to watch:* a trial ending. `org-test-5`'s one-day trial ends on **2026-10-01 at 14:51 UTC**, with web
-  changed 1 → 2 during it. If Paddle bills the seats held then, the first charge is **£36** (2 × £10 + 2 × £5 + VAT),
-  not the £24 the checkout showed.
+- **A trial ending** (`org-test-5`, watched 2026-10-01; web changed 1 → 2 during the trial):
+  - **The first bill is for the seats held at the end:** **£36** (£30 + £6 VAT), one transaction with both items (web
+    2 × £10, mobile 2 × £5), not the £24 the checkout showed. It pays for the first month after the trial, in advance
+    (period 2026-10-01 → 2026-11-01).
+  - **It's charged about 46 seconds after the trial ends** (14:51:16 → billed 14:52:02). The status goes `trialing`
+    → `active`.
+  - **The events, in order:**
+    1. `subscription.activated` and `subscription.updated`, at the same `occurred_at`;
+    2. `transaction.created` and `transaction.billed`;
+    3. `transaction.paid`, then `transaction.updated`;
+    4. `transaction.completed`.
+
+    The transaction's origin is `subscription_recurring`, the same as every later renewal.
+  - **For the translations: neither event says "trial converted".**
+    - `subscription.activated` is the same event as a recovery after `past_due`.
+    - `transaction.completed` (`subscription_recurring`) is the same as a renewal.
+
+    So the translation decides from **our own state**: an organisation that's trialing → `trialWasConverted`; one
+    whose renewal payment failed → `renewalPaymentWasRecovered`; otherwise → `subscriptionWasRenewed`. The
+    subscription's previous status isn't in the payload.
 
 **Cancelling**
 - **From the customer portal:** only a confirm dialog, with no reason asked and no offer, because no Cancellation Flow
@@ -417,7 +434,6 @@ So:
 - **`subscriptions.history.list` failed** ("URL called is invalid") through the plugin.
 
 **Still to try**
-- The end of `org-test-5`'s trial (2026-10-01): which seats are billed, and its events.
 - The renewal of `org-test-1` (2026-10-29) after the switch to `tax_mode: external`.
 - The webhook destination, with payloads kept as fixtures, and repeated and out-of-order delivery (PLAN 16.4).
 
