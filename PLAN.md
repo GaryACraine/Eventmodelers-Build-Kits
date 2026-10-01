@@ -157,8 +157,13 @@ model and build only what's ours.
     - Each chapter has its events and decided notes so far.
     - **Next: flesh out each flow** (commands, read models, screens, automations, specifications), from chapter 1.
     - **Flows:**
-      - [ ] 1. Owner starts a trial (sign-up, registered, organisation activated, **the owner role**, Paddle
-        checkout, subscription started, the owner's admin role and web seat);
+      - [ ] 1. Owner starts a trial: **fleshed out 2026-10-01**, with 20 slices, 18 specifications and 0
+        completeness errors. The slices: sign-up (the provider's page) → "Get Started" registers on first visit →
+        "Activate Organisation" → the owner role (automation) → auth sync → "Choose How to Start" → Paddle checkout
+        → the translation → `trialWasStarted` → the owner's admin role and web seat (automations, via
+        `OrganisationOwner`) → auth sync → "Dashboard" (`OrganisationOverview`). Scripts are in `licensing/model/`
+        (`catalogue.sh`, `chapter-1.sh`, `chapter-1-specs.sh`). Screen mockups come next.
+      - [ ] 1b. Owner subscribes without a trial ("Buy now": paid at checkout, `subscriptionWasStarted`);
       - [ ] 2. Admin invites a member (roles and seat types offered; accepting assigns them automatically);
       - [ ] 3. Admin changes a member's roles and seats;
       - [ ] 4. Admin removes a member;
@@ -174,7 +179,10 @@ model and build only what's ours.
       - [ ] 13. A renewal payment fails and recovers;
       - [ ] 14. The grace period runs out;
       - [ ] 15. Owner withdraws a cancellation;
-      - [ ] 16. A seat decrease is withdrawn.
+      - [ ] 16. A seat decrease is withdrawn;
+      - [ ] 17. Owner cancels during the trial (`trialWasCancelled`);
+      - [ ] 18. The first charge fails and recovers (`trialConversionFailed`, then `trialWasConverted`);
+      - [ ] 19. The first charge never recovers.
     - [ ] **Platform Support** (ADR-037, platform admin): after the customer's chapters.
   - **Refinements (Gary, 2026-10-01), in ADR-037:**
     - an **Auth lane** for the auth system's external events (`userSignedUp` with `sub`, the auth role side effects);
@@ -187,6 +195,21 @@ model and build only what's ours.
       standing;
     - invitations carry `roleIds` and `seatTypes`;
     - **removing seats takes effect at the next billing period.**
+  - [ ] **16.3a Chapter 1 end to end** (Gary, 2026-10-01): once chapter 1's slices are built and their tests pass,
+    prove the whole chapter as one journey, through the UI.
+    - **The harness,** `licensing/e2e/`, follows restaurant-orders' pattern:
+      - Playwright;
+      - containers: Postgres, `mock-oauth2-server` (OIDC with JWKS, standing in for Cognito or Supabase Auth), and a
+        Paddle webhook replayer (the saved 16.4 payloads).
+    - **The journey:** sign up on the mock login → "Get Started" → activate the organisation → start the trial →
+      the dashboard shows the trial's end date, the owner role, admin, and a web seat in use.
+    - **Two runs:**
+      - **mock:** deterministic, any time;
+      - **sandbox:** Paddle's real overlay with test card 4242 on localhost, and webhooks through a tunnel.
+    - **Results** go in the harness's cases table. What works becomes kit material (a Playwright template and a
+      manual section).
+    - **Needs, in this order:** the token check and the OIDC mock (when slice "register user" is built); 16.4 and
+      16.5 for `subscription.created`; the auth role sync.
   - **Events are scoped by context:** the same event appears in several chapters. One field catalogue keeps them
     identical (36 event types, 61 placements, 0 different). emcli doesn't check this yet (emcli `ISSUES.md`, with the
     copy drift found earlier).
@@ -3469,6 +3492,9 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-01 | Removing seats takes effect at the next billing period (ADR-037 decision 5, replacing "at once with a credit") | Customers keep what they paid for; Paddle `do_not_bill` now, and the renewal event applies it, so there's no timer |
 | 2026-10-01 | Modelling has two phases: storm freely (one chapter may hold everything), then process modelling splits it into one-flow chapters (ADR-038 clarified) | Storming needs speed and nothing missed; process chapters need one storyline each; the event-model skill teaches both |
 | 2026-10-01 | Owner is a role (`roleId: owner`, no seat), given at activation; a hand-over records the generic role events together (ADR-037, replacing "a mark on one admin") | The owner needs billing access before any seat exists (checkout), and auth can enforce a role but not a flag; one append keeps exactly one owner |
+| 2026-10-01 | Registration on first visit: "Get Started" sends `registerUser` with `sub` and `email` from the JWKS-verified token; no provider sign-up hook; `mock-oauth2-server` stands in until Cognito or Supabase is chosen (ADR-037) | Provider-neutral, one auth-aware check, no lost registrations, and it works with the mock exactly as with a real provider |
+| 2026-10-01 | The trial has its own events (`trialWasStarted`, `trialWasCancelled`, `trialConversionFailed`); "Buy now" without a trial (`subscriptionWasStarted`) (ADR-037) | Paddle's events are ambiguous (activated = conversion or recovery), so our own state gives them context; the trial funnel is readable; customers can pay straight away |
+| 2026-10-01 | Chapter 1 is proven end to end through the UI (Playwright) once its slices are built (16.3a) | A chapter is one flow, so it's one journey; slice tests first, then the journey; mock and sandbox runs |
 | 2026-09-29 | Phase 16's order: Paddle onboarding and a working knowledge of its UI and API first, then research into how other vendors license seats through a merchant of record, then our licensing model; voice modelling deferred until the model is established | Gary: the licensing model is ours, and Paddle is only an automation producing side effects; knowing Paddle's capabilities and the market's patterns first gives a model worth building |
 
 ## Progress

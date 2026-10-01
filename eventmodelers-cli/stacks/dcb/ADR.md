@@ -1744,6 +1744,16 @@ below, with Gary's answers. Accepted decisions feed the model (16.3).
        invitation). Auth's events sit in their own lane as external events, named neutrally until an auth provider
        is chosen, then translated like Paddle's.
      - **The platform admin is auth only:** it uses no seat and belongs to no organisation.
+     - **Registration on first visit, with no provider hook** (Gary, 2026-10-01):
+       1. the person signs up on the provider's own page, then comes back to our app with a token (OIDC with
+          PKCE);
+       2. "Get Started" sends `registerUser`, whose `sub` and `email` come from the token, which our backend's
+          single token check verifies against the provider's JWKS (issuer, audience, expiry, `email_verified`);
+       3. that check is the only auth-aware code, the same for every OIDC provider.
+
+       There's no Cognito Lambda or Supabase hook, and no registration is lost: a failed call is simply sent again,
+       made safe by "one user per `sub`" (`sub` is the command's tag). Until Gary chooses Cognito or Supabase Auth,
+       **`mock-oauth2-server`** (a container, ADR-030) stands in, for building and for the end-to-end journey.
      - **Our own user, linked by `sub`** (Gary, 2026-10-01):
        - auth's sign-up carries `sub` (the auth system's permanent id for the person) and the email;
        - an automation then records our own `userWasRegistered`, with our `userId` and the `sub`;
@@ -1807,6 +1817,19 @@ below, with Gary's answers. Accepted decisions feed the model (16.3).
      the trial ends and pays for the **first period after the trial**, in advance, as every later renewal does.
      **It's for the seats held when the trial ends** (confirmed in the sandbox 2026-10-01: £36 for 2 web + 2 mobile
      after web went 1 → 2 during the trial, not the £24 shown at checkout), and our trial screen says so.
+   - **A trial is offered, not required** (Gary, 2026-10-01): "Choose How to Start" offers a 14-day free trial or
+     **"Buy now"**, which uses the standard prices, is charged at checkout, and makes mobile seats optional. One
+     translation names the start from Paddle's status: `trialing` → `trialWasStarted`, `active` →
+     `subscriptionWasStarted`. "Buy now" also serves an owner subscribing again, with no second trial.
+   - **The trial has events of its own** (Gary, 2026-10-01), so Paddle's ambiguous events have context, and so we
+     know who's trialing and how many convert:
+     - `trialWasStarted`, then `trialWasConverted`;
+     - **or `trialWasCancelled`:** the owner cancels during the trial, access lasts to its end, and nothing is
+       charged;
+     - **or `trialConversionFailed`:** the first charge fails, then the 14-day grace, then converted or ended.
+
+     The numbers (trialing now, converted, cancelled, failed to convert, conversion rate) are a `TrialFunnel` read
+     model for the platform admin, never counts on events.
    - **The conversion has no event of its own:** Paddle sends `subscription.activated` (the same as a recovery)
      and a `subscription_recurring` transaction (the same as a renewal). The translation records
      `trialWasConverted` when our organisation is still trialing.
