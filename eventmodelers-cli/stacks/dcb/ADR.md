@@ -1708,6 +1708,18 @@ below, with Gary's answers. Accepted decisions feed the model (16.3).
      use seats already paid for, so the owner isn't the only way to add an engineer. When the seats run out, the
      offer to add more goes to the owner (decision 4).
    - **Later roles fit the same pattern:** each role gets a seat type, and the seat rules apply unchanged.
+   - **Roles and the auth system** (Gary, 2026-10-01):
+     - **Licensing decides admin and engineer.** Granting one checks for a free seat of its type, so the decision
+       must be ours: if the auth system were the source, a role could be granted with no seat check, and the seat
+       limit and the bill would drift.
+     - **Auth follows.** An automation sets the matching role in the auth system, which only enforces sign-in. Its
+       "role assigned" and "role removed" are side effects, downstream, as with Paddle.
+     - **Signing up is auth's event.** Licensing reacts to it (activating an organisation, accepting an
+       invitation). Auth's events sit in their own lane as external events, named neutrally until an auth provider
+       is chosen, then translated like Paddle's.
+     - **The platform admin is auth only:** it uses no seat and belongs to no organisation.
+     - **The owner is recorded when the organisation is activated** (the signed-up person who activates it), and
+       only a hand-over changes it. There's no separate "owner assigned" event.
    - No billing-only role for now: it's a later addition if a customer asks.
 3. **An invitation holds a seat while it's pending,** as with Polar and GitHub Team.
    - Accepting it gives access. Revoking it, or letting it expire, frees the seat.
