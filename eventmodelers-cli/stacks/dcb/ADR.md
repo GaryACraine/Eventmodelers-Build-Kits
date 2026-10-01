@@ -1718,6 +1718,15 @@ below, with Gary's answers. Accepted decisions feed the model (16.3).
        invitation). Auth's events sit in their own lane as external events, named neutrally until an auth provider
        is chosen, then translated like Paddle's.
      - **The platform admin is auth only:** it uses no seat and belongs to no organisation.
+     - **Our own user, linked by `sub`** (Gary, 2026-10-01):
+       - auth's sign-up carries `sub` (the auth system's permanent id for the person) and the email;
+       - an automation then records our own `userWasRegistered`, with our `userId` and the `sub`;
+       - every licensing event refers to `userId`, never `sub`, so changing auth provider changes only that link,
+         and our own properties (name, phone, …) extend our user;
+       - **one user per `sub`**, so a repeated sign-up notification registers no one twice;
+       - `sub` is unique only within one sign-in provider: if more than one is ever accepted, the link carries the
+         provider too;
+       - platform staff are users as well, in no organisation.
      - **The owner is recorded when the organisation is activated** (the signed-up person who activates it), and
        only a hand-over changes it. There's no separate "owner assigned" event.
    - No billing-only role for now: it's a later addition if a customer asks.
