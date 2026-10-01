@@ -162,7 +162,12 @@ model and build only what's ours.
         "Activate Organisation" → the owner role (automation) → auth sync → "Choose How to Start" → Paddle checkout
         → the translation → `trialWasStarted` → the owner's admin role and web seat (automations, via
         `OrganisationOwner`) → auth sync → "Dashboard" (`OrganisationOverview`). Scripts are in `licensing/model/`
-        (`catalogue.sh`, `chapter-1.sh`, `chapter-1-specs.sh`). Screen mockups come next.
+        (`catalogue.sh`, `chapter-1.sh`, `chapter-1-specs.sh`, `chapter-1-screens.sh`, `screens/`).
+        - **Mockups** are drawn (2026-10-01) for Sign Up (the provider's page, never planned), Get Started,
+          Activate Organisation, Choose How to Start and Dashboard.
+        - **Automations link their triggers** (no trigger copies). emcli now exports an automation slice's trigger
+          from its `reacts-to` link, fields and all, as it does a read slice's events. Proven on chapter 1's six
+          automation slices.
       - [ ] 1b. Owner subscribes without a trial ("Buy now": paid at checkout, `subscriptionWasStarted`);
       - [ ] 2. Admin invites a member (roles and seat types offered; accepting assigns them automatically);
       - [ ] 3. Admin changes a member's roles and seats;
@@ -3495,6 +3500,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-01 | Registration on first visit: "Get Started" sends `registerUser` with `sub` and `email` from the JWKS-verified token; no provider sign-up hook; `mock-oauth2-server` stands in until Cognito or Supabase is chosen (ADR-037) | Provider-neutral, one auth-aware check, no lost registrations, and it works with the mock exactly as with a real provider |
 | 2026-10-01 | The trial has its own events (`trialWasStarted`, `trialWasCancelled`, `trialConversionFailed`); "Buy now" without a trial (`subscriptionWasStarted`) (ADR-037) | Paddle's events are ambiguous (activated = conversion or recovery), so our own state gives them context; the trial funnel is readable; customers can pay straight away |
 | 2026-10-01 | Chapter 1 is proven end to end through the UI (Playwright) once its slices are built (16.3a) | A chapter is one flow, so it's one journey; slice tests first, then the journey; mock and sandbox runs |
+| 2026-10-01 | An automation's trigger is a `reacts-to` link, not a copy in its slice; emcli's export fills the automation slice's `events[]` from the link | The copy was a tooling requirement, not a modelling one: `build-automation` needs the trigger's fields in `events[]`, which the export only took from elements in the slice. Read slices already had this fallback. Copies looked like duplicate events on the board |
 | 2026-09-29 | Phase 16's order: Paddle onboarding and a working knowledge of its UI and API first, then research into how other vendors license seats through a merchant of record, then our licensing model; voice modelling deferred until the model is established | Gary: the licensing model is ours, and Paddle is only an automation producing side effects; knowing Paddle's capabilities and the market's patterns first gives a model worth building |
 
 ## Progress
