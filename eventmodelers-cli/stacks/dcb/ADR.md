@@ -1707,9 +1707,19 @@ below, with Gary's answers. Accepted decisions feed the model (16.3).
    - **Seat events:**
      - `seatWasAssigned`: `organisationId` (id), `userId`, `seatType`, `assignedAt`, `assignedBy`, `actedAs`;
      - `seatWasReleased`: `organisationId` (id), `userId`, `seatType`, `releasedAt`, `releasedBy`, `actedAs`.
-   - **Owner is a mark on one admin, not a third role.** In the app, the owner can do what any admin can. What's
-     different is the account: the owner is the person Paddle bills, can't be removed, and must hand over to
-     another admin before leaving. The first person to sign up becomes an admin marked as owner.
+   - **Owner is a role** (Gary, 2026-10-01; replaces "a mark on one admin"): `roleId: owner`, recorded with the
+     generic role events below.
+     - **It grants billing and uses no seat:** checkout, buying and removing seats, the payment method, cancelling.
+       Billing isn't the licensed product, and the owner needs it **before any seat exists** (Paddle's checkout comes
+       before the subscription).
+     - **It's assigned when the organisation is activated,** by the system, to the person who activates it
+       (`organisationWasActivated.activatedBy`). To use the web portal, the owner is also an admin with a web seat,
+       assigned when the subscription starts.
+     - **Exactly one owner per organisation.** The owner role can't be removed except by handing it over, and the
+       new owner must already be an admin.
+     - **A hand-over uses the generic role events** (Gary): one command records `userWasRemovedFromRole` (owner, the
+       old owner) and `userWasAssignedToRole` (owner, the new owner) **together, in one append**, so there are never
+       zero or two owners. There's no separate hand-over event. The old owner keeps their other roles and seats.
    - **Only the owner controls billing** (Gary, 2026-09-30): buying and removing seats, the payment method, and
      cancelling. So no one else can run up the bill.
    - **Admins invite people and assign bought seats** (Gary, 2026-09-30). Invitations spend nothing, because they
@@ -1743,8 +1753,8 @@ below, with Gary's answers. Accepted decisions feed the model (16.3).
        - `sub` is unique only within one sign-in provider: if more than one is ever accepted, the link carries the
          provider too;
        - platform staff are users as well, in no organisation.
-     - **The owner is recorded when the organisation is activated** (the signed-up person who activates it), and
-       only a hand-over changes it. There's no separate "owner assigned" event.
+     - **The owner is whoever holds the owner role:** given at activation, and moved only by a hand-over (above).
+       There's no `ownerId` on the organisation.
    - No billing-only role for now: it's a later addition if a customer asks.
 3. **An invitation holds its seats while it's pending,** as with Polar and GitHub Team.
    - **It names what it offers** (Gary, 2026-10-01): `memberWasInvited` carries `roleIds` and `seatTypes` (lists),
@@ -1880,6 +1890,10 @@ below, with Gary's answers. Accepted decisions feed the model (16.3).
   - But a customer loses seats they've paid for until the renewal, in exchange for a small credit that Paddle's
     portal labels confusingly ("Renewal").
   - Removing at the next period needs no timer either, because the renewal event applies it (decision 5).
+- **Owner as a mark on one admin** (the first choice, replaced 2026-10-01): the owner then had no access of their own
+  before the subscription started, and billing permissions hung on a flag rather than a role that auth can enforce.
+- **A dedicated `ownershipWasHandedOver` event:** clearer to read in the history, but Gary preferred the generic role
+  events, recorded together in one append.
 - **Recording the seat type on the role event:** briefly chosen, then replaced by separate seat events, because a
   role and a seat are different concepts with different timelines (decision 2).
 - **Keeping a branch's alternative outcomes in the same chapter:** replaced by one flow per chapter (ADR-038).
@@ -1899,24 +1913,27 @@ below, with Gary's answers. Accepted decisions feed the model (16.3).
   - access checks the subscription's state.
 - **The invitation's expiry** is a time-based automation, the kit's first.
 
-### ADR-038: A chapter is one flow, with no branching
+### ADR-038: In process modelling, a chapter is one flow, with no branching
 
-**Status:** **Accepted, 2026-10-01 (Gary).**
+**Status:** **Accepted, 2026-10-01 (Gary).** Clarified the same day: the rule belongs to the second phase (process
+modelling), not to storming.
 **Date:** 2026-10-01
 
 **Context:**
-- **The first licensing storm** (16.3) put several outcomes in one chapter:
-  - a seat change that's either confirmed or declined;
-  - a renewal that fails, then recovers or ends;
-  - a cancellation that's scheduled, then withdrawn or completed.
-
-  Read left to right, such a chapter mixes several stories, and the alternatives are easy to miss.
-- **The event model skill said the opposite** (emcli `storming.md`): "a branch that decides how this story ends
-  stays in the chapter", and an alternative outcome goes in "its own slice right after the decision".
-- **The event modelling standard** is one timeline per workflow: each flow is told on its own.
+- **Event modelling has two phases, and both have their place** (Gary):
+  1. **Storming:** a fast, collaborative brain dump. One chapter (or a few, by area) holds every event in the
+     system, alternatives and failures included, so that nothing is missed. Speed over structure.
+  2. **Process modelling:** the storm's events are split into individual process flows, one chapter each. Each flow
+     is then fleshed out with commands, read models, screens and automations (slice mode).
+- **The licensing model** (16.3) stormed into two chapters (Organisation, Subscription), each holding several
+  outcomes: a seat change confirmed or declined; a renewal that fails, then recovers or ends; a cancellation that's
+  scheduled, then withdrawn or completed. That's right for a storm. It moved into process modelling on 2026-10-01.
+- **The event modelling standard** for process flows is one timeline per workflow, each flow told on its own.
 
 **Decision:**
-1. **A chapter tells one flow,** read left to right, with no branches. It's named for that flow ("Owner starts a
+0. **Storm first, then split.** Storming may put every event in one chapter. Process modelling begins by splitting
+   the storm into the chapters below, and slice mode works on those.
+1. **In process modelling, a chapter tells one flow,** read left to right, with no branches. It's named for that flow ("Owner starts a
    trial", "A seat increase is declined").
 2. **An alternative or failure outcome is a chapter of its own** (declined, expired, withdrawn, failed, ran out). It
    starts from the step the outcomes share, which reappears at its start.
@@ -1930,14 +1947,19 @@ below, with Gary's answers. Accepted decisions feed the model (16.3).
    same fields. (In 16.3 one field catalogue was used for every chapter. emcli doesn't check this yet: `ISSUES.md`.)
 
 **Alternatives considered:**
-- **Alternative outcomes beside the decision, in one chapter** (the skill's previous guidance): fewer chapters, but
-  each one mixes stories, and failure paths get less attention than the happy path.
+- **Alternative outcomes beside the decision, in one chapter,** kept into process modelling: fewer chapters, but
+  each one mixes stories, and failure paths get less attention than the happy path. (In a storm it's the right
+  thing to do, so the skill keeps it there.)
+- **One flow per chapter from the start, even while storming** (briefly in the skill, 2026-10-01): it slows the
+  collaborative brain dump, which needs speed more than structure.
 - **Separate contexts per flow:** wrong, because the flows share one consistency boundary (the seat count, the
   membership), which DCB keeps by context.
 
 **Consequences:**
 - **More, shorter chapters:** the licensing model went from 2 chapters to 16 (9 flows and 7 alternatives).
-- **The event-model skill** (`storming.md`, `method.md`, `review.md`) teaches this, so every new model follows it,
-  and a review flags a chapter with two outcomes of one step.
+- **The event-model skill** teaches both phases:
+  - `storming.md` storms freely, and its wrap-up leads into process modelling;
+  - `method.md` "Chapters" gives the rule for process chapters;
+  - `review.md` flags a process chapter with two outcomes of one step, but never a storm chapter.
 - **Same-named events across chapters must stay identical.** Until emcli warns about drift, keep one field catalogue
   per context.

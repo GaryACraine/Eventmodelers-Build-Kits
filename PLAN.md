@@ -144,12 +144,15 @@ model and build only what's ours.
   - **Reference:** the eventmodelers platform's own licensing model (a community sample), exported with a review in
     the project's `reference/REVIEW.md`. We take its ideas, not its shapes. Most useful: the organisation is activated
     before checkout, so Paddle's `customData` carries its id, and their "claim the payment" chapter isn't needed.
-  - **Chapters** (reorganised 2026-10-01: **one flow per chapter, with no branching**, ADR-038). The first storm's
-    two chapters (Organisation, Subscription) were replaced, all in context `licensing`, and pushed to the board.
-    Each chapter is storm level so far (events, decided notes). **Next: slice mode, from chapter 1.**
+  - **Chapters.** Storming (phase 1) is done, and the model moved into **process modelling** (phase 2) on
+    2026-10-01 (ADR-038).
+    - The storm's two chapters (Organisation, Subscription) were split into one-flow chapters, all in context
+      `licensing`, and pushed to the board.
+    - Each chapter has its events and decided notes so far.
+    - **Next: flesh out each flow** (commands, read models, screens, automations, specifications), from chapter 1.
     - **Flows:**
-      - [ ] 1. Owner starts a trial (sign-up, registered, organisation activated, **Paddle checkout**, subscription
-        started, the owner's admin role and web seat);
+      - [ ] 1. Owner starts a trial (sign-up, registered, organisation activated, **the owner role**, Paddle
+        checkout, subscription started, the owner's admin role and web seat);
       - [ ] 2. Admin invites a member (roles and seat types offered; accepting assigns them automatically);
       - [ ] 3. Admin changes a member's roles and seats;
       - [ ] 4. Admin removes a member;
@@ -171,7 +174,8 @@ model and build only what's ours.
     - an **Auth lane** for the auth system's external events (`userSignedUp` with `sub`, the auth role side effects);
     - our own `userWasRegistered` (`userId` + `sub`);
     - licensing decides roles and seats, and auth follows;
-    - the owner is recorded at activation;
+    - **owner is a role** (no seat, billing access), given at activation before checkout; a hand-over moves it with
+      the generic role events in one append;
     - **roles and seats are separate:** `userWasAssignedToRole` / `userWasRemovedFromRole` (no `seatType`) and
       `seatWasAssigned` / `seatWasReleased`, with access = a role + a matching seat + a subscription in good
       standing;
@@ -3457,6 +3461,8 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-01 | A chapter is one flow with no branching; alternatives are chapters of their own (ADR-038) | The event modelling standard; each flow can be read, reviewed and built on its own, and failure paths get the same attention; the licensing model became 16 chapters, and the event-model skill teaches it |
 | 2026-10-01 | Roles and seats are separate (`seatWasAssigned` / `seatWasReleased`); no `seatType` on role events; invitations carry roles and seat types, assigned automatically on acceptance (ADR-037) | A role is what someone may do, and a seat whether they may use the web portal or the mobile app; they change at different times |
 | 2026-10-01 | Removing seats takes effect at the next billing period (ADR-037 decision 5, replacing "at once with a credit") | Customers keep what they paid for; Paddle `do_not_bill` now, and the renewal event applies it, so there's no timer |
+| 2026-10-01 | Modelling has two phases: storm freely (one chapter may hold everything), then process modelling splits it into one-flow chapters (ADR-038 clarified) | Storming needs speed and nothing missed; process chapters need one storyline each; the event-model skill teaches both |
+| 2026-10-01 | Owner is a role (`roleId: owner`, no seat), given at activation; a hand-over records the generic role events together (ADR-037, replacing "a mark on one admin") | The owner needs billing access before any seat exists (checkout), and auth can enforce a role but not a flag; one append keeps exactly one owner |
 | 2026-09-29 | Phase 16's order: Paddle onboarding and a working knowledge of its UI and API first, then research into how other vendors license seats through a merchant of record, then our licensing model; voice modelling deferred until the model is established | Gary: the licensing model is ours, and Paddle is only an automation producing side effects; knowing Paddle's capabilities and the market's patterns first gives a model worth building |
 
 ## Progress
