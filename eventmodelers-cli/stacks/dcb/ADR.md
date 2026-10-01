@@ -1668,7 +1668,7 @@ number of seats for its employees, alongside one-off purchases):**
 
 
 
-### ADR-037: The licensing model: seats bought by an organisation, given to people through roles
+### ADR-037: The licensing model: seats bought by an organisation and assigned to people, with roles alongside
 
 **Status:** **Accepted, 2026-09-30 (Gary).** Decisions 1–5 and 8 as written, with decision 2 revised for roles (admin
 and engineer; the owner controls billing; admins invite); decision 6 (trials) after the sandbox tests in 16.2b;
@@ -1689,16 +1689,24 @@ below, with Gary's answers. Accepted decisions feed the model (16.3).
 
 **Decision:**
 
-1. **Family B: an organisation buys seats, and they're given to people through roles.**
+1. **Family B: an organisation buys seats, and its admins assign them to people** (roles are separate, decision 2).
    - The seat count is Paddle's subscription quantity. Assigning a seat is ours alone and never calls Paddle.
    - **The seat count we enforce is the one Paddle confirms** (`paddle.md` §8), so a failed charge never gives
      seats away.
-2. **Roles: admin and engineer, and the role decides the seat type** (Gary, 2026-09-30). The roles become the
-   sign-in roles when authentication is built.
-   - **An admin works in the web portal and holds a web seat. An engineer works in the mobile app and holds a
-     mobile seat.** Giving someone a role gives them a seat of its type, and needs a free one. Changing a role moves
-     the person from one seat type to the other.
-   - **A person can have both roles,** holding a web seat and a mobile seat, both paid for.
+2. **Roles: admin and engineer; seats: web and mobile. Roles and seats are separate** (Gary, 2026-09-30; separated
+   2026-10-01). The roles become the sign-in roles when authentication is built.
+   - **A role says what someone may do; a seat (licence) says whether they may use the web portal or the mobile
+     app at all.** They're assigned and released separately, and can change at different times.
+     - An admin works in the web portal, so normally needs a web seat.
+     - An engineer works in the mobile app, so normally needs a mobile seat.
+   - **Access** = a role, **and** a seat of the matching type, **and** a subscription in good standing. A read model
+     works this out; no event records it.
+   - **Only assigning a seat needs a free one** (of its type). Assigning a role uses no seat.
+   - **A person can hold several roles and both seat types** (admin and engineer, web and mobile), each seat paid
+     for. Each role and each seat is its own assignment.
+   - **Seat events:**
+     - `seatWasAssigned`: `organisationId` (id), `userId`, `seatType`, `assignedAt`, `assignedBy`, `actedAs`;
+     - `seatWasReleased`: `organisationId` (id), `userId`, `seatType`, `releasedAt`, `releasedBy`, `actedAs`.
    - **Owner is a mark on one admin, not a third role.** In the app, the owner can do what any admin can. What's
      different is the account: the owner is the person Paddle bills, can't be removed, and must hand over to
      another admin before leaving. The first person to sign up becomes an admin marked as owner.
@@ -1707,19 +1715,19 @@ below, with Gary's answers. Accepted decisions feed the model (16.3).
    - **Admins invite people and assign bought seats** (Gary, 2026-09-30). Invitations spend nothing, because they
      use seats already paid for, so the owner isn't the only way to add an engineer. When the seats run out, the
      offer to add more goes to the owner (decision 4).
-   - **Later roles fit the same pattern:** each role gets a seat type, and the seat rules apply unchanged.
+   - **Later roles and seat types fit the same pattern:** they're values in the same events, not new events.
    - **Two generic events for every role** (Gary, 2026-10-01): `userWasAssignedToRole` and `userWasRemovedFromRole`,
      never one event per role.
-     - They carry `organisationId` (their id), `userId`, `roleId` and `seatType`, then `assignedAt` / `removedAt`,
-       `assignedBy` / `removedBy`, and `actedAs` (customer, platform or system).
-     - `seatType` records which seat was taken at the time, so the history doesn't depend on today's role → seat
-       mapping.
-     - An automation's own actions (the owner's admin role when the subscription starts, an accepted invitation) are
-       `actedAs: system`.
+     - They carry `organisationId` (their id), `userId`, `roleId`, then `assignedAt` / `removedAt`, `assignedBy` /
+       `removedBy`, and `actedAs` (customer, platform or system).
+     - **No `seatType`** (Gary, 2026-10-01): a seat is a separate concept with its own events (above). This replaces
+       the earlier choice to record the seat on the role event.
+     - An automation's own actions (the owner's admin role and web seat when the subscription starts; an accepted
+       invitation's roles and seats) are `actedAs: system`.
    - **Roles and the auth system** (Gary, 2026-10-01):
-     - **Licensing decides admin and engineer.** Granting one checks for a free seat of its type, so the decision
-       must be ours: if the auth system were the source, a role could be granted with no seat check, and the seat
-       limit and the bill would drift.
+     - **Licensing decides admin and engineer,** and the seats. Seats are checked against what's been bought, and
+       roles are part of the same membership story. If the auth system were the source, roles and seats could drift
+       from what licensing allows and bills.
      - **Auth follows.** An automation sets the matching role in the auth system, which only enforces sign-in. Its
        "role assigned" and "role removed" are side effects, downstream, as with Paddle.
      - **Signing up is auth's event.** Licensing reacts to it (activating an organisation, accepting an
@@ -1738,8 +1746,13 @@ below, with Gary's answers. Accepted decisions feed the model (16.3).
      - **The owner is recorded when the organisation is activated** (the signed-up person who activates it), and
        only a hand-over changes it. There's no separate "owner assigned" event.
    - No billing-only role for now: it's a later addition if a customer asks.
-3. **An invitation holds a seat while it's pending,** as with Polar and GitHub Team.
-   - Accepting it gives access. Revoking it, or letting it expire, frees the seat.
+3. **An invitation holds its seats while it's pending,** as with Polar and GitHub Team.
+   - **It names what it offers** (Gary, 2026-10-01): `memberWasInvited` carries `roleIds` and `seatTypes` (lists),
+     with `email`, `invitedBy`, `invitedAt`, `expiresAt` and `actedAs`. It needs a free seat of each type offered.
+   - **Accepting it** (`invitationWasAccepted`) **assigns what it offered automatically:** an automation records one
+     `userWasAssignedToRole` per role and one `seatWasAssigned` per seat type (`actedAs: system`).
+   - Withdrawing it, or letting it expire, frees its seats. `invitationHasExpired` repeats the `roleIds` and
+     `seatTypes`, so the history shows what was freed.
    - It lasts **7 days** and can be sent again.
    - **Expiry is a recorded event** (Gary, 2026-10-01): an unanswered invitation is recorded as having expired after
      7 days, rather than being worked out from its date each time. That frees its seat, shows in the organisation's
@@ -1757,12 +1770,21 @@ below, with Gary's answers. Accepted decisions feed the model (16.3).
        Paddle bills.
      - The webhook for our own change then matches the count already recorded, so it records nothing new.
    - Figma-style requests and automatic purchase are left for later.
-5. **Removing seats takes effect at once, with Paddle's prorated credit.**
-   - It's Paddle's default. The sandbox showed the credit going on the customer's balance, not back to the card
-     (`paddle.md` §11). There's nothing for us to schedule.
-   - **The count can't go below the seats in use** (assigned or invited): people are revoked first.
-   - Our screen says plainly that the credit goes toward the next renewal, because Paddle's portal calls it
-     "Renewal".
+5. **Removing seats takes effect at the next billing period** (Gary, 2026-10-01; replaces "at once, with Paddle's
+   credit"):
+   - **No credit:** the customer keeps the seats they've paid for until the renewal.
+   - **Paddle is updated at once with `do_not_bill`,** so its quantity drops with no credit or charge, and the next
+     renewal bills the lower number. Nothing has to be timed to land before the renewal. *(To confirm in the
+     sandbox, PLAN 16.4: `do_not_bill` on a decrease outside a trial.)*
+   - **We record `seatDecreaseWasScheduled`** (per seat type, the new count, effective at the renewal). Our
+     enforced count keeps the paid-for number until then.
+   - **The renewal applies it, with no timer:** `subscriptionWasRenewed` (from Paddle's completed renewal) is the
+     trigger, and `seatsWereRemoved` records the lower count.
+   - **While it's pending:** the decrease can't be scheduled below the seats in use (assigned or held by
+     invitations), and no seat can be assigned beyond the new count. People are released first, by an admin; a seat
+     change never changes anyone's roles or seats.
+   - **The owner can withdraw it before the renewal:** the quantity is put back in Paddle (`do_not_bill`), and
+     `seatDecreaseWasWithdrawn` records it.
 6. **Trials: a free trial with a card, 14 days** (Gary, 2026-09-30, after the sandbox tests in 16.2b):
    - **Through Paddle's checkout at £0, with the card saved.** At the end Paddle charges automatically and the
      subscription becomes active. A trial is treated as active, with a banner showing its end date.
@@ -1853,21 +1875,21 @@ below, with Gary's answers. Accepted decisions feed the model (16.3).
   - But every join and leave becomes a Paddle update, and an increase charges the card at once, so a declined card
     would block a person joining.
   - Laravel Spark does it on Paddle. It stays possible later as automatic purchase (decision 4).
-- **Removing seats at renewal** (Notion, Figma):
-  - It avoids small credits.
-  - But Paddle's `scheduled_change` can't express it, so we'd have to remember the change and make it at renewal: a
-    to-do list item with its own failure handling (ADR-031, ADR-032).
+- **Removing seats at once, with Paddle's prorated credit** (the first choice, replaced 2026-10-01):
+  - It's the simplest, with nothing pending.
+  - But a customer loses seats they've paid for until the renewal, in exchange for a small credit that Paddle's
+    portal labels confusingly ("Renewal").
+  - Removing at the next period needs no timer either, because the renewal event applies it (decision 5).
+- **Recording the seat type on the role event:** briefly chosen, then replaced by separate seat events, because a
+  role and a seat are different concepts with different timelines (decision 2).
+- **Keeping a branch's alternative outcomes in the same chapter:** replaced by one flow per chapter (ADR-038).
 - **Locking at once on a failed payment** (GitHub): a card expiring would lock out a whole team, when Paddle
   recovers most failed renewals in the first days.
 
 **Consequences:**
-- **Our events** (16.3 names them):
-  - the organisation is created, and its owner is set;
-  - seats are bought, and the seat count changes (both confirmed by Paddle);
-  - a member is invited, accepts, or the invitation is revoked or expires;
-  - a seat is assigned or revoked;
-  - a role changes;
-  - the subscription runs into payment trouble, recovers, or ends.
+- **Our events** are named in the model (`supply-hub-v1/licensing`, 16 one-flow chapters, ADR-038). Paddle is in
+  the owner's very first flow, because the trial starts at Paddle's checkout with a card. Assigning roles and seats
+  to people never calls Paddle; only buying or removing seats does.
 - **The automations** call Paddle to change the seat count. **The translations** turn Paddle's webhooks into the
   confirmations (16.4).
 - **Each rule becomes a spec in the model:**
@@ -1876,3 +1898,46 @@ below, with Gary's answers. Accepted decisions feed the model (16.3).
   - the last owner can't leave;
   - access checks the subscription's state.
 - **The invitation's expiry** is a time-based automation, the kit's first.
+
+### ADR-038: A chapter is one flow, with no branching
+
+**Status:** **Accepted, 2026-10-01 (Gary).**
+**Date:** 2026-10-01
+
+**Context:**
+- **The first licensing storm** (16.3) put several outcomes in one chapter:
+  - a seat change that's either confirmed or declined;
+  - a renewal that fails, then recovers or ends;
+  - a cancellation that's scheduled, then withdrawn or completed.
+
+  Read left to right, such a chapter mixes several stories, and the alternatives are easy to miss.
+- **The event model skill said the opposite** (emcli `storming.md`): "a branch that decides how this story ends
+  stays in the chapter", and an alternative outcome goes in "its own slice right after the decision".
+- **The event modelling standard** is one timeline per workflow: each flow is told on its own.
+
+**Decision:**
+1. **A chapter tells one flow,** read left to right, with no branches. It's named for that flow ("Owner starts a
+   trial", "A seat increase is declined").
+2. **An alternative or failure outcome is a chapter of its own** (declined, expired, withdrawn, failed, ran out). It
+   starts from the step the outcomes share, which reappears at its start.
+3. **A rule that refuses a command is a specification on its slice** (Given/When/Then with `then error`), never a
+   branch on the timeline.
+4. **The happy paths come first,** then the alternative chapters, numbered in that order.
+5. **Events are scoped by context, not by chapter.** The same event can appear in several chapters of one context
+   (`userWasAssignedToRole` in "Owner starts a trial", "Admin invites a member" and "Admin changes a member's roles
+   and seats"). The kit builds it once, in `src/contexts/<context>/Events.ts`. Within one chapter a repeat is an
+   `element copy`. Across chapters it's a separately added element with the same name, and it must keep exactly the
+   same fields. (In 16.3 one field catalogue was used for every chapter. emcli doesn't check this yet: `ISSUES.md`.)
+
+**Alternatives considered:**
+- **Alternative outcomes beside the decision, in one chapter** (the skill's previous guidance): fewer chapters, but
+  each one mixes stories, and failure paths get less attention than the happy path.
+- **Separate contexts per flow:** wrong, because the flows share one consistency boundary (the seat count, the
+  membership), which DCB keeps by context.
+
+**Consequences:**
+- **More, shorter chapters:** the licensing model went from 2 chapters to 16 (9 flows and 7 alternatives).
+- **The event-model skill** (`storming.md`, `method.md`, `review.md`) teaches this, so every new model follows it,
+  and a review flags a chapter with two outcomes of one step.
+- **Same-named events across chapters must stay identical.** Until emcli warns about drift, keep one field catalogue
+  per context.
