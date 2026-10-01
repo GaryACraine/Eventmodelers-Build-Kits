@@ -1969,7 +1969,8 @@ modelling), not to storming.
 5. **Events are scoped by context, not by chapter.** The same event can appear in several chapters of one context
    (`userWasAssignedToRole` in "Owner starts a trial", "Admin invites a member" and "Admin changes a member's roles
    and seats"). The kit builds it once, in `src/contexts/<context>/Events.ts`. Within one chapter a repeat is an
-   `element copy`. Across chapters it's a separately added element with the same name, and it must keep exactly the
+   `element copy`, but only when the fact happens again (a second assignment). An automation's trigger is a
+   `reacts-to` link to the original, not a copy (emcli exports the trigger from the link). Across chapters it's a separately added element with the same name, and it must keep exactly the
    same fields. (In 16.3 one field catalogue was used for every chapter. emcli doesn't check this yet: `ISSUES.md`.)
 
 **Alternatives considered:**
