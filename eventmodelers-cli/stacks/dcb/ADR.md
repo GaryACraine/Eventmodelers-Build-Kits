@@ -1708,6 +1708,14 @@ below, with Gary's answers. Accepted decisions feed the model (16.3).
      use seats already paid for, so the owner isn't the only way to add an engineer. When the seats run out, the
      offer to add more goes to the owner (decision 4).
    - **Later roles fit the same pattern:** each role gets a seat type, and the seat rules apply unchanged.
+   - **Two generic events for every role** (Gary, 2026-10-01): `userWasAssignedToRole` and `userWasRemovedFromRole`,
+     never one event per role.
+     - They carry `organisationId` (their id), `userId`, `roleId` and `seatType`, then `assignedAt` / `removedAt`,
+       `assignedBy` / `removedBy`, and `actedAs` (customer, platform or system).
+     - `seatType` records which seat was taken at the time, so the history doesn't depend on today's role → seat
+       mapping.
+     - An automation's own actions (the owner's admin role when the subscription starts, an accepted invitation) are
+       `actedAs: system`.
    - **Roles and the auth system** (Gary, 2026-10-01):
      - **Licensing decides admin and engineer.** Granting one checks for a free seat of its type, so the decision
        must be ours: if the auth system were the source, a role could be granted with no seat check, and the seat
