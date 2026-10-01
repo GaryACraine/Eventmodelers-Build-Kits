@@ -150,6 +150,15 @@ model and build only what's ours.
       Paddle's lane.
     - [ ] **Platform Support** (ADR-037, platform admin): our own staff's actions across organisations. After the
       customer's chapters.
+  - **Answers recorded in ADR-037 (Gary, 2026-10-01):**
+    - **Seat changes are confirmed** by Paddle's reply to our own update, and by its `subscription.updated` webhook
+      for changes made in Paddle's dashboard.
+    - **An unanswered invitation's expiry is a recorded event** (`invitationHasExpired`), recorded by a scheduled
+      (polling) automation.
+    - **The trial is free:** the first bill, taken when the trial ends, pays for the first period after it.
+  - [ ] **Later: a scheduled (polling) automation in the kit,** to find invitations past their 7 days and record their
+    expiry. The kit's automations so far react to events (ADR-031). It isn't needed until the invitation slices are
+    built.
   - *Setting up the project found a kit bug:* the pre-commit guard blocked every new project's first commit (the
     scaffold's slice folders made it run checks that compare with `HEAD`, which doesn't exist yet), including manual
     §4's. The guard now lets a first commit through (`check-commit-scope.cjs`). Proven in `licensing`: the first
@@ -3407,6 +3416,8 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-29 | The real product is a web app sold with seats, through Paddle, a merchant of record (ADR-036 Accepted); Phase 16 | Paddle serves the Isle of Man, handles checkout, declines and VAT, and bills seats as a quantity; seat assignment stays our domain logic |
 | 2026-09-29 | The web app stays a client-side React SPA on S3/CloudFront; Paddle.js runs in it, and Paddle's Next.js starter is a reference only | SSR would need a running server; a logged-in app gains little from it; Paddle's server side maps onto our backend's slices |
 | 2026-09-30 | The licensing model: an organisation buys seats and its admins assign them (ADR-037 Accepted) | Paddle bills a quantity we set, so assigning seats never calls Paddle and a declined card never blocks a person joining; roles admin (web seat) and engineer (mobile seat); a 14-day grace period on a failed renewal, timed by Paddle; a 14-day free trial with a card, starting with both seat types, trial seats capped (values later) |
+| 2026-09-30 | A platform admin role for our own staff (ADR-037) | Gary's team helps customers with setup inside their organisation and with licensing; it belongs to no organisation, holds no seat and isn't billed, so every event records who acted (customer or platform staff) |
+| 2026-10-01 | Seat changes confirmed by Paddle's reply to our update, plus its webhook for dashboard changes; invitation expiry recorded as an event by a scheduled automation; the trial is free and the first bill pays for the first period after it (ADR-037) | The count we enforce always matches what Paddle bills, including changes made outside our app; an expiry in the history frees the seat and can tell the admin; the trial screen must not suggest the trial is charged |
 | 2026-09-29 | Phase 16's order: Paddle onboarding and a working knowledge of its UI and API first, then research into how other vendors license seats through a merchant of record, then our licensing model; voice modelling deferred until the model is established | Gary: the licensing model is ours, and Paddle is only an automation producing side effects; knowing Paddle's capabilities and the market's patterns first gives a model worth building |
 
 ## Progress
