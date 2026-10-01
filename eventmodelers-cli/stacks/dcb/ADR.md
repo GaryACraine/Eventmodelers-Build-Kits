@@ -1712,8 +1712,21 @@ below, with Gary's answers. Accepted decisions feed the model (16.3).
 3. **An invitation holds a seat while it's pending,** as with Polar and GitHub Team.
    - Accepting it gives access. Revoking it, or letting it expire, frees the seat.
    - It lasts **7 days** and can be sent again.
+   - **Expiry is a recorded event** (Gary, 2026-10-01): an unanswered invitation is recorded as having expired after
+     7 days, rather than being worked out from its date each time. That frees its seat, shows in the organisation's
+     history, and lets the admin who sent it be told. **A scheduled (polling) automation records it:** it finds
+     invitations past their 7 days and records each one's expiry. Building that kind of automation is later work
+     (the kit's automations so far react to events, ADR-031). Until then, the model has the event and the automation,
+     unbuilt.
 4. **At the limit, assigning a seat is blocked,** with an offer to add seats, made to the owner.
    - Adding seats is our screen: Paddle's preview first, then the update with `prorated_immediately`.
+   - **Which Paddle answer confirms a seat change** (Gary, 2026-10-01):
+     - **Our own changes:** Paddle's reply to our update. The update only returns once the charge succeeds, so the
+       automation that made it records the new seat count straight away.
+     - **Changes made outside our app** (in Paddle's dashboard, for example by our team): Paddle's
+       `subscription.updated` webhook, translated into the same event, so the count we enforce never drifts from what
+       Paddle bills.
+     - The webhook for our own change then matches the count already recorded, so it records nothing new.
    - Figma-style requests and automatic purchase are left for later.
 5. **Removing seats takes effect at once, with Paddle's prorated credit.**
    - It's Paddle's default. The sandbox showed the credit going on the customer's balance, not back to the card
@@ -1729,7 +1742,10 @@ below, with Gary's answers. Accepted decisions feed the model (16.3).
      price's minimum is 1 seat (a minimum of 0 is refused). So every seat price has a 14-day trial version, and the
      mobile seats can be removed after the trial if the customer wants none.
    - **Seat numbers can change during the trial at no charge** (`do_not_bill`, the only mode Paddle allows then).
-     The first bill is for the seats held when the trial ends, and our screen says so.
+   - **The trial is free** (Gary, 2026-10-01). Nothing is charged for the trial period. The first bill is taken when
+     the trial ends and pays for the **first period after the trial**, in advance, as every later renewal does.
+     Which seat count that bill uses (the seats held at the trial's end, or those chosen at checkout) is confirmed by
+     the one-day trial check in 16.2b, and our trial screen says so.
    - **Trial seats are capped** (our rule; Paddle has none), so a trial can't grow to hundreds of seats and then be
      billed for them. **The cap values are configuration, to be set later.**
    - **Not chosen:** a cardless trial (easier to start, but fewer convert, we'd have to chase a card before day 14,
