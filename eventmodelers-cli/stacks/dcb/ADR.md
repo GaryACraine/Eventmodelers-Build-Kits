@@ -1805,8 +1805,11 @@ below, with Gary's answers. Accepted decisions feed the model (16.3).
    - **Seat numbers can change during the trial at no charge** (`do_not_bill`, the only mode Paddle allows then).
    - **The trial is free** (Gary, 2026-10-01). Nothing is charged for the trial period. The first bill is taken when
      the trial ends and pays for the **first period after the trial**, in advance, as every later renewal does.
-     Which seat count that bill uses (the seats held at the trial's end, or those chosen at checkout) is confirmed by
-     the one-day trial check in 16.2b, and our trial screen says so.
+     **It's for the seats held when the trial ends** (confirmed in the sandbox 2026-10-01: £36 for 2 web + 2 mobile
+     after web went 1 → 2 during the trial, not the £24 shown at checkout), and our trial screen says so.
+   - **The conversion has no event of its own:** Paddle sends `subscription.activated` (the same as a recovery)
+     and a `subscription_recurring` transaction (the same as a renewal). The translation records
+     `trialWasConverted` when our organisation is still trialing.
    - **Trial seats are capped** (our rule; Paddle has none), so a trial can't grow to hundreds of seats and then be
      billed for them. **The cap values are configuration, to be set later.**
    - **Not chosen:** a cardless trial (easier to start, but fewer convert, we'd have to chase a card before day 14,
