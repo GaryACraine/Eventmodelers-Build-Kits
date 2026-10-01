@@ -151,9 +151,11 @@ model and build only what's ours.
         effects;
       - licensing decides the role, and auth follows;
       - the owner is recorded on `organisationWasActivated`;
-      - invitation expiry is an event.
+      - invitation expiry is an event;
+      - auth's sign-up carries `sub`, and an automation records our own `userWasRegistered` (`userId` + `sub`).
 
-      That makes 13 slices, pushed.
+      That makes 15 slices, pushed. Found on the way: an event copy doesn't follow its origin's field changes
+      (emcli `ISSUES.md`, open; copies fixed by hand).
     - [ ] **Subscription:** the trial, seats bought, adding and removing, failed renewal and grace, cancelling, with
       Paddle's lane.
     - [ ] **Platform Support** (ADR-037, platform admin): our own staff's actions across organisations. After the
@@ -3427,6 +3429,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-30 | A platform admin role for our own staff (ADR-037) | Gary's team helps customers with setup inside their organisation and with licensing; it belongs to no organisation, holds no seat and isn't billed, so every event records who acted (customer or platform staff) |
 | 2026-10-01 | Seat changes confirmed by Paddle's reply to our update, plus its webhook for dashboard changes; invitation expiry recorded as an event by a scheduled automation; the trial is free and the first bill pays for the first period after it (ADR-037) | The count we enforce always matches what Paddle bills, including changes made outside our app; an expiry in the history frees the seat and can tell the admin; the trial screen must not suggest the trial is charged |
 | 2026-10-01 | Licensing decides admin and engineer roles, and the auth system follows through an automation; signing up is auth's external event; the owner is recorded at activation (ADR-037) | A role uses a seat, so only licensing can check for a free one, and auth only enforces sign-in; one fact, one source: the owner at activation, then hand-overs |
+| 2026-10-01 | Our own user (`userWasRegistered`, `userId` + `sub`) recorded by an automation from auth's sign-up (ADR-037) | Licensing refers only to our `userId`, so the auth provider can change without touching history, and our user can carry our own properties; one user per `sub` |
 | 2026-09-29 | Phase 16's order: Paddle onboarding and a working knowledge of its UI and API first, then research into how other vendors license seats through a merchant of record, then our licensing model; voice modelling deferred until the model is established | Gary: the licensing model is ours, and Paddle is only an automation producing side effects; knowing Paddle's capabilities and the market's patterns first gives a model worth building |
 
 ## Progress
