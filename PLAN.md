@@ -144,24 +144,42 @@ model and build only what's ours.
   - **Reference:** the eventmodelers platform's own licensing model (a community sample), exported with a review in
     the project's `reference/REVIEW.md`. We take its ideas, not its shapes. Most useful: the organisation is activated
     before checkout, so Paddle's `customData` carries its id, and their "claim the payment" chapter isn't needed.
-  - **Chapters:**
-    - [ ] **Organisation:** activation, invitations, roles, members. First storm done 2026-09-30 (7 events).
-      Refined 2026-10-01 (Gary):
-      - an **Auth lane** holds the auth system's external events: `userSignedUp` first, and the auth role's side
-        effects;
-      - licensing decides the role, and auth follows;
-      - the owner is recorded on `organisationWasActivated`;
-      - invitation expiry is an event;
-      - auth's sign-up carries `sub`, and an automation records our own `userWasRegistered` (`userId` + `sub`);
-      - roles are assigned and removed through two generic events, `userWasAssignedToRole` and
-        `userWasRemovedFromRole` (`roleId`, `seatType`, `…At`, `…By`, `actedAs`).
-
-      That makes 15 slices, pushed. Found on the way: an event copy doesn't follow its origin's field changes
-      (emcli `ISSUES.md`, open; copies fixed by hand).
-    - [ ] **Subscription:** the trial, seats bought, adding and removing, failed renewal and grace, cancelling, with
-      Paddle's lane.
-    - [ ] **Platform Support** (ADR-037, platform admin): our own staff's actions across organisations. After the
-      customer's chapters.
+  - **Chapters** (reorganised 2026-10-01: **one flow per chapter, with no branching**, ADR-038). The first storm's
+    two chapters (Organisation, Subscription) were replaced, all in context `licensing`, and pushed to the board.
+    Each chapter is storm level so far (events, decided notes). **Next: slice mode, from chapter 1.**
+    - **Flows:**
+      - [ ] 1. Owner starts a trial (sign-up, registered, organisation activated, **Paddle checkout**, subscription
+        started, the owner's admin role and web seat);
+      - [ ] 2. Admin invites a member (roles and seat types offered; accepting assigns them automatically);
+      - [ ] 3. Admin changes a member's roles and seats;
+      - [ ] 4. Admin removes a member;
+      - [ ] 5. Owner hands over ownership;
+      - [ ] 6. Owner buys more seats;
+      - [ ] 7. Owner removes seats at the next period;
+      - [ ] 8. The trial converts and the subscription renews;
+      - [ ] 9. Owner cancels.
+    - **Alternatives:**
+      - [ ] 10. An invitation expires;
+      - [ ] 11. Admin withdraws an invitation;
+      - [ ] 12. A seat increase is declined;
+      - [ ] 13. A renewal payment fails and recovers;
+      - [ ] 14. The grace period runs out;
+      - [ ] 15. Owner withdraws a cancellation;
+      - [ ] 16. A seat decrease is withdrawn.
+    - [ ] **Platform Support** (ADR-037, platform admin): after the customer's chapters.
+  - **Refinements (Gary, 2026-10-01), in ADR-037:**
+    - an **Auth lane** for the auth system's external events (`userSignedUp` with `sub`, the auth role side effects);
+    - our own `userWasRegistered` (`userId` + `sub`);
+    - licensing decides roles and seats, and auth follows;
+    - the owner is recorded at activation;
+    - **roles and seats are separate:** `userWasAssignedToRole` / `userWasRemovedFromRole` (no `seatType`) and
+      `seatWasAssigned` / `seatWasReleased`, with access = a role + a matching seat + a subscription in good
+      standing;
+    - invitations carry `roleIds` and `seatTypes`;
+    - **removing seats takes effect at the next billing period.**
+  - **Events are scoped by context:** the same event appears in several chapters. One field catalogue keeps them
+    identical (36 event types, 61 placements, 0 different). emcli doesn't check this yet (emcli `ISSUES.md`, with the
+    copy drift found earlier).
   - **Answers recorded in ADR-037 (Gary, 2026-10-01):**
     - **Seat changes are confirmed** by Paddle's reply to our own update, and by its `subscription.updated` webhook
       for changes made in Paddle's dashboard.
@@ -184,6 +202,9 @@ model and build only what's ours.
   - **Tested against Paddle's real delivery** (from 16.1's to-try list): a notification destination pointed at our
     backend (a tunnel in development); repeated and out-of-order delivery, identical `occurred_at`, and signature
     checks. The saved payloads become the translations' test fixtures.
+  - **Removing seats at the next period** (ADR-037 decision 5): in the sandbox, a decrease with
+    `proration_billing_mode: do_not_bill` outside a trial (no credit, no charge), then the next renewal's amount
+    (the lower count); and putting the quantity back before the renewal.
 - [ ] **16.5 A `provider-paddle` skill** (15.4e's pattern), from 16.1's knowledge:
   - Paddle.js in our Vite React SPA (the Next.js starter is a reference only);
   - webhook signatures and events;
@@ -3433,6 +3454,9 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-01 | Licensing decides admin and engineer roles, and the auth system follows through an automation; signing up is auth's external event; the owner is recorded at activation (ADR-037) | A role uses a seat, so only licensing can check for a free one, and auth only enforces sign-in; one fact, one source: the owner at activation, then hand-overs |
 | 2026-10-01 | Our own user (`userWasRegistered`, `userId` + `sub`) recorded by an automation from auth's sign-up (ADR-037) | Licensing refers only to our `userId`, so the auth provider can change without touching history, and our user can carry our own properties; one user per `sub` |
 | 2026-10-01 | Generic role events: `userWasAssignedToRole` / `userWasRemovedFromRole`, with `roleId`, `seatType`, `assignedAt`/`removedAt`, `assignedBy`/`removedBy`, `actedAs` (ADR-037) | New roles need no new events; who acted and when is on every change; `seatType` keeps the history true if the role → seat mapping changes |
+| 2026-10-01 | A chapter is one flow with no branching; alternatives are chapters of their own (ADR-038) | The event modelling standard; each flow can be read, reviewed and built on its own, and failure paths get the same attention; the licensing model became 16 chapters, and the event-model skill teaches it |
+| 2026-10-01 | Roles and seats are separate (`seatWasAssigned` / `seatWasReleased`); no `seatType` on role events; invitations carry roles and seat types, assigned automatically on acceptance (ADR-037) | A role is what someone may do, and a seat whether they may use the web portal or the mobile app; they change at different times |
+| 2026-10-01 | Removing seats takes effect at the next billing period (ADR-037 decision 5, replacing "at once with a credit") | Customers keep what they paid for; Paddle `do_not_bill` now, and the renewal event applies it, so there's no timer |
 | 2026-09-29 | Phase 16's order: Paddle onboarding and a working knowledge of its UI and API first, then research into how other vendors license seats through a merchant of record, then our licensing model; voice modelling deferred until the model is established | Gary: the licensing model is ours, and Paddle is only an automation producing side effects; knowing Paddle's capabilities and the market's patterns first gives a model worth building |
 
 ## Progress
