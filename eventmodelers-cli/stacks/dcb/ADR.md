@@ -2242,14 +2242,23 @@ item. The decision is only about the door: the webhook endpoint, a poller, or bo
    - the browser reporting that the checkout completed (`checkoutWasCompleted`), so the owner doesn't wait on a
      webhook;
    - **a scheduled sweep,** about every 15 minutes, as the backstop;
-   - **before any action of ours that harms a customer** (ending access when a grace period runs out).
+   - as a principle, **before any action of ours that would harm a customer.** Nothing in the model needs it
+     today: we never act against a customer on our own clock. Access ends only when Paddle's own cancellation
+     arrives (`subscriptionHasEnded`).
 4. **An event that starts a waiting period carries the date it ends** (Gary): `trialEndsAt`, `periodEndsAt`,
-   `graceEndsAt`, `expiresAt`, `effectiveAt`. The date is taken from Paddle's payload where Paddle states it. So
-   what's due, and when, is in our own events.
-5. **The sweep is a polling automation over a to-do list of what's due** (`PaddleFactsDue`; ADR-039's polling
-   form). Each run fetches once, which covers every customer. It then looks for items past their date with no
-   outcome: that needs a person, so it's recorded (`paddleFactWasOverdue`) and alerted. The list also shows what
-   we're waiting on (the organisations in trial, and when each trial ends).
+   `graceEndsAt`, `expiresAt`, `effectiveAt`. The dates are for the customer's screens ("your trial ends on…", "pay
+   by…").
+   - Where Paddle states the date, it's taken from Paddle's payload.
+   - **`graceEndsAt` comes from a value we configure** (Gary): `configureGracePeriod` records
+     `gracePeriodWasConfigured`, projected to `LicensingSettings`. The translation reads it as a data input
+     (ADR-039) and sets `graceEndsAt` = Paddle's failure time + the configured days. It's recorded once at setup
+     (14 days), and it must match Paddle's Payment Recovery window, which is what actually cancels the
+     subscription.
+5. **The sweep is a polling automation whose to-do list is Paddle's event stream after our checkpoint** (revised
+   2026-10-02, Gary): an item is an event we haven't recorded yet, and recording it closes it. Each run fetches
+   once, which covers every customer.
+   - **Nothing is tracked as overdue.** A fact that's late arrives on a later sweep, and knowing it's late
+     wouldn't change what we do.
 
 **What the fetch covers, by scenario:**
 
@@ -2258,9 +2267,9 @@ item. The decision is only about the door: the webhook endpoint, a poller, or bo
 | Owner starts a trial, or buys now | us (checkout on our page) | the fetch when the checkout completes | none |
 | Owner changes seats, or cancels from our screen | us (our call to Paddle) | Paddle's reply to our call confirms it | none |
 | The trial converts; a renewal succeeds or fails | Paddle, on a date we know | the sweep after that date | none |
-| The grace period runs out | Paddle, on a date we know | the fetch before we end access | none |
+| The grace period runs out | Paddle, on a date we know | the sweep after that date | none: access ends when Paddle's cancellation arrives |
 | The owner cancels in Paddle's portal | the customer, unannounced | the next sweep | low: it takes effect at the period's end |
-| A payment recovers during the grace period | Paddle or the customer, unannounced | the next sweep, and the fetch before we end access | high without the fetch: access removed from a customer who has paid |
+| A payment recovers during the grace period | Paddle or the customer, unannounced | the next sweep | low: a stale "payment failed" banner until then. Access isn't removed, because only Paddle's cancellation ends it |
 | A refund or chargeback | Paddle, unannounced | the next sweep | medium; not modelled yet |
 | A change made in Paddle's dashboard | us, outside the app | the next sweep | low |
 
@@ -2268,6 +2277,10 @@ A fetch isn't per event type: it reads everything after the checkpoint. So an un
 lost is delayed by at most one sweep, never lost.
 
 **Alternatives considered:**
+- **A to-do list of dated facts with an overdue alert** (`PaddleFactsDue`: one item per organisation, moved by
+  each event that starts a waiting period, closed by `subscriptionHasEnded`; an item past its date with nothing
+  from Paddle raises an alert). Dropped: the sweep fetches everything whether or not anything is due, so the list
+  wouldn't drive the fetch, and the alert needs a margin to tune and fires when Paddle is merely slow.
 - **A workflow that waits until an item is due** (a timer per expected fact, no schedule): it leaves unannounced
   changes waiting for some other fetch, and adds a new workflow shape. The sweep covers both, with the polling
   automation invitation expiry needs anyway.
@@ -2285,6 +2298,5 @@ stream's, and how soon an event is in the stream.
 - To build: the fetch (a provider call), and the kit's polling automation (ADR-039), which invitation expiry needs
   too. Until then the model's chapter for the sync stays at storm level.
 - Four events gained their end dates (`trialWasConverted`, `renewalPaymentWasRecovered`: `periodEndsAt`;
-  `renewalPaymentFailed`, `trialConversionFailed`: `graceEndsAt`). Where `graceEndsAt` comes from is open: Paddle's
-  recovery window is a live-only setting.
-- The slice that ends access at the grace period's end must fetch first.
+  `renewalPaymentFailed`, `trialConversionFailed`: `graceEndsAt`).
+- A new small flow in the model: the grace period is configured (`configureGracePeriod`, `LicensingSettings`).
