@@ -386,8 +386,9 @@ model and build only what's ours.
           over plain HTTP; the SDK refuses a signature timestamp over 5 seconds old, so a saved webhook is signed
           again in tests; Paddle's `estimated_total` is an estimate (1,850 for a stream of 156: corrected in
           `paddle.md` §7b and ADR-041).
-      - [ ] **the same against the sandbox over HTTP:** the one case not run. It needs a sandbox API key (read
-        events and notifications) in `licensing/e2e/.env.sandbox` (Gary creates it; never committed);
+      - [x] **the same against the sandbox over HTTP,** 2026-10-02: the real stream read from a checkpoint, the
+        first event's payload equal to the fixture exactly (17 of 17). The key (`claude-code-2`) is in
+        `licensing/e2e/.env.sandbox`, gitignored;
       - [ ] **issuing `configureGracePeriod` and `configureInvitationExpiry` at setup** (how a system setting is
         seeded: a kit question);
       - [ ] verify with a notification destination set up: a webhook's `event_id` is the stream's; how soon an
