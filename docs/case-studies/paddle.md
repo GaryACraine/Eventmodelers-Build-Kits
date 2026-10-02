@@ -179,8 +179,9 @@ Paddle keeps every event that occurred and lets us read them: `GET /events` ("th
   - filters: `event_type` (a list), `filter` (a Paddle id, such as a subscription's), `from` and `to`;
   - it needs the `notification.read` permission.
 - **Read in the sandbox** (read-only):
-  - 1,850 events are there, although **the sandbox has no notification destination**: the stream doesn't depend on
-    webhooks being set up or delivered;
+  - 156 events are there, although **the sandbox has no notification destination**: the stream doesn't depend on
+    webhooks being set up or delivered. (*Corrected 2026-10-02: first recorded as 1,850, which was Paddle's
+    `estimated_total`. Paging through the whole stream counted 156. The estimate isn't reliable.*);
   - paging with `after` works as described;
   - across our 42 subscription and transaction events, **ascending id order was also `occurred_at` order** (none
     out of order). The ids look time-ordered. Paddle doesn't document that as a guarantee.

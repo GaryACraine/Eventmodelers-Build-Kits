@@ -373,8 +373,21 @@ model and build only what's ours.
       - [ ] **distil them into the skill on solid ground** (Gary): after each shape's first slice is built and
         chapter 1's end-to-end run passes (16.3a), fold in the lessons and cut what didn't matter. One task with
         16.6's distillation;
-      - [ ] **the fetch**, with 16.5's `provider-paddle`: read `GET /events` after the checkpoint, record each
-        through the inbox, record the checkpoint; used by the sweep and by the checkout watch;
+      - [x] **the fetch**, 2026-10-02, proven in `licensing/e2e/paddle/` (16 of 16 cases against a mock and a real
+        event store; the suite 119 passed, 1 skipped):
+        - reading a Paddle event as our notification (the payload as it arrived), the webhook's signature check
+          (Paddle's SDK), the fetch of the stream after a checkpoint, the checkpoint as our own event (the
+          greatest recorded, so it only moves forward), and one whole run;
+        - a webhook and a fetch of the same event are one item, in either order; a run with nothing new records
+          nothing;
+        - fixtures: five real events of one sandbox subscription, kept byte for byte;
+        - the kit's `recordNotification` (`src/shared/inbox.ts`) is what both routes record through.
+        - *Found:* Paddle's SDK can't be pointed at a mock and returns converted entities, so the stream is read
+          over plain HTTP; the SDK refuses a signature timestamp over 5 seconds old, so a saved webhook is signed
+          again in tests; Paddle's `estimated_total` is an estimate (1,850 for a stream of 156: corrected in
+          `paddle.md` §7b and ADR-041).
+      - [ ] **the same against the sandbox over HTTP:** the one case not run. It needs a sandbox API key (read
+        events and notifications) in `licensing/e2e/.env.sandbox` (Gary creates it; never committed);
       - [ ] **issuing `configureGracePeriod` and `configureInvitationExpiry` at setup** (how a system setting is
         seeded: a kit question);
       - [ ] verify with a notification destination set up: a webhook's `event_id` is the stream's; how soon an
@@ -472,6 +485,11 @@ model and build only what's ours.
   - **Later, a fallback:** on a stale or ambiguous notification, fetch the subscription from Paddle's API and
     reconcile ("the notification is a nudge").
 - [ ] **16.5 A `provider-paddle` skill** (15.4e's pattern), from 16.1's knowledge:
+  - **Status (2026-10-02): a draft, for the backend half.** `provider-paddle` covers what Paddle tells us: reading
+    an event, the webhook's signature, the event stream's fetch, the checkpoint, the errors, the mock, the sandbox,
+    from the code proven in `licensing/e2e/paddle/`. Marked first use; distilled with the others after the
+    end-to-end run (16.6). **Open:** Paddle.js in the SPA (the checkout and its completion callback), and the
+    calls we make to Paddle (seat changes, cancel).
   - Paddle.js in our Vite React SPA (the Next.js starter is a reference only);
   - webhook signatures and events;
   - the sandbox;

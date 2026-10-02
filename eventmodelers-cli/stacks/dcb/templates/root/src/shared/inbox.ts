@@ -34,7 +34,22 @@ export interface WebhookInbox {
      * with that id, e.g. `paddleEventId`, and with whatever its translation's commands decide by, e.g.
      * `subscriptionId`). Throws when the payload can't be read.
      */
-    toEvent(body: unknown): { id: string; event: TaggedEvent }
+    toEvent(body: unknown): Notification
+}
+
+/** A notification as our event, with its id at the other system (what `WebhookInbox.toEvent` returns) */
+export interface Notification {
+    id: string
+    event: TaggedEvent
+}
+
+/**
+ * Record a notification in the inbox, once: the idempotency key is `<system>:<its id at the other system>`. Whatever
+ * brings it (the webhook endpoint, or a fetch of the other system's event stream, ADR-041) records it through here, so
+ * the same notification by two routes is one event.
+ */
+export async function recordNotification(eventStore: EventStore, system: string, notification: Notification): Promise<void> {
+    await eventStore.append({ events: [{ ...notification.event, id: idempotencyKeyFor(`${system}:${notification.id}`) }] })
 }
 
 type WithRawBody = IncomingMessage & { rawBody?: Buffer }
@@ -77,7 +92,7 @@ export function configureWebhookInbox(
                 res.status(401).json({ title: "The signature doesn't match" })
                 return
             }
-            let notification: { id: string; event: TaggedEvent }
+            let notification: Notification
             try {
                 notification = inbox.toEvent(req.body)
                 if (!notification.id) throw new Error("the notification has no id")
@@ -93,9 +108,7 @@ export function configureWebhookInbox(
                 return
             }
             // A redelivery has the same id: the event store finds it and appends nothing
-            await deps.eventStore.append({
-                events: [{ ...notification.event, id: idempotencyKeyFor(`${inbox.system}:${notification.id}`) }]
-            })
+            await recordNotification(deps.eventStore, inbox.system, notification)
             res.status(200).json({ received: true })
         })
     }

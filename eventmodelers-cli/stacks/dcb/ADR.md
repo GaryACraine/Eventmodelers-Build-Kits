@@ -2224,8 +2224,8 @@ item. The decision is only about the door: the webhook endpoint, a poller, or bo
 **Found, 2026-10-02** (`docs/case-studies/paddle.md` §7b):
 - **Paddle has an event stream, `GET /events`:** every event of the last 90 days, with the same `event_id` and
   payload as the webhook, readable in ascending id order from a checkpoint (`after=<event_id>`), 200 a page.
-- **It doesn't depend on webhooks:** the sandbox has no notification destination, and its 1,850 events are all
-  there.
+- **It doesn't depend on webhooks:** the sandbox has no notification destination, and its 156 events are all
+  there. (*First recorded as 1,850: that was Paddle's `estimated_total`, which isn't reliable.*)
 - In the sandbox, ascending id order was also `occurred_at` order (not a documented guarantee).
 - The rate limit is 240 requests a minute per IP address.
 - Webhooks: answer within 5 seconds; retried 60 times over 3 days live; no order guaranteed; duplicates possible.
