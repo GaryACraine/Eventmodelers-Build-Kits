@@ -209,6 +209,13 @@ model and build only what's ours.
       translation's processor type fixed.
     - Still unproven, and blocked in the builder: **polling** (first: invitation expiry) and **external data
       inputs**.
+  - **Outstanding in 16.3** (gathered 2026-10-02):
+    - [ ] flesh out chapters 1b and 2–19 (process modelling), with mockups;
+    - [ ] the Platform Support chapter (the platform admin; the `TrialFunnel` read model);
+    - [ ] the builder still blocks as unproven: **polling automations** (first: invitation expiry) and **external
+      data inputs**;
+    - the "sign up" slice is never planned (it's the provider's page; noted on the slice);
+    - [ ] emcli issues: event-copy drift, and same-named events across chapters can differ (`ISSUES.md`).
   - [ ] **16.3a Chapter 1 end to end** (Gary, 2026-10-01): once chapter 1's slices are built and their tests pass,
     prove the whole chapter as one journey, through the UI.
     - **The harness,** `licensing/e2e/`, follows restaurant-orders' pattern:
@@ -243,15 +250,85 @@ model and build only what's ours.
   - *A project one folder down* (`supply-hub-v1/licensing`) can't reach `../dcb-event-store`, so a link
     `supply-hub-v1/dcb-event-store → ../dcb-event-store` keeps the scaffold unchanged. Manual §4 says projects sit in
     `~/Projects`; worth a line there if nesting becomes common.
-- [ ] **16.4 Translation slices in the kit** (the main kit work). Another system's webhook becomes our event: verify
-  the signature, ignore a repeat by its key, record our event named for the business. `build-automation` still
-  blocks a `synchronous` processor as "not proven": make it proven.
-  - **Tested against Paddle's real delivery** (from 16.1's to-try list): a notification destination pointed at our
-    backend (a tunnel in development); repeated and out-of-order delivery, identical `occurred_at`, and signature
-    checks. The saved payloads become the translations' test fixtures.
+- [ ] **16.4 Hardened Paddle webhooks: an inbox on the event store** (the main kit work; **next**, Gary 2026-10-02:
+  before the loop builds chapter 1). Another system's webhook becomes our event, safely: duplicates are absorbed,
+  out-of-order deliveries are ignored, and nothing is lost. **ADR-040.**
+  - **The pattern:**
+
+    ```
+     Paddle ── POST /webhooks/paddle ──▶  WEBHOOK ENDPOINT (thin; no business logic)
+                                           1. verify Paddle-Signature ............ bad → 401, nothing recorded
+                                           2. append  paddleNotificationReceived    (Paddle lane, raw payload)
+                                                tags: subscriptionId, paddleEventId
+                                                idempotency key = Paddle event_id  (redelivery → no-op)
+                                           3. 200 OK at once ...................... 5xx only if the append fails
+                                                       │
+                         ┌─────────────────────────────┴───────────────────────────────┐
+                         │ EVENT STORE = THE INBOX: durable, de-duplicated, replayable │
+                         └─────────────────────────────┬───────────────────────────────┘
+                                                       │ opens an item
+                                                       ▼
+                         TO-DO LIST  "Paddle notifications to translate"   (key: paddleEventId)
+                                                       │
+                                                       ▼
+                         TRANSLATION (an ordinary event-driven automation, proven machinery)
+                           act: read the item; classify by Paddle's type + OUR state
+                                (trialing / payment failed / active → conversion, recovery, renewal …)
+                                issue our command, idempotency key = paddleEventId
+                                                       │
+                                                       ▼
+                         OUR COMMAND'S DECIDER (DCB), e.g. startTrial, recordSeatsChange
+                           decision state = our events for that subscription
+                                            (each carries paddleEventId, paddleOccurredAt)
+                           • older paddleOccurredAt than the last applied → STALE
+                           • the same fact already recorded (created + activated) → ALREADY DONE
+                           • otherwise → our business event (+ paddleEventId, paddleOccurredAt)
+                           append condition: nothing new for this subscription since the read,
+                           else decide again → immediately consistent, no race
+                                                       │
+                         ┌─────────────────────────────┴─────────────────────────────┐
+                         ▼                                                           ▼
+         our business event (trialWasStarted, …)             paddleNotificationSkipped {paddleEventId, reason}
+           closes the to-do item                               closes the item for stale / already-done ones
+           → read models, other automations                    (an audit trail of what was ignored, and why)
+    ```
+
+  - **Named patterns:**
+    - the idempotent receiver (de-duplicate by message id; the kit's ADR-006 `message_id`);
+    - the transactional inbox (store first, acknowledge, process from the store);
+    - last writer wins by timestamp, decided in the decider.
+  - **The endpoint** (thin):
+    - verify `Paddle-Signature` (401 if bad);
+    - append `paddleNotificationReceived` (the raw payload, tags `subscriptionId` and `paddleEventId`, the
+      idempotency key `event_id`);
+    - answer 200 at once (5xx only if the append fails).
+  - **The to-do list "Paddle notifications to translate", and the translation:** an ordinary **event-driven**
+    automation, reusing proven machinery. It classifies from Paddle's type **plus our own state**, because Paddle
+    has no "trial converted" event: `activated` is either a conversion or a recovery (`paddle.md` §11b). It issues
+    our command with the idempotency key `paddleEventId`.
+  - **The deciders:**
+    - last writer wins on `paddleOccurredAt` per subscription;
+    - "already done" for the same fact by two routes (`subscription.created` and `subscription.activated`);
+    - the DCB append condition keeps the check immediately consistent (no separate read model, no race);
+    - `paddleNotificationSkipped {paddleEventId, reason}` closes stale and duplicate items, as an audit trail.
+  - **Model work** (`supply-hub-v1/licensing`):
+    - `paddleEventId` and `paddleOccurredAt` on every event recorded from Paddle (`model/catalogue.sh`);
+    - the Paddle lane becomes `paddleNotificationReceived` plus the translation;
+    - show the inbox flow (update chapters 1, 8, 13, or a chapter of its own).
+  - **Kit work:**
+    - the provider webhook endpoint pattern in `provider-paddle` (16.5) and the manual;
+    - `build-automation`: "a translation is an event-driven automation over an inbox", replacing the blocked
+      `synchronous` mode (or documenting it as superseded).
+  - **Tests:**
+    - recorded sandbox payloads as fixtures, replayed twice, reversed, with equal `occurred_at`, and with a bad
+      signature;
+    - the mock Paddle (ADR-030) can redeliver.
+  - **Sandbox:** a notification destination through a tunnel. Saved payloads become the fixtures.
   - **Removing seats at the next period** (ADR-037 decision 5): in the sandbox, a decrease with
-    `proration_billing_mode: do_not_bill` outside a trial (no credit, no charge), then the next renewal's amount
-    (the lower count); and putting the quantity back before the renewal.
+    `proration_billing_mode: do_not_bill` outside a trial (no credit, no charge), then the next renewal's amount (the
+    lower count); and putting the quantity back before the renewal.
+  - **Later, a fallback:** on a stale or ambiguous notification, fetch the subscription from Paddle's API and
+    reconcile ("the notification is a nudge").
 - [ ] **16.5 A `provider-paddle` skill** (15.4e's pattern), from 16.1's knowledge:
   - Paddle.js in our Vite React SPA (the Next.js starter is a reference only);
   - webhook signatures and events;
@@ -3511,13 +3588,14 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-01 | Chapter 1 is proven end to end through the UI (Playwright) once its slices are built (16.3a) | A chapter is one flow, so it's one journey; slice tests first, then the journey; mock and sandbox runs |
 | 2026-10-01 | An automation's trigger is a `reacts-to` link, not a copy in its slice; emcli's export fills the automation slice's `events[]` from the link | The copy was a tooling requirement, not a modelling one: `build-automation` needs the trigger's fields in `events[]`, which the export only took from elements in the slice. Read slices already had this fallback. Copies looked like duplicate events on the board |
 | 2026-10-02 | An automation's inputs: trigger, one to-do list (`--todo-list`, exported `todoListElement`), and data inputs (other linked read models: ours, another chapter's, or `--external`); its command is fed only by these (ADR-039) | Commands stay deterministic and every value's source is visible; completeness catches a missing link; a flag rather than a new element type, because prooph board's card types are fixed and the eventmodelers format already has the flag |
+| 2026-10-02 | Paddle's webhooks are received through an inbox on the event store: a thin endpoint records `paddleNotificationReceived` (idempotent on `event_id`) and answers 200; an event-driven translation works it; deciders apply last writer wins on `paddleOccurredAt` (ADR-040); 16.4 before the loop builds chapter 1 | Durable, de-duplicated and replayable; reuses the proven automation machinery instead of an unproven synchronous mode; out-of-order handling is decided under DCB's append condition, so it's immediately consistent |
 | 2026-09-29 | Phase 16's order: Paddle onboarding and a working knowledge of its UI and API first, then research into how other vendors license seats through a merchant of record, then our licensing model; voice modelling deferred until the model is established | Gary: the licensing model is ours, and Paddle is only an automation producing side effects; knowing Paddle's capabilities and the market's patterns first gives a model worth building |
 
 ## Progress
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. **Next: 16.2b, then 16.3** (16.2 done 2026-09-30: ADR-037 Accepted, trials included after the 16.2b tests) (16.1's knowledge work done 2026-09-30; only Gary's live onboarding open; 16.2's research done 2026-09-30). Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
+| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. **Next: 16.4 (hardened Paddle webhooks: the inbox, ADR-040), then the loop builds chapter 1, then 16.3a (chapter 1 end to end).** 16.3 is in process modelling: chapter 1 fleshed out (26 slices), 16.3b done (ADR-039) (16.2 done 2026-09-30: ADR-037 Accepted, trials included after the 16.2b tests) (16.1's knowledge work done 2026-09-30; only Gary's live onboarding open; 16.2's research done 2026-09-30). Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
 | 15 — Automations (restaurant orders) | ✅ Closed 2026-09-29 (a demo) | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27/28: the Restaurant Orders chapter (25 slices, 63 scenarios, 15 mockups) on prooph board, with stock and an internal automation (the Stock Returner); emcli push fixes (lanes, links, skipped deletions). 15.8 added: deciding from a growing event stream. 15.2 done 2026-09-28 (library PR #29 merged). 15.3 done 2026-09-28 (ADR-033 runtime, ADR-034 Braintree as a commercial directive; the loop built the restaurant backend; 8 end-to-end cases pass, with our own Temporal call deadline and Temporal in health; manual §21). Next: 15.4 redrive, then 15.5 the UI on Sonnet. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) | **Closed 2026-09-29:** 15.4 and 15.4c built through the loop (stalls, retry, give up, attempts, pay again, cancel); 15.4e provider skills; 15.9 on Sonnet at medium, about 2.5–3× cheaper per job; emcli re-queues changed built slices. The rest dropped or moved to Phase 16 |
 | 1 — Stack Scaffolding | ✅ Complete | Verified: init, npm install, tsc, 21/21 unit tests |
 | 2 — State Change Skill | ✅ Complete | 9-step SKILL.md with full DCB patterns |
