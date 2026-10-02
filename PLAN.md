@@ -282,26 +282,41 @@ model and build only what's ours.
         from an entity's), and `synchronous` is reported as superseded. 361 tests.
       - **The kit:** `build-automation` takes the form from the slice (a linked to-do list, or none; the key is the
         trigger event's id field), and the loop's notes no longer route translations separately.
+    - [x] **The translation keeps a to-do list** (Gary, 2026-10-02, revising ADR-040): `UntranslatedNotifications`
+      was a to-do list in all but name, modelled a second time beside a list-less automation.
+      - It's opened by `paddleNotificationReceived` and closed by the outcome.
+      - A notification the translation gives up on (5 attempts) is skipped as failed, alerted, and **stays listed as
+        failed**.
+      - **Cost accepted:** the list is updated by the translation's own processor, so a stuck processor shows on
+        `/health/processors`, not on the list.
+      - **The kit:** `giveUp` is available to any automation (one helper for both forms); `build-automation` shows
+        a translation with a to-do list. The list-less form stays, with no user yet. Proven in `licensing`:
+        `automations.tests.ts` 21 of 21, the suite 93 of 93.
     - [x] **Model work** in `licensing`, pushed to the board (not exported):
-      - **chapter 1:** the Paddle lane is `paddleNotificationReceived`, translated by "Paddle Translation"
-        (event-driven, no to-do list). `startTrial` maps from the trigger and its payload. `startTrial` and
-        `trialWasStarted` carry `paddleEventId` and `paddleOccurredAt`. A second notification of the same start
-        is `paddleNotificationSkipped`, already done: the event sits in the "start trial" slice as the command's
-        other outcome, so the specification can name it and the loop can build it. 26 slices, 24 specifications;
-        completeness as before (only the Sign Up page's error, by design);
-      - **chapter 20, "A Paddle notification is skipped"** (new): the translation gives up after 5 attempts →
-        `skipPaddleNotification` → `paddleNotificationSkipped` (failed), and the `UntranslatedNotifications` read
-        model (stored: a list of all of them isn't narrowed by a tag, ADR-023). 4 slices, 4 specifications, 0
-        completeness issues. **Plan it with chapter 1:** the translation's give-up needs the skip command;
-      - `trialWasStarted` got the two fields in chapters 17 and 18 too (40 event types, 0 different);
-      - scripts: `model/catalogue.sh`, `chapter-1.sh`, `chapter-1-specs.sh`, `chapter-20.sh`.
-      - **On the board,** the earlier chapter 1 (left beside the rebuilt one by the `--safe` push) was removed with
-        a full push on Gary's say, 2026-10-02. The board and `workspace.json` are in step.
+      - **chapter 1** (28 slices, 27 specifications; completeness as before, only the Sign Up page's error):
+        - the Paddle lane is `paddleNotificationReceived`;
+        - `UntranslatedNotifications` is the to-do list of "Paddle Translation", with a settled copy after "start
+          trial" closed by `trialWasStarted` and `paddleNotificationSkipped`;
+        - `startTrial` maps from the trigger and its payload; it and `trialWasStarted` carry `paddleEventId` and
+          `paddleOccurredAt`;
+        - a second notification of the same start is `paddleNotificationSkipped`, already done: the event sits in
+          the "start trial" slice as the command's other outcome.
+      - **chapter 20, "A Paddle notification is skipped"** (5 slices, 3 specifications, 0 completeness issues):
+        the translation gives up → `skipPaddleNotification` → `paddleNotificationSkipped` (failed), and the list
+        (copies of chapter 1's) keeps the item as failed. **Plan it with chapter 1:** the give-up needs the skip
+        command.
+      - `trialWasStarted` got the two fields in chapters 17 and 18 too (40 event types, 0 different).
+      - Scripts: `model/catalogue.sh`, `chapter-1.sh`, `chapter-1-specs.sh`, `chapter-20.sh`. `chapter-1.sh`
+        removes chapter 20 first (it holds copies of chapter 1's list): run `chapter-20.sh` after it.
+      - The board and `workspace.json` are in step (full pushes, on Gary's say).
+      - *emcli:* a copy across chapters works by the origin's id; by name it finds the chapter's own copy first.
     - [ ] **Open questions, as hotspots on chapter 20:**
-      - every event of ours recorded from Paddle must close its notification in `UntranslatedNotifications`: link
-        each one as its chapter is converted, or close on any event tagged with the `paddleEventId`;
-      - the alert on an old untranslated notification needs something on a schedule (polling, unproven) or the
+      - replaying a failed notification needs a retry command that records a new attempt (ADR-032's pattern);
+        with the operations page;
+      - the alert on a notification left untranslated needs something on a schedule (polling, unproven) or the
         operations page only.
+    - [ ] **Each later chapter that translates a notification** closes the list with its own event, in a copy of
+      the list after it (as chapter 1's settled copy).
     - [ ] **The other 11 chapters' Paddle lanes** keep their typed events until each is fleshed out (Gary). With
       them: which seat events carry the Paddle fields (a seat change is confirmed by Paddle's API reply, which has
       no event id), and the **stale** specifications (the first decider with an order to keep).
@@ -3651,6 +3666,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-01 | Chapter 1 is proven end to end through the UI (Playwright) once its slices are built (16.3a) | A chapter is one flow, so it's one journey; slice tests first, then the journey; mock and sandbox runs |
 | 2026-10-01 | An automation's trigger is a `reacts-to` link, not a copy in its slice; emcli's export fills the automation slice's `events[]` from the link | The copy was a tooling requirement, not a modelling one: `build-automation` needs the trigger's fields in `events[]`, which the export only took from elements in the slice. Read slices already had this fallback. Copies looked like duplicate events on the board |
 | 2026-10-02 | An automation's inputs: trigger, one to-do list (`--todo-list`, exported `todoListElement`), and data inputs (other linked read models: ours, another chapter's, or `--external`); its command is fed only by these (ADR-039) | Commands stay deterministic and every value's source is visible; completeness catches a missing link; a flag rather than a new element type, because prooph board's card types are fixed and the eventmodelers format already has the flag |
+| 2026-10-02 | The Paddle translation keeps a to-do list (`UntranslatedNotifications`), and one it gives up on stays listed as failed (Gary; ADR-040 revised). Giving up is available to any automation | The "safety net" read model was a to-do list in all but name, so the same thing was modelled twice; the list pattern answers how each outcome closes it and puts the waiting work on the operations page. The cost, accepted: the list follows the translation's own checkpoint, so a stuck processor shows on the health page instead |
 | 2026-10-02 | A translation isn't a special kind of automation: an event-driven automation keeps a to-do list or none (the trigger event is then the item, keyed by its own id). emcli says nothing about a missing list; the rule of thumb is in the skills (Gary) | One simple classification (what starts it, a list or not, where the work is done) that matches the code; emcli can't tell an event's own id from an entity's, so a warning would be noise on valid models |
 | 2026-10-02 | A list of one's give-up is counted in the kit (attempts per item, in memory, since the app started), not in the library | The library's `onError` isn't told the attempt number, and library PRs are Gary's to merge; a restart only means more attempts before giving up, and the recorded skip is the durable fact |
 | 2026-10-02 | The kit replaces the library's JSON parser with its own (`configureJsonBody`), which keeps the raw body of `/webhooks/…` requests | A signature is checked against the bytes as sent; the library parses JSON before any route runs, and a parsed body can't be turned back into those bytes |

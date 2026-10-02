@@ -2159,6 +2159,23 @@ with their first slices.
 - The pattern is general: any provider's webhooks (the auth system's, if ever) follow it, with that provider's
   signature check in its provider skill.
 
+**Revised 2026-10-02 (Gary): the translation keeps a to-do list.** Points 3, 5 and 6 above, and the diagram's "list
+of one" and "safety net", are superseded by this:
+- **"Untranslated notifications" is the translation's to-do list**, not a separate read model beside it: opened by
+  `paddleNotificationReceived`, closed by the outcome (our event, or `paddleNotificationSkipped` as stale or already
+  done). It was a to-do list in all but name, so the same thing was modelled twice; and somebody needs to see the
+  work waiting, which by the rule above means keeping a list.
+- **A notification the translation gives up on stays on the list, marked failed** with its error, so the operations
+  page shows what needs fixing. Giving up (after 5 attempts: record the skip, alert, move on) is available to any
+  automation, with or without a list.
+- **The cost, accepted:** the list is updated by the translation's own processor, so it no longer checks the
+  checkpoint independently. A stuck or lagging processor shows on `GET /health/processors`, not on the list.
+- **Each chapter that translates a notification** closes the list with its own event, in a copy of the list after it
+  (ADR-039 point 4).
+- **Replaying a failed notification** needs a retry command that records a new attempt (ADR-032's pattern), since
+  the item's key is used by the skip. Not modelled yet.
+- The list-less form stays in the kit for work that fits the rule of thumb. Nothing uses it yet.
+
 **In the kit (2026-10-02):**
 - `defineAutomation` with a `key` instead of a `todoList` is the list of one. It has its own processor and
   checkpoint, and an optional `giveUp` (attempts counted in the kit, since the app started).

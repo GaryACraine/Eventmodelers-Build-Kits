@@ -196,7 +196,10 @@ const recordDelivery = decider<RecordDelivery & { data: { notificationId: string
                   event: { type: "carrierNotificationSkipped", data: { notificationId: cmd.data.notificationId, reason: "already done" } },
                   tags: Tags.fromObj({ notificationId: cmd.data.notificationId, parcelId: cmd.data.parcelId })
               }
-            : { event: { type: "parcelDelivered", data: { parcelId: cmd.data.parcelId } }, tags: Tags.fromObj({ parcelId: cmd.data.parcelId }) }
+            : {
+                  event: { type: "parcelDelivered", data: { parcelId: cmd.data.parcelId } },
+                  tags: Tags.fromObj({ notificationId: cmd.data.notificationId, parcelId: cmd.data.parcelId })
+              }
 })
 const IsSkipped = (notificationId: string): EventHandlerWithState<Event<"carrierNotificationSkipped", { notificationId: string }>, boolean> => ({
     tagFilter: Tags.fromObj({ notificationId }),
@@ -273,6 +276,69 @@ describe("a list of one (ADR-040)", () => {
         expect(app.alerts()).toMatchObject([
             { code: "automation-gave-up", severity: "critical", details: { automation: "carrier-translation", key: "n1", attempts: 2 } }
         ])
+    })
+})
+
+// The same translation keeping a to-do list: a notification is on it until it has an outcome; a failed one stays, marked
+interface NotificationToTranslate extends CarrierNotification {
+    [key: string]: unknown
+    state: "waiting" | "failed"
+    error?: string
+}
+const NotificationsToTranslate = defineReadModel<NotificationToTranslate>({
+    name: "NotificationsToTranslate",
+    type: "database-projected",
+    key: "notificationId",
+    collection: "notifications_to_translate",
+    version: 1,
+    canHandle: ["carrierNotificationReceived", "parcelDelivered", "carrierNotificationSkipped"],
+    evolve: (doc, { event }) => {
+        if (event.type === "carrierNotificationReceived") return { ...(event.data as CarrierNotification), state: "waiting" }
+        const skipped = event.data as { reason?: string; error?: string }
+        return event.type === "carrierNotificationSkipped" && skipped.reason === "failed" && doc
+            ? { ...doc, state: "failed", error: skipped.error }
+            : null
+    }
+})
+const listedTranslation = defineAutomation<NotificationToTranslate>({
+    name: "carrier-translation",
+    todoList: NotificationsToTranslate,
+    triggers: ["carrierNotificationReceived"],
+    act: async ({ item, issue }) => {
+        if (item.status !== "delivered") throw new Error(`unknown status ${item.status}`)
+        await issue(recordDelivery, { type: "recordDelivery", data: { parcelId: item.parcelId, notificationId: item.notificationId } })
+    },
+    giveUp: {
+        after: 2,
+        record: ({ key, issue }, error) =>
+            issue(skipNotification, { type: "skipNotification", data: { notificationId: key, reason: "failed", error: (error as Error).message } })
+    }
+})
+
+describe("an automation with a to-do list that gives up (ADR-040)", () => {
+    const app = automationTestApp({ readModels: [NotificationsToTranslate], automations: [listedTranslation], backoff: { initialMs: 10 } })
+
+    test("checks an item off with its outcome", async () => {
+        await app.given(carrierNotified("n1", "p1"))
+        expect(await app.appended()).toEqual([{ type: "parcelDelivered", data: { parcelId: "p1" } }])
+        expect(await app.runtime().reader(NotificationsToTranslate)("n1")).toBeNull()
+    })
+
+    test("gives up on an item that keeps failing: records it, alerts, keeps it listed as failed, and works the ones behind it", async () => {
+        const log = { error: console.error }
+        console.error = () => undefined
+        try {
+            await app.given(carrierNotified("n1", "p1", "mangled"), carrierNotified("n2", "p2"))
+        } finally {
+            Object.assign(console, log)
+        }
+        expect(await app.appended()).toEqual([
+            { type: "carrierNotificationSkipped", data: { notificationId: "n1", reason: "failed", error: "unknown status mangled" } },
+            { type: "parcelDelivered", data: { parcelId: "p2" } }
+        ])
+        expect(app.alerts()).toMatchObject([{ code: "automation-gave-up", details: { automation: "carrier-translation", key: "n1", attempts: 2 } }])
+        expect(await app.runtime().reader(NotificationsToTranslate)("n1")).toMatchObject({ state: "failed", error: "unknown status mangled" })
+        expect(await app.runtime().reader(NotificationsToTranslate)("n2")).toBeNull()
     })
 })
 
