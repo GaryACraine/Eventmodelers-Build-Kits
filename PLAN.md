@@ -295,8 +295,8 @@ model and build only what's ours.
         completeness issues. **Plan it with chapter 1:** the translation's give-up needs the skip command;
       - `trialWasStarted` got the two fields in chapters 17 and 18 too (40 event types, 0 different);
       - scripts: `model/catalogue.sh`, `chapter-1.sh`, `chapter-1-specs.sh`, `chapter-20.sh`.
-      - **On the board,** the earlier chapter 1 is still there beside the rebuilt one (`--safe` never deletes):
-        a push without `--safe` removes it, when Gary says.
+      - **On the board,** the earlier chapter 1 (left beside the rebuilt one by the `--safe` push) was removed with
+        a full push on Gary's say, 2026-10-02. The board and `workspace.json` are in step.
     - [ ] **Open questions, as hotspots on chapter 20:**
       - every event of ours recorded from Paddle must close its notification in `UntranslatedNotifications`: link
         each one as its chapter is converted, or close on any event tagged with the `paddleEventId`;
