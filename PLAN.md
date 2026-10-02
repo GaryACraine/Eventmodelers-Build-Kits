@@ -317,6 +317,19 @@ model and build only what's ours.
         operations page only.
     - [ ] **Each later chapter that translates a notification** closes the list with its own event, in a copy of
       the list after it (as chapter 1's settled copy).
+    - [ ] **Open question (Gary, 2026-10-02): what feeds the inbox, Paddle's webhooks, its API, or both?
+      ADR-041, Proposed.** Webhooks leave us dependent on Paddle's deliveries, and a missing one can't be seen.
+      Calling Paddle's API puts us in control. **Investigate before the endpoint is built:**
+      - whether Paddle's API lists the events that occurred (same ids and payloads as the webhooks), its order,
+        paging, retention and rate limits;
+      - if not, what reading subscriptions and transactions "changed since" gives, and loses;
+      - what Paddle does with a destination that keeps failing, and how replay works;
+      - how fast the owner must see the trial after checkout, and whether the browser's checkout completion can
+        trigger the fetch.
+
+      **Waiting on it:** the endpoint's slice, Paddle's `verify` and `toEvent`, and the sandbox capture.
+      **Not waiting:** the inbox, the translation, its to-do list and the deciders (whatever feeds the inbox
+      records `paddleNotificationReceived` under Paddle's event id).
     - [ ] **The other 11 chapters' Paddle lanes** keep their typed events until each is fleshed out (Gary). With
       them: which seat events carry the Paddle fields (a seat change is confirmed by Paddle's API reply, which has
       no event id), and the **stale** specifications (the first decider with an order to keep).
@@ -3677,7 +3690,7 @@ What each `build-*` skill generates and what it verifies:
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. **16.4 (the inbox, ADR-040) in progress: the kit's pieces and the model (chapters 1 and 20) done 2026-10-02; open: Paddle's signature check and payload reader (16.5), sandbox payload fixtures. Then the loop builds chapters 1 and 20, then 16.3a (chapter 1 end to end).** 16.3 is in process modelling: chapter 1 fleshed out (26 slices), 16.3b done (ADR-039) (16.2 done 2026-09-30: ADR-037 Accepted, trials included after the 16.2b tests) (16.1's knowledge work done 2026-09-30; only Gary's live onboarding open; 16.2's research done 2026-09-30). Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
+| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. **16.4 (the inbox, ADR-040) in progress: the kit's pieces and the model (chapters 1 and 20) done 2026-10-02; open: **what feeds the inbox, webhooks, Paddle's API, or both (ADR-041, Proposed: investigate first)**, then Paddle's signature check and payload reader (16.5) and sandbox payload fixtures. Then the loop builds chapters 1 and 20, then 16.3a (chapter 1 end to end).** 16.3 is in process modelling: chapter 1 fleshed out (26 slices), 16.3b done (ADR-039) (16.2 done 2026-09-30: ADR-037 Accepted, trials included after the 16.2b tests) (16.1's knowledge work done 2026-09-30; only Gary's live onboarding open; 16.2's research done 2026-09-30). Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
 | 15 — Automations (restaurant orders) | ✅ Closed 2026-09-29 (a demo) | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27/28: the Restaurant Orders chapter (25 slices, 63 scenarios, 15 mockups) on prooph board, with stock and an internal automation (the Stock Returner); emcli push fixes (lanes, links, skipped deletions). 15.8 added: deciding from a growing event stream. 15.2 done 2026-09-28 (library PR #29 merged). 15.3 done 2026-09-28 (ADR-033 runtime, ADR-034 Braintree as a commercial directive; the loop built the restaurant backend; 8 end-to-end cases pass, with our own Temporal call deadline and Temporal in health; manual §21). Next: 15.4 redrive, then 15.5 the UI on Sonnet. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) | **Closed 2026-09-29:** 15.4 and 15.4c built through the loop (stalls, retry, give up, attempts, pay again, cancel); 15.4e provider skills; 15.9 on Sonnet at medium, about 2.5–3× cheaper per job; emcli re-queues changed built slices. The rest dropped or moved to Phase 16 |
 | 1 — Stack Scaffolding | ✅ Complete | Verified: init, npm install, tsc, 21/21 unit tests |
 | 2 — State Change Skill | ✅ Complete | 9-step SKILL.md with full DCB patterns |
