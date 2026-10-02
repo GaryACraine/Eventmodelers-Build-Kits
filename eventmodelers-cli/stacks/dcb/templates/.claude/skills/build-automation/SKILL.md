@@ -45,10 +45,15 @@ retried by Temporal. Swallowing either loses the work silently.
 
 - `processors[0]` is the automation:
   - `processorType`: `event-driven` is this skill. `synchronous` is a *translation* (another system's event arriving
-    at a webhook), which isn't proven yet: block the job with `request-feedback` and stop.
-  - `dependencies`:
+    at a webhook), and `polling` runs on a `schedule` with no trigger. Neither is proven yet: block the job with
+    `request-feedback` and stop.
+  - `dependencies` (ADR-039, "what flows into an automation"):
     - `INBOUND reacts-to EVENT`: the **triggers**;
-    - `INBOUND relates-to READMODEL`: the **to-do list**;
+    - `INBOUND relates-to READMODEL` whose read model has **`todoListElement: true`**: the **to-do list** (exactly
+      one; none, or two, is a model problem: block naming it);
+    - every other `INBOUND relates-to READMODEL`: a **data input**, a read model whose values the command needs (it may
+      be a list, or another chapter's). One with `context: EXTERNAL` and an `externalSystem` is an **outside system's
+      data**: it makes the automation external (fetched in an activity, through that system's provider skill);
     - `OUTBOUND relates-to COMMAND`: the **commands** it leads to.
   - `description`: whether it's **internal** or **external**, the idempotency key (`stock-returner:<orderId>`), the
     workflow id (`payment-request:<orderId>:<attempt>`), **the outside system** (read its provider skill), what its
@@ -70,6 +75,7 @@ The loop builds an automation after the slices it needs, so these exist:
 
 - **the to-do list**: `src/contexts/{context}/slices/{list-slice}/readModel.ts`, `type: "database-projected"`, keyed by
   the trigger's id field, and registered in `src/index.ts` `readModels`;
+- **each data input** (our own): its `readModel.ts`, any type (it's read live, by key);
 - **each command's decider**: `src/contexts/{context}/slices/{command-slice}/decider.ts`.
 
 If one is missing, or the list isn't `database-projected`, block the job naming what's missing. Don't build it here:
@@ -104,8 +110,11 @@ export const stockReturner = defineAutomation<StockToReturnDoc>({
 })
 ```
 
-- The command's data comes from `item` (the to-do list's document) or `event` (the trigger), as the command's field
-  mappings in slice.json say (`stockDeducted.menuItems` → the list's `menuItems`).
+- The command's data comes from `item` (the to-do list's document), `event` (the trigger), or a **data input** read
+  with `read(readModel, key)`, as the command's field mappings in slice.json say (`stockDeducted.menuItems` → the list's
+  `menuItems`; `OrganisationOwner.ownerUserId` → `(await read(organisationOwner, item.organisationId)).ownerUserId`).
+  `read` folds the read model live from the event store, so it's current. If it returns null, throw: the processor
+  retries the event until the data is there (never issue the command without it).
 - `issue` gives the command the idempotency key `<name>:<item key>`. A repeat (a retry after a crash, the same event
   handled again) is recognised and not decided again.
 - **An item worked again** (a payment declined, paid again, declined again: the stock goes back each time) passes the
@@ -433,7 +442,8 @@ docker-compose.yml        ← the mock's service
 
 - [ ] `defineAutomation` with the name from the description, the to-do list, and the `reacts-to` triggers
 - [ ] `act` only issues a command or starts a workflow; nothing is caught and logged
-- [ ] Every field of the command comes from the item or the trigger event, per slice.json's mappings
+- [ ] Every field of the command comes from the item, the trigger event, or a data input read with `read`, per
+      slice.json's mappings (ADR-039)
 - [ ] External: the workflow is deterministic, its retries are configuration, and business answers are recorded as
       our commands through `issueOnce` with the key from the description
 - [ ] External: the provider skill read and followed; its official SDK, host and our deadline from the environment,

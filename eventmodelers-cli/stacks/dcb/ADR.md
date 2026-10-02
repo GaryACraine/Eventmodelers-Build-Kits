@@ -1990,3 +1990,62 @@ modelling), not to storming.
   - `review.md` flags a process chapter with two outcomes of one step, but never a storm chapter.
 - **Same-named events across chapters must stay identical.** Until emcli warns about drift, keep one field catalogue
   per context.
+
+### ADR-039: What flows into an automation: its trigger, its to-do list, and data inputs
+
+**Status:** **Accepted, 2026-10-02 (Gary)** for the model, the completeness rule, and data inputs in
+`build-automation`. **Proposed** for polling's runner and for external data inputs in the builder, which are proven
+with their first slices.
+**Date:** 2026-10-02
+
+**Context:**
+- **Automations come in two kinds:** triggered by an event (event-driven), or run on a schedule with no trigger
+  (polling).
+- **An automation gathers data from read models and passes it into the command, so the command is deterministic.**
+  Those read models may be ours, another chapter's, or stand for an outside system's API.
+- **The tools had gaps:**
+  - emcli let any read model link to an automation, but **completeness skipped every mapped field**. A command
+    could map `OrganisationOwner.ownerUserId` with no link to that read model at all.
+  - `build-automation` read the one inbound read model as "the to-do list", so a data input would be mistaken for
+    it.
+  - A data input can itself be a list, so "the list read model" can't mark the to-do list.
+
+**Decision:**
+1. **An automation's inputs, in the model:**
+   - its **trigger**: an event that `reacts-to` it (event-driven only);
+   - its **to-do list**: a read model marked **`--todo-list`**, exported as `todoListElement: true` (the
+     eventmodelers format's own flag; a flag, not a new element type, because prooph board's card types are fixed).
+     There's at most one, and a polling automation must have one;
+   - **data inputs**: every other read model that `relates-to` it, a list or not, ours or another chapter's. One
+     marked **`--external <System>`** (exported `context: EXTERNAL`, `externalSystem`) stands for an outside API;
+   - a polling automation's **`--schedule`**.
+2. **The rule** (Gary): every field of the command an automation issues comes from its trigger, a read model linked
+   to it, `derived:` (a value it works out), or `webhook:` (a translation only). Never `user-input` or `session:`.
+   If the trigger doesn't carry a value, a linked read model must. **`emcli completeness` enforces it as an ERROR.**
+   It also reports a polling automation with no to-do list or two to-do lists (ERROR), and an event-driven
+   automation with no trigger, or with a command and no to-do list (WARNING).
+3. **In the kit:**
+   - `act` gets `read(readModel, key)`, which folds a data input live from the event store, as the item is, so it's
+     current;
+   - a missing value throws, and the processor retries the event;
+   - an external data input is fetched in an activity, through the provider skill;
+   - polling and translations stay blocked as unproven until their first slices.
+4. **A to-do list whose closing event comes later** sits before the automation, opened by its events, with a copy
+   after the closing event ("… settled") that adds it, so no link points backwards (as restaurant-orders' "stock to
+   return").
+
+**Alternatives considered:**
+- **A new element type `todo-list`:** clearest in the model, but prooph board has no such card, and every builder and
+  schema would need a new type. The eventmodelers format already has the flag.
+- **The list read model is the to-do list:** ambiguous when a data input is a list too.
+- **Data carried only on the to-do list's items** (lookups folded into the list): possible for our own read models,
+  but it can't express an outside API or another chapter's read model, and it hides the dependency the model should
+  show.
+
+**Consequences:**
+- The model shows exactly where an automation's data comes from, and a missing link is an error before the loop
+  sees it.
+- `licensing` chapter 1: its four internal automations got to-do lists, `OrganisationOwner` is a data input, and the
+  check found the translation's missing processor type.
+- emcli has 10 new tests (371 in all); the kit has a `read` test in `automations.tests.ts`, proven in `licensing`
+  (13 of 13).

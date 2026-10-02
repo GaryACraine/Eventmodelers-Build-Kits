@@ -88,6 +88,46 @@ const labeller = (todoList = ParcelsToShip) =>
         act: async ({ item, start }) => start("printParcelLabel", [item.parcelId])
     })
 
+// A data input (ADR-039): the courier assigned to a parcel, a read model of its own the command needs
+type CourierAssigned = Event<"courierAssigned", { parcelId: string; courier: string }>
+type ParcelDispatched = Event<"parcelDispatched", { parcelId: string; courier: string }>
+const courierAssigned = (parcelId: string, courier: string): TaggedEvent<CourierAssigned> => ({
+    event: { type: "courierAssigned", data: { parcelId, courier } },
+    tags: Tags.fromObj({ parcelId })
+})
+interface ParcelCourier {
+    [key: string]: unknown
+    parcelId: string
+    courier: string
+}
+const ParcelCouriers = defineReadModel<ParcelCourier>({
+    name: "ParcelCouriers",
+    type: "live-report",
+    key: "parcelId",
+    collection: "parcel_couriers",
+    version: 1,
+    canHandle: ["courierAssigned"],
+    evolve: (_doc, { event }) => event.data as ParcelCourier
+})
+type DispatchParcel = Command<"dispatchParcel", { parcelId: string; courier: string }>
+const dispatchParcel = decider<DispatchParcel, { shipped: ReturnType<typeof IsShipped> }>({
+    handlers: cmd => ({ shipped: IsShipped(cmd.data.parcelId) }),
+    decide: cmd => ({
+        event: { type: "parcelDispatched", data: { parcelId: cmd.data.parcelId, courier: cmd.data.courier } } as ParcelDispatched,
+        tags: Tags.fromObj({ parcelId: cmd.data.parcelId })
+    })
+})
+const dispatcher = defineAutomation<ParcelToShip>({
+    name: "dispatcher",
+    todoList: ParcelsToShip,
+    triggers: ["parcelBooked"],
+    act: async ({ item, read, issue }) => {
+        const assigned = await read(ParcelCouriers, item.parcelId)
+        if (!assigned) throw new Error(`no courier assigned to ${item.parcelId} yet`)
+        await issue(dispatchParcel, { type: "dispatchParcel", data: { parcelId: item.parcelId, courier: assigned.courier } })
+    }
+})
+
 // ─── Internal work ───────────────────────────────────────────────────────────
 
 describe("an internal automation", () => {
@@ -102,6 +142,15 @@ describe("an internal automation", () => {
     test("does nothing for an item the history already closed", async () => {
         await app.given(parcelBooked("p1"), parcelShipped("p1"))
         expect(await app.appended()).toEqual([])
+    })
+})
+
+describe("an automation with a data input (ADR-039)", () => {
+    const app = automationTestApp({ readModels: [ParcelsToShip, ParcelCouriers], automations: [dispatcher] })
+
+    test("reads the data input as it stands now and passes it into the command", async () => {
+        await app.given(courierAssigned("p1", "DPD"), parcelBooked("p1"))
+        expect(await app.appended()).toEqual([{ type: "parcelDispatched", data: { parcelId: "p1", courier: "DPD" } }])
     })
 })
 
