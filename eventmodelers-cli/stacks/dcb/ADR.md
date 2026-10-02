@@ -2375,8 +2375,8 @@ section is a draft until its first slice is built and the end-to-end run passes 
 
 ### ADR-043: A system setting is seeded by a setup command, issued once when the app first starts
 
-**Status:** **Proposed, 2026-10-02.** Built and proven by the kit's own tests on Gary's request to seed the settings;
-the design below awaits his acceptance. The skill section is a draft until its first slice is built.
+**Status:** **Accepted, 2026-10-02 (Gary).** Built and proven by the kit's own tests. The skill section is a draft
+until its first slice is built.
 **Date:** 2026-10-02
 
 **Context:**
