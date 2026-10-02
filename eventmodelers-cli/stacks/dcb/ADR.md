@@ -1776,10 +1776,12 @@ below, with Gary's answers. Accepted decisions feed the model (16.3).
    - It lasts **7 days** and can be sent again.
    - **Expiry is a recorded event** (Gary, 2026-10-01): an unanswered invitation is recorded as having expired after
      7 days, rather than being worked out from its date each time. That frees its seat, shows in the organisation's
-     history, and lets the admin who sent it be told. **A scheduled (polling) automation records it:** it finds
-     invitations past their 7 days and records each one's expiry. Building that kind of automation is later work
-     (the kit's automations so far react to events, ADR-031). Until then, the model has the event and the automation,
-     unbuilt.
+     history, and lets the admin who sent it be told. **A workflow started with a delay records it** (revised
+     2026-10-02, ADR-042; it was a scheduled automation that scans for invitations past their date): sending the
+     invitation starts a workflow due at its `expiresAt`, which records the expiry only if the invitation is still
+     open.
+   - **The 7 days are a configured value** (Gary, 2026-10-02): `invitationExpiryWasConfigured`, projected to
+     `LicensingSettings`, as the grace period is (ADR-041).
 4. **At the limit, assigning a seat is blocked,** with an offer to add seats, made to the owner.
    - Adding seats is our screen: Paddle's preview first, then the update with `prorated_immediately`.
    - **Which Paddle answer confirms a seat change** (Gary, 2026-10-01):
@@ -2015,7 +2017,8 @@ with their first slices.
    - its **trigger**: an event that `reacts-to` it (event-driven only);
    - its **to-do list**: a read model marked **`--todo-list`**, exported as `todoListElement: true` (the
      eventmodelers format's own flag; a flag, not a new element type, because prooph board's card types are fixed).
-     There's at most one, and a polling automation must have one;
+     There's at most one. *A polling automation had to have one; since ADR-042 (2026-10-02) it's a Temporal
+     Schedule, and a list of our own is optional (the Paddle sweep's list is Paddle's event stream);*
    - **data inputs**: every other read model that `relates-to` it, a list or not, ours or another chapter's. One
      marked **`--external <System>`** (exported `context: EXTERNAL`, `externalSystem`) stands for an outside API;
    - a polling automation's **`--schedule`**.
@@ -2240,8 +2243,11 @@ item. The decision is only about the door: the webhook endpoint, a poller, or bo
    - the app starting (our own downtime is the likeliest reason a webhook was missed);
    - every webhook received (it fills any gap before it);
    - the browser reporting that the checkout completed (`checkoutWasCompleted`), so the owner doesn't wait on a
-     webhook;
-   - **a scheduled sweep,** about every 15 minutes, as the backstop;
+     webhook. **A short burst, not one fetch** (revised 2026-10-02): Paddle creates the subscription a moment after
+     the payment, so one fetch may be too early. The "Paddle Checkout Watch" fetches at about 2, 5, 15, 30 and 60
+     seconds and stops as soon as the trial shows (a to-do list of checkouts awaiting Paddle; timers in a workflow,
+     ADR-042);
+   - **a scheduled sweep,** about every 15 minutes, as the backstop: a Temporal Schedule (ADR-042);
    - as a principle, **before any action of ours that would harm a customer.** Nothing in the model needs it
      today: we never act against a customer on our own clock. Access ends only when Paddle's own cancellation
      arrives (`subscriptionHasEnded`).
@@ -2300,3 +2306,70 @@ stream's, and how soon an event is in the stream.
 - Four events gained their end dates (`trialWasConverted`, `renewalPaymentWasRecovered`: `periodEndsAt`;
   `renewalPaymentFailed`, `trialConversionFailed`: `graceEndsAt`).
 - A new small flow in the model: the grace period is configured (`configureGracePeriod`, `LicensingSettings`).
+
+### ADR-042: Timed work runs on Temporal: a Schedule, a timer, or a start delay
+
+**Status:** **Accepted, 2026-10-02 (Gary).** The kit's helpers are proven by their own tests; each shape's skill
+section is a draft until its first slice is built and the end-to-end run passes (PLAN 16.6).
+**Date:** 2026-10-02
+
+**Context:**
+- **Some work is started by time, not by an event:** a sweep of Paddle's events every 15 minutes (ADR-041), a few
+  fetches in the minute after a checkout, an invitation that expires 7 days after it's sent (ADR-037).
+- **ADR-039 named "polling" automations** (a schedule that scans a to-do list) and left their runner unbuilt.
+- **We already run Temporal** for external work (ADR-031), with a client, a worker, workflows and activities.
+- **Temporal recommends Schedules over its cron jobs.** A cron job is a property of one workflow run. A Schedule
+  has its own identity: it can be updated, paused, triggered and backfilled without touching running work, and it
+  has overlap policies.
+- **Temporal's guidance on which tool:** a Schedule for recurring or calendar-based starts; a timer inside a
+  workflow for a relative delay within one piece of work; a start delay for one start at a known future time (not
+  a Schedule limited to one run).
+
+**Decision:**
+
+| Need | Temporal's tool | Ours |
+|---|---|---|
+| Recurring, for the whole system | a **Schedule** | the 15-minute Paddle sweep |
+| A relative delay inside one piece of work | a **timer in a workflow** | the burst of fetches after a checkout |
+| One start at a known future time | a workflow with a **start delay** | an invitation's expiry |
+
+1. **A polling automation is a Temporal Schedule** that starts a workflow, whose activities do the work.
+   - **As code:** its id is the automation's name. It's created when the app starts, and updated if it exists
+     ("create, and on already-exists, update": listing schedules is eventually consistent, so check-then-create
+     can race between two instances). It's never edited by hand in Temporal's UI.
+   - **Overlap:** a run still going when the next is due means the next is skipped. A manual trigger during a run
+     queues one more, so a burst of triggers is one extra run.
+   - **Catch-up window: about a minute.** Temporal's default is a year, so after an outage every missed run would
+     be due. For a sweep, one run covers everything missed.
+   - **No pause-on-failure.** A failed run raises an alert, and the next run tries again.
+   - **"Run now" is the same schedule, triggered** (the app starting, a webhook received): one code path.
+   - **State stays in our events,** not in Temporal's "last completion result": the sweep's checkpoint is our own
+     event, and it only moves forward.
+   - **Activities are idempotent:** Temporal doesn't guarantee an earlier attempt has finished.
+   - A scheduled run's workflow id is the schedule's id plus Temporal's timestamp (not our `<automation>:<key>`).
+   - **A to-do list of our own is optional.** The Paddle sweep's list is Paddle's event stream.
+2. **Watching for an outside fact is a workflow with timers:** an event-driven, external automation with a to-do
+   list. Its workflow tries at growing intervals, stops as soon as the item is closed, and stops anyway after the
+   last attempt. Nothing is recorded as stalled: something else (a webhook, the sweep) brings the fact.
+3. **Work due at a known time is a workflow started with a delay:** an event-driven automation starts it when the
+   date becomes known, due at that date. When it wakes it acts only if the item is still open. No scanning, and
+   it's exact.
+4. **A length of time that is ours to set is a configured value** (Gary): an event, projected to a settings read
+   model, read by the processor that needs it (`gracePeriodDays`, `invitationExpiryDays` in `LicensingSettings`).
+
+**Alternatives considered:**
+- **Temporal cron jobs:** legacy; no pause, update or overlap control.
+- **A timer in our own process:** not durable, and it would run once per app instance.
+- **A scheduled scan for every dated thing** (invitation expiry as a sweep over a list): late by up to one
+  interval, and it needs the list-scanning form of polling. A start delay is exact and simpler.
+- **One long-running workflow per entity:** Temporal's advice when the interval differs and changes per entity.
+  Ours don't.
+
+**Consequences:**
+- The kit gains `ensureSchedule`, `triggerSchedule`, a start with a delay, and `defineSchedule`.
+- `build-automation` gains a draft section per shape. Each is distilled once its first slice is built and the
+  end-to-end run passes (Gary: distil on solid ground).
+- ADR-039's "polling must have a to-do list" is relaxed; ADR-037's and ADR-041's timed work is revised to these
+  shapes.
+- Tests trigger a schedule and use short delays: they never wait real minutes.
+
