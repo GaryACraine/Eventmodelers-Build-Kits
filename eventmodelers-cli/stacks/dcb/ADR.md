@@ -2023,13 +2023,14 @@ with their first slices.
    to it, `derived:` (a value it works out), or `webhook:` (a translation only). Never `user-input` or `session:`.
    If the trigger doesn't carry a value, a linked read model must. **`emcli completeness` enforces it as an ERROR.**
    It also reports a polling automation with no to-do list or two to-do lists (ERROR), and an event-driven
-   automation with no trigger, or with a command and no to-do list (WARNING).
+   automation with no trigger (WARNING). *An event-driven automation with a command and no to-do list was a
+   WARNING until 2026-10-02: the list is optional (ADR-040).*
 3. **In the kit:**
    - `act` gets `read(readModel, key)`, which folds a data input live from the event store, as the item is, so it's
      current;
    - a missing value throws, and the processor retries the event;
    - an external data input is fetched in an activity, through the provider skill;
-   - polling and translations stay blocked as unproven until their first slices.
+   - polling stays blocked as unproven until its first slice. *(Translations: ADR-040.)*
 4. **A to-do list whose closing event comes later** sits before the automation, opened by its events, with a copy
    after the closing event ("… settled") that adds it, so no link points backwards (as restaurant-orders' "stock to
    return").
@@ -2110,8 +2111,16 @@ with their first slices.
    `event_id` as the idempotency key (ADR-006), so a redelivery is a no-op. It answers 200 at once (5xx only if the
    append fails). There's no business logic in it.
 2. **The event store is the inbox:** durable, de-duplicated, replayable, and visible in the model's Paddle lane.
-3. **The translation is an event-driven automation, a "list of one"** (Gary): the notification is the item, with
-   no stored to-do list. It runs after the 200, classifies from Paddle's type plus our own state, and issues our
+3. **The translation is an event-driven automation that keeps no to-do list** (Gary: a "list of one"): the
+   notification is the item.
+   - **This isn't a special kind** (Gary, 2026-10-02). An event-driven automation keeps a to-do list or none. An
+     automation is classified by three questions: what starts it (an event, or a schedule), whether it keeps a
+     to-do list, and where the work is done (here, or in another system).
+   - **Keep a list unless** the work is done here, at once, from the one event, the trigger's id is unique per
+     event (a notification's id, not an entity's), and nobody needs to see it waiting. Without a list the work is
+     done once per trigger id. Polling and external work always keep a list: a stall has to be recorded somewhere.
+   - emcli reports nothing either way: it can't tell an event's own id from an entity's, so the choice is the
+     modeller's. The build skill takes the form from the slice (a linked to-do list, or none). It runs after the 200, classifies from Paddle's type plus our own state, and issues our
    command with the idempotency key `paddleEventId`.
    - **Crash safety** is the stored notification plus the processor's checkpoint: it resumes and works every missed
      notification, idempotently.
