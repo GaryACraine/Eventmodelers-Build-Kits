@@ -2049,3 +2049,97 @@ with their first slices.
   check found the translation's missing processor type.
 - emcli has 10 new tests (371 in all); the kit has a `read` test in `automations.tests.ts`, proven in `licensing`
   (13 of 13).
+
+### ADR-040: Receiving another system's webhooks: an inbox on the event store
+
+**Status:** **Accepted, 2026-10-02 (Gary)** for the design; proven in PLAN 16.4 (Paddle).
+**Date:** 2026-10-02
+
+**Context:**
+- **Paddle delivers webhooks more than once, and out of order.**
+  - A specific event and its `subscription.updated` often share one `occurred_at`.
+  - `subscription.created` can be missing, with `subscription.activated` arriving instead.
+  - `activated` means a trial conversion or a recovery, depending on our state (`paddle.md` §11b).
+- **The kit had a `synchronous` translation mode** (decide inside the webhook request), blocked as unproven. It
+  relies on Paddle's retries for failures and keeps no raw payload.
+- **Gary asked:**
+  - whether the ordering check needs a read model of what's been applied, kept immediately consistent;
+  - whether this is an inbox pattern.
+
+**Decision:**
+
+```
+ Paddle ── POST /webhooks/paddle ──▶  WEBHOOK ENDPOINT (thin; no business logic)
+                                       1. verify Paddle-Signature ............ bad → 401, nothing recorded
+                                       2. append  paddleNotificationReceived    (Paddle lane, raw payload)
+                                            tags: subscriptionId, paddleEventId
+                                            idempotency key = Paddle event_id  (redelivery → no-op)
+                                       3. 200 OK at once ...................... 5xx only if the append fails
+                                                   │
+                     ┌─────────────────────────────┴───────────────────────────────┐
+                     │ EVENT STORE = THE INBOX: durable, de-duplicated, replayable │
+                     └─────────────────────────────┬───────────────────────────────┘
+                                                   │ opens an item
+                                                   ▼
+                     TO-DO LIST  "Paddle notifications to translate"   (key: paddleEventId)
+                                                   │
+                                                   ▼
+                     TRANSLATION (an ordinary event-driven automation, proven machinery)
+                       act: read the item; classify by Paddle's type + OUR state
+                            (trialing / payment failed / active → conversion, recovery, renewal …)
+                            issue our command, idempotency key = paddleEventId
+                                                   │
+                                                   ▼
+                     OUR COMMAND'S DECIDER (DCB), e.g. startTrial, recordSeatsChange
+                       decision state = our events for that subscription
+                                        (each carries paddleEventId, paddleOccurredAt)
+                       • older paddleOccurredAt than the last applied → STALE
+                       • the same fact already recorded (created + activated) → ALREADY DONE
+                       • otherwise → our business event (+ paddleEventId, paddleOccurredAt)
+                       append condition: nothing new for this subscription since the read,
+                       else decide again → immediately consistent, no race
+                                                   │
+                     ┌─────────────────────────────┴─────────────────────────────┐
+                     ▼                                                           ▼
+     our business event (trialWasStarted, …)             paddleNotificationSkipped {paddleEventId, reason}
+       closes the to-do item                               closes the item for stale / already-done ones
+       → read models, other automations                    (an audit trail of what was ignored, and why)
+```
+
+1. **A thin endpoint is the inbox's door.** It verifies the signature (401 if bad), then appends
+   `paddleNotificationReceived` with the raw payload, tagged `subscriptionId` and `paddleEventId`, with Paddle's
+   `event_id` as the idempotency key (ADR-006), so a redelivery is a no-op. It answers 200 at once (5xx only if the
+   append fails). There's no business logic in it.
+2. **The event store is the inbox:** durable, de-duplicated, replayable, and visible in the model's Paddle lane.
+3. **The translation is an ordinary event-driven automation** (ADR-031, ADR-039) over a to-do list "notifications to
+   translate". It classifies from Paddle's type plus our own state, and issues our command with the idempotency key
+   `paddleEventId`.
+4. **Ordering is decided in our deciders, under DCB's append condition.**
+   - Every event recorded from Paddle carries `paddleEventId` and `paddleOccurredAt`.
+   - A decider ignores an update older than the last applied one for that subscription (last writer wins), and
+     treats the same fact by two routes as already done.
+   - The append condition makes the check immediately consistent, with no separate read model. An async read model
+     would race; if a projection were ever used for it, it would have to be inline or live.
+5. **`paddleNotificationSkipped {paddleEventId, reason}`** closes stale and duplicate items: an audit trail of
+   what was ignored, and why.
+
+**Named patterns:**
+- the idempotent receiver (Enterprise Integration Patterns);
+- the transactional inbox;
+- last writer wins by timestamp.
+
+**Alternatives considered:**
+- **A synchronous translation in the webhook request:** simpler, but no stored payload, failures lean on Paddle's
+  retries, and the builder mode is unproven.
+- **The notification as a nudge, with Paddle's API as the truth:** ordering can't go wrong, but it's an API call per
+  webhook (rate limits, outages). Kept as a **fallback** for stale or ambiguous notifications.
+- **A separate inbox table:** a second store beside the event store, for no gain.
+- **A resequencer** (buffer and reorder by sequence): heavier. Paddle gives timestamps, not sequence numbers, so
+  last writer wins is enough.
+
+**Consequences:**
+- One more event per webhook (`paddleNotificationReceived`), and each translated or skipped item closes with an
+  event.
+- Translations reuse the automation builder. The `synchronous` mode is superseded for webhooks.
+- The pattern is general: any provider's webhooks (the auth system's, if ever) follow it, with that provider's
+  signature check in its provider skill.
