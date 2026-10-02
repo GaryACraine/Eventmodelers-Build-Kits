@@ -2079,15 +2079,12 @@ with their first slices.
                      ┌─────────────────────────────┴───────────────────────────────┐
                      │ EVENT STORE = THE INBOX: durable, de-duplicated, replayable │
                      └─────────────────────────────┬───────────────────────────────┘
-                                                   │ opens an item
+                                                   │ the processor's checkpoint: resumes after a crash
                                                    ▼
-                     TO-DO LIST  "Paddle notifications to translate"   (key: paddleEventId)
-                                                   │
-                                                   ▼
-                     TRANSLATION (an ordinary event-driven automation, proven machinery)
-                       act: read the item; classify by Paddle's type + OUR state
-                            (trialing / payment failed / active → conversion, recovery, renewal …)
-                            issue our command, idempotency key = paddleEventId
+                     TRANSLATION (event-driven; a "list of one": the notification is the item)
+                       classify by Paddle's type + OUR state
+                         (trialing / payment failed / active → conversion, recovery, renewal …)
+                       issue our command, idempotency key = paddleEventId
                                                    │
                                                    ▼
                      OUR COMMAND'S DECIDER (DCB), e.g. startTrial, recordSeatsChange
@@ -2096,14 +2093,16 @@ with their first slices.
                        • older paddleOccurredAt than the last applied → STALE
                        • the same fact already recorded (created + activated) → ALREADY DONE
                        • otherwise → our business event (+ paddleEventId, paddleOccurredAt)
-                       append condition: nothing new for this subscription since the read,
+                       conditional append: nothing new for this subscription since the read,
                        else decide again → immediately consistent, no race
                                                    │
                      ┌─────────────────────────────┴─────────────────────────────┐
                      ▼                                                           ▼
      our business event (trialWasStarted, …)             paddleNotificationSkipped {paddleEventId, reason}
-       closes the to-do item                               closes the item for stale / already-done ones
-       → read models, other automations                    (an audit trail of what was ignored, and why)
+       → read models, other automations                    stale | already done | failed (poison, + alert)
+
+ SAFETY NET (facts, not the checkpoint): "Untranslated notifications" = received with no outcome event
+ (business or skipped) for its paddleEventId → a live read model on the ops page; alert if one is old.
 ```
 
 1. **A thin endpoint is the inbox's door.** It verifies the signature (401 if bad), then appends
@@ -2111,17 +2110,24 @@ with their first slices.
    `event_id` as the idempotency key (ADR-006), so a redelivery is a no-op. It answers 200 at once (5xx only if the
    append fails). There's no business logic in it.
 2. **The event store is the inbox:** durable, de-duplicated, replayable, and visible in the model's Paddle lane.
-3. **The translation is an ordinary event-driven automation** (ADR-031, ADR-039) over a to-do list "notifications to
-   translate". It classifies from Paddle's type plus our own state, and issues our command with the idempotency key
-   `paddleEventId`.
+3. **The translation is an event-driven automation, a "list of one"** (Gary): the notification is the item, with
+   no stored to-do list. It runs after the 200, classifies from Paddle's type plus our own state, and issues our
+   command with the idempotency key `paddleEventId`.
+   - **Crash safety** is the stored notification plus the processor's checkpoint: it resumes and works every missed
+     notification, idempotently.
+   - A stored list would add visibility and per-item retry, not crash safety. The kit's `defineAutomation` gains a
+     list-less form for this.
 4. **Ordering is decided in our deciders, under DCB's append condition.**
    - Every event recorded from Paddle carries `paddleEventId` and `paddleOccurredAt`.
    - A decider ignores an update older than the last applied one for that subscription (last writer wins), and
      treats the same fact by two routes as already done.
    - The append condition makes the check immediately consistent, with no separate read model. An async read model
      would race; if a projection were ever used for it, it would have to be inline or live.
-5. **`paddleNotificationSkipped {paddleEventId, reason}`** closes stale and duplicate items: an audit trail of
-   what was ignored, and why.
+5. **`paddleNotificationSkipped {paddleEventId, reason}`** records what was ignored, and why: stale, already done,
+   or **failed**. A poison notification is skipped after its retries, with an alert, so it can't block the ones
+   behind it.
+6. **A safety net from the facts:** "Untranslated notifications" (received, with no outcome event for its
+   `paddleEventId`) is a live read model with an age alert. It verifies the checkpoint without depending on it.
 
 **Named patterns:**
 - the idempotent receiver (Enterprise Integration Patterns);
