@@ -317,21 +317,37 @@ model and build only what's ours.
         operations page only.
     - [ ] **Each later chapter that translates a notification** closes the list with its own event, in a copy of
       the list after it (as chapter 1's settled copy).
-    - [ ] **What feeds the inbox: webhooks, Paddle's API, or both? ADR-041, Proposed** (Gary's question,
-      2026-10-02: webhooks leave us dependent on Paddle's deliveries, and a missing one can't be seen).
-      - [x] **Investigated 2026-10-02** (`paddle.md` §7b): Paddle has an **event stream**, `GET /events`: every
-        event of the last 90 days, the same `event_id` and payload as the webhook, read in ascending id order from
-        a checkpoint. It doesn't depend on webhooks (the sandbox has no destination, and all 1,850 events are
-        there). 240 requests a minute.
-      - [ ] **Gary's proposal, to accept:** webhooks first; a fetch of the event stream as the fallback, started
-        by events and not by a schedule: the app starting, every webhook received, and a to-do list of Paddle
-        facts we expect (after a checkout, at the trial's end, at a renewal date) whose workflow waits until an
-        item is due and fetches if it's still open.
-      - [ ] Then: the fetch (a provider call, with 16.5), its to-do list in the model, and the kit's "wait until
-        due" workflow shape.
-      - [ ] Verify with a destination set up: a webhook's `event_id` is the stream's; how soon an event is in the
-        stream.
-      - **Not waiting:** the inbox, the translation, its to-do list and the deciders.
+    - [x] **What feeds the inbox: ADR-041, Accepted 2026-10-02 (Gary).** Webhooks first, with a fetch of Paddle's
+      event stream behind them (Gary's question: webhooks leave us dependent on Paddle's deliveries, and a missing
+      one can't be seen).
+      - **Found** (`paddle.md` §7b): `GET /events` holds every event of the last 90 days, with the webhook's
+        `event_id` and payload, read in ascending order from a checkpoint, and it doesn't depend on webhooks.
+      - **What starts a fetch:** the app starting, every webhook, the browser reporting the checkout completed, a
+        sweep about every 15 minutes, and before any action of ours that harms a customer.
+      - **Events carry the date their waiting period ends** (Gary), so a to-do list of what's due
+        (`PaddleFactsDue`) comes from our own events, and the sweep is a polling automation over it.
+      - **The model** (pushed, not exported):
+        - four events gained their end dates (`periodEndsAt`, `graceEndsAt`), in every chapter they appear in
+          (43 event types, 0 different);
+        - chapter 1: "report checkout completed" (`reportCheckoutCompleted` → `checkoutWasCompleted`), 29 slices,
+          28 specifications, completeness as before;
+        - **chapter 21, "Paddle's events are fetched"**, at storm level (7 slices): the "Paddle Sync" polling
+          automation, `PaddleFactsDue`, Paddle's event stream as an external data input, the checkpoint event and
+          the overdue event. Not planned for the loop.
+        - `PaddleFactsDue` is defined in chapter 21, not chapter 1 as first planned: chapter 1 is about to be
+          built, and the list's closing events are in chapters not fleshed out yet.
+    - [ ] **To build for ADR-041:**
+      - [ ] the kit's **polling automation** (ADR-039, unproven): a schedule that scans a to-do list. First
+        users: this sweep and invitation expiry;
+      - [ ] **the fetch**, with 16.5's `provider-paddle`: read `GET /events` after the checkpoint, record each
+        through the inbox, record the checkpoint; also at app start, after each webhook, and on
+        `checkoutWasCompleted`;
+      - [ ] **fetch before harm:** the slice that ends access at the grace period's end (chapter 14);
+      - [ ] verify with a notification destination set up: a webhook's `event_id` is the stream's; how soon an
+        event is in the stream.
+    - [ ] **Open questions, as hotspots:** where `graceEndsAt` comes from (chapter 13: Paddle's payload, or the
+      failure date plus our 14 days); which events open and close `PaddleFactsDue`, and how long after its date a
+      fact is overdue (chapter 21).
     - [ ] **The other 11 chapters' Paddle lanes** keep their typed events until each is fleshed out (Gary). With
       them: which seat events carry the Paddle fields (a seat change is confirmed by Paddle's API reply, which has
       no event id), and the **stale** specifications (the first decider with an order to keep).
@@ -3681,6 +3697,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-01 | Chapter 1 is proven end to end through the UI (Playwright) once its slices are built (16.3a) | A chapter is one flow, so it's one journey; slice tests first, then the journey; mock and sandbox runs |
 | 2026-10-01 | An automation's trigger is a `reacts-to` link, not a copy in its slice; emcli's export fills the automation slice's `events[]` from the link | The copy was a tooling requirement, not a modelling one: `build-automation` needs the trigger's fields in `events[]`, which the export only took from elements in the slice. Read slices already had this fallback. Copies looked like duplicate events on the board |
 | 2026-10-02 | An automation's inputs: trigger, one to-do list (`--todo-list`, exported `todoListElement`), and data inputs (other linked read models: ours, another chapter's, or `--external`); its command is fed only by these (ADR-039) | Commands stay deterministic and every value's source is visible; completeness catches a missing link; a flag rather than a new element type, because prooph board's card types are fixed and the eventmodelers format already has the flag |
+| 2026-10-02 | What feeds the inbox (ADR-041, Gary): webhooks first, with a fetch of Paddle's event stream behind them, started by the app starting, every webhook, a completed checkout, a 15-minute sweep, and before any action that harms a customer. Events carry the date their waiting period ends, so the sweep is a polling automation over a to-do list of what's due | A missing webhook can't be seen, and Paddle keeps every event for 90 days in a stream we can read from a checkpoint. Both routes record the same event under one id, so nothing built for ADR-040 changes. The one harmful case (a payment recovering unseen, then access removed) is closed by fetching before we act |
 | 2026-10-02 | The Paddle translation keeps a to-do list (`UntranslatedNotifications`), and one it gives up on stays listed as failed (Gary; ADR-040 revised). Giving up is available to any automation | The "safety net" read model was a to-do list in all but name, so the same thing was modelled twice; the list pattern answers how each outcome closes it and puts the waiting work on the operations page. The cost, accepted: the list follows the translation's own checkpoint, so a stuck processor shows on the health page instead |
 | 2026-10-02 | A translation isn't a special kind of automation: an event-driven automation keeps a to-do list or none (the trigger event is then the item, keyed by its own id). emcli says nothing about a missing list; the rule of thumb is in the skills (Gary) | One simple classification (what starts it, a list or not, where the work is done) that matches the code; emcli can't tell an event's own id from an entity's, so a warning would be noise on valid models |
 | 2026-10-02 | A list of one's give-up is counted in the kit (attempts per item, in memory, since the app started), not in the library | The library's `onError` isn't told the attempt number, and library PRs are Gary's to merge; a restart only means more attempts before giving up, and the recorded skip is the durable fact |
@@ -3692,7 +3709,7 @@ What each `build-*` skill generates and what it verifies:
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. **16.4 (the inbox, ADR-040) in progress: the kit's pieces and the model (chapters 1 and 20) done 2026-10-02; open: **what feeds the inbox (ADR-041, Proposed; investigated: Paddle has an event stream; Gary's proposal, webhooks first with an event-started fetch as the fallback, to accept)**, then Paddle's signature check and payload reader (16.5) and sandbox payload fixtures. Then the loop builds chapters 1 and 20, then 16.3a (chapter 1 end to end).** 16.3 is in process modelling: chapter 1 fleshed out (26 slices), 16.3b done (ADR-039) (16.2 done 2026-09-30: ADR-037 Accepted, trials included after the 16.2b tests) (16.1's knowledge work done 2026-09-30; only Gary's live onboarding open; 16.2's research done 2026-09-30). Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
+| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. **16.4 (the inbox, ADR-040) in progress: the kit's pieces and the model (chapters 1 and 20) done 2026-10-02; ADR-041 Accepted (webhooks first, a fetch of Paddle's event stream behind them; chapter 21 at storm level). Open: the kit's polling automation and the fetch, Paddle's signature check and payload reader (16.5) and sandbox payload fixtures. Then the loop builds chapters 1 and 20, then 16.3a (chapter 1 end to end).** 16.3 is in process modelling: chapter 1 fleshed out (26 slices), 16.3b done (ADR-039) (16.2 done 2026-09-30: ADR-037 Accepted, trials included after the 16.2b tests) (16.1's knowledge work done 2026-09-30; only Gary's live onboarding open; 16.2's research done 2026-09-30). Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
 | 15 — Automations (restaurant orders) | ✅ Closed 2026-09-29 (a demo) | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27/28: the Restaurant Orders chapter (25 slices, 63 scenarios, 15 mockups) on prooph board, with stock and an internal automation (the Stock Returner); emcli push fixes (lanes, links, skipped deletions). 15.8 added: deciding from a growing event stream. 15.2 done 2026-09-28 (library PR #29 merged). 15.3 done 2026-09-28 (ADR-033 runtime, ADR-034 Braintree as a commercial directive; the loop built the restaurant backend; 8 end-to-end cases pass, with our own Temporal call deadline and Temporal in health; manual §21). Next: 15.4 redrive, then 15.5 the UI on Sonnet. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) | **Closed 2026-09-29:** 15.4 and 15.4c built through the loop (stalls, retry, give up, attempts, pay again, cancel); 15.4e provider skills; 15.9 on Sonnet at medium, about 2.5–3× cheaper per job; emcli re-queues changed built slices. The rest dropped or moved to Phase 16 |
 | 1 — Stack Scaffolding | ✅ Complete | Verified: init, npm install, tsc, 21/21 unit tests |
 | 2 — State Change Skill | ✅ Complete | 9-step SKILL.md with full DCB patterns |
