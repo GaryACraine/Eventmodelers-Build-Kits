@@ -64,6 +64,11 @@ export interface AutomationContext<TItem extends ReadModelDoc> {
 export interface AttemptOptions {
     /** The attempt the trigger belongs to, for work that can be done again on the same item (e.g. a payment's attempt) */
     attempt?: number
+    /**
+     * `start` only: when the work is due (ADR-042), e.g. an invitation's `expiresAt`. The workflow is started now and
+     * does nothing until then (Temporal's start delay). When it wakes, it acts only if the item is still open.
+     */
+    dueAt?: Date
 }
 
 /** The key an item's work is done once under: `<automation>:<item key>`, plus `:<attempt>` when given. */
@@ -134,8 +139,37 @@ export function defineAutomation<TItem extends ReadModelDoc>(automation: Automat
 
 /** Starts workflows: Temporal in the app (`temporalWorkflowStarter`), a recorder in tests. */
 export interface WorkflowStarter {
-    /** Start `workflowType` under `workflowId` unless a workflow of that id has already run. A repeat does nothing. */
-    start(workflowType: string, workflowId: string, args: unknown[]): Promise<void>
+    /**
+     * Start `workflowType` under `workflowId` unless a workflow of that id has already run. A repeat does nothing.
+     * With `dueAt`, it's started now and does nothing until then.
+     */
+    start(workflowType: string, workflowId: string, args: unknown[], options?: { dueAt?: Date }): Promise<void>
+}
+
+/**
+ * A polling automation (ADR-042): work done on a timetable, not started by an event. It's a Temporal Schedule, named
+ * after the automation, that starts `workflowType`; the workflow's activities do the work, and they're idempotent.
+ * The app creates the schedule when it starts, or updates it if it exists (`watchSchedules` in `temporal.ts`).
+ *
+ * A run still going when the next is due means the next is skipped. `triggerSchedule` runs it now (a trigger during a
+ * run queues one more). State the work keeps between runs (a checkpoint) is an event of ours, never Temporal's.
+ */
+export interface ScheduleDefinition {
+    /** The schedule's id and its runs' workflow id (Temporal adds the run's time), e.g. "paddle-sync" */
+    name: string
+    /** The interval, as the model's `schedule` says: "15 minutes", "1 hour" */
+    every: string
+    workflowType: string
+    args?: unknown[]
+    /** Also run once when the app starts (it was down: catch up now, not at the next interval) */
+    runAtStart?: boolean
+}
+
+export function defineSchedule(schedule: ScheduleDefinition): ScheduleDefinition {
+    if (!/^\d+ (second|minute|hour|day)s?$/.test(schedule.every)) {
+        throw new Error(`${schedule.name}: "every" is a number and a unit, e.g. "15 minutes" (got "${schedule.every}").`)
+    }
+    return schedule
 }
 
 export interface AutomationDependencies {
@@ -180,7 +214,12 @@ function contextFor<TItem extends ReadModelDoc>(
             if (!deps.workflows) {
                 throw new Error(`${automation.name}: no workflow starter (is TEMPORAL_ADDRESS set?)`)
             }
-            await deps.workflows.start(workflowType, workKey(automation.name, key, options), args)
+            await deps.workflows.start(
+                workflowType,
+                workKey(automation.name, key, options),
+                args,
+                options?.dueAt ? { dueAt: options.dueAt } : undefined
+            )
         }
     }
 }

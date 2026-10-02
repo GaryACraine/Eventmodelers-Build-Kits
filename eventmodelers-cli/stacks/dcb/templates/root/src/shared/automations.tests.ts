@@ -407,6 +407,27 @@ describe("an automation whose item can be worked again", () => {
         expect(app.started().map(s => s.workflowId)).toEqual(["label-printer:p1:1", "label-printer:p1:2"])
     })
 
+    test("work due at a known time is started with its date (ADR-042)", async () => {
+        const dueAt = new Date("2026-10-08T09:00:00Z")
+        const expirer = defineAutomation<ParcelToShip>({
+            name: "parcel-expirer",
+            todoList: ParcelsToShip,
+            triggers: ["parcelBooked"],
+            act: async ({ item, start }) => start("expireParcel", [item.parcelId], { dueAt })
+        })
+        const pool = await getTestPgDatabasePool()
+        const workflows = recordingWorkflowStarter()
+        const runtime = await startReadModels(pool, [ParcelsToShip], [], automationProcessors([expirer], [ParcelsToShip], { pool, workflows }))
+        try {
+            const position = await runtime.eventStore.append({ events: [parcelBooked("p1")] })
+            await runtime.waitFor(ParcelsToShip.projection.name)(position, 10_000)
+            expect(workflows.started).toEqual([{ workflowType: "expireParcel", workflowId: "parcel-expirer:p1", args: ["p1"], dueAt }])
+        } finally {
+            await runtime.stop()
+            await pool.end()
+        }
+    })
+
     test("issues one command per attempt: a later attempt isn't taken for a repeat", async () => {
         const db = app.pool()
         const eventStore = app.runtime().eventStore

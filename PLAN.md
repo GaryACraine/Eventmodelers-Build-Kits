@@ -358,9 +358,18 @@ model and build only what's ours.
         - chapter 10: the decision as a note. Open there: the invite command comes from a screen, so its decider
           takes the configured days into its decision.
     - [ ] **To build for ADR-041 and ADR-042:**
-      - [ ] the kit's three shapes: `ensureSchedule` and `triggerSchedule`, a start with a delay,
-        `defineSchedule`, with tests against the Temporal dev server;
-      - [ ] **draft** sections in `build-automation`, one per shape, marked first use;
+      - [x] the kit's three shapes, 2026-10-02, proven in `licensing` (`temporal.tests.ts` 17 of 17, run three
+        times; the whole suite 103 of 103):
+        - `defineSchedule`, `ensureSchedule` (create, or update keeping a person's pause), `triggerSchedule`
+          (three triggers during a run queue exactly one more), `watchSchedules` (set up in the background, so the
+          app starts without Temporal; `runAtStart`), and each schedule's state on `/health/processors`;
+        - `start(…, { dueAt })`: a workflow started now and due later;
+        - a workflow with timers that stops when its item closes (a test fixture: the shape is the slice's own
+          `workflow.ts`).
+        - *Found:* Temporal coalesces triggers that arrive close together, so its "skipped" counter varies; the
+          test reads the schedule's buffer size while the second run is held.
+      - [x] a **draft** section in `build-automation`, "Timed work", marked first use: where a slice doesn't fit,
+        the loop blocks with `request-feedback` and doesn't improvise;
       - [ ] **distil them into the skill on solid ground** (Gary): after each shape's first slice is built and
         chapter 1's end-to-end run passes (16.3a), fold in the lessons and cut what didn't matter. One task with
         16.6's distillation;

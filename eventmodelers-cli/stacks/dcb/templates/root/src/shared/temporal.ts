@@ -1,6 +1,12 @@
-import { Client, Connection, WorkflowExecutionAlreadyStartedError } from "@temporalio/client"
+import {
+    Client,
+    Connection,
+    ScheduleAlreadyRunning,
+    ScheduleOverlapPolicy,
+    WorkflowExecutionAlreadyStartedError
+} from "@temporalio/client"
 import { NativeConnection, Worker, bundleWorkflowCode, type WorkflowBundleWithSourceMap } from "@temporalio/worker"
-import type { WorkflowStarter } from "./automations.js"
+import type { ScheduleDefinition, WorkflowStarter } from "./automations.js"
 
 /**
  * Temporal runs the external automations' workflows (ADR-031, ADR-033). It's in `docker compose` on our Postgres
@@ -70,13 +76,16 @@ export function temporalWorkflowStarter(
 ): WorkflowStarter {
     const timeoutMs = options.callTimeoutMs ?? 5000
     return {
-        async start(workflowType, workflowId, args) {
+        async start(workflowType, workflowId, args, options) {
+            // Work due at a known time (ADR-042): started now, delayed by Temporal until then
+            const startDelay = options?.dueAt ? Math.max(0, options.dueAt.getTime() - Date.now()) : undefined
             try {
                 await withinDeadline(client, timeoutMs, `starting workflow ${workflowId}`, () =>
                     client.workflow.start(workflowType, {
                         taskQueue,
                         workflowId,
                         args,
+                        ...(startDelay ? { startDelay } : {}),
                         workflowIdConflictPolicy: "USE_EXISTING",
                         workflowIdReusePolicy: "REJECT_DUPLICATE"
                     })
@@ -85,6 +94,104 @@ export function temporalWorkflowStarter(
                 if (error instanceof WorkflowExecutionAlreadyStartedError) return
                 throw error
             }
+        }
+    }
+}
+
+/**
+ * Create a polling automation's Temporal Schedule, or update it if it exists (ADR-042). "Create, and on
+ * already-exists, update": listing schedules is eventually consistent, so checking first could race between two
+ * instances starting together. An update keeps the schedule's state, so one paused by a person stays paused.
+ *
+ *   - a run still going when the next is due: the next is skipped;
+ *   - a run missed by more than a minute (Temporal was down) is dropped: one run covers what was missed;
+ *   - a failed run doesn't pause the schedule: the next run tries again.
+ */
+export async function ensureSchedule(
+    client: Client,
+    taskQueue: string,
+    schedule: ScheduleDefinition,
+    options: { callTimeoutMs?: number } = {}
+): Promise<"created" | "updated"> {
+    const timeoutMs = options.callTimeoutMs ?? 5000
+    const spec = { intervals: [{ every: schedule.every }] }
+    const action = {
+        type: "startWorkflow" as const,
+        workflowType: schedule.workflowType,
+        taskQueue,
+        args: schedule.args ?? [],
+        workflowId: schedule.name
+    }
+    const policies = { overlap: ScheduleOverlapPolicy.SKIP, catchupWindow: "1 minute", pauseOnFailure: false }
+    return withinDeadline(client, timeoutMs, `creating schedule ${schedule.name}`, async () => {
+        try {
+            await client.schedule.create({ scheduleId: schedule.name, spec, action, policies })
+            return "created" as const
+        } catch (error) {
+            if (!(error instanceof ScheduleAlreadyRunning)) throw error
+            await client.schedule.getHandle(schedule.name).update(previous => ({ ...previous, spec, action, policies }))
+            return "updated" as const
+        }
+    })
+}
+
+/** Run a schedule now. A trigger while a run is going queues one more run; further triggers add nothing. */
+export async function triggerSchedule(client: Client, name: string, options: { callTimeoutMs?: number } = {}): Promise<void> {
+    await withinDeadline(client, options.callTimeoutMs ?? 5000, `triggering schedule ${name}`, () =>
+        client.schedule.getHandle(name).trigger(ScheduleOverlapPolicy.BUFFER_ONE)
+    )
+}
+
+export type ScheduleStatus =
+    | { name: string; every: string; state: "pending"; error?: string }
+    | { name: string; every: string; state: "ready"; since: string }
+
+export interface WatchedSchedules {
+    /** Each schedule: `pending` until Temporal has it (with why, if a try failed), then `ready` */
+    status(): ScheduleStatus[]
+    /** Run a schedule now (a webhook arrived, a person asked). Fails if Temporal doesn't answer. */
+    trigger(name: string): Promise<void>
+    stop(): void
+}
+
+/**
+ * Create or update the app's schedules in the background, trying again every `healthIntervalMs` until Temporal has
+ * each one, so the app starts and serves without Temporal. A schedule with `runAtStart` is triggered once it's there.
+ */
+export function watchSchedules(
+    client: Client,
+    config: Pick<TemporalConfig, "taskQueue" | "callTimeoutMs" | "healthIntervalMs">,
+    schedules: ScheduleDefinition[],
+    logger: Pick<Console, "error" | "info"> = console
+): WatchedSchedules {
+    const states = new Map<string, ScheduleStatus>(schedules.map(s => [s.name, { name: s.name, every: s.every, state: "pending" }]))
+    let stopped = false
+    let timer: NodeJS.Timeout | undefined
+    const attempt = async () => {
+        for (const schedule of schedules) {
+            if (stopped || states.get(schedule.name)?.state === "ready") continue
+            try {
+                const outcome = await ensureSchedule(client, config.taskQueue, schedule, config)
+                if (schedule.runAtStart) await triggerSchedule(client, schedule.name, config)
+                states.set(schedule.name, { name: schedule.name, every: schedule.every, state: "ready", since: new Date().toISOString() })
+                logger.info(`Schedule ${schedule.name} ${outcome}: every ${schedule.every}`)
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error)
+                states.set(schedule.name, { name: schedule.name, every: schedule.every, state: "pending", error: message })
+                logger.error(`Schedule ${schedule.name} isn't set up yet (${message}); trying again in ${config.healthIntervalMs} ms`)
+            }
+        }
+        if (stopped || [...states.values()].every(s => s.state === "ready")) return
+        timer = setTimeout(attempt, config.healthIntervalMs)
+        timer.unref()
+    }
+    if (schedules.length > 0) void attempt()
+    return {
+        status: () => [...states.values()],
+        trigger: name => triggerSchedule(client, name, config),
+        stop: () => {
+            stopped = true
+            clearTimeout(timer)
         }
     }
 }

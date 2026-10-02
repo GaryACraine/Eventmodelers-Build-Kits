@@ -45,7 +45,7 @@ retried by Temporal. Swallowing either loses the work silently.
 
 - `processors[0]` is the automation:
   - `processorType`: `event-driven` is this skill, keeping a to-do list or none (below). `polling` runs on a
-    `schedule` with no trigger and isn't proven yet: block the job with `request-feedback` and stop. `synchronous`
+    `schedule` with no trigger: "Timed work" below, a **draft on first use**. `synchronous`
     (deciding inside the webhook request) is superseded by ADR-040: block the job, saying the model should record
     the notification and translate it with an event-driven automation ("A translation" below).
   - `dependencies` (ADR-039, "what flows into an automation"):
@@ -429,6 +429,93 @@ export const receiptSender = defineAutomation<ReceiptRequestedData>({
   problem, block naming it.
 - Tests: `automationTestApp({ readModels: [], automations: [receiptSender] })`.
 
+## Timed work (ADR-042): a draft, on first use
+
+> **Draft.** The kit's helpers are proven by their own tests (`src/shared/temporal.tests.ts`). These three shapes
+> haven't been built from a slice yet. Follow them; where a slice doesn't fit, block the job with `request-feedback`
+> saying what didn't fit, and don't improvise. What you learn goes in the project's lessons: this section is
+> rewritten from them once the first slices and the end-to-end run pass.
+
+Work started by time runs on Temporal, with one tool per need:
+
+| The slice says | Shape | In code |
+|---|---|---|
+| `processorType: polling` with a `schedule` ("every 15 minutes") | a **Schedule** | `defineSchedule` |
+| the automation's description: work **due at** a date the trigger carries (an expiry) | a **start with a delay** | `start(…, { dueAt })` |
+| the description: **keep trying** for an outside fact until the item closes | a workflow with **timers** | `sleep` in `workflow.ts` |
+
+### A polling automation: a Schedule
+
+`schedule.ts`, in the slice's folder:
+
+```typescript
+import { defineSchedule } from "../../../../shared/automations.js"
+
+/** Carrier Sync (polling): every 15 minutes, fetch the carrier's events after our checkpoint and record each. */
+export const carrierSync = defineSchedule({
+    name: "carrier-sync",
+    every: "15 minutes",
+    workflowType: "carrierSync",
+    runAtStart: true
+})
+```
+
+- `name` is the part before `:` in the description's id; `every` is the slice's `schedule`, as a number and a unit.
+- `runAtStart: true` when the description says it also runs when the app starts.
+- **Its workflow** (`workflow.ts`) calls activities, as an external automation's does: no I/O of its own.
+- **Its activities are idempotent**: Temporal can run one again before the last attempt has finished. Record each
+  outside fact under its id at the outside system (`issueOnce`, or the inbox's append), so a repeat adds nothing.
+- **What it keeps between runs is an event of ours** (a checkpoint the slice names), read at the start of a run and
+  recorded at the end. It only moves forward. Never Temporal's last completion result.
+- **A failed run** is the workflow failing after its activities' retries: alert (`src/shared/alerts.ts`) and let it
+  fail. The next run tries again; nothing is recorded as stalled.
+- Don't set overlap, catch-up or pause policies: the kit sets them (a run still going means the next is skipped).
+- **Wiring** (`src/index.ts`, the wiring commit): add it to `schedules`, its workflow to `src/workflows.ts`, its
+  activities to `activities`.
+- **"Run it now"** from elsewhere (a webhook's route): `scheduleWatch.trigger("carrier-sync")`, which
+  `src/index.ts` holds and passes to what needs it (the wiring commit). A trigger during a run queues one more.
+- **Tests:** the activities against the mock, as for an external automation; and the workflow started directly on
+  the test server (`client.workflow.start("carrierSync", …)`), never by waiting for the timetable.
+
+### Work due at a known time: a start with a delay
+
+An event-driven, external automation whose trigger carries the date (an invitation's `expiresAt`). `act` starts the
+workflow now, due then:
+
+```typescript
+act: async ({ item, start }) => start("expireInvitation", [item.invitationId], { dueAt: new Date(item.expiresAt) })
+```
+
+- One workflow per item, `<name>:<item key>`, as for any external automation.
+- **When it wakes, it acts only if the item is still open**: its first activity reads the to-do list (or folds the
+  item's events) and returns if it's closed (accepted, withdrawn). Then it records our command with `issueOnce`.
+- Nothing cancels the workflow when the item closes early: waking to find it closed is the design.
+- **Tests:** `app.started()` has the workflow with its `dueAt`; the activities, given an open and a closed item.
+
+### Watching for an outside fact: timers in a workflow
+
+An event-driven, external automation with a to-do list. Its workflow tries at the intervals the description gives,
+and stops as soon as the item is closed:
+
+```typescript
+import { proxyActivities, sleep } from "@temporalio/workflow"
+
+export async function checkoutWatch(organisationId: string): Promise<void> {
+    for (const wait of ["2 seconds", "3 seconds", "10 seconds", "15 seconds", "30 seconds"]) {
+        await sleep(wait)
+        if (!(await isStillAwaited(organisationId))) return
+        await fetchEvents()
+    }
+}
+```
+
+- The waits are the gaps between the description's times (2, 5, 15, 30, 60 seconds → 2, 3, 10, 15, 30).
+- **Bounded:** it stops after the last try whatever happened. Something else (a webhook, the polling automation)
+  brings the fact later. Nothing is recorded as stalled.
+- A try that fails is the activity failing after its own short retries: catch it in the workflow only to carry on to
+  the next wait (the one catch allowed here, as for a stall).
+- **Tests:** the workflow on the test server with short waits and activities that close the item after a try or two.
+
 ---
 
 ## Stalls: when the outside system can't be reached (ADR-032)
@@ -528,7 +615,8 @@ describe("request payment", () => {
 
 ```
 src/contexts/{context}/slices/{slicename}/
-├── processor.ts          ← defineAutomation (every kind)
+├── processor.ts          ← defineAutomation (every event-driven kind)
+├── schedule.ts           ← polling: defineSchedule (draft, ADR-042)
 ├── workflow.ts           ← external: the Temporal workflow
 ├── activities.ts         ← external: the calls, and recording the answer as our command
 └── processor.tests.ts    ← one test per specification
@@ -544,6 +632,8 @@ docker-compose.yml        ← the mock's service
 - [ ] A translation: a to-do list keyed by the notification's id, one outcome per notification, order and repeats
       left to the decider, `giveUp` recording the skip
 - [ ] No to-do list: `key` is the trigger event's own id
+- [ ] Timed work (draft): the shape matches the slice; activities idempotent; a polling automation's state between
+      runs is an event of ours; anything that didn't fit is blocked with `request-feedback`, not improvised
 - [ ] `act` only issues a command or starts a workflow; nothing is caught and logged
 - [ ] Every field of the command comes from the item, the trigger event, or a data input read with `read`, per
       slice.json's mappings (ADR-039)
