@@ -493,6 +493,19 @@ So:
   `scheduled_change: cancel` at the trial's end and `next_billed_at` null; one `subscription.updated`. Nothing is
   charged.
 
+**The inline checkout** (`displayMode: "inline"`, `frameTarget`: a class on our page; org-test-7):
+- Paddle's frame shows only its form: the buyer's details, then the payment. **No list of items, no bin, no + or −.**
+- `checkout.loaded` carries what our page needs to draw the summary itself: each item with `quantity`, `totals` and
+  `recurring_totals`, and the checkout's `totals` (due today: 0) and `recurring_totals` (18, of which tax 3). Amounts
+  are in pounds here, where the API uses pence.
+- Paddle.js also sends events of its own with no `name` (`{ type: "checkout.ping.size", height: 430 }`).
+- Not yet seen: the payment step, and a payment through it.
+
+**Cancelling at once** (`effective_from: immediately`):
+- org-test-6's trial, which already had a cancel scheduled, was cancelled at once: `canceled`, with
+  `subscription.canceled` and `subscription.updated` together. Nothing was charged.
+- On a subscription that's already cancelled: 400 `subscription_update_when_canceled`.
+
 **The calls** (plain HTTP, org-test-5's subscription; every answer kept in `licensing/e2e/paddle/fixtures/`):
 - **Preview** (`PATCH /subscriptions/{id}/preview`): adding a web seat with `prorated_immediately` showed £11.60 now
   (`immediate_transaction`, and `update_summary.result: charge`) and £48.00 at the next renewal; removing a mobile

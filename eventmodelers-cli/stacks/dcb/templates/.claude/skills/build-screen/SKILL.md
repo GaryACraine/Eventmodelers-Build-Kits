@@ -146,7 +146,7 @@ configuration and its mock.
   (`web/src/providers/{name}/`), which the first slice that needs it creates from the provider skill, with its tests.
 - **The form's button starts the other system's part; the command is sent when that completes:**
   ```tsx
-  const outcome = await paddleCheckout().open({ items, customData: { organisationId } })
+  const outcome = await paddleCheckout().open({ items, customData: { organisationId }, frame: "checkout-frame", onSummary: setSummary })
   if (!outcome.completed) return                     // the buyer closed it: nothing sent, no error shown
   const { position } = await command(api.POST("/report-checkout-completed", { body: { organisationId, transactionId: outcome.transactionId } }))
   await recordWrite(position)
@@ -154,8 +154,11 @@ configuration and its mock.
   The mockup's `<form data-command="…">` is still the form: its button, its hidden fields as props.
 - **A failure of the other system's part** (it couldn't open) is shown like a rejection: `error.message` in a
   `<p role="alert">`.
-- **The page takes nothing else from the library:** no amounts, seats or status. Those come from our read models,
-  after the other system's own events arrive.
+- **The other system's part goes where the mockup puts it:** an element with the class the provider skill names
+  (`<div className="checkout-frame" />`), and beside it what the provider's module reports for showing (for Paddle,
+  what will be charged).
+- **Nothing the library reports is sent to our backend but the one value the command names:** no amounts, seats or
+  status. Those come from our read models, after the other system's own events arrive.
 - **Mock data:** the module's mock is one request (the provider skill gives its handler); it goes in the slice's
   `handlers.ts` with the others, answered with the command's example value.
 - **Tests:** completed → the form sends exactly the example body; the module's request fails (`server.use(...)`

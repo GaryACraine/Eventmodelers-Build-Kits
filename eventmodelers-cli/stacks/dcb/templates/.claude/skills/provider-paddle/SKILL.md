@@ -6,8 +6,8 @@ description: Paddle (a merchant of record) for the slices that touch it. What Pa
 # Paddle: what it tells us, what we ask of it, and its checkout
 
 > **Draft, on first use** (ADR-042's rule: distil on solid ground). The code below is proven by its own tests against
-> a mock, real sandbox payloads and answers, and the sandbox over HTTP (`licensing/e2e/paddle/`, 31 cases, and
-> `licensing/web/e2e/paddle/`, 13 cases), not yet by a slice the loop built. Follow it; where a slice doesn't fit, block the job with `request-feedback` saying
+> a mock, real sandbox payloads and answers, and the sandbox over HTTP (`licensing/e2e/paddle/`, 32 cases, and
+> `licensing/web/e2e/paddle/`, 15 cases), not yet by a slice the loop built. Follow it; where a slice doesn't fit, block the job with `request-feedback` saying
 > what didn't fit. This skill is rewritten from the lessons once the first slices and the end-to-end run pass.
 
 `build-automation` holds what's true of every automation. This skill holds what's true of **Paddle**. Decisions:
@@ -365,18 +365,23 @@ export async function changeSeats(config: PaddleConfig, subscriptionId: string, 
 }
 
 /**
- * Cancel at the end of the period already paid for (Paddle schedules it; the subscription stays active until then).
- * Asked again, Paddle refuses (`subscription_locked_pending_changes`): if the cancellation is the change that's
- * pending, it's done.
+ * Cancel a subscription. Safe to run again:
+ * - `"at the period's end"` (the owner cancels): Paddle schedules it, and the subscription stays as it is until then.
+ *   Asked again, Paddle refuses (`subscription_locked_pending_changes`): if the cancellation is the change that's
+ *   pending, it's done;
+ * - `"now"` (a trial we refused, before anything is charged): the subscription is cancelled at once. Asked again,
+ *   Paddle refuses because it's cancelled (`subscription_update_when_canceled`): done.
  */
-export async function cancelSubscription(config: PaddleConfig, subscriptionId: string): Promise<PaddleSubscription> {
+export async function cancelSubscription(config: PaddleConfig, subscriptionId: string, when: "at the period's end" | "now" = "at the period's end"): Promise<PaddleSubscription> {
     try {
-        const { data } = await paddleRequest<{ data: SubscriptionEntity }>(config, "POST", path(subscriptionId, "/cancel"), { effective_from: "next_billing_period" })
+        const { data } = await paddleRequest<{ data: SubscriptionEntity }>(config, "POST", path(subscriptionId, "/cancel"), {
+            effective_from: when === "now" ? "immediately" : "next_billing_period"
+        })
         return toSubscription(data)
     } catch (error) {
-        if (!(error instanceof PaddleApiError) || error.code !== "subscription_locked_pending_changes") throw error
+        if (!(error instanceof PaddleApiError) || (error.code !== "subscription_locked_pending_changes" && error.code !== "subscription_update_when_canceled")) throw error
         const current = await getSubscription(config, subscriptionId)
-        if (current.scheduledChange?.action === "cancel") return current
+        if (current.status === "canceled" || (when === "at the period's end" && current.scheduledChange?.action === "cancel")) return current
         throw error
     }
 }
@@ -398,6 +403,9 @@ export async function withdrawCancellation(config: PaddleConfig, subscriptionId:
 - **A second cancel is refused** (`subscription_locked_pending_changes`). If the pending change is the cancellation,
   it's done; `cancelSubscription` reads the subscription to see. While a cancellation is scheduled, seats can still
   be changed.
+- **Cancelling now** (`cancelSubscription(…, "now")`, Paddle's `effective_from: immediately`) is for a trial we
+  refused, before anything is charged. It cancels at once, even with a cancel already scheduled, and Paddle sends
+  `subscription.canceled`. Asked again, Paddle refuses (`subscription_update_when_canceled`): done.
 - **Withdrawing** is `scheduled_change: null`. With nothing scheduled, Paddle changes nothing.
 - **What the answer says is for the activity only.** Our events come from Paddle's own events through the inbox: a
   seat change is `subscription.updated`, about three seconds after the call answers. Never record a business event
@@ -418,7 +426,7 @@ the sandbox (card `4000 0027 6000 3184`) and adds it here.
 
 ## Its checkout, from our page: `web/src/providers/paddle/checkout.ts`
 
-The owner pays in **Paddle's overlay, opened by Paddle.js** from our page (ADR-044). `build-screen` holds what's true
+The owner pays in **Paddle's form, put inside our page by Paddle.js** (its inline checkout, ADR-044). `build-screen` holds what's true
 of any screen; this is what's true of Paddle's checkout.
 
 ```typescript
@@ -466,6 +474,26 @@ export interface CheckoutRequest {
     customData: Record<string, unknown>
     /** Fills in the buyer's email, so they aren't asked for it */
     customerEmail?: string
+    /**
+     * The class of the element on our page that Paddle's payment form goes in (its inline checkout). Without it,
+     * Paddle's overlay opens over the page. The inline form shows no list of what's being bought, so the buyer can't
+     * change it there, and our page shows it (`onSummary`).
+     */
+    frame?: string
+    /**
+     * Told what Paddle will charge, when the checkout loads and whenever that changes (the tax follows the buyer's
+     * country). For showing beside the inline form only: never sent to our backend. The mock doesn't call it.
+     */
+    onSummary?: (summary: CheckoutSummary) => void
+}
+
+/** What Paddle says it will charge. Amounts include tax and are in the currency's main unit (pounds, not pence) */
+export interface CheckoutSummary {
+    currencyCode: string
+    dueToday: number
+    /** Each billing period after today's charge, and the tax in it; none for a one-off purchase */
+    recurring?: { total: number; tax: number }
+    items: { priceId: string; name: string; quantity: number; total: number; recurringTotal?: number }[]
 }
 
 /** Completed, with Paddle's transaction id; or closed by the buyer before paying */
@@ -531,6 +559,22 @@ function paddleJsCheckout(config: PaddleWebConfig, load: Loader): PaddleCheckout
                     else resolve(outcome)
                 }
                 open = event => {
+                    // Every event of the checkout carries what it now stands at (not Paddle.js's own, e.g. its size)
+                    if (request.onSummary && event.data?.items && event.data.totals) {
+                        const { data } = event
+                        request.onSummary({
+                            currencyCode: data.currency_code,
+                            dueToday: data.totals.total,
+                            ...(data.recurring_totals ? { recurring: { total: data.recurring_totals.total, tax: data.recurring_totals.tax } } : {}),
+                            items: data.items.map(item => ({
+                                priceId: item.price_id,
+                                name: item.product.name,
+                                quantity: item.quantity,
+                                total: item.totals.total,
+                                ...(item.recurring_totals ? { recurringTotal: item.recurring_totals.total } : {})
+                            }))
+                        })
+                    }
                     switch (event.name) {
                         case "checkout.completed": {
                             const transactionId = event.data?.transaction_id
@@ -556,7 +600,15 @@ function paddleJsCheckout(config: PaddleWebConfig, load: Loader): PaddleCheckout
                         items: request.items,
                         customData: request.customData,
                         ...(request.customerEmail ? { customer: { email: request.customerEmail } } : {}),
-                        settings: { displayMode: "overlay", allowLogout: !request.customerEmail }
+                        settings: request.frame
+                            ? {
+                                  displayMode: "inline",
+                                  frameTarget: request.frame,
+                                  frameInitialHeight: 450,
+                                  frameStyle: "width: 100%; min-width: 312px; background-color: transparent; border: none;",
+                                  allowLogout: !request.customerEmail
+                              }
+                            : { displayMode: "overlay", allowLogout: !request.customerEmail }
                     })
                 } catch (error) {
                     settle(new PaddleCheckoutError(error instanceof Error ? error.message : String(error)))
@@ -601,8 +653,15 @@ function mockCheckout(config: PaddleWebConfig): PaddleCheckout {
 - **The page learns nothing else from it.** What was bought comes from Paddle's own events; the report only starts
   the fetch for them (ADR-041). Never read seats, prices or a status from Paddle.js's event.
 - **Paddle.js is loaded once per page,** from Paddle's CDN (its rule), by `initializePaddle`.
-- **The buyer can change what's in Paddle's overlay:** the numbers (+ and −), and remove an item (a bin icon). No
-  checkout setting locks them. So the seats are the ones **Paddle's event** states, never the ones the page asked for.
+- **Always pass `frame`** (the class of an element on the page): Paddle's inline form shows only the buyer's details
+  and the payment, with **no list of items**. Its overlay (no `frame`) lets the buyer change the numbers and remove an
+  item, and no setting locks them, so we don't use it.
+- **The page draws what's being bought,** beside the frame, from `onSummary`: each item, what's due today, and what's
+  due each period after, with Paddle's tax for the buyer's country. Amounts are in pounds, not pence. It's for
+  showing only: never sent to our backend. The mock doesn't call it, so the page must read well without it.
+- **The seats are the ones Paddle's event states,** never the ones the page asked for. The client-side token is
+  public, so a checkout can be opened with other items from outside our page. A trial that arrives without a web seat
+  is refused and cancelled at Paddle at once (`refuseTrial`, the model's chapter 24).
 - **A declined card stays inside Paddle's checkout** (`checkout.payment.failed`): the buyer tries again there. We
   build none of it.
 
@@ -619,7 +678,10 @@ The API key and the webhook secret are the backend's: never a `VITE_` variable.
 
 ### What Paddle.js sends (sandbox, 2026-10-02)
 
-- Its first event has **no `name`**. Ignore events the module doesn't name.
+- It sends events of its own with **no `name`** (`{ type: "checkout.ping.size", height }`). Ignore events the
+  module doesn't name.
+- `checkout.loaded` carries the items and the totals (`data.totals`: today; `data.recurring_totals`: each period),
+  which `onSummary` reports.
 - A checkout that can't open: `checkout.error` (`type: "api_error"`, `code: "validation"`, `detail: "One or more
   provided price_ids could not be found, …"`), then `checkout.closed` **when we close it**. So the error is settled
   before `Checkout.close()` is called, or the close would be read as "the buyer closed it".
