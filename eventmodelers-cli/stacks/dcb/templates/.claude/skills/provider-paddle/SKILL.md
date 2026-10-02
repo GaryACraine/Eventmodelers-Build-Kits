@@ -89,9 +89,15 @@ export function toNotification(body: unknown, receivedAt: Date = new Date()): No
 - `payload` is the body **as it arrived**: never reshape it. The translation reads what it needs from it.
 - `subscriptionId` is `data.id` for a `subscription.*` event and `data.subscription_id` for a `transaction.*` one
   (which can be null: then there's no such field or tag).
-- **The types we translate** are a constant of the module (`subscription.created`, `.activated`, `.updated`,
-  `.past_due`, `.canceled`, `transaction.completed`). The fetch asks for those only, and the notification
+- **The types we translate** are a constant of the module (`subscription.created`, `.trialing`, `.activated`,
+  `.updated`, `.past_due`, `.canceled`, `transaction.completed`). The fetch asks for those only, and the notification
   destination subscribes to the same list. A type the slices' descriptions add goes there.
+- **A subscription's start has no single event.** A purchase or a trial made at Paddle's checkout sent **no
+  `subscription.created`** (sandbox, twice): a trial sent `subscription.trialing`, a paid purchase
+  `subscription.activated`. One made through the API sent `created` as well. So a start is whichever of them arrives
+  first, read with the payload's `status` (`trialing` or `active`), and the other is already done.
+- **`transaction.completed` names its subscription** (`data.subscription_id`) and carries our `custom_data`, so the
+  transaction the page reported can be matched to its subscription.
 
 ## The webhook endpoint
 
@@ -645,8 +651,8 @@ Built by the first slice that needs it, as `build-automation` says for any outsi
   Paddle's code;
 - **a checkout,** `POST /mock/checkouts` with `{ items: [{ price_id, quantity }], custom_data }`, which the web app's
   mock checkout calls in place of Paddle.js. It completes at once, answers `{ transaction_id }`, and adds the events
-  Paddle would (`subscription.trialing` and `subscription.created`, made from real ones, with the items, the custom
-  data and the transaction's id). It takes any origin and no API key: the browser calls it;
+  Paddle would for a trial (`subscription.trialing` and `transaction.completed`, made from real ones, with the
+  items, the custom data and the transaction's id; **no `subscription.created`**, as at Paddle). It takes any origin and no API key: the browser calls it;
 - it keeps what it was asked;
 - `paddleSignature(rawBody, secret, at?)` and `webhookBody(event)`, to deliver a webhook as Paddle signs it.
 
