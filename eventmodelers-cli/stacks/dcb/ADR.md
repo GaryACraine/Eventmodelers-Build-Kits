@@ -2373,3 +2373,47 @@ section is a draft until its first slice is built and the end-to-end run passes 
   shapes.
 - Tests trigger a schedule and use short delays: they never wait real minutes.
 
+### ADR-043: A system setting is seeded by a setup command, issued once when the app first starts
+
+**Status:** **Proposed, 2026-10-02.** Built and proven by the kit's own tests on Gary's request to seed the settings;
+the design below awaits his acceptance. The skill section is a draft until its first slice is built.
+**Date:** 2026-10-02
+
+**Context:**
+- **A length of time that is ours to set is a configured value** (ADR-042, Gary): an event, projected to a settings
+  read model, read by the processor that needs it. So far: the grace period (14 days) and the invitation expiry (7
+  days).
+- **The value must exist before anything needs it.** A processor that reads a data input and finds none waits until
+  it's there (ADR-039), so an unset grace period would block the translation at the first failed payment.
+- **Nobody is at a screen when the system is set up,** and the platform admin's settings screen comes later.
+
+**Decision:**
+1. **A setup command** is a command the system issues itself, once, when it's set up. In the model, its value is
+   mapped **`config:<NAME>`**: it comes from the deployment's configuration, and the field's example is the default.
+   Its other fields are worked out (`derived:"setup"`). It needs no screen and no automation to issue it, and
+   `emcli completeness` asks for neither.
+2. **The app issues it when it starts,** before it serves, under the idempotency key `setup:<command name>`. So
+   it's issued **once, ever**: the first start records the configured value, and every later start does nothing.
+3. **After that, the event is the truth.** A changed environment variable changes nothing. To change the setting,
+   the command is issued again, through its route, or later the platform admin's screen.
+4. **A value the command's rules refuse stops the app from starting,** saying which setup and why. The app never
+   runs half set up.
+
+**Alternatives considered:**
+- **A default in the read model** when no event exists: nothing to seed, but the setting wouldn't be a recorded
+  fact, and the default would live in code.
+- **Re-applying the environment on every start** when its value differs: a deploy would silently undo a change a
+  person made through the screen.
+- **A setup script a person runs:** a manual step that can be forgotten, and the first failed payment would find the
+  translation blocked.
+- **A scheduled or polling automation:** nothing recurs; it's one command, once.
+
+**Consequences:**
+- The kit gains `src/shared/setup.ts` (`defineSetup`, `runSetup`, `configInt`, `configText`) and a `setup` list in
+  `src/index.ts`, run before the app serves.
+- emcli gains the `config:<NAME>` mapping. A setup command's every value must be configured or worked out.
+- `build-state-change` gains a draft section: a command with a `config:` field also gets `setup.ts`.
+- Until the platform admin's screen exists, a setting is changed by calling the command's route.
+- When that screen arrives, the same command has two sources for its value (the deployment at setup, the screen
+  afterwards). How the model shows both is settled then.
+

@@ -593,6 +593,42 @@ configure{SliceName}Route(deps),
 
 ---
 
+## Step 9b — A setup command (ADR-043): a draft, on first use
+
+> **Draft.** The kit's helper is proven by its own tests (`src/shared/setup.tests.ts`), not yet by a slice the loop
+> built. Follow it; where a slice doesn't fit, block the job with `request-feedback` and don't improvise.
+
+A command with a field mapped **`config:<NAME>`** is a **setup command**: a system setting (a grace period's length)
+that the app records itself, once, the first time it starts. Build everything above as for any command (its route is
+how the setting is changed later), and add `setup.ts`:
+
+```typescript
+import { configInt, defineSetup } from "../../../../shared/setup.js"
+import type { ConfigureGracePeriod } from "./command.js"
+import { configureGracePeriodDecider } from "./decider.js"
+
+/** Issued once, the first time the app starts: the grace period from GRACE_PERIOD_DAYS, 14 days if unset. */
+export const configureGracePeriodSetup = defineSetup<ConfigureGracePeriod>({
+    name: "configureGracePeriod",
+    decider: configureGracePeriodDecider,
+    command: env => ({
+        type: "configureGracePeriod",
+        data: { settingsId: "licensing", gracePeriodDays: configInt(env, "GRACE_PERIOD_DAYS", 14), configuredBy: "setup" }
+    })
+})
+```
+
+- `name` is the command's name: it's issued once under `setup:<name>`.
+- **Each `config:<NAME>` field** reads that environment variable, and its default is the field's example in
+  slice.json (`configInt` for a whole number, `configText` for text). Never invent a default.
+- **Each `derived:` field** is the value its mapping gives (`derived:"setup"` → `"setup"`).
+- A value the decider refuses stops the app from starting: that's intended, don't catch it.
+- **Wiring** (`src/index.ts`, the wiring commit): add it to `setup`, beside the route.
+- **A test** in `route.integration.tests.ts`: `runSetup` issues it with the default; run again, it issues nothing.
+- Add the variable to `.env.example`, with its default and what it sets.
+
+---
+
 ## Files to create
 
 ```
@@ -603,7 +639,8 @@ src/contexts/{context}/slices/{slicename}/
 ├── schema.ts                    ← Zod body schema + registerCommand (its /openapi.json entry)
 ├── route.ts                     ← Express route
 ├── route.tests.ts               ← ApiSpecification unit tests (no Docker)
-└── route.integration.tests.ts   ← Postgres integration tests (testcontainers)
+├── route.integration.tests.ts   ← Postgres integration tests (testcontainers)
+└── setup.ts                     ← a setup command only (a `config:` field): defineSetup (draft, ADR-043)
 
 src/contexts/{context}/
 └── Events.ts                    ← add new tagged event types here
@@ -622,5 +659,7 @@ src/contexts/{context}/
 - [ ] `schema.ts` registers the route (`registerCommand`, same method and path as `route.ts`), and `route.ts` imports `./schema.js`
 - [ ] The body is named `{CommandName}Body` and matches the API contract (`npm run contract:check` shows the route as match)
 - [ ] Route is wired in `src/index.ts`
+- [ ] A setup command (a `config:` field): `setup.ts`, its default from the field's example, added to `setup` in
+      `src/index.ts`, its variable in `.env.example`
 - [ ] `npm run build` passes (tsc --noEmit)
 - [ ] Slice tests pass

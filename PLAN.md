@@ -389,8 +389,17 @@ model and build only what's ours.
       - [x] **the same against the sandbox over HTTP,** 2026-10-02: the real stream read from a checkpoint, the
         first event's payload equal to the fixture exactly (17 of 17). The key (`claude-code-2`) is in
         `licensing/e2e/.env.sandbox`, gitignored;
-      - [ ] **issuing `configureGracePeriod` and `configureInvitationExpiry` at setup** (how a system setting is
-        seeded: a kit question);
+      - [x] **seeding the settings: a setup command** (ADR-043, **Proposed: for Gary to accept**), 2026-10-02:
+        - **emcli:** a value mapped `config:<NAME>` comes from the deployment's configuration; a command with one
+          is issued by the system at setup, so it needs no screen or automation (363 tests);
+        - **the kit:** `src/shared/setup.ts` (`defineSetup`, `runSetup`), run before the app serves. Issued once,
+          ever, under `setup:<command>`; a later start does nothing, even with a changed variable; a refused
+          value stops the start. Proven in `licensing` (`setup.tests.ts` 8 of 8);
+        - **the model:** chapters 22 and 23 map their values `config:GRACE_PERIOD_DAYS` (14) and
+          `config:INVITATION_EXPIRY_DAYS` (7), with no completeness issues left;
+        - `build-state-change` has a draft section, marked first use.
+        - *Open with ADR-043:* when the platform admin's screen arrives, the command's value has two sources
+          (the deployment at setup, the screen afterwards).
       - [ ] verify with a notification destination set up: a webhook's `event_id` is the stream's; how soon an
         event is in the stream.
     - [ ] **Open, as a hotspot on chapter 22:** our grace period must match Paddle's Payment Recovery window (a
@@ -3749,6 +3758,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-01 | Chapter 1 is proven end to end through the UI (Playwright) once its slices are built (16.3a) | A chapter is one flow, so it's one journey; slice tests first, then the journey; mock and sandbox runs |
 | 2026-10-01 | An automation's trigger is a `reacts-to` link, not a copy in its slice; emcli's export fills the automation slice's `events[]` from the link | The copy was a tooling requirement, not a modelling one: `build-automation` needs the trigger's fields in `events[]`, which the export only took from elements in the slice. Read slices already had this fallback. Copies looked like duplicate events on the board |
 | 2026-10-02 | An automation's inputs: trigger, one to-do list (`--todo-list`, exported `todoListElement`), and data inputs (other linked read models: ours, another chapter's, or `--external`); its command is fed only by these (ADR-039) | Commands stay deterministic and every value's source is visible; completeness catches a missing link; a flag rather than a new element type, because prooph board's card types are fixed and the eventmodelers format already has the flag |
+| 2026-10-02 | A system setting is seeded by a setup command the app issues once, the first time it starts, from the deployment's configuration (`config:<NAME>`); after that the event is the truth (ADR-043, Proposed) | The value must exist before a processor needs it and nobody is at a screen at setup. Issuing once means a deploy can't undo a change a person made; a default in the read model wouldn't be a recorded fact |
 | 2026-10-02 | Timed work runs on Temporal (ADR-042, Gary): a Schedule for recurring work (the Paddle sweep), timers in a workflow for a burst after checkout, a start delay for an invitation's expiry; lengths of time that are ours are configured values. Skill sections are drafts until the end-to-end run passes | We already run Temporal, which recommends Schedules over its cron jobs and names a tool for each kind of timed work; a start delay is exact where a scan is late by an interval; distilling guidance before it's proven would teach the loop untested patterns |
 | 2026-10-02 | ADR-041 revised (Gary): the sweep's to-do list is Paddle's event stream after our checkpoint; no list of dated facts and no overdue alert. The grace period's length is a configured value of ours (`gracePeriodWasConfigured` → `LicensingSettings`), read by the translation to set `graceEndsAt` | The sweep fetches everything whether or not anything is due, so a late fact arrives on a later sweep and "overdue" changes nothing. A setting recorded as an event can be read by a processor like any other data input, and changed without a deploy |
 | 2026-10-02 | What feeds the inbox (ADR-041, Gary): webhooks first, with a fetch of Paddle's event stream behind them, started by the app starting, every webhook, a completed checkout, a 15-minute sweep, and before any action that harms a customer. Events carry the date their waiting period ends, so the sweep is a polling automation over a to-do list of what's due | A missing webhook can't be seen, and Paddle keeps every event for 90 days in a stream we can read from a checkpoint. Both routes record the same event under one id, so nothing built for ADR-040 changes. The one harmful case (a payment recovering unseen, then access removed) is closed by fetching before we act |

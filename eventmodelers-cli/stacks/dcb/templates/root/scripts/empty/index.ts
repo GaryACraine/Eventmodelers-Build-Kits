@@ -13,6 +13,7 @@ import {
     watchTemporal
 } from "./shared/temporal.js"
 import { configureProcessorStatusRoute } from "./shared/health.js"
+import { runSetup, type SetupCommand } from "./shared/setup.js"
 import type { SliceDependencies } from "./shared/dependencies.js"
 import { configureCors } from "./shared/cors.js"
 import { configureJsonBody } from "./shared/inbox.js"
@@ -60,6 +61,11 @@ const readModelRuntime = await startReadModels(
     automationProcessors(automations, readModels, { pool, workflows })
 )
 const eventStore = readModelRuntime.eventStore
+
+// Every setup command (ADR-043): a system setting the app records itself, once, the first time it starts
+// (`defineSetup`, in the command's slice). A value its rules refuse stops the start.
+const setup: SetupCommand[] = []
+await runSetup({ eventStore, pool }, setup)
 
 // The external automations' activities (each slice's `activities.ts`), run by the Temporal worker in this process
 // with the workflows in `workflows.ts`. No activities, no worker.
