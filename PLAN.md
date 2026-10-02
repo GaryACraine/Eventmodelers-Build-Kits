@@ -266,15 +266,12 @@ model and build only what's ours.
                          ┌─────────────────────────────┴───────────────────────────────┐
                          │ EVENT STORE = THE INBOX: durable, de-duplicated, replayable │
                          └─────────────────────────────┬───────────────────────────────┘
-                                                       │ opens an item
+                                                       │ the processor's checkpoint: resumes after a crash
                                                        ▼
-                         TO-DO LIST  "Paddle notifications to translate"   (key: paddleEventId)
-                                                       │
-                                                       ▼
-                         TRANSLATION (an ordinary event-driven automation, proven machinery)
-                           act: read the item; classify by Paddle's type + OUR state
-                                (trialing / payment failed / active → conversion, recovery, renewal …)
-                                issue our command, idempotency key = paddleEventId
+                         TRANSLATION (event-driven; a "list of one": the notification is the item)
+                           classify by Paddle's type + OUR state
+                             (trialing / payment failed / active → conversion, recovery, renewal …)
+                           issue our command, idempotency key = paddleEventId
                                                        │
                                                        ▼
                          OUR COMMAND'S DECIDER (DCB), e.g. startTrial, recordSeatsChange
@@ -283,14 +280,16 @@ model and build only what's ours.
                            • older paddleOccurredAt than the last applied → STALE
                            • the same fact already recorded (created + activated) → ALREADY DONE
                            • otherwise → our business event (+ paddleEventId, paddleOccurredAt)
-                           append condition: nothing new for this subscription since the read,
+                           conditional append: nothing new for this subscription since the read,
                            else decide again → immediately consistent, no race
                                                        │
                          ┌─────────────────────────────┴─────────────────────────────┐
                          ▼                                                           ▼
          our business event (trialWasStarted, …)             paddleNotificationSkipped {paddleEventId, reason}
-           closes the to-do item                               closes the item for stale / already-done ones
-           → read models, other automations                    (an audit trail of what was ignored, and why)
+           → read models, other automations                    stale | already done | failed (poison, + alert)
+
+     SAFETY NET (facts, not the checkpoint): "Untranslated notifications" = received with no outcome event
+     (business or skipped) for its paddleEventId → a live read model on the ops page; alert if one is old.
     ```
 
   - **Named patterns:**
@@ -302,15 +301,24 @@ model and build only what's ours.
     - append `paddleNotificationReceived` (the raw payload, tags `subscriptionId` and `paddleEventId`, the
       idempotency key `event_id`);
     - answer 200 at once (5xx only if the append fails).
-  - **The to-do list "Paddle notifications to translate", and the translation:** an ordinary **event-driven**
-    automation, reusing proven machinery. It classifies from Paddle's type **plus our own state**, because Paddle
+  - **The translation is a "list of one"** (Gary): an **event-driven** automation whose item is the notification
+    itself, with **no stored to-do list**.
+    - Crash safety comes from the stored notification and the processor's checkpoint: it resumes and works every
+      missed notification, idempotently.
+    - **Kit change:** `defineAutomation` accepts an automation without a to-do list (the trigger is the item).
+    - It runs **after** the 200. It classifies from Paddle's type **plus our own state**, because Paddle
     has no "trial converted" event: `activated` is either a conversion or a recovery (`paddle.md` §11b). It issues
     our command with the idempotency key `paddleEventId`.
   - **The deciders:**
     - last writer wins on `paddleOccurredAt` per subscription;
     - "already done" for the same fact by two routes (`subscription.created` and `subscription.activated`);
     - the DCB append condition keeps the check immediately consistent (no separate read model, no race);
-    - `paddleNotificationSkipped {paddleEventId, reason}` closes stale and duplicate items, as an audit trail.
+    - `paddleNotificationSkipped {paddleEventId, reason}` records a stale or already-done notification, as an
+      audit trail. A **poison** one (failing after its retries) is skipped with `reason: failed` and the error, and
+      the alert is raised (ADR-032), so it doesn't block the ones behind it. It's fixed and replayed by hand.
+  - **The safety net, independent of the checkpoint:** "Untranslated notifications" is a live read model of
+    notifications with no outcome event. It goes on the ops page, with an alert when one is older than a few
+    minutes.
   - **Model work** (`supply-hub-v1/licensing`):
     - `paddleEventId` and `paddleOccurredAt` on every event recorded from Paddle (`model/catalogue.sh`);
     - the Paddle lane becomes `paddleNotificationReceived` plus the translation;
