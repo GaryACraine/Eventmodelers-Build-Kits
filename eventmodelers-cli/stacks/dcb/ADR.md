@@ -2186,8 +2186,8 @@ of one" and "safety net", are superseded by this:
 
 ### ADR-041: What feeds the inbox: Paddle's webhooks, its API, or both
 
-**Status:** **Proposed, 2026-10-02.** An open question (Gary), investigated the same day: Paddle has an event
-stream. Gary's proposal (webhooks first, an event-started fetch as the fallback) awaits his acceptance.
+**Status:** **Accepted, 2026-10-02 (Gary)**: webhooks first, with a fetch of Paddle's event stream behind them.
+The decision is under "Decided" below; the fetch and the kit's polling automation are still to be built.
 **Date:** 2026-10-02
 
 **Context:**
@@ -2228,39 +2228,63 @@ item. The decision is only about the door: the webhook endpoint, a poller, or bo
 - Webhooks: answer within 5 seconds; retried 60 times over 3 days live; no order guaranteed; duplicates possible.
   The documentation doesn't say what happens to a destination that keeps failing.
 
-**Proposed (Gary, 2026-10-02): webhooks first, and a fetch of the event stream as the fallback, started by events,
-not by a schedule.**
-- **Two feeders, one inbox.** The webhook endpoint records `paddleNotificationReceived` as now. A **fetch** reads
-  the event stream after our checkpoint and records each event the same way. Both use Paddle's event id as the
-  idempotency key, so the same event by both routes is one item. Order isn't guaranteed across the two, and the
-  deciders already handle that.
-- **What starts a fetch** (no polling schedule):
-  1. **the app starting:** our own downtime is the likeliest reason a webhook was missed;
-  2. **every webhook received:** it fills any gap before it, so a missed one is recovered when the next arrives;
-  3. **something of ours that expects a Paddle fact:** the owner completing the checkout, a seat change we sent;
-  4. **a date we know:** the trial's end, the next renewal.
-- **3 and 4 are a to-do list:** an item is opened by our event that expects the fact, with the time it's due, and
-  closed by the translated outcome. Its automation is external (ADR-031): a Temporal workflow waits until the item
-  is due and, if it's still open, fetches. A timer started by an event, not a schedule.
-- **What it leaves:** a change made on Paddle's side that we didn't expect (a cancel in the customer portal), whose
-  webhook is lost, on a system quiet enough that nothing else starts a fetch. It's recovered by the next fetch,
-  which is at the latest the next renewal date of any subscription.
-- **The checkpoint** is the last event id the fetch has paged through (not the newest id received by webhook:
-  gaps lie before that).
+**Decided (Gary, 2026-10-02): webhooks first, and a fetch of Paddle's event stream behind them.**
+
+1. **Two feeders, one inbox.** The webhook endpoint records `paddleNotificationReceived` as in ADR-040. A **fetch**
+   reads the event stream after our checkpoint and records each event the same way. Both use Paddle's event id as
+   the idempotency key, so the same event by both routes is one item. Order isn't guaranteed across the two, and the
+   deciders already handle that. The inbox, the translation and its to-do list are unchanged.
+2. **The checkpoint** is the last event id the fetch has paged through, recorded as our own event
+   (`paddleEventsWereFetched`). It isn't the newest id received by webhook: gaps lie before that.
+3. **What starts a fetch:**
+   - the app starting (our own downtime is the likeliest reason a webhook was missed);
+   - every webhook received (it fills any gap before it);
+   - the browser reporting that the checkout completed (`checkoutWasCompleted`), so the owner doesn't wait on a
+     webhook;
+   - **a scheduled sweep,** about every 15 minutes, as the backstop;
+   - **before any action of ours that harms a customer** (ending access when a grace period runs out).
+4. **An event that starts a waiting period carries the date it ends** (Gary): `trialEndsAt`, `periodEndsAt`,
+   `graceEndsAt`, `expiresAt`, `effectiveAt`. The date is taken from Paddle's payload where Paddle states it. So
+   what's due, and when, is in our own events.
+5. **The sweep is a polling automation over a to-do list of what's due** (`PaddleFactsDue`; ADR-039's polling
+   form). Each run fetches once, which covers every customer. It then looks for items past their date with no
+   outcome: that needs a person, so it's recorded (`paddleFactWasOverdue`) and alerted. The list also shows what
+   we're waiting on (the organisations in trial, and when each trial ends).
+
+**What the fetch covers, by scenario:**
+
+| Scenario | Who starts it | If the webhook is lost | Harm from the delay |
+|---|---|---|---|
+| Owner starts a trial, or buys now | us (checkout on our page) | the fetch when the checkout completes | none |
+| Owner changes seats, or cancels from our screen | us (our call to Paddle) | Paddle's reply to our call confirms it | none |
+| The trial converts; a renewal succeeds or fails | Paddle, on a date we know | the sweep after that date | none |
+| The grace period runs out | Paddle, on a date we know | the fetch before we end access | none |
+| The owner cancels in Paddle's portal | the customer, unannounced | the next sweep | low: it takes effect at the period's end |
+| A payment recovers during the grace period | Paddle or the customer, unannounced | the next sweep, and the fetch before we end access | high without the fetch: access removed from a customer who has paid |
+| A refund or chargeback | Paddle, unannounced | the next sweep | medium; not modelled yet |
+| A change made in Paddle's dashboard | us, outside the app | the next sweep | low |
+
+A fetch isn't per event type: it reads everything after the checkpoint. So an unannounced change whose webhook is
+lost is delayed by at most one sweep, never lost.
 
 **Alternatives considered:**
+- **A workflow that waits until an item is due** (a timer per expected fact, no schedule): it leaves unannounced
+  changes waiting for some other fetch, and adds a new workflow shape. The sweep covers both, with the polling
+  automation invitation expiry needs anyway.
 - **The webhook as a nudge only:** the endpoint records nothing itself and always fetches. The inbox would then be
-  in Paddle's order, and there'd be one writer. But every webhook would depend on Paddle's API answering, and the
-  endpoint built in ADR-040 would be thrown away.
-- **The API only, on a schedule:** in our control, but slower, and it needs the kit's polling automation.
+  in Paddle's order, with one writer. But every webhook would depend on Paddle's API answering, and the endpoint
+  built in ADR-040 would be thrown away.
+- **The API only, on a schedule:** in our control, but the owner waits up to one interval after checkout.
 - **Webhooks only:** a missing one can't be seen.
 
 **Still to verify,** with a notification destination set up: that a delivered webhook's `event_id` is the
 stream's, and how soon an event is in the stream.
 
-**Consequences while it's open:**
-- The webhook endpoint's slice, Paddle's signature check and reader (16.5), and the sandbox capture through a tunnel
-  wait for this. Under the proposal they go ahead unchanged, and the fetch and its to-do list are added.
-- The rest of chapter 1 and chapter 20 can be built: they start from `paddleNotificationReceived`, whoever records it.
-- The proposal needs no polling automation. It adds a new shape to the kit: an external automation whose workflow
-  waits until an item is due before acting (today a workflow acts at once).
+**Consequences:**
+- The webhook endpoint, Paddle's signature check and reader (16.5), and the sandbox capture go ahead as planned.
+- To build: the fetch (a provider call), and the kit's polling automation (ADR-039), which invitation expiry needs
+  too. Until then the model's chapter for the sync stays at storm level.
+- Four events gained their end dates (`trialWasConverted`, `renewalPaymentWasRecovered`: `periodEndsAt`;
+  `renewalPaymentFailed`, `trialConversionFailed`: `graceEndsAt`). Where `graceEndsAt` comes from is open: Paddle's
+  recovery window is a live-only setting.
+- The slice that ends access at the grace period's end must fetch first.
