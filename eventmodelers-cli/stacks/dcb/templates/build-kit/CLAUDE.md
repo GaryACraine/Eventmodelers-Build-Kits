@@ -161,10 +161,12 @@ A commit that touches `web/src/slices/{slicename}/` (a screen, from `build-scree
 plus blocked-paths (which also covers `web/package.json` and its lockfile):
 
 - **web-scope** — everything staged is in that one slice's `web/src/slices/{slicename}/`, a page in
-  `web/src/pages/*.tsx`, or the regenerated `web/src/lib/api-types.ts`; no backend file, nothing else in `web/`;
+  `web/src/pages/*.tsx`, the regenerated `web/src/lib/api-types.ts`, or a provider's module in
+  `web/src/providers/{name}/` (ADR-044); no backend file, nothing else in `web/`;
   and the slice's folder has a `*.test.tsx`
 - **api-types** — `web/src/lib/api-types.ts` is exactly what `gen:api` generates from `api/openapi.json`
-- **web-tests** — `web/` typechecks (`tsc -b`) and the slice's and the pages' tests pass (MSW, no backend)
+- **web-tests** — `web/` typechecks (`tsc -b`) and the tests of the slice, the pages and a changed provider's module pass
+  (MSW, no backend)
 
 The hook lives in `.githooks/`, added by `eventmodelers init --hooks` (or `eventmodelers init-hooks` later); `npm install`'s
 `prepare` then keeps `core.hooksPath` pointing at it (and leaves it alone when `.githooks/` is absent). It only acts on commits

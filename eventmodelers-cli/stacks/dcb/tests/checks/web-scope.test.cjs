@@ -50,6 +50,18 @@ test('a screen commit: its slice folder, the pages it composes and the generated
   assert.ok(r.ok, r.output);
 });
 
+test('a screen commit may bring a provider\'s module (web/src/providers/{name}/, ADR-044)', () => {
+  const r = commit(repo(), [
+    `${SLICE}/RegisterCourseForm.tsx`, `${SLICE}/RegisterCourseForm.test.tsx`,
+    'web/src/providers/paddle/checkout.ts', 'web/src/providers/paddle/checkout.test.ts',
+  ]);
+  assert.ok(r.ok, r.output);
+  // but not a file loose in web/src/providers/
+  const loose = commit(repo(), [`${SLICE}/Form.tsx`, `${SLICE}/Form.test.tsx`, 'web/src/providers/index.ts']);
+  assert.ok(!loose.ok);
+  assert.match(loose.output, /web\/src\/providers\/index\.ts — \[web-scope\]/);
+});
+
 test('a screen commit changes nothing else in web/, and no backend file', () => {
   const r = commit(repo(), [`${SLICE}/Form.tsx`, `${SLICE}/Form.test.tsx`, 'web/src/App.tsx', 'web/src/lib/api.ts', 'src/index.ts']);
   assert.ok(!r.ok);

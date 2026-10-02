@@ -463,6 +463,41 @@ So:
 - The renewal of `org-test-1` (2026-10-29) after the switch to `tax_mode: external`.
 - The webhook destination, with payloads kept as fixtures, and repeated and out-of-order delivery (PLAN 16.4).
 
+### 11c. Paddle.js from our page, and the calls we make (PLAN 16.5, 2026-10-02)
+
+**Paddle.js** (`@paddle/paddle-js` 1.6.5, opened from a page on `localhost`, ADR-044):
+- `Paddle.Checkout.open({ items, customData, customer: { email }, settings: { displayMode: "overlay" } })` opened
+  the overlay with both trial items, "1 day free trial", £0.00 due today and the amount due on the trial's end date.
+  Passing the email skips asking for it and creates the customer at once (`checkout.customer.created`).
+- A draft transaction exists at Paddle as soon as the overlay loads, carrying our `organisationId`.
+- **Its events:** the first has no `name`; then `checkout.loaded` and `checkout.customer.created`. By Paddle.js's
+  types, `checkout.completed` carries the transaction as `data.transaction_id` (not yet seen: see below).
+- **A price that doesn't exist:** `checkout.error` with `type: "api_error"`, `code: "validation"` and a `detail`.
+  Closing the overlay afterwards sends `checkout.closed`.
+- **The buyer can change the numbers and remove an item** in the overlay (+, −, a bin icon on each item), seen here
+  when opened with `items`. `CheckoutSettings` has no setting to lock them.
+- **`subscription.created` carries `transaction_id`,** so the transaction the page reports can be matched to the
+  subscription Paddle creates.
+- Not yet run: paying the checkout opened this way (a person must type the card: browser automation can't reach
+  Paddle's frame).
+
+**The calls** (plain HTTP, org-test-5's subscription; every answer kept in `licensing/e2e/paddle/fixtures/`):
+- **Preview** (`PATCH /subscriptions/{id}/preview`): adding a web seat with `prorated_immediately` showed £11.60 now
+  (`immediate_transaction`, and `update_summary.result: charge`) and £48.00 at the next renewal; removing a mobile
+  seat with `do_not_bill` showed nothing now and £30.00 next.
+- **A seat increase** charged £11.60 at once, in one `subscription_update` transaction. `subscription.updated`
+  followed the call's answer by about three seconds.
+- **The same call again did nothing:** no transaction, no event, `updated_at` unchanged. Paddle is told every item's
+  quantity, so the call is safe to repeat.
+- **A decrease with `do_not_bill` outside a trial** made no transaction: no charge and no credit. The next renewal
+  (2026-11-01) should be for the lower number.
+- **Cancel at the period's end:** still `active`, `scheduled_change: { action: "cancel", effective_at }`, and
+  `next_billed_at` becomes null. **A second cancel is refused:** 400 `subscription_locked_pending_changes`. Seats can
+  still be changed while it's scheduled.
+- **Withdraw** (`scheduled_change: null`) restores `next_billed_at`. With nothing scheduled, it changes nothing.
+- **Refusals:** 404 `not_found` for an unknown subscription; 400 `subscription_update_when_canceled` for a cancelled
+  one.
+
 ## 12. Getting paid
 
 Sources: Paddle help, [When and how do I get paid?](https://www.paddle.com/help/manage/get-paid/when-and-how-do-i-get-paid),
