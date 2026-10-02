@@ -6,8 +6,8 @@ description: Paddle (a merchant of record) for the slices that receive what Padd
 # Paddle, for the inbox and its fetch
 
 > **Draft, on first use** (ADR-042's rule: distil on solid ground). The code below is proven by its own tests against
-> a mock and real sandbox payloads (`licensing/e2e/paddle/`, 16 cases), not yet by a slice the loop built, and not yet
-> against the sandbox over HTTP. Follow it; where a slice doesn't fit, block the job with `request-feedback` saying
+> a mock, real sandbox payloads, and the sandbox's stream over HTTP (`licensing/e2e/paddle/`, 17 cases), not yet by a
+> slice the loop built. Follow it; where a slice doesn't fit, block the job with `request-feedback` saying
 > what didn't fit. This skill is rewritten from the lessons once the first slices and the end-to-end run pass.
 
 `build-automation` holds what's true of every automation. This skill holds what's true of **Paddle**. Decisions:
