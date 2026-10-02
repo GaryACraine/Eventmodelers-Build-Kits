@@ -48,6 +48,8 @@ export interface StartedWorkflow {
     workflowType: string
     workflowId: string
     args: unknown[]
+    /** When the work is due, for a start with a delay (ADR-042) */
+    dueAt?: Date
 }
 
 /** Records starts, and like Temporal's `REJECT_DUPLICATE` ignores a second start of the same id. */
@@ -55,8 +57,9 @@ export function recordingWorkflowStarter(): WorkflowStarter & { started: Started
     const started: StartedWorkflow[] = []
     return {
         started,
-        async start(workflowType, workflowId, args) {
-            if (!started.some(s => s.workflowId === workflowId)) started.push({ workflowType, workflowId, args })
+        async start(workflowType, workflowId, args, options) {
+            if (started.some(s => s.workflowId === workflowId)) return
+            started.push({ workflowType, workflowId, args, ...(options?.dueAt ? { dueAt: options.dueAt } : {}) })
         }
     }
 }

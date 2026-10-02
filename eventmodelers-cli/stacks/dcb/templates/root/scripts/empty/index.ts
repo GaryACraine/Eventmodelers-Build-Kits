@@ -3,8 +3,15 @@ import { fileURLToPath } from "node:url"
 import { getApplication, onShutdown, startAPI, stopAPI } from "@dcb-es/event-store-express"
 
 import { startReadModels, type ReadModel, type StoredProjectionRegistration } from "./shared/readModels.js"
-import { automationProcessors, type Automation } from "./shared/automations.js"
-import { startWorker, temporalClient, temporalConfig, temporalWorkflowStarter, watchTemporal } from "./shared/temporal.js"
+import { automationProcessors, type Automation, type ScheduleDefinition } from "./shared/automations.js"
+import {
+    startWorker,
+    temporalClient,
+    temporalConfig,
+    temporalWorkflowStarter,
+    watchSchedules,
+    watchTemporal
+} from "./shared/temporal.js"
 import { configureProcessorStatusRoute } from "./shared/health.js"
 import type { SliceDependencies } from "./shared/dependencies.js"
 import { configureCors } from "./shared/cors.js"
@@ -36,6 +43,10 @@ const imperative: StoredProjectionRegistration[] = []
 // Temporal workflow (TEMPORAL_ADDRESS, default localhost:7233; `npm run infra:start`). Every call to Temporal has a
 // deadline, TEMPORAL_CALL_TIMEOUT_MS (default 5000): past it a start fails and the processor shows `blocked`.
 const automations: Automation[] = []
+// Every polling automation (ADR-042): a Temporal Schedule that starts a workflow on a timetable (`defineSchedule`).
+// Created or updated in the background when the app starts; its workflow and activities are in `workflows.ts` and
+// `activities` below.
+const schedules: ScheduleDefinition[] = []
 const temporal = temporalConfig()
 const temporalApi = temporalClient(temporal)
 const workflows = temporalWorkflowStarter(temporalApi, temporal.taskQueue, { callTimeoutMs: temporal.callTimeoutMs })
@@ -59,6 +70,7 @@ const worker =
         : undefined
 // Health asks Temporal in the background (TEMPORAL_HEALTH_INTERVAL_MS, default 5000), so it never waits on it
 const temporalWatch = worker ? watchTemporal(temporalApi, temporal, worker) : undefined
+const scheduleWatch = watchSchedules(temporalApi, temporal, schedules)
 
 // Read-your-writes for an async imperative projection, by name: current as of a position (PLAN 14.10b).
 export const waitFor = (projectionName: string) => readModelRuntime.waitFor(projectionName)
@@ -73,7 +85,8 @@ const app = getApplication({
         configureJsonBody(),
         configureProcessorStatusRoute(() => readModelRuntime.consumer, {
             // With external automations, health also asks Temporal directly and reports this process's worker
-            ...(temporalWatch ? { temporal: () => temporalWatch.status() } : {})
+            ...(temporalWatch ? { temporal: () => temporalWatch.status() } : {}),
+            ...(schedules.length > 0 ? { schedules: () => scheduleWatch.status() } : {})
         }),
         configureEventFeedRoute(eventStore),
         configureOpenApiRoute()
@@ -97,6 +110,7 @@ onShutdown(async () => {
     console.log("Shutting down…")
     await stopAPI(server)
     temporalWatch?.stop()
+    scheduleWatch.stop()
     await worker?.stop()
     await readModelRuntime.stop()
     await pool.end()
