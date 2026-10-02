@@ -2186,7 +2186,8 @@ of one" and "safety net", are superseded by this:
 
 ### ADR-041: What feeds the inbox: Paddle's webhooks, its API, or both
 
-**Status:** **Proposed, 2026-10-02.** An open question (Gary): to investigate before the webhook endpoint is built.
+**Status:** **Proposed, 2026-10-02.** An open question (Gary), investigated the same day: Paddle has an event
+stream. Gary's proposal (webhooks first, an event-started fetch as the fallback) awaits his acceptance.
 **Date:** 2026-10-02
 
 **Context:**
@@ -2217,24 +2218,49 @@ of one" and "safety net", are superseded by this:
 it records `paddleNotificationReceived` under Paddle's event id, so a webhook and a fetch of the same event are one
 item. The decision is only about the door: the webhook endpoint, a poller, or both.
 
-**To investigate** (in the sandbox and Paddle's documentation; nothing here is verified yet):
-- Does Paddle's API list the events that occurred (an events endpoint), with the same ids and payloads as its
-  webhooks? In what order, and how is it paged (a cursor we can keep as a checkpoint)?
-- How far back does it go (retention), and does it include every event type we need?
-- Its rate limits, and what a sensible polling interval would cost against them.
-- If there's no such list: can each fact be read from the entities instead (subscriptions and transactions changed
-  since a time), and what is lost (an entity shows its state now, not each change).
-- What Paddle does when a destination keeps failing (is it disabled, and are we told?), and how replay works.
-- How quickly the owner must see the trial after checkout, and whether the checkout's completion in the browser can
-  trigger the fetch, so no webhook is needed for that moment.
+**Found, 2026-10-02** (`docs/case-studies/paddle.md` §7b):
+- **Paddle has an event stream, `GET /events`:** every event of the last 90 days, with the same `event_id` and
+  payload as the webhook, readable in ascending id order from a checkpoint (`after=<event_id>`), 200 a page.
+- **It doesn't depend on webhooks:** the sandbox has no notification destination, and its 1,850 events are all
+  there.
+- In the sandbox, ascending id order was also `occurred_at` order (not a documented guarantee).
+- The rate limit is 240 requests a minute per IP address.
+- Webhooks: answer within 5 seconds; retried 60 times over 3 days live; no order guaranteed; duplicates possible.
+  The documentation doesn't say what happens to a destination that keeps failing.
 
-**Leaning (not decided):** option 3, if Paddle's API can list events: a scheduled fetch is the source of
-completeness, and webhooks are an optimisation that can fail without losing anything. If it can't list events,
-compare option 1 with reconciliation of entities against option 2.
+**Proposed (Gary, 2026-10-02): webhooks first, and a fetch of the event stream as the fallback, started by events,
+not by a schedule.**
+- **Two feeders, one inbox.** The webhook endpoint records `paddleNotificationReceived` as now. A **fetch** reads
+  the event stream after our checkpoint and records each event the same way. Both use Paddle's event id as the
+  idempotency key, so the same event by both routes is one item. Order isn't guaranteed across the two, and the
+  deciders already handle that.
+- **What starts a fetch** (no polling schedule):
+  1. **the app starting:** our own downtime is the likeliest reason a webhook was missed;
+  2. **every webhook received:** it fills any gap before it, so a missed one is recovered when the next arrives;
+  3. **something of ours that expects a Paddle fact:** the owner completing the checkout, a seat change we sent;
+  4. **a date we know:** the trial's end, the next renewal.
+- **3 and 4 are a to-do list:** an item is opened by our event that expects the fact, with the time it's due, and
+  closed by the translated outcome. Its automation is external (ADR-031): a Temporal workflow waits until the item
+  is due and, if it's still open, fetches. A timer started by an event, not a schedule.
+- **What it leaves:** a change made on Paddle's side that we didn't expect (a cancel in the customer portal), whose
+  webhook is lost, on a system quiet enough that nothing else starts a fetch. It's recovered by the next fetch,
+  which is at the latest the next renewal date of any subscription.
+- **The checkpoint** is the last event id the fetch has paged through (not the newest id received by webhook:
+  gaps lie before that).
+
+**Alternatives considered:**
+- **The webhook as a nudge only:** the endpoint records nothing itself and always fetches. The inbox would then be
+  in Paddle's order, and there'd be one writer. But every webhook would depend on Paddle's API answering, and the
+  endpoint built in ADR-040 would be thrown away.
+- **The API only, on a schedule:** in our control, but slower, and it needs the kit's polling automation.
+- **Webhooks only:** a missing one can't be seen.
+
+**Still to verify,** with a notification destination set up: that a delivered webhook's `event_id` is the
+stream's, and how soon an event is in the stream.
 
 **Consequences while it's open:**
 - The webhook endpoint's slice, Paddle's signature check and reader (16.5), and the sandbox capture through a tunnel
-  wait for this.
+  wait for this. Under the proposal they go ahead unchanged, and the fetch and its to-do list are added.
 - The rest of chapter 1 and chapter 20 can be built: they start from `paddleNotificationReceived`, whoever records it.
-- Whichever option needs a schedule also needs the kit's polling automation proven (ADR-039), which invitation
-  expiry needs too.
+- The proposal needs no polling automation. It adds a new shape to the kit: an external automation whose workflow
+  waits until an item is due before acting (today a workflow acts at once).
