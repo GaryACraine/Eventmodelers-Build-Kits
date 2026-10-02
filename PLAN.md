@@ -43,6 +43,31 @@ model and build only what's ours.
   and access are our domain. Paddle is an outside system: in the model, an automation (and translations of its
   webhooks) that produces a side effect. So the model is designed first, from how other vendors do it, and Paddle is
   fitted to it, not the other way round.
+- **Where we are, and what's next** (2026-10-02; read this first):
+  - **Done:**
+    - **the inbox** for what Paddle tells us, and its translation with a to-do list (ADR-040);
+    - **webhooks first, with a fetch of Paddle's event stream behind them** (ADR-041), proven against a mock and the
+      sandbox (`licensing/e2e/paddle/`, 17 of 17);
+    - **timed work on Temporal** (ADR-042): a Schedule, a start due at a date, timers in a workflow;
+    - **settings seeded by setup commands** (ADR-043);
+    - **the model:** chapter 1 (32 slices), and chapters 20 to 23, pushed to the board, not exported;
+    - **drafts, marked first use:** `provider-paddle`, and the sections "Timed work" (`build-automation`) and
+      "A setup command" (`build-state-change`).
+  - **Next, in order:**
+    1. **Paddle.js in the web app** (16.5's front half): the checkout on "Choose How to Start", its completion
+       callback submitting `reportCheckoutCompleted`, and the calls we make to Paddle (seat changes, cancel). Needs
+       nothing from Gary.
+    2. **The checks that need a notification destination,** through a tunnel: that a delivered webhook's `event_id`
+       is the stream's, how soon an event is in the stream, and redelivery and out-of-order delivery for real. Needs
+       a tunnel tool on Gary's machine, and creates a destination in his sandbox.
+    3. **Plan chapters 1 and 20 together** (the translation's give-up needs chapter 20's skip command), and
+       chapters 22 and 23 (the setup commands). Then export, and Gary runs the loop.
+    4. **16.3a:** chapter 1 end to end through the UI: the mock run, then the sandbox run.
+    5. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (with 16.6).
+  - **Waiting on a date, or on Gary:**
+    - the `tax_mode` renewal, read after 2026-10-29 (16.2b);
+    - Gary's live Paddle onboarding (16.1), which includes setting Payment Recovery to 14 days, the same as
+      `GRACE_PERIOD_DAYS`.
 - [x] **16.0 Record.** *Done 2026-09-29*: this phase, its order, ADR-036 Accepted, the Decisions Log.
 - [ ] **16.1 Paddle: onboarding, and a working knowledge of its UI and API** (first priority). Gary starts the
   onboarding, since whether we can use Paddle, and how, may shape the model.
@@ -157,8 +182,8 @@ model and build only what's ours.
     - Each chapter has its events and decided notes so far.
     - **Next: flesh out each flow** (commands, read models, screens, automations, specifications), from chapter 1.
     - **Flows:**
-      - [ ] 1. Owner starts a trial: **fleshed out 2026-10-01**, with 20 slices, 18 specifications and 0
-        completeness errors. The slices: sign-up (the provider's page) → "Get Started" registers on first visit →
+      - [ ] 1. Owner starts a trial: **fleshed out 2026-10-01** (then 20 slices; **32 slices and 30 specifications
+        since 2026-10-02**, with the inbox, the translation's to-do list and the checkout watch: see 16.4). The slices: sign-up (the provider's page) → "Get Started" registers on first visit →
         "Activate Organisation" → the owner role (automation) → auth sync → "Choose How to Start" → Paddle checkout
         → the translation → `trialWasStarted` → the owner's admin role and web seat (automations, via
         `OrganisationOwner`) → auth sync → "Dashboard" (`OrganisationOverview`). Scripts are in `licensing/model/`
@@ -212,8 +237,8 @@ model and build only what's ours.
   - **Outstanding in 16.3** (gathered 2026-10-02):
     - [ ] flesh out chapters 1b and 2–19 (process modelling), with mockups;
     - [ ] the Platform Support chapter (the platform admin; the `TrialFunnel` read model);
-    - [ ] the builder still blocks as unproven: **polling automations** (first: invitation expiry) and **external
-      data inputs**;
+    - [ ] the builder still blocks **external data inputs** as unproven. *Polling is no longer blocked: it's a
+      Temporal Schedule, a draft on first use (ADR-042); invitation expiry is a workflow started with a delay.*
     - the "sign up" slice is never planned (it's the provider's page; noted on the slice);
     - [ ] emcli issues: event-copy drift, and same-named events across chapters can differ (`ISSUES.md`).
   - [ ] **16.3a Chapter 1 end to end** (Gary, 2026-10-01): once chapter 1's slices are built and their tests pass,
@@ -247,11 +272,18 @@ model and build only what's ours.
     scaffold's slice folders made it run checks that compare with `HEAD`, which doesn't exist yet), including manual
     §4's. The guard now lets a first commit through (`check-commit-scope.cjs`). Proven in `licensing`: the first
     commit passed, and the kit-drift check shows 0 files differing.
+  - **Rebuilding the model** (`licensing/model/README.md` has the same):
+    - **Order:** `chapter-1.sh` (it removes chapters 20 and 21 first, which hold copies of its elements) →
+      `chapter-1-specs.sh` → `chapter-1-screens.sh` → `chapter-20.sh` → `chapter-21.sh`; and `chapter-22.sh` (it
+      removes chapter 23 first) → `chapter-23.sh`.
+    - A copy of another chapter's element is made by the origin's id: by name, emcli finds the chapter's own copy.
+    - **The board:** a rebuilt chapter gets a new id, so a safe push leaves the old one beside it and a full push
+      removes it. Gary approved each full push: **ask before a push that deletes.** Never export without Gary.
   - *A project one folder down* (`supply-hub-v1/licensing`) can't reach `../dcb-event-store`, so a link
     `supply-hub-v1/dcb-event-store → ../dcb-event-store` keeps the scaffold unchanged. Manual §4 says projects sit in
     `~/Projects`; worth a line there if nesting becomes common.
-- [ ] **16.4 Hardened Paddle webhooks: an inbox on the event store** (the main kit work; **next**, Gary 2026-10-02:
-  before the loop builds chapter 1). Another system's webhook becomes our event, safely: duplicates are absorbed,
+- [ ] **16.4 Hardened Paddle webhooks: an inbox on the event store** (the main kit work; **in progress** since
+  2026-10-02, before the loop builds chapter 1; what's left is in "Where we are" above). Another system's webhook becomes our event, safely: duplicates are absorbed,
   out-of-order deliveries are ignored, and nothing is lost. **ADR-040.**
   - **Status (started 2026-10-02):**
     - [x] **The kit's two pieces,** proven in `licensing` (`automations.tests.ts` 19 of 19, `inbox.tests.ts` 7 of
@@ -407,9 +439,13 @@ model and build only what's ours.
     - [ ] **The other 11 chapters' Paddle lanes** keep their typed events until each is fleshed out (Gary). With
       them: which seat events carry the Paddle fields (a seat change is confirmed by Paddle's API reply, which has
       no event id), and the **stale** specifications (the first decider with an order to keep).
-    - [ ] **Paddle's `verify` and `toEvent`** (with 16.5's `provider-paddle`), the endpoint's slice, and the
-      manual's section.
-    - [ ] **Tests from recorded sandbox payloads** and the sandbox run (below).
+    - [x] **Paddle's `verify` and `toEvent`**, 2026-10-02: in `provider-paddle` (a draft), proven in
+      `licensing/e2e/paddle/`.
+    - [x] **Tests from recorded sandbox payloads,** 2026-10-02: five real events as fixtures; the same event twice,
+      by both routes, a bad signature, from a checkpoint, and the sandbox's stream over HTTP.
+    - [ ] **The endpoint's slice** (built by the loop, with chapter 1) and **the manual's section**.
+    - [ ] **Against a real notification destination:** redelivery, out-of-order delivery and equal `occurred_at`
+      (the tunnel session, "Where we are" step 2).
   - **The pattern:**
 
     ```
@@ -3773,7 +3809,7 @@ What each `build-*` skill generates and what it verifies:
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. **16.4 (the inbox, ADR-040) in progress: the kit's pieces and the model (chapters 1 and 20) done 2026-10-02; ADR-041 Accepted (webhooks first, a fetch of Paddle's event stream behind them; chapters 21 and 22); ADR-042 Accepted (timed work on Temporal; chapter 23). Open: the kit's three Temporal shapes and the fetch, Paddle's signature check and payload reader (16.5) and sandbox payload fixtures. Then the loop builds chapters 1 and 20, then 16.3a (chapter 1 end to end).** 16.3 is in process modelling: chapter 1 fleshed out (26 slices), 16.3b done (ADR-039) (16.2 done 2026-09-30: ADR-037 Accepted, trials included after the 16.2b tests) (16.1's knowledge work done 2026-09-30; only Gary's live onboarding open; 16.2's research done 2026-09-30). Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
+| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. **16.4 and 16.5 in progress (2026-10-02): the inbox (ADR-040), webhooks first with a fetch of Paddle's event stream (ADR-041), timed work on Temporal (ADR-042) and setup commands (ADR-043) are built and proven; the model has chapter 1 (32 slices) and chapters 20 to 23. Next: Paddle.js in the web app, the checks that need a notification destination, then the loop builds chapters 1 and 20, then 16.3a (chapter 1 end to end). See "Where we are" at the top of Phase 16.** 16.3 is in process modelling: chapter 1 fleshed out, 16.3b done (ADR-039) (16.2 done 2026-09-30: ADR-037 Accepted, trials included after the 16.2b tests) (16.1's knowledge work done 2026-09-30; only Gary's live onboarding open; 16.2's research done 2026-09-30). Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
 | 15 — Automations (restaurant orders) | ✅ Closed 2026-09-29 (a demo) | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27/28: the Restaurant Orders chapter (25 slices, 63 scenarios, 15 mockups) on prooph board, with stock and an internal automation (the Stock Returner); emcli push fixes (lanes, links, skipped deletions). 15.8 added: deciding from a growing event stream. 15.2 done 2026-09-28 (library PR #29 merged). 15.3 done 2026-09-28 (ADR-033 runtime, ADR-034 Braintree as a commercial directive; the loop built the restaurant backend; 8 end-to-end cases pass, with our own Temporal call deadline and Temporal in health; manual §21). Next: 15.4 redrive, then 15.5 the UI on Sonnet. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) | **Closed 2026-09-29:** 15.4 and 15.4c built through the loop (stalls, retry, give up, attempts, pay again, cancel); 15.4e provider skills; 15.9 on Sonnet at medium, about 2.5–3× cheaper per job; emcli re-queues changed built slices. The rest dropped or moved to Phase 16 |
 | 1 — Stack Scaffolding | ✅ Complete | Verified: init, npm install, tsc, 21/21 unit tests |
 | 2 — State Change Skill | ✅ Complete | 9-step SKILL.md with full DCB patterns |
