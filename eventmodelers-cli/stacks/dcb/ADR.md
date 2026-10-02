@@ -2183,3 +2183,58 @@ of one" and "safety net", are superseded by this:
 - The kit's JSON parser (`configureJsonBody`) keeps the raw body of `/webhooks/…` requests for the signature check.
 - A signed notification that can't be read answers 400 and raises an alert, so the reader is fixed before the
   provider stops retrying.
+
+### ADR-041: What feeds the inbox: Paddle's webhooks, its API, or both
+
+**Status:** **Proposed, 2026-10-02.** An open question (Gary): to investigate before the webhook endpoint is built.
+**Date:** 2026-10-02
+
+**Context:**
+- **ADR-040 assumed webhooks are how Paddle's facts reach us.** Paddle calls us, so our state depends on its
+  deliveries arriving.
+- **Gary's question:** is that reliable enough? Or should we call Paddle's REST API for everything we need, so the
+  integration is in our control?
+- **The weakness of a webhook is that a missing one can't be seen.** `UntranslatedNotifications` lists what we
+  received and haven't translated. It says nothing about what never arrived: our endpoint down for longer than
+  Paddle retries, a destination disabled or misconfigured, an event type not subscribed to.
+- **What we know of Paddle's delivery** (`docs/case-studies/paddle.md`): a failed delivery is retried 60 times over
+  3 days live (3 times in 15 minutes in the sandbox), and notifications can be replayed for 90 days.
+- **ADR-040 already kept a fallback:** on a stale or ambiguous notification, fetch the subscription from Paddle's API
+  ("the notification is a nudge").
+
+**The options:**
+1. **Webhooks only** (ADR-040 as it stands): fastest, least to build; blind to a delivery that never arrives.
+2. **The API only:** we ask Paddle on a schedule and after our own actions (a checkout completing in the browser, a
+   seat change we made). We're in control, and nothing depends on Paddle reaching us.
+   - It's slower by the polling interval, unless the screen that waits triggers a fetch.
+   - It needs something on a schedule (polling isn't proven in the kit yet), and it's bounded by Paddle's rate
+     limits.
+   - Paddle's API being down stops it, as Paddle not delivering stops webhooks.
+3. **Both:** the API is how we know we're complete, and webhooks only make it fast. A scheduled reconciliation
+   reads what Paddle says happened and records anything we don't have.
+
+**What doesn't depend on the answer:** the inbox, the translation, its to-do list and the deciders. Whatever feeds
+it records `paddleNotificationReceived` under Paddle's event id, so a webhook and a fetch of the same event are one
+item. The decision is only about the door: the webhook endpoint, a poller, or both.
+
+**To investigate** (in the sandbox and Paddle's documentation; nothing here is verified yet):
+- Does Paddle's API list the events that occurred (an events endpoint), with the same ids and payloads as its
+  webhooks? In what order, and how is it paged (a cursor we can keep as a checkpoint)?
+- How far back does it go (retention), and does it include every event type we need?
+- Its rate limits, and what a sensible polling interval would cost against them.
+- If there's no such list: can each fact be read from the entities instead (subscriptions and transactions changed
+  since a time), and what is lost (an entity shows its state now, not each change).
+- What Paddle does when a destination keeps failing (is it disabled, and are we told?), and how replay works.
+- How quickly the owner must see the trial after checkout, and whether the checkout's completion in the browser can
+  trigger the fetch, so no webhook is needed for that moment.
+
+**Leaning (not decided):** option 3, if Paddle's API can list events: a scheduled fetch is the source of
+completeness, and webhooks are an optimisation that can fail without losing anything. If it can't list events,
+compare option 1 with reconciliation of entities against option 2.
+
+**Consequences while it's open:**
+- The webhook endpoint's slice, Paddle's signature check and reader (16.5), and the sandbox capture through a tunnel
+  wait for this.
+- The rest of chapter 1 and chapter 20 can be built: they start from `paddleNotificationReceived`, whoever records it.
+- Whichever option needs a schedule also needs the kit's polling automation proven (ADR-039), which invitation
+  expiry needs too.
