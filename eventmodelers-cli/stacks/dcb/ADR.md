@@ -2062,7 +2062,9 @@ with their first slices.
 **Context:**
 - **Paddle delivers webhooks more than once, and out of order.**
   - A specific event and its `subscription.updated` often share one `occurred_at`.
-  - `subscription.created` can be missing, with `subscription.activated` arriving instead.
+  - `subscription.created` can be missing, with `subscription.activated` arriving instead. *(2026-10-02: it's
+    missing for every purchase made at Paddle's checkout; a trial started there sends `subscription.trialing`. A
+    start is whichever of `trialing`, `activated` and `created` arrives first.)*
   - `activated` means a trial conversion or a recovery, depending on our state (`paddle.md` §11b).
 - **The kit had a `synchronous` translation mode** (decide inside the webhook request), blocked as unproven. It
   relies on Paddle's retries for failures and keeps no raw payload.
@@ -2420,7 +2422,7 @@ until its first slice is built.
 ### ADR-044: Another system's browser library in a screen: behind a module of ours, with a mock
 
 **Status:** **Proposed, 2026-10-02.** Built and proven for Paddle's checkout by the module's own tests and Paddle's
-sandbox (`licensing/web/e2e/paddle/`); a paid sandbox checkout, and a slice the loop builds, are still to come. The
+sandbox (`licensing/web/e2e/paddle/`), including a checkout paid by hand; a slice the loop builds is still to come. The
 skill sections are drafts until then.
 **Date:** 2026-10-02
 
@@ -2441,8 +2443,8 @@ skill sections are drafts until then.
    the module; the first screen that needs it creates it, with its tests, and later screens share it.
 2. **The module has a mock, and the mock is the default.** In `mock` the library isn't loaded: the module sends one
    request to the other system's mock (ADR-030), which makes happen what the real one would. For Paddle,
-   `POST /mock/checkouts` completes the checkout and adds the trial's events to the mock's stream, so the mock run
-   goes end to end. In a component's tests and in `dev:mock`, MSW answers that request from the slice's
+   `POST /mock/checkouts` completes the checkout and adds the trial's events to the mock's stream (the ones Paddle
+   sent for a real checkout: `subscription.trialing` and `transaction.completed`), so the mock run goes end to end. In a component's tests and in `dev:mock`, MSW answers that request from the slice's
    `handlers.ts`.
 3. **The page takes one thing from the library: that it happened, and its id.** The module answers "completed, for
    this transaction" or "closed". The page reports that to our backend with a command of the model

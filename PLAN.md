@@ -60,15 +60,10 @@ model and build only what's ours.
       (`build-automation`), "A setup command" (`build-state-change`) and "A value from another system's browser
       library" (`build-screen`).
   - **Next, in order:**
-    1. **Finish Paddle.js's proof, and decide ADR-044** (Gary):
-       - **pay the sandbox checkout by hand** (`licensing/web/e2e/paddle/README.md`: `npx vite --mode sandbox
-         --port 5199`, open `/e2e/paddle/sandbox.html`, "Start my free trial", card `4242 4242 4242 4242`). The
-         browser automation can't type into Paddle's frame. Then save `window.paddleEvents`' `checkout.completed` as
-         the fixture, check its `transaction_id` is the one on the stream's `subscription.created`, and cancel the
-         test subscription (`org-test-6`);
-       - **accept ADR-044,** or change it;
-       - **answer its open question:** the buyer can change the numbers and remove an item in Paddle's overlay, so
-         what do we do when a trial arrives without a web seat (ADR-037: at least one)?
+    1. **Decide ADR-044** (Gary), and its open question: the buyer can change the numbers and remove an item in
+       Paddle's overlay, so what do we do when a trial arrives without a web seat (ADR-037: at least one)? Also
+       still to save: Paddle.js's own `checkout.completed` event as a fixture (the paid checkout's tab wasn't one the
+       assistant could read; `licensing/web/e2e/paddle/README.md` says how).
     2. **The checks that need a notification destination,** through a tunnel: that a delivered webhook's `event_id`
        is the stream's, how soon an event is in the stream, and redelivery and out-of-order delivery for real. Needs
        a tunnel tool on Gary's machine, and creates a destination in his sandbox.
@@ -565,8 +560,13 @@ model and build only what's ours.
   - **Found in the sandbox:** closing Paddle's overlay after its error was first read as "the buyer closed it"
     (fixed: the error is settled before the close); Paddle.js's first event has no name; the buyer can change the
     numbers and remove an item in the overlay.
-  - **Open:** the paid sandbox checkout (by hand) and its `checkout.completed` fixture; the code of a declined card
-    on a seat increase; ADR-044's open question (a trial that arrives without a web seat).
+  - **The paid checkout (Gary, by hand, 2026-10-02):** `org-test-6`'s trial started with 1 web and 1 mobile seat.
+    Paddle sent **`subscription.trialing` and no `subscription.created`**, as for the earlier checkout purchase, so
+    a start is `trialing`, `activated` or `created`, whichever arrives first. `subscription.trialing` joined the
+    types we fetch; the mock's checkout makes `subscription.trialing` and `transaction.completed`; the model's
+    Paddle Translation says so. The trial was then cancelled at its end (no charge).
+  - **Open:** Paddle.js's `checkout.completed` event as a fixture; the code of a declined card on a seat increase;
+    ADR-044's open question (a trial that arrives without a web seat).
   - Paddle.js in our Vite React SPA (the Next.js starter is a reference only);
   - webhook signatures and events;
   - the sandbox;
@@ -3837,6 +3837,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-09-29 | Phase 16's order: Paddle onboarding and a working knowledge of its UI and API first, then research into how other vendors license seats through a merchant of record, then our licensing model; voice modelling deferred until the model is established | Gary: the licensing model is ours, and Paddle is only an automation producing side effects; knowing Paddle's capabilities and the market's patterns first gives a model worth building |
 | 2026-10-02 | Another system's browser library sits behind a module of ours in `web/src/providers/<name>/`, with a mock that is the default and asks the system's mock server; the page takes only "completed, and its id" from it and reports that with a command (ADR-044, Proposed) | The screen stays built from the model; tests, mock mode and the end-to-end mock run need no account at Paddle; what the page sees is never a fact (ADR-041) |
 | 2026-10-02 | Our calls to Paddle tell it the state we want (every item's quantity), over plain HTTP, and need no idempotency key of their own; a second cancel that Paddle refuses is read as done | In the sandbox the same seat change twice made one charge and one event; an activity can be retried safely |
+| 2026-10-02 | A subscription's start is read from `subscription.trialing`, `subscription.activated` or `subscription.created`, whichever arrives first, with the payload's status; `subscription.trialing` is fetched and translated | Both purchases made at Paddle's checkout sent no `subscription.created` (only those made through the API did); a translation waiting for `created` would never start a trial |
 
 ## Progress
 

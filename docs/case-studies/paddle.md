@@ -454,6 +454,10 @@ So:
 - **`subscription.created` can be missing.** None ever came for `org-test-2`'s checkout purchase, the only one paid
   with a card that asked for 3D Secure; `subscription.activated` did. Every other subscription got both. So treat
   whichever of `created` and `activated` arrives first as the purchase being confirmed.
+  **2026-10-02: it's the checkout, not the card.** `org-test-6`'s trial, started at Paddle's checkout from our page
+  with an ordinary test card, sent `subscription.trialing` and no `created` either. The subscriptions that got
+  `created` were all made through the API. So a start is `trialing`, `activated` or `created`, whichever arrives
+  first (§11c).
 - **Paddle often sends a specific event and `subscription.updated` with the same `occurred_at`:** activated,
   past_due, paused, resumed and canceled all do. Order by (`occurred_at`, `event_id`) and listen to the specific one.
   A scheduled cancel comes only as `subscription.updated`, so read `scheduled_change` there.
@@ -476,10 +480,18 @@ So:
   Closing the overlay afterwards sends `checkout.closed`.
 - **The buyer can change the numbers and remove an item** in the overlay (+, −, a bin icon on each item), seen here
   when opened with `items`. `CheckoutSettings` has no setting to lock them.
-- **`subscription.created` carries `transaction_id`,** so the transaction the page reports can be matched to the
-  subscription Paddle creates.
-- Not yet run: paying the checkout opened this way (a person must type the card: browser automation can't reach
-  Paddle's frame).
+- **Paid by hand** (Gary, card 4242…; browser automation can't type into Paddle's frame). Paddle's events for it, in
+  order: `transaction.created` (draft, when the overlay loaded), `address.created`, `transaction.updated` and
+  `transaction.ready`, `transaction.updated` and `transaction.paid`, **`subscription.trialing`**,
+  `transaction.updated` and `transaction.completed`. All within a second of the payment, and in the event stream
+  within 30 seconds.
+- **No `subscription.created`** came for it (none five minutes later; org-test-2's never came). `subscription.trialing` is the trial's start.
+- **`transaction.completed` names its subscription** (`subscription_id`) and carries our `organisationId`, with
+  `origin: web` and £0.00. That's how the transaction the page reports is matched to the subscription.
+  (`subscription.created`, when there is one, carries `transaction_id`.)
+- **Cancelling the trial** (`effective_from: next_billing_period`): it stays `trialing`, with
+  `scheduled_change: cancel` at the trial's end and `next_billed_at` null; one `subscription.updated`. Nothing is
+  charged.
 
 **The calls** (plain HTTP, org-test-5's subscription; every answer kept in `licensing/e2e/paddle/fixtures/`):
 - **Preview** (`PATCH /subscriptions/{id}/preview`): adding a web seat with `prorated_immediately` showed £11.60 now
