@@ -167,6 +167,31 @@ and can't do, so the model asks it for the right things.
   first look.
 - **A webhook simulator** (with scenario configuration) sends sample events to a destination, for tests.
 
+### 7b. The event stream: the same events, pulled (2026-10-02, ADR-041)
+
+Paddle keeps every event that occurred and lets us read them: `GET /events` ("the event stream").
+
+- **From the API reference:**
+  - events of the **last 90 days**; older ones aren't retained;
+  - each is `event_id`, `event_type`, `occurred_at`, `data`: the webhook's envelope, with the same `evt_…` id;
+  - `order_by=id[ASC]`, and `after=<event_id>` returns the events after that one, so **the last event id is a
+    checkpoint**; up to 200 per page;
+  - filters: `event_type` (a list), `filter` (a Paddle id, such as a subscription's), `from` and `to`;
+  - it needs the `notification.read` permission.
+- **Read in the sandbox** (read-only):
+  - 1,850 events are there, although **the sandbox has no notification destination**: the stream doesn't depend on
+    webhooks being set up or delivered;
+  - paging with `after` works as described;
+  - across our 42 subscription and transaction events, **ascending id order was also `occurred_at` order** (none
+    out of order). The ids look time-ordered. Paddle doesn't document that as a guarantee.
+- **Deliveries can be inspected too:** `GET /notifications` filters by `status` (`delivered`, `failed`,
+  `needs_retry`, `not_attempted`), destination and time, and a failed or delivered one can be replayed.
+- **Rate limit:** 240 requests a minute per IP address; past it, 429 with `Retry-After`.
+- **Not answered by the documentation:** what happens to a destination that keeps failing (whether Paddle disables
+  it, and whether we're told).
+- **Still to verify, with a destination set up:** that a delivered webhook's `event_id` is the stream's; how soon
+  after it happens an event is in the stream.
+
 ## 8. What this means for our model (input to 16.2 and 16.3)
 
 - **Ours:**
