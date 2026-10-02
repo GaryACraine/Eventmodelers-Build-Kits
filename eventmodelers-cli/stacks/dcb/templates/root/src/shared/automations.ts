@@ -44,6 +44,11 @@ export interface AutomationContext<TItem extends ReadModelDoc> {
     issue<C extends Command>(decider: Decider<C, any>, command: C, options?: AttemptOptions): Promise<void>
     /** Start a Temporal workflow, once: its id is `<automation>:<item key>[:<attempt>]` */
     start(workflowType: string, args: unknown[], options?: AttemptOptions): Promise<void>
+    /**
+     * Read a **data input**: another read model the command needs, linked to the automation in the model (ADR-039),
+     * e.g. the organisation's owner. Read live from the event store, as the item is, so it's current; null if none.
+     */
+    read<TDoc extends ReadModelDoc>(readModel: ReadModel<TDoc, any>, key: string): Promise<TDoc | null>
 }
 
 export interface AttemptOptions {
@@ -132,6 +137,8 @@ export function automationProcessor(
                                 event,
                                 issue: (decider, command, options) =>
                                     issueOnce(deps, workKey(automation.name, key, options), decider, command),
+                                read: async (readModel, dataKey) =>
+                                    (await readLive(deps.eventStore, readModel, dataKey)) as any,
                                 start: async (workflowType, args, options) => {
                                     if (!deps.workflows) {
                                         throw new Error(`${automation.name}: no workflow starter (is TEMPORAL_ADDRESS set?)`)

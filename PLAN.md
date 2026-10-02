@@ -200,6 +200,15 @@ model and build only what's ours.
       standing;
     - invitations carry `roleIds` and `seatTypes`;
     - **removing seats takes effect at the next billing period.**
+  - [x] **16.3b Automation inputs** (Gary, 2026-10-02; ADR-039):
+    - **emcli:** `--todo-list`, `--external <system>`, `--schedule`, and the completeness rule (an automation's
+      command is fed only by its trigger, linked read models, `derived:` or `webhook:`). 10 new tests, 371 in all.
+    - **The kit:** `act` gets `read(readModel, key)` for data inputs, and `build-automation` tells the to-do list
+      from data inputs. Proven in `licensing` (`automations.tests.ts`, 13 of 13).
+    - **Chapter 1:** to-do lists for its four internal automations, `OrganisationOwner` as a data input, and the
+      translation's processor type fixed.
+    - Still unproven, and blocked in the builder: **polling** (first: invitation expiry) and **external data
+      inputs**.
   - [ ] **16.3a Chapter 1 end to end** (Gary, 2026-10-01): once chapter 1's slices are built and their tests pass,
     prove the whole chapter as one journey, through the UI.
     - **The harness,** `licensing/e2e/`, follows restaurant-orders' pattern:
@@ -3501,6 +3510,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-01 | The trial has its own events (`trialWasStarted`, `trialWasCancelled`, `trialConversionFailed`); "Buy now" without a trial (`subscriptionWasStarted`) (ADR-037) | Paddle's events are ambiguous (activated = conversion or recovery), so our own state gives them context; the trial funnel is readable; customers can pay straight away |
 | 2026-10-01 | Chapter 1 is proven end to end through the UI (Playwright) once its slices are built (16.3a) | A chapter is one flow, so it's one journey; slice tests first, then the journey; mock and sandbox runs |
 | 2026-10-01 | An automation's trigger is a `reacts-to` link, not a copy in its slice; emcli's export fills the automation slice's `events[]` from the link | The copy was a tooling requirement, not a modelling one: `build-automation` needs the trigger's fields in `events[]`, which the export only took from elements in the slice. Read slices already had this fallback. Copies looked like duplicate events on the board |
+| 2026-10-02 | An automation's inputs: trigger, one to-do list (`--todo-list`, exported `todoListElement`), and data inputs (other linked read models: ours, another chapter's, or `--external`); its command is fed only by these (ADR-039) | Commands stay deterministic and every value's source is visible; completeness catches a missing link; a flag rather than a new element type, because prooph board's card types are fixed and the eventmodelers format already has the flag |
 | 2026-09-29 | Phase 16's order: Paddle onboarding and a working knowledge of its UI and API first, then research into how other vendors license seats through a merchant of record, then our licensing model; voice modelling deferred until the model is established | Gary: the licensing model is ours, and Paddle is only an automation producing side effects; knowing Paddle's capabilities and the market's patterns first gives a model worth building |
 
 ## Progress
