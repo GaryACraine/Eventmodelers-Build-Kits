@@ -2421,8 +2421,9 @@ until its first slice is built.
 
 ### ADR-044: Another system's browser library in a screen: behind a module of ours, with a mock
 
-**Status:** **Proposed, 2026-10-02.** Built and proven for Paddle's checkout by the module's own tests and Paddle's
-sandbox (`licensing/web/e2e/paddle/`), including a checkout paid by hand; a slice the loop builds is still to come. The
+**Status:** **Proposed, 2026-10-02.** Its open question is settled (Gary, 2026-10-02: the inline checkout, and
+decision 7's rule). Built and proven for Paddle's checkout by the module's own tests and Paddle's sandbox
+(`licensing/web/e2e/paddle/`), including a checkout paid by hand; a slice the loop builds is still to come. The
 skill sections are drafts until then.
 **Date:** 2026-10-02
 
@@ -2446,10 +2447,11 @@ skill sections are drafts until then.
    `POST /mock/checkouts` completes the checkout and adds the trial's events to the mock's stream (the ones Paddle
    sent for a real checkout: `subscription.trialing` and `transaction.completed`), so the mock run goes end to end. In a component's tests and in `dev:mock`, MSW answers that request from the slice's
    `handlers.ts`.
-3. **The page takes one thing from the library: that it happened, and its id.** The module answers "completed, for
-   this transaction" or "closed". The page reports that to our backend with a command of the model
+3. **The page sends our backend one thing from the library: that it happened, and its id.** The module answers
+   "completed, for this transaction" or "closed". The page reports that with a command of the model
    (`reportCheckoutCompleted`), which only starts the fetch of Paddle's events. Seats, amounts and status are never
-   read from the library.
+   sent on from the library. *(Revised 2026-10-02: the page may **show** what the library reports, since only Paddle
+   knows the tax for the buyer's country. The module passes it to the page for display, `onSummary`.)*
 4. **In the model,** the command's field is mapped `derived:<the library> <its event> <its field>`
    (`derived:Paddle.js checkout.completed data.transaction_id`), the screen's mockup binds the button as the
    command's form, and the slice's notes say what's opened (which prices, how many). No new element type and no new
@@ -2458,6 +2460,15 @@ skill sections are drafts until then.
    client-side token, the ids of prices under our own names. A secret is never a `VITE_` variable.
 6. **A screen commit may include the provider's module** (`web/src/providers/<name>/`), and its tests run with the
    slice's (the `web-scope` and `web-tests` checks).
+7. **Paddle's checkout is shown inline, and what arrives is still checked** (Gary, 2026-10-02):
+   - **Inline:** Paddle's form sits in our page and shows only the buyer's details and the payment. It has no list
+     of items, so an ordinary buyer can't change the seats or remove one (the overlay lets them, and nothing locks
+     it). Our page draws the summary beside it.
+   - **A trial that still arrives without a web seat is refused:** it isn't started on our side, it's cancelled at
+     Paddle at once (nothing has been charged), and the owner is told to start again. The page can't prevent this
+     alone: the client-side token and the price ids are public, so a checkout can be opened with other items from
+     outside our page. In the model: `refuseTrial`, `trialWasRefused`, an automation that cancels it at Paddle, and
+     `refusedTrialWasCancelled` (licensing's chapter 24).
 
 **Alternatives considered:**
 - **Paddle.js used directly in the slice's component:** nothing to share between screens, no one place for the
@@ -2469,15 +2480,21 @@ skill sections are drafts until then.
   either way.
 - **Paddle's hosted checkout by redirect:** the buyer leaves our app, and the page it returns to still has to run
   Paddle.js.
-- **The inline checkout** (a frame inside our page): the same events and module, more layout to build. The overlay is
-  enough to start; the module's `displayMode` is one setting if that changes.
+- **Paddle's overlay:** less to lay out, and first built. But it lists the items with + and − and a bin icon, and
+  Paddle.js has no setting to lock them.
+- **Putting a removed item back from our script** (`checkout.items.removed`, then `Checkout.updateItems`): it reacts
+  after the fact, and the buyer sees the item vanish and return.
+- **Accepting a trial without a web seat and flagging it:** Paddle refuses adding an item during a trial, so the
+  owner couldn't be given a web seat until the trial ended.
 
 **Consequences:**
 - `provider-paddle` gains the module (`checkout.ts`) and what Paddle.js sends; `build-screen` gains a draft section
   and one row in its table of where a field comes from; the commit checks accept `web/src/providers/<name>/`.
 - The project's `web/package.json` needs the library's loader (`@paddle/paddle-js`); a slice never adds it.
 - The mock Paddle gains a checkout that makes events, so it holds state: subscriptions as well as the stream.
-- **Open: the buyer can change the numbers, and remove an item, inside Paddle's overlay,** and no checkout setting
-  locks them. The seats are the ones Paddle's event states. What we do when a trial arrives without a web seat
-  (ADR-037: at least one) isn't decided: it's a question for the model, with chapter 1's specifications.
+- The "Choose How to Start" screen needs a place for Paddle's form and our summary of what's being bought.
+- Our calls to Paddle gain "cancel now", proven in the sandbox on a trial.
+- **Open:** what the owner sees after a refusal, and closing the checkout's to-do item on it, change chapter 1's read
+  models; they're settled when chapters 1 and 24 are planned. The same rule for "Buy now" would need a refund, and
+  isn't decided.
 
