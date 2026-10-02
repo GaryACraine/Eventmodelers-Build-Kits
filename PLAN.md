@@ -240,9 +240,9 @@ model and build only what's ours.
     - **An unanswered invitation's expiry is a recorded event** (`invitationHasExpired`), recorded by a scheduled
       (polling) automation.
     - **The trial is free:** the first bill, taken when the trial ends, pays for the first period after it.
-  - [ ] **Later: a scheduled (polling) automation in the kit,** to find invitations past their 7 days and record their
-    expiry. The kit's automations so far react to events (ADR-031). It isn't needed until the invitation slices are
-    built.
+  - [ ] **An invitation's expiry is a workflow started with a delay** (ADR-042, 2026-10-02; it was "a scheduled
+    automation"): due at the invitation's `expiresAt`, recording the expiry only if it's still open. The 7 days are
+    a configured value (`LicensingSettings.invitationExpiryDays`, chapter 23). Built with the invitation slices.
   - *Setting up the project found a kit bug:* the pre-commit guard blocked every new project's first commit (the
     scaffold's slice folders made it run checks that compare with `HEAD`, which doesn't exist yet), including manual
     §4's. The guard now lets a first commit through (`check-commit-scope.cjs`). Proven in `licensing`: the first
@@ -346,13 +346,28 @@ model and build only what's ours.
           screen comes with Platform Support).
         - chapter 13: the decision on `graceEndsAt` as a note; `LicensingSettings` is linked to the translation
           when chapters 13 and 18 are fleshed out.
-    - [ ] **To build for ADR-041:**
-      - [ ] the kit's **polling automation** (ADR-039, unproven): a schedule that scans a to-do list. First
-        users: this sweep and invitation expiry;
+    - [x] **Timed work runs on Temporal: ADR-042, Accepted 2026-10-02 (Gary).** A Schedule for the recurring
+      sweep, timers in a workflow for the burst after checkout, a start delay for an invitation's expiry.
+      - **The model** (pushed, not exported):
+        - chapter 1: the "Paddle Checkout Watch" and its to-do list `CheckoutsAwaitingPaddle` (opened by
+          `checkoutWasCompleted`, closed by `trialWasStarted`); 32 slices, 30 specifications, completeness as
+          before;
+        - chapter 21: the "Paddle Sync" as a Temporal Schedule, with its policies;
+        - **chapter 23, "The invitation expiry is configured"**: `invitationExpiryWasConfigured` →
+          `LicensingSettings.invitationExpiryDays` (2 slices, 3 specifications, 0 errors);
+        - chapter 10: the decision as a note. Open there: the invite command comes from a screen, so its decider
+          takes the configured days into its decision.
+    - [ ] **To build for ADR-041 and ADR-042:**
+      - [ ] the kit's three shapes: `ensureSchedule` and `triggerSchedule`, a start with a delay,
+        `defineSchedule`, with tests against the Temporal dev server;
+      - [ ] **draft** sections in `build-automation`, one per shape, marked first use;
+      - [ ] **distil them into the skill on solid ground** (Gary): after each shape's first slice is built and
+        chapter 1's end-to-end run passes (16.3a), fold in the lessons and cut what didn't matter. One task with
+        16.6's distillation;
       - [ ] **the fetch**, with 16.5's `provider-paddle`: read `GET /events` after the checkpoint, record each
-        through the inbox, record the checkpoint; also at app start, after each webhook, and on
-        `checkoutWasCompleted`;
-      - [ ] **issuing `configureGracePeriod` at setup** (how a system setting is seeded: a kit question);
+        through the inbox, record the checkpoint; used by the sweep and by the checkout watch;
+      - [ ] **issuing `configureGracePeriod` and `configureInvitationExpiry` at setup** (how a system setting is
+        seeded: a kit question);
       - [ ] verify with a notification destination set up: a webhook's `event_id` is the stream's; how soon an
         event is in the stream.
     - [ ] **Open, as a hotspot on chapter 22:** our grace period must match Paddle's Payment Recovery window (a
@@ -3706,6 +3721,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-01 | Chapter 1 is proven end to end through the UI (Playwright) once its slices are built (16.3a) | A chapter is one flow, so it's one journey; slice tests first, then the journey; mock and sandbox runs |
 | 2026-10-01 | An automation's trigger is a `reacts-to` link, not a copy in its slice; emcli's export fills the automation slice's `events[]` from the link | The copy was a tooling requirement, not a modelling one: `build-automation` needs the trigger's fields in `events[]`, which the export only took from elements in the slice. Read slices already had this fallback. Copies looked like duplicate events on the board |
 | 2026-10-02 | An automation's inputs: trigger, one to-do list (`--todo-list`, exported `todoListElement`), and data inputs (other linked read models: ours, another chapter's, or `--external`); its command is fed only by these (ADR-039) | Commands stay deterministic and every value's source is visible; completeness catches a missing link; a flag rather than a new element type, because prooph board's card types are fixed and the eventmodelers format already has the flag |
+| 2026-10-02 | Timed work runs on Temporal (ADR-042, Gary): a Schedule for recurring work (the Paddle sweep), timers in a workflow for a burst after checkout, a start delay for an invitation's expiry; lengths of time that are ours are configured values. Skill sections are drafts until the end-to-end run passes | We already run Temporal, which recommends Schedules over its cron jobs and names a tool for each kind of timed work; a start delay is exact where a scan is late by an interval; distilling guidance before it's proven would teach the loop untested patterns |
 | 2026-10-02 | ADR-041 revised (Gary): the sweep's to-do list is Paddle's event stream after our checkpoint; no list of dated facts and no overdue alert. The grace period's length is a configured value of ours (`gracePeriodWasConfigured` → `LicensingSettings`), read by the translation to set `graceEndsAt` | The sweep fetches everything whether or not anything is due, so a late fact arrives on a later sweep and "overdue" changes nothing. A setting recorded as an event can be read by a processor like any other data input, and changed without a deploy |
 | 2026-10-02 | What feeds the inbox (ADR-041, Gary): webhooks first, with a fetch of Paddle's event stream behind them, started by the app starting, every webhook, a completed checkout, a 15-minute sweep, and before any action that harms a customer. Events carry the date their waiting period ends, so the sweep is a polling automation over a to-do list of what's due | A missing webhook can't be seen, and Paddle keeps every event for 90 days in a stream we can read from a checkpoint. Both routes record the same event under one id, so nothing built for ADR-040 changes. The one harmful case (a payment recovering unseen, then access removed) is closed by fetching before we act |
 | 2026-10-02 | The Paddle translation keeps a to-do list (`UntranslatedNotifications`), and one it gives up on stays listed as failed (Gary; ADR-040 revised). Giving up is available to any automation | The "safety net" read model was a to-do list in all but name, so the same thing was modelled twice; the list pattern answers how each outcome closes it and puts the waiting work on the operations page. The cost, accepted: the list follows the translation's own checkpoint, so a stuck processor shows on the health page instead |
@@ -3719,7 +3735,7 @@ What each `build-*` skill generates and what it verifies:
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. **16.4 (the inbox, ADR-040) in progress: the kit's pieces and the model (chapters 1 and 20) done 2026-10-02; ADR-041 Accepted (webhooks first, a fetch of Paddle's event stream behind them; chapters 21 and 22). Open: the kit's polling automation and the fetch, Paddle's signature check and payload reader (16.5) and sandbox payload fixtures. Then the loop builds chapters 1 and 20, then 16.3a (chapter 1 end to end).** 16.3 is in process modelling: chapter 1 fleshed out (26 slices), 16.3b done (ADR-039) (16.2 done 2026-09-30: ADR-037 Accepted, trials included after the 16.2b tests) (16.1's knowledge work done 2026-09-30; only Gary's live onboarding open; 16.2's research done 2026-09-30). Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
+| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. **16.4 (the inbox, ADR-040) in progress: the kit's pieces and the model (chapters 1 and 20) done 2026-10-02; ADR-041 Accepted (webhooks first, a fetch of Paddle's event stream behind them; chapters 21 and 22); ADR-042 Accepted (timed work on Temporal; chapter 23). Open: the kit's three Temporal shapes and the fetch, Paddle's signature check and payload reader (16.5) and sandbox payload fixtures. Then the loop builds chapters 1 and 20, then 16.3a (chapter 1 end to end).** 16.3 is in process modelling: chapter 1 fleshed out (26 slices), 16.3b done (ADR-039) (16.2 done 2026-09-30: ADR-037 Accepted, trials included after the 16.2b tests) (16.1's knowledge work done 2026-09-30; only Gary's live onboarding open; 16.2's research done 2026-09-30). Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
 | 15 — Automations (restaurant orders) | ✅ Closed 2026-09-29 (a demo) | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27/28: the Restaurant Orders chapter (25 slices, 63 scenarios, 15 mockups) on prooph board, with stock and an internal automation (the Stock Returner); emcli push fixes (lanes, links, skipped deletions). 15.8 added: deciding from a growing event stream. 15.2 done 2026-09-28 (library PR #29 merged). 15.3 done 2026-09-28 (ADR-033 runtime, ADR-034 Braintree as a commercial directive; the loop built the restaurant backend; 8 end-to-end cases pass, with our own Temporal call deadline and Temporal in health; manual §21). Next: 15.4 redrive, then 15.5 the UI on Sonnet. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) | **Closed 2026-09-29:** 15.4 and 15.4c built through the loop (stalls, retry, give up, attempts, pay again, cancel); 15.4e provider skills; 15.9 on Sonnet at medium, about 2.5–3× cheaper per job; emcli re-queues changed built slices. The rest dropped or moved to Phase 16 |
 | 1 — Stack Scaffolding | ✅ Complete | Verified: init, npm install, tsc, 21/21 unit tests |
 | 2 — State Change Skill | ✅ Complete | 9-step SKILL.md with full DCB patterns |
