@@ -81,9 +81,10 @@ When asked to build a slice, always follow this flow:
 
 1. Read the slice definition from `.build-kit/.slices/<context>/<slicename>/slice.json`.
 2. Determine the slice type:
-   - **Translation** — `sliceType === "TRANSLATION"`, or an automation with `processorType: "synchronous"` (another
-     system's event translated at a webhook) → `/build-automation`. Not yet proven in a project (ADR-033): if the skill
-     has no section for it, block the slice with `request-feedback`.
+   - **Translation** — `sliceType === "TRANSLATION"`, or an automation whose description says it translates another
+     system's recorded notifications → `/build-automation`, section "A translation: a list of one" (ADR-040): an
+     event-driven automation with no to-do list. `processorType: "synchronous"` is superseded: block the slice with
+     `request-feedback`, as the skill says.
    - **Automation** — `processors` array is non-empty → invoke `/build-automation`: a to-do list worked by one
      processor, internal (our command) or external (a Temporal workflow) (ADR-031, ADR-033). An external automation
      also reads the outside system's **provider skill** (`/provider-<system>`, e.g. `/provider-braintree`), named in

@@ -359,7 +359,7 @@ export interface StoredProjectionRegistration {
 
 export interface ReadModelRuntime {
     eventStore: PostgresEventStore
-    /** Runs the async projections; absent when there are none */
+    /** Runs the async projections and the automations' own processors; absent when there are none */
     consumer?: RunningConsumer
     /** Fetch one document by key, whichever type serves the read model. */
     reader(readModel: ReadModel<any, any>): (id: string) => Promise<ReadModelDoc | null>
@@ -367,7 +367,7 @@ export interface ReadModelRuntime {
     querier(readModel: ReadModel<any, any>, queryName: string): (params: QueryParams, page: QueryPageRequest) => Promise<QueryPage>
     /** Async read models only: waits for the consumer (the optional `Prefer: wait` extra). */
     waitFn(readModel: ReadModel<any, any>): WaitFunction | undefined
-    /** The same wait for an async imperative projection, by name (its route's `preferWait`). */
+    /** The same wait for an async imperative projection, or an automation's own processor, by name. */
     waitFor(projectionName: string): WaitFunction
     stop(): Promise<void>
 }
@@ -393,6 +393,11 @@ export interface StartReadModelsOptions {
         eventStore: PostgresEventStore,
         options: ProjectionProcessorOptions
     ) => ConsumerProcessorConfig | undefined
+    /**
+     * Processors that aren't projections, each with a checkpoint of its own: an automation that is a list of one
+     * (`automationProcessors`, ADR-040).
+     */
+    processors?: (eventStore: PostgresEventStore) => ConsumerProcessorConfig[]
 }
 
 /**
@@ -439,21 +444,31 @@ export async function startReadModels(
     for (const readModel of readModels.filter(r => r.type !== "live-report" && r.queries)) {
         for (const statement of queryIndexStatements(readModel.collection, readModel.queries!)) await pool.query(statement)
     }
-    await ensureHandlersInstalled(pool, asyncProjections.map(p => p.name), "_handler_bookmarks")
+    const ownProcessors = options.processors?.(eventStore) ?? []
+    const clash = ownProcessors.find(o => asyncProjections.some(p => p.name === o.processorName))
+    if (clash) throw new Error(`A processor and a read model share the name "${clash.processorName}": rename one.`)
+    await ensureHandlersInstalled(
+        pool,
+        [...asyncProjections.map(p => p.name), ...ownProcessors.map(p => p.processorName)],
+        "_handler_bookmarks"
+    )
     await ensureProjectionsCurrent(pool, eventStore, asyncProjections, {
         inline: inlineProjections,
         live: liveProjections
     })
 
     const consumer =
-        asyncProjections.length > 0
+        asyncProjections.length + ownProcessors.length > 0
             ? createConsumer({
                   pool,
                   eventStore,
-                  processors: asyncProjections.map(p => {
-                      const processorOptions: ProjectionProcessorOptions = { batchSize: 100, startFrom: "BEGINNING" }
-                      return options.processorFor?.(p, eventStore, processorOptions) ?? projectionToProcessor(p, processorOptions)
-                  })
+                  processors: [
+                      ...asyncProjections.map(p => {
+                          const processorOptions: ProjectionProcessorOptions = { batchSize: 100, startFrom: "BEGINNING" }
+                          return options.processorFor?.(p, eventStore, processorOptions) ?? projectionToProcessor(p, processorOptions)
+                      }),
+                      ...ownProcessors
+                  ]
               })
             : undefined
 
@@ -506,9 +521,10 @@ export async function startReadModels(
                 : undefined
         },
         waitFor: projectionName => {
-            const projection = asyncProjections.find(p => p.name === projectionName)
-            if (!projection) throw new Error(`waitFor("${projectionName}"): no async projection of that name is registered`)
-            return waitForProjection(pool, projection.name)
+            const known =
+                asyncProjections.some(p => p.name === projectionName) || ownProcessors.some(p => p.processorName === projectionName)
+            if (!known) throw new Error(`waitFor("${projectionName}"): no async projection or processor of that name is registered`)
+            return waitForProjection(pool, projectionName)
         },
         stop: async () => {
             await consumer?.stop()

@@ -172,6 +172,154 @@ describe("issueOnce", () => {
     })
 })
 
+// ─── A list of one (ADR-040): no stored to-do list, the trigger event is the item ─────────────────────────────
+
+// The carrier's notification, recorded as it arrived at a webhook; a translation turns it into our command
+type CarrierNotification = { notificationId: string; parcelId: string; status: string }
+const carrierNotified = (notificationId: string, parcelId: string, status = "delivered"): TaggedEvent<Event<"carrierNotificationReceived", CarrierNotification>> => ({
+    event: { type: "carrierNotificationReceived", data: { notificationId, parcelId, status } },
+    tags: Tags.fromObj({ notificationId, parcelId })
+})
+type RecordDelivery = Command<"recordDelivery", { parcelId: string }>
+type SkipNotification = Command<"skipNotification", { notificationId: string; reason: string; error?: string }>
+const IsDelivered = (parcelId: string): EventHandlerWithState<Event<"parcelDelivered", { parcelId: string }>, boolean> => ({
+    tagFilter: Tags.fromObj({ parcelId }),
+    init: false,
+    when: { parcelDelivered: () => true }
+})
+// One outcome per notification, decided under the append condition: our event, or the notification skipped
+const recordDelivery = decider<RecordDelivery & { data: { notificationId: string } }, { delivered: ReturnType<typeof IsDelivered> }>({
+    handlers: cmd => ({ delivered: IsDelivered(cmd.data.parcelId) }),
+    decide: (cmd, state) =>
+        state.delivered
+            ? {
+                  event: { type: "carrierNotificationSkipped", data: { notificationId: cmd.data.notificationId, reason: "already done" } },
+                  tags: Tags.fromObj({ notificationId: cmd.data.notificationId, parcelId: cmd.data.parcelId })
+              }
+            : { event: { type: "parcelDelivered", data: { parcelId: cmd.data.parcelId } }, tags: Tags.fromObj({ parcelId: cmd.data.parcelId }) }
+})
+const IsSkipped = (notificationId: string): EventHandlerWithState<Event<"carrierNotificationSkipped", { notificationId: string }>, boolean> => ({
+    tagFilter: Tags.fromObj({ notificationId }),
+    init: false,
+    when: { carrierNotificationSkipped: () => true }
+})
+const skipNotification = decider<SkipNotification, { skipped: ReturnType<typeof IsSkipped> }>({
+    handlers: cmd => ({ skipped: IsSkipped(cmd.data.notificationId) }),
+    decide: cmd => ({ event: { type: "carrierNotificationSkipped", data: cmd.data }, tags: Tags.fromObj({ notificationId: cmd.data.notificationId }) })
+})
+const carrierTranslation = (giveUpAfter?: number) =>
+    defineAutomation<CarrierNotification>({
+        name: "carrier-translation",
+        key: "notificationId",
+        triggers: ["carrierNotificationReceived"],
+        act: async ({ item, issue }) => {
+            if (item.status !== "delivered") throw new Error(`unknown status ${item.status}`)
+            await issue(recordDelivery, { type: "recordDelivery", data: { parcelId: item.parcelId, notificationId: item.notificationId } })
+        },
+        giveUp:
+            giveUpAfter === undefined
+                ? undefined
+                : {
+                      after: giveUpAfter,
+                      record: ({ key, issue }, error) =>
+                          issue(skipNotification, {
+                              type: "skipNotification",
+                              data: { notificationId: key, reason: "failed", error: (error as Error).message }
+                          })
+                  }
+    })
+
+describe("a list of one (ADR-040)", () => {
+    const app = automationTestApp({ readModels: [], automations: [carrierTranslation(2)], backoff: { initialMs: 10 } })
+
+    test("works each trigger event as its own item, with no to-do list", async () => {
+        await app.given(carrierNotified("n1", "p1"), carrierNotified("n2", "p2"))
+        expect(await app.appended()).toEqual([
+            { type: "parcelDelivered", data: { parcelId: "p1" } },
+            { type: "parcelDelivered", data: { parcelId: "p2" } }
+        ])
+    })
+
+    test("issues its command under <automation>:<key>: one outcome per item", async () => {
+        await app.given(carrierNotified("n1", "p1"))
+        // The same item worked again (a replay after a crash) is recognised by its key
+        await issueOnce({ eventStore: app.runtime().eventStore, pool: app.pool() }, workKey("carrier-translation", "n1"), recordDelivery, {
+            type: "recordDelivery",
+            data: { parcelId: "p1", notificationId: "n1" }
+        })
+        expect(await app.appended()).toEqual([{ type: "parcelDelivered", data: { parcelId: "p1" } }])
+    })
+
+    test("a second notification of the same fact is an outcome too: skipped, already done", async () => {
+        await app.given(carrierNotified("n1", "p1"), carrierNotified("n2", "p1"))
+        expect(await app.appended()).toEqual([
+            { type: "parcelDelivered", data: { parcelId: "p1" } },
+            { type: "carrierNotificationSkipped", data: { notificationId: "n2", reason: "already done" } }
+        ])
+    })
+
+    test("gives up on an item that keeps failing: records it, alerts, and works the ones behind it", async () => {
+        const log = { error: console.error }
+        console.error = () => undefined
+        try {
+            await app.given(carrierNotified("n1", "p1", "mangled"), carrierNotified("n2", "p2"))
+        } finally {
+            Object.assign(console, log)
+        }
+        expect(await app.appended()).toEqual([
+            { type: "carrierNotificationSkipped", data: { notificationId: "n1", reason: "failed", error: "unknown status mangled" } },
+            { type: "parcelDelivered", data: { parcelId: "p2" } }
+        ])
+        expect(app.alerts()).toMatchObject([
+            { code: "automation-gave-up", severity: "critical", details: { automation: "carrier-translation", key: "n1", attempts: 2 } }
+        ])
+    })
+})
+
+describe("a list of one, deployed", () => {
+    let pool: Pool | undefined
+    let runtime: ReadModelRuntime | undefined
+    afterEach(async () => {
+        await runtime?.stop()
+        runtime = undefined
+        await pool?.end()
+        pool = undefined
+    })
+
+    test("works the history it finds, and resumes from its checkpoint after a restart", async () => {
+        const db = (pool = await getTestPgDatabasePool())
+        const store = new PostgresEventStore({ pool: db })
+        await store.ensureInstalled()
+        await store.append({ events: [carrierNotified("n1", "p1")] })
+
+        const start = () => startReadModels(db, [], [], automationProcessors([carrierTranslation()], [], { pool: db }))
+        const settle = async (r: ReadModelRuntime) => {
+            const head = await db.query<{ head: string }>("SELECT max(sequence_position)::text AS head FROM events")
+            await r.waitFor("carrier-translation")(SequencePosition.fromString(head.rows[0].head), 10_000)
+        }
+        runtime = await start()
+        await settle(runtime)
+        await runtime.stop()
+
+        // Received while the app was down: stored, so nothing is lost
+        await store.append({ events: [carrierNotified("n2", "p2")] })
+        runtime = await start()
+        await settle(runtime)
+        const r = await db.query("SELECT type FROM events ORDER BY sequence_position")
+        expect(r.rows.map(row => row.type)).toEqual([
+            "carrierNotificationReceived",
+            "parcelDelivered",
+            "carrierNotificationReceived",
+            "parcelDelivered"
+        ])
+    })
+
+    test("needs a to-do list or a key, and at least one trigger", () => {
+        expect(() => defineAutomation({ name: "x", triggers: ["a"], act: async () => undefined } as never)).toThrow(/a to-do list, or the key/)
+        expect(() => defineAutomation({ name: "x", key: "id", triggers: [], act: async () => undefined })).toThrow(/at least one trigger/)
+    })
+})
+
 // ─── Work done again on the same item: one key per attempt (ADR-032) ─────────
 
 describe("an automation whose item can be worked again", () => {
@@ -226,9 +374,7 @@ describe("the automation step", () => {
     })
 
     const start = (automation: Automation, workflows = recordingWorkflowStarter(), todoList = ParcelsToShip) =>
-        startReadModels(pool, [todoList], [], {
-            processorFor: automationProcessors([automation], [todoList], { pool, workflows })
-        })
+        startReadModels(pool, [todoList], [], automationProcessors([automation], [todoList], { pool, workflows }))
 
     const settle = async (r: ReadModelRuntime) => {
         const head = await pool.query<{ head: string }>("SELECT max(sequence_position)::text AS head FROM events")

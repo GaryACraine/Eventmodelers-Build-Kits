@@ -1,6 +1,6 @@
 ---
 name: build-automation
-description: Implements a DCB automation slice (a to-do list worked by one processor; internal work issues our command, external work runs in a Temporal workflow) from a slice.json definition
+description: Implements a DCB automation slice (a to-do list worked by one processor; internal work issues our command, external work runs in a Temporal workflow; a translation of another system's recorded notifications is a list of one) from a slice.json definition
 ---
 
 # Build Automation Slice (DCB)
@@ -44,13 +44,15 @@ retried by Temporal. Swallowing either loses the work silently.
 ## Step 1: Read the slice.json
 
 - `processors[0]` is the automation:
-  - `processorType`: `event-driven` is this skill. `synchronous` is a *translation* (another system's event arriving
-    at a webhook), and `polling` runs on a `schedule` with no trigger. Neither is proven yet: block the job with
-    `request-feedback` and stop.
+  - `processorType`: `event-driven` is this skill, a **translation** included (ADR-040, "A translation" below).
+    `polling` runs on a `schedule` with no trigger and isn't proven yet: block the job with `request-feedback` and
+    stop. `synchronous` (deciding inside the webhook request) is superseded by ADR-040: block the job, saying the
+    model should record the notification and translate it as an event-driven automation.
   - `dependencies` (ADR-039, "what flows into an automation"):
     - `INBOUND reacts-to EVENT`: the **triggers**;
     - `INBOUND relates-to READMODEL` whose read model has **`todoListElement: true`**: the **to-do list** (exactly
-      one; none, or two, is a model problem: block naming it);
+      one; two is a model problem: block naming it). **None** is right only for a **translation**, whose description
+      says it's a list of one; otherwise block naming it;
     - every other `INBOUND relates-to READMODEL`: a **data input**, a read model whose values the command needs (it may
       be a list, or another chapter's). One with `context: EXTERNAL` and an `externalSystem` is an **outside system's
       data**: it makes the automation external (fetched in an activity, through that system's provider skill);
@@ -329,6 +331,76 @@ in this job:
 
 ---
 
+## A translation: a list of one (ADR-040)
+
+Another system's webhook becomes our event in two steps. A thin endpoint records the notification as it arrived
+(`src/shared/inbox.ts`: signature checked, one event such as `carrierNotificationReceived`, de-duplicated by the
+notification's id, then 200). The **translation** is the automation that works those recorded notifications
+afterwards: the model draws the recorded notification → the automation → our command → our event.
+
+It has **no to-do list**: the notification is the item. So `defineAutomation` takes a `key` instead of a `todoList`:
+the tag of the trigger event that holds the notification's id.
+
+```typescript
+import { defineAutomation } from "../../../../shared/automations.js"
+import { recordDeliveryDecider } from "../recorddelivery/decider.js"
+import { skipCarrierNotificationDecider } from "../skipcarriernotification/decider.js"
+import { parcelStatus } from "../parcelstatus/readModel.js"
+
+/**
+ * Carrier Translation (a list of one): each carrierNotificationReceived is its own item, keyed by its
+ * notificationId. One outcome per notification, under the key carrier-translation:<notificationId>.
+ */
+export const carrierTranslation = defineAutomation<CarrierNotificationReceivedData>({
+    name: "carrier-translation",
+    key: "notificationId",
+    triggers: ["carrierNotificationReceived"],
+    act: async ({ item, read, issue }) => {
+        // Classify by the other system's type plus our own state, as the description says
+        if (item.status !== "delivered") throw new Error(`carrier status ${item.status} has no translation`)
+        const parcel = await read(parcelStatus, item.parcelId)
+        if (!parcel) throw new Error(`no parcel ${item.parcelId} yet`)
+        await issue(recordDeliveryDecider, {
+            type: "recordDelivery",
+            data: { parcelId: item.parcelId, notificationId: item.notificationId, occurredAt: item.occurredAt }
+        })
+    },
+    giveUp: {
+        after: 5,
+        record: ({ key, issue }, error) =>
+            issue(skipCarrierNotificationDecider, {
+                type: "skipCarrierNotification",
+                data: { notificationId: key, reason: "failed", error: error instanceof Error ? error.message : String(error) }
+            })
+    }
+})
+```
+
+- **`item` is the trigger event's data** (the recorded notification), and `key` its id. There's no list read model to
+  import or register; the automation has a processor and a checkpoint of its own, named after it.
+- **One outcome per notification.** `issue` keys the command `<name>:<notification id>`, so a notification worked
+  again (a restart, a redelivery that slipped through) changes nothing. Every event the command records carries the
+  notification's id as a tag, so "received with no outcome" can be seen.
+- **Classify from the other system's type plus our own state** (`read` a data input), as the description says: the
+  same type can mean different things (a subscription "activated" is a trial converting, or a payment recovering).
+  The provider skill says what each type carries.
+- **Order and repeats are the command's decider's job, not `act`'s.** The decider compares the notification's
+  `occurredAt` with the last one it applied for that entity and records the notification as **skipped** (`stale`),
+  or as `already done` when the same fact arrived by another route; otherwise it records our event. It decides under
+  the append condition, so there's no race. `act` never reads a stored row to decide that.
+- **A type the description doesn't list is an error**: throw. Don't drop it silently.
+- **`giveUp`**: after `after` failed attempts on one notification, `record` issues the model's skip command with
+  `reason: "failed"` and the error, the kit alerts the administrator (`automation-gave-up`), and the processor moves
+  on to the notifications behind it. Use the number the description gives (5 if it gives none). Without `giveUp`, a
+  failing notification blocks the ones behind it until it succeeds.
+- **Tests** are GIVEN/THEN through `automationTestApp({ readModels: [], automations: [carrierTranslation] })`, with
+  the recorded notification as the GIVEN. Add the cases every translation needs, from the provider skill's saved
+  payloads: the same notification twice, two notifications in the wrong order, and one that can't be translated
+  (`app.alerts()` has the alert; pass `backoff: { initialMs: 10 }` so the attempts don't take seconds).
+
+The endpoint that records the notification is its own slice's route, built from the provider skill (`verify` and
+`toEvent` for `configureWebhookInbox`).
+
 ---
 
 ## Stalls: when the outside system can't be reached (ADR-032)
@@ -428,7 +500,7 @@ describe("request payment", () => {
 
 ```
 src/contexts/{context}/slices/{slicename}/
-├── processor.ts          ← defineAutomation (both kinds)
+├── processor.ts          ← defineAutomation (every kind)
 ├── workflow.ts           ← external: the Temporal workflow
 ├── activities.ts         ← external: the calls, and recording the answer as our command
 └── processor.tests.ts    ← one test per specification
@@ -441,6 +513,8 @@ docker-compose.yml        ← the mock's service
 ## Checklist
 
 - [ ] `defineAutomation` with the name from the description, the to-do list, and the `reacts-to` triggers
+- [ ] A translation: `key` (no to-do list), one outcome per notification, order and repeats decided in the decider,
+      `giveUp` recording the skip
 - [ ] `act` only issues a command or starts a workflow; nothing is caught and logged
 - [ ] Every field of the command comes from the item, the trigger event, or a data input read with `read`, per
       slice.json's mappings (ADR-039)
