@@ -2417,3 +2417,65 @@ until its first slice is built.
 - When that screen arrives, the same command has two sources for its value (the deployment at setup, the screen
   afterwards). How the model shows both is settled then.
 
+### ADR-044: Another system's browser library in a screen: behind a module of ours, with a mock
+
+**Status:** **Proposed, 2026-10-02.** Built and proven for Paddle's checkout by the module's own tests and Paddle's
+sandbox (`licensing/web/e2e/paddle/`); a paid sandbox checkout, and a slice the loop builds, are still to come. The
+skill sections are drafts until then.
+**Date:** 2026-10-02
+
+**Context:**
+- **The owner pays in Paddle's checkout, opened from our page by Paddle.js** (ADR-036), a library Paddle serves from
+  its own CDN. It's the first part of a screen that belongs to another system. A card form, a map or a sign-in
+  widget would be the same kind of thing.
+- **A screen is built from the model alone** (`build-screen`): a form per command, a view per read model, inside the
+  slice's folder. It has no place for another system's library, its configuration or its tests, and the commit
+  check rejects anything outside the slice's folder and its pages.
+- **Everything must run with no account at the other system** (ADR-030): the tests, `npm run dev:mock`, and the
+  end-to-end mock run.
+- **What the page sees is not a fact** (ADR-041): access is granted from Paddle's own events, never from the page's.
+
+**Decision:**
+1. **The library sits behind a small module of ours,** `web/src/providers/<name>/`, the web's counterpart of
+   `src/providers/<name>/`. A slice's component calls the module and never the library. The provider's skill holds
+   the module; the first screen that needs it creates it, with its tests, and later screens share it.
+2. **The module has a mock, and the mock is the default.** In `mock` the library isn't loaded: the module sends one
+   request to the other system's mock (ADR-030), which makes happen what the real one would. For Paddle,
+   `POST /mock/checkouts` completes the checkout and adds the trial's events to the mock's stream, so the mock run
+   goes end to end. In a component's tests and in `dev:mock`, MSW answers that request from the slice's
+   `handlers.ts`.
+3. **The page takes one thing from the library: that it happened, and its id.** The module answers "completed, for
+   this transaction" or "closed". The page reports that to our backend with a command of the model
+   (`reportCheckoutCompleted`), which only starts the fetch of Paddle's events. Seats, amounts and status are never
+   read from the library.
+4. **In the model,** the command's field is mapped `derived:<the library> <its event> <its field>`
+   (`derived:Paddle.js checkout.completed data.transaction_id`), the screen's mockup binds the button as the
+   command's form, and the slice's notes say what's opened (which prices, how many). No new element type and no new
+   mapping kind.
+5. **Configuration is Vite's environment,** `VITE_<NAME>_…`, and holds only what's public: the environment, the
+   client-side token, the ids of prices under our own names. A secret is never a `VITE_` variable.
+6. **A screen commit may include the provider's module** (`web/src/providers/<name>/`), and its tests run with the
+   slice's (the `web-scope` and `web-tests` checks).
+
+**Alternatives considered:**
+- **Paddle.js used directly in the slice's component:** nothing to share between screens, no one place for the
+  mock, and every component's test would have to fake a script loaded from a CDN.
+- **A mock in the browser only** (MSW, no mock server): the page would work, but nothing would make Paddle's events,
+  so the end-to-end mock run would stop at the checkout.
+- **Our backend creates the transaction and the page opens it by id:** an extra call and slice before the checkout.
+  It doesn't lock what the buyer can change in Paddle's overlay (16.2b), and we take the seats from Paddle's event
+  either way.
+- **Paddle's hosted checkout by redirect:** the buyer leaves our app, and the page it returns to still has to run
+  Paddle.js.
+- **The inline checkout** (a frame inside our page): the same events and module, more layout to build. The overlay is
+  enough to start; the module's `displayMode` is one setting if that changes.
+
+**Consequences:**
+- `provider-paddle` gains the module (`checkout.ts`) and what Paddle.js sends; `build-screen` gains a draft section
+  and one row in its table of where a field comes from; the commit checks accept `web/src/providers/<name>/`.
+- The project's `web/package.json` needs the library's loader (`@paddle/paddle-js`); a slice never adds it.
+- The mock Paddle gains a checkout that makes events, so it holds state: subscriptions as well as the stream.
+- **Open: the buyer can change the numbers, and remove an item, inside Paddle's overlay,** and no checkout setting
+  locks them. The seats are the ones Paddle's event states. What we do when a trial arrives without a web seat
+  (ADR-037: at least one) isn't decided: it's a question for the model, with chapter 1's specifications.
+

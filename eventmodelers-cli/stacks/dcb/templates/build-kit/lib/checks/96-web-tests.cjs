@@ -1,13 +1,15 @@
 'use strict';
 
-// A screen commit must leave web/ typechecking, and the tests of the slice's web/ folder and of the
-// pages must pass (answered by MSW, no backend needed). Skipped once the commit is already rejected.
+// A screen commit must leave web/ typechecking, and the tests of the slice's web/ folder, of the pages and
+// of a provider's module it changed (web/src/providers/{name}/) must pass (answered by MSW, no backend
+// needed). Skipped once the commit is already rejected.
 
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
 const WEB_SLICE = /^web\/src\/slices\/([^/]+)\//;
+const WEB_PROVIDER = /^web\/src\/providers\/([^/]+)\//;
 
 function failure(err) {
   const output = String(err.stdout || '') + String(err.stderr || '') || String(err.message);
@@ -30,6 +32,8 @@ module.exports = {
     for (const { path: p } of ctx.changes) {
       const m = p.match(WEB_SLICE);
       if (m && fs.existsSync(path.join(web, 'src/slices', m[1]))) dirs.add(`src/slices/${m[1]}`);
+      const provider = p.match(WEB_PROVIDER);
+      if (provider && fs.existsSync(path.join(web, 'src/providers', provider[1]))) dirs.add(`src/providers/${provider[1]}`);
     }
     const run = (cmd) => execSync(cmd, { cwd: web, stdio: 'pipe', maxBuffer: 16 * 1024 * 1024 });
     try {

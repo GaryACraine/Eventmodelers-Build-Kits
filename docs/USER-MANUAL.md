@@ -2336,9 +2336,9 @@ and three checks of its own instead:
 
 | Check | Rejects |
 |---|---|
-| web-scope | anything outside the slice's `web/src/slices/<slice>/`, the pages it's on (`web/src/pages/*.tsx`) and the generated `web/src/lib/api-types.ts`; a slice folder with no `*.test.tsx` |
+| web-scope | anything outside the slice's `web/src/slices/<slice>/`, the pages it's on (`web/src/pages/*.tsx`), the generated `web/src/lib/api-types.ts` and a provider's module (`web/src/providers/<name>/`, e.g. Paddle's checkout); a slice folder with no `*.test.tsx` |
 | api-types | an `api-types.ts` that isn't exactly what `gen:api` generates from the contract (edited by hand, or stale) |
-| web-tests | TypeScript errors in `web/`, and failing tests of the slice or its pages |
+| web-tests | TypeScript errors in `web/`, and failing tests of the slice, its pages or a provider's module it changed |
 
 If a check fails, the agent must fix the code, or set its job to **Blocked** with the reason (and the time,
 `blockedAt`). It never commits over a failure. A blocked UI never holds up a backend: its own slice's, or another

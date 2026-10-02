@@ -51,12 +51,24 @@ model and build only what's ours.
     - **timed work on Temporal** (ADR-042): a Schedule, a start due at a date, timers in a workflow;
     - **settings seeded by setup commands** (ADR-043);
     - **the model:** chapter 1 (32 slices), and chapters 20 to 23, pushed to the board, not exported;
-    - **drafts, marked first use:** `provider-paddle`, and the sections "Timed work" (`build-automation`) and
-      "A setup command" (`build-state-change`).
+    - **Paddle's checkout from our page** (Paddle.js, ADR-044 Proposed): a module behind which Paddle.js sits, with a
+      mock; proven by its tests and by opening Paddle's real checkout in the sandbox (`licensing/web/e2e/paddle/`, 13
+      of 13);
+    - **the calls we make to Paddle** (read a subscription, preview and change seats, cancel, withdraw), proven
+      against the mock and the sandbox (`licensing/e2e/paddle/`, 31 of 31 with the fetch's cases);
+    - **drafts, marked first use:** `provider-paddle` (now all three parts), and the sections "Timed work"
+      (`build-automation`), "A setup command" (`build-state-change`) and "A value from another system's browser
+      library" (`build-screen`).
   - **Next, in order:**
-    1. **Paddle.js in the web app** (16.5's front half): the checkout on "Choose How to Start", its completion
-       callback submitting `reportCheckoutCompleted`, and the calls we make to Paddle (seat changes, cancel). Needs
-       nothing from Gary.
+    1. **Finish Paddle.js's proof, and decide ADR-044** (Gary):
+       - **pay the sandbox checkout by hand** (`licensing/web/e2e/paddle/README.md`: `npx vite --mode sandbox
+         --port 5199`, open `/e2e/paddle/sandbox.html`, "Start my free trial", card `4242 4242 4242 4242`). The
+         browser automation can't type into Paddle's frame. Then save `window.paddleEvents`' `checkout.completed` as
+         the fixture, check its `transaction_id` is the one on the stream's `subscription.created`, and cancel the
+         test subscription (`org-test-6`);
+       - **accept ADR-044,** or change it;
+       - **answer its open question:** the buyer can change the numbers and remove an item in Paddle's overlay, so
+         what do we do when a trial arrives without a web seat (ADR-037: at least one)?
     2. **The checks that need a notification destination,** through a tunnel: that a delivered webhook's `event_id`
        is the stream's, how soon an event is in the stream, and redelivery and out-of-order delivery for real. Needs
        a tunnel tool on Gary's machine, and creates a destination in his sandbox.
@@ -66,6 +78,8 @@ model and build only what's ours.
     5. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (with 16.6).
   - **Waiting on a date, or on Gary:**
     - the `tax_mode` renewal, read after 2026-10-29 (16.2b);
+    - org-test-5's renewal on 2026-11-01: £42.00 (3 web and 1 mobile seat, with VAT) shows that a decrease without
+      billing lowers the next renewal (16.4);
     - Gary's live Paddle onboarding (16.1), which includes setting Payment Recovery to 14 days, the same as
       `GRACE_PERIOD_DAYS`.
 - [x] **16.0 Record.** *Done 2026-09-29*: this phase, its order, ADR-036 Accepted, the Decisions Log.
@@ -528,14 +542,31 @@ model and build only what's ours.
   - **Removing seats at the next period** (ADR-037 decision 5): in the sandbox, a decrease with
     `proration_billing_mode: do_not_bill` outside a trial (no credit, no charge), then the next renewal's amount (the
     lower count); and putting the quantity back before the renewal.
+    *2026-10-02: the decrease made no transaction (no charge, no credit), and putting a quantity back is an
+    ordinary seat change (`licensing/e2e/paddle/README.md`). Open: the renewal's amount, on 2026-11-01 (org-test-5,
+    £42.00 expected).*
   - **Later, a fallback:** on a stale or ambiguous notification, fetch the subscription from Paddle's API and
     reconcile ("the notification is a nudge").
 - [ ] **16.5 A `provider-paddle` skill** (15.4e's pattern), from 16.1's knowledge:
-  - **Status (2026-10-02): a draft, for the backend half.** `provider-paddle` covers what Paddle tells us: reading
-    an event, the webhook's signature, the event stream's fetch, the checkpoint, the errors, the mock, the sandbox,
-    from the code proven in `licensing/e2e/paddle/`. Marked first use; distilled with the others after the
-    end-to-end run (16.6). **Open:** Paddle.js in the SPA (the checkout and its completion callback), and the
-    calls we make to Paddle (seat changes, cancel).
+  - **Status (2026-10-02): a draft, for all three parts.** `provider-paddle` covers:
+    - **what Paddle tells us:** reading an event, the webhook's signature, the event stream's fetch, the checkpoint;
+    - **what we ask Paddle to do:** read a subscription, preview and change its seats, cancel at the period's end,
+      withdraw that. Paddle is told the state we want, so a retried call changes and charges nothing (seen in the
+      sandbox); a second cancel is refused and read as done; a refusal carries Paddle's code;
+    - **its checkout from our page** (Paddle.js, **ADR-044 Proposed**): a module in `web/src/providers/paddle/`
+      that answers "completed, for this transaction" or "closed", with a mock that asks the mock Paddle. The page
+      then submits `reportCheckoutCompleted`;
+    - the errors, the mock (now with subscriptions and a checkout that makes the trial's events) and the sandbox.
+
+    From the code proven in `licensing/e2e/paddle/` (31 cases) and `licensing/web/e2e/paddle/` (13 cases). Marked
+    first use; distilled with the others after the end-to-end run (16.6).
+  - **Kit changes with it:** the `web-scope` and `web-tests` checks accept and test `web/src/providers/<name>/`;
+    `build-screen` gained a draft section and the `derived:<library>` row.
+  - **Found in the sandbox:** closing Paddle's overlay after its error was first read as "the buyer closed it"
+    (fixed: the error is settled before the close); Paddle.js's first event has no name; the buyer can change the
+    numbers and remove an item in the overlay.
+  - **Open:** the paid sandbox checkout (by hand) and its `checkout.completed` fixture; the code of a declined card
+    on a seat increase; ADR-044's open question (a trial that arrives without a web seat).
   - Paddle.js in our Vite React SPA (the Next.js starter is a reference only);
   - webhook signatures and events;
   - the sandbox;
@@ -3804,12 +3835,14 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-02 | The kit replaces the library's JSON parser with its own (`configureJsonBody`), which keeps the raw body of `/webhooks/…` requests | A signature is checked against the bytes as sent; the library parses JSON before any route runs, and a parsed body can't be turned back into those bytes |
 | 2026-10-02 | Paddle's webhooks are received through an inbox on the event store: a thin endpoint records `paddleNotificationReceived` (idempotent on `event_id`) and answers 200; an event-driven translation works it; deciders apply last writer wins on `paddleOccurredAt` (ADR-040); 16.4 before the loop builds chapter 1 | Durable, de-duplicated and replayable; reuses the proven automation machinery instead of an unproven synchronous mode; out-of-order handling is decided under DCB's append condition, so it's immediately consistent |
 | 2026-09-29 | Phase 16's order: Paddle onboarding and a working knowledge of its UI and API first, then research into how other vendors license seats through a merchant of record, then our licensing model; voice modelling deferred until the model is established | Gary: the licensing model is ours, and Paddle is only an automation producing side effects; knowing Paddle's capabilities and the market's patterns first gives a model worth building |
+| 2026-10-02 | Another system's browser library sits behind a module of ours in `web/src/providers/<name>/`, with a mock that is the default and asks the system's mock server; the page takes only "completed, and its id" from it and reports that with a command (ADR-044, Proposed) | The screen stays built from the model; tests, mock mode and the end-to-end mock run need no account at Paddle; what the page sees is never a fact (ADR-041) |
+| 2026-10-02 | Our calls to Paddle tell it the state we want (every item's quantity), over plain HTTP, and need no idempotency key of their own; a second cancel that Paddle refuses is read as done | In the sandbox the same seat change twice made one charge and one event; an activity can be retried safely |
 
 ## Progress
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. **16.4 and 16.5 in progress (2026-10-02): the inbox (ADR-040), webhooks first with a fetch of Paddle's event stream (ADR-041), timed work on Temporal (ADR-042) and setup commands (ADR-043) are built and proven; the model has chapter 1 (32 slices) and chapters 20 to 23. Next: Paddle.js in the web app, the checks that need a notification destination, then the loop builds chapters 1 and 20, then 16.3a (chapter 1 end to end). See "Where we are" at the top of Phase 16.** 16.3 is in process modelling: chapter 1 fleshed out, 16.3b done (ADR-039) (16.2 done 2026-09-30: ADR-037 Accepted, trials included after the 16.2b tests) (16.1's knowledge work done 2026-09-30; only Gary's live onboarding open; 16.2's research done 2026-09-30). Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
+| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. **16.4 and 16.5 in progress (2026-10-02): the inbox (ADR-040), webhooks first with a fetch of Paddle's event stream (ADR-041), timed work on Temporal (ADR-042) and setup commands (ADR-043) are built and proven; the model has chapter 1 (32 slices) and chapters 20 to 23. Paddle's checkout from our page (ADR-044, Proposed) and our calls to Paddle are built and proven. Next: Gary pays the sandbox checkout by hand and decides ADR-044, the checks that need a notification destination, then the loop builds chapters 1 and 20, then 16.3a (chapter 1 end to end). See "Where we are" at the top of Phase 16.** 16.3 is in process modelling: chapter 1 fleshed out, 16.3b done (ADR-039) (16.2 done 2026-09-30: ADR-037 Accepted, trials included after the 16.2b tests) (16.1's knowledge work done 2026-09-30; only Gary's live onboarding open; 16.2's research done 2026-09-30). Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
 | 15 — Automations (restaurant orders) | ✅ Closed 2026-09-29 (a demo) | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27/28: the Restaurant Orders chapter (25 slices, 63 scenarios, 15 mockups) on prooph board, with stock and an internal automation (the Stock Returner); emcli push fixes (lanes, links, skipped deletions). 15.8 added: deciding from a growing event stream. 15.2 done 2026-09-28 (library PR #29 merged). 15.3 done 2026-09-28 (ADR-033 runtime, ADR-034 Braintree as a commercial directive; the loop built the restaurant backend; 8 end-to-end cases pass, with our own Temporal call deadline and Temporal in health; manual §21). Next: 15.4 redrive, then 15.5 the UI on Sonnet. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) | **Closed 2026-09-29:** 15.4 and 15.4c built through the loop (stalls, retry, give up, attempts, pay again, cancel); 15.4e provider skills; 15.9 on Sonnet at medium, about 2.5–3× cheaper per job; emcli re-queues changed built slices. The rest dropped or moved to Phase 16 |
 | 1 — Stack Scaffolding | ✅ Complete | Verified: init, npm install, tsc, 21/21 unit tests |
 | 2 — State Change Skill | ✅ Complete | 9-step SKILL.md with full DCB patterns |

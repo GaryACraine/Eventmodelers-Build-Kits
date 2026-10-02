@@ -55,6 +55,8 @@ web/src/slices/{slicename}/          ← the slice's folder name in .build-kit/.
 web/src/pages/{PageTitle}.tsx          the page (PascalCase of page.title), created or extended
 web/src/pages/{PageTitle}.test.tsx     the page put together
 web/src/lib/api-types.ts               regenerated, never edited
+web/src/providers/{name}/              another system's browser library behind a module of ours (ADR-044): only when
+                                       the slice names that system, as its provider skill says
 ```
 
 An **extension** slice (`extends` in slice.json) builds its backend in its origin's folder, but its screen is its
@@ -92,6 +94,7 @@ Where each field of the command comes from:
 | bound by `<input type="hidden" data-field="…">` | a prop: the page has it (a route param, `page.params` `from: "route"`) |
 | `mapping: "session:<key>"` | `useSession()[key]` (the page is behind `RequireSession`) |
 | `generated: true` | not sent: the backend makes it, and a 201 returns it |
+| `mapping: "derived:<another system's browser library> …"` (e.g. `derived:Paddle.js checkout.completed data.transaction_id`) | what that library gave back, through the provider's module: see "A value from another system's browser library" below |
 
 Every field that is sent goes in the body: `POST {apiEndpoint}` with the whole command, never an ID in the path
 (ADR-025).
@@ -128,6 +131,36 @@ const RegisterCourseSchema = z.object({
 - A rejection is an `ApiError` carrying the backend's Problem-JSON `detail`: show `error.message` in a
   `<p role="alert">` (RHF: `setError("root", { message })`). A field error shows under its input.
 - Ids and labels: `id="{command}-{field}"`, `<Label htmlFor>` with the mockup's label text.
+
+### A value from another system's browser library (ADR-044): a draft, on first use
+
+> **Draft.** Proven by the module's own tests and Paddle's sandbox, not yet by a slice the loop built. Where a slice
+> doesn't fit, block the job with `request-feedback` saying what didn't fit.
+
+Some commands report what happened in **another system's part of the page**: the owner pays in Paddle's checkout, and
+our page then reports that it completed. The command's field is mapped `derived:<the library> …`, and the slice's
+description names the system. Read that system's provider skill (`provider-paddle`) first: it has the module, its
+configuration and its mock.
+
+- **The slice's component never imports the other system's library.** It calls the provider's module
+  (`web/src/providers/{name}/`), which the first slice that needs it creates from the provider skill, with its tests.
+- **The form's button starts the other system's part; the command is sent when that completes:**
+  ```tsx
+  const outcome = await paddleCheckout().open({ items, customData: { organisationId } })
+  if (!outcome.completed) return                     // the buyer closed it: nothing sent, no error shown
+  const { position } = await command(api.POST("/report-checkout-completed", { body: { organisationId, transactionId: outcome.transactionId } }))
+  await recordWrite(position)
+  ```
+  The mockup's `<form data-command="…">` is still the form: its button, its hidden fields as props.
+- **A failure of the other system's part** (it couldn't open) is shown like a rejection: `error.message` in a
+  `<p role="alert">`.
+- **The page takes nothing else from the library:** no amounts, seats or status. Those come from our read models,
+  after the other system's own events arrive.
+- **Mock data:** the module's mock is one request (the provider skill gives its handler); it goes in the slice's
+  `handlers.ts` with the others, answered with the command's example value.
+- **Tests:** completed → the form sends exactly the example body; the module's request fails (`server.use(...)`
+  answers it with a 500) → the alert shows and nothing is sent; not completed (the test replaces the module with
+  `vi.mock`, since the mock always completes) → nothing is sent and no alert shows.
 
 ## Step 3 — A view per displayed read model
 
@@ -270,7 +303,7 @@ Load more, sees both rows, and sees the button gone.
 2. `cd web && npx tsc -b && npx vitest run src/slices/{slicename} src/pages`.
 3. Commit the screen on its own (the backend is its own job, before or after this one):
    ```bash
-   git add web/src/slices/{slicename} web/src/pages web/src/lib/api-types.ts
+   git add web/src/slices/{slicename} web/src/pages web/src/lib/api-types.ts   # and web/src/providers/{name}, if this slice made or changed it
    git commit -m "feat: [Slice Name] screen"
    ```
    The pre-commit guard runs `blocked-paths`, `web-scope` (only these paths, one slice, tests present),
