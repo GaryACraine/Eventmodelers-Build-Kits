@@ -1,6 +1,6 @@
 ---
 name: build-automation
-description: Implements a DCB automation slice (a to-do list worked by one processor; internal work issues our command, external work runs in a Temporal workflow; a translation of another system's recorded notifications is a list of one) from a slice.json definition
+description: Implements a DCB automation slice (event-driven, keeping a to-do list or none; internal work issues our command, external work runs in a Temporal workflow) from a slice.json definition
 ---
 
 # Build Automation Slice (DCB)
@@ -44,15 +44,16 @@ retried by Temporal. Swallowing either loses the work silently.
 ## Step 1: Read the slice.json
 
 - `processors[0]` is the automation:
-  - `processorType`: `event-driven` is this skill, a **translation** included (ADR-040, "A translation" below).
-    `polling` runs on a `schedule` with no trigger and isn't proven yet: block the job with `request-feedback` and
-    stop. `synchronous` (deciding inside the webhook request) is superseded by ADR-040: block the job, saying the
-    model should record the notification and translate it as an event-driven automation.
+  - `processorType`: `event-driven` is this skill, keeping a to-do list or none (below). `polling` runs on a
+    `schedule` with no trigger and isn't proven yet: block the job with `request-feedback` and stop. `synchronous`
+    (deciding inside the webhook request) is superseded by ADR-040: block the job, saying the model should record
+    the notification and translate it with an event-driven automation that keeps no to-do list.
   - `dependencies` (ADR-039, "what flows into an automation"):
     - `INBOUND reacts-to EVENT`: the **triggers**;
     - `INBOUND relates-to READMODEL` whose read model has **`todoListElement: true`**: the **to-do list** (exactly
-      one; two is a model problem: block naming it). **None** is right only for a **translation**, whose description
-      says it's a list of one; otherwise block naming it;
+      one; two is a model problem: block naming it). **None**: the automation keeps no to-do list, and the trigger
+      event is the item ("An automation with no to-do list" below). An **external** automation with none is a model
+      problem (a stall needs a list to be recorded on): block naming it;
     - every other `INBOUND relates-to READMODEL`: a **data input**, a read model whose values the command needs (it may
       be a list, or another chapter's). One with `context: EXTERNAL` and an `externalSystem` is an **outside system's
       data**: it makes the automation external (fetched in an activity, through that system's provider skill);
@@ -331,15 +332,24 @@ in this job:
 
 ---
 
-## A translation: a list of one (ADR-040)
+## An automation with no to-do list (ADR-040)
 
-Another system's webhook becomes our event in two steps. A thin endpoint records the notification as it arrived
-(`src/shared/inbox.ts`: signature checked, one event such as `carrierNotificationReceived`, de-duplicated by the
-notification's id, then 200). The **translation** is the automation that works those recorded notifications
-afterwards: the model draws the recorded notification → the automation → our command → our event.
+An event-driven automation keeps a to-do list, or none. With none, **the trigger event is the item**: the work is
+done at once from that one event, once per key. `defineAutomation` takes a `key` instead of a `todoList`: the tag
+that holds **the trigger event's own id** (its id field in slice.json).
 
-It has **no to-do list**: the notification is the item. So `defineAutomation` takes a `key` instead of a `todoList`:
-the tag of the trigger event that holds the notification's id.
+- **The key identifies the trigger event itself** (a notification's id), not an entity (`organisationId`). Keyed by
+  an entity's id, the work is done once per entity, ever, and a second event for it is silently skipped. If the
+  trigger's id field is an entity's and the description doesn't say that once per entity is meant, block the job
+  asking.
+- There's no list read model to import or register; the automation has a processor and a checkpoint of its own,
+  named after it.
+
+The example is a **translation**: another system's webhook becomes our event in two steps. A thin endpoint records
+the notification as it arrived (`src/shared/inbox.ts`: signature checked, one event such as
+`carrierNotificationReceived`, de-duplicated by the notification's id, then 200). The translation is the automation
+that works those recorded notifications afterwards: the recorded notification → the automation → our command → our
+event.
 
 ```typescript
 import { defineAutomation } from "../../../../shared/automations.js"
@@ -348,7 +358,7 @@ import { skipCarrierNotificationDecider } from "../skipcarriernotification/decid
 import { parcelStatus } from "../parcelstatus/readModel.js"
 
 /**
- * Carrier Translation (a list of one): each carrierNotificationReceived is its own item, keyed by its
+ * Carrier Translation (no to-do list): each carrierNotificationReceived is its own item, keyed by its
  * notificationId. One outcome per notification, under the key carrier-translation:<notificationId>.
  */
 export const carrierTranslation = defineAutomation<CarrierNotificationReceivedData>({
@@ -376,8 +386,7 @@ export const carrierTranslation = defineAutomation<CarrierNotificationReceivedDa
 })
 ```
 
-- **`item` is the trigger event's data** (the recorded notification), and `key` its id. There's no list read model to
-  import or register; the automation has a processor and a checkpoint of its own, named after it.
+- **`item` is the trigger event's data** (the recorded notification), and `key` its id.
 - **One outcome per notification.** `issue` keys the command `<name>:<notification id>`, so a notification worked
   again (a restart, a redelivery that slipped through) changes nothing. Every event the command records carries the
   notification's id as a tag, so "received with no outcome" can be seen.
@@ -513,8 +522,8 @@ docker-compose.yml        ← the mock's service
 ## Checklist
 
 - [ ] `defineAutomation` with the name from the description, the to-do list, and the `reacts-to` triggers
-- [ ] A translation: `key` (no to-do list), one outcome per notification, order and repeats decided in the decider,
-      `giveUp` recording the skip
+- [ ] No to-do list: `key` is the trigger event's own id; a translation records one outcome per notification, leaves
+      order and repeats to the decider, and has `giveUp` recording the skip
 - [ ] `act` only issues a command or starts a workflow; nothing is caught and logged
 - [ ] Every field of the command comes from the item, the trigger event, or a data input read with `read`, per
       slice.json's mappings (ADR-039)

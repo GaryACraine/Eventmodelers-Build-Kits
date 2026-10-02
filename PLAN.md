@@ -271,13 +271,42 @@ model and build only what's ours.
       - **Wiring changed** (`src/index.ts`, and the empty template): `startReadModels(…,
         automationProcessors(…))`, and `getApplication({ disableJsonMiddleware: true, apis: [configureCors(),
         configureJsonBody(), …] })`. A project on the old wiring fails to compile, which is the signal.
-      - `build-automation` has the section "A translation: a list of one"; `synchronous` is superseded (blocked
-        with a reason).
-    - [ ] **Model work** in `licensing` (below): next.
-    - [ ] **The safety net** ("Untranslated notifications"): a read model slice, built by the loop from the model.
-      To settle when modelling it: a list of every untranslated notification isn't narrowed by a tag, so it can't
-      be a live read model (ADR-023); database-projected has its own checkpoint, independent of the translation's.
-    - [ ] **Paddle's `verify` and `toEvent`** (with 16.5's `provider-paddle`), and the manual's section.
+      - `build-automation` has the section "An automation with no to-do list"; `synchronous` is superseded
+        (blocked with a reason).
+    - [x] **A translation isn't a special kind** (Gary, 2026-10-02): an event-driven automation keeps a to-do list
+      or none. Classify an automation by three questions: what starts it, whether it keeps a to-do list, and where
+      the work is done.
+      - **Keep a list unless** the work is done here, at once, from one event whose id is unique per event, and
+        nobody needs to see it waiting. Polling and external work always keep one.
+      - **emcli:** the "no to-do list" warning is gone (it says nothing either way: it can't tell an event's own id
+        from an entity's), and `synchronous` is reported as superseded. 361 tests.
+      - **The kit:** `build-automation` takes the form from the slice (a linked to-do list, or none; the key is the
+        trigger event's id field), and the loop's notes no longer route translations separately.
+    - [x] **Model work** in `licensing`, pushed to the board (not exported):
+      - **chapter 1:** the Paddle lane is `paddleNotificationReceived`, translated by "Paddle Translation"
+        (event-driven, no to-do list). `startTrial` maps from the trigger and its payload. `startTrial` and
+        `trialWasStarted` carry `paddleEventId` and `paddleOccurredAt`. A second notification of the same start
+        is `paddleNotificationSkipped`, already done: the event sits in the "start trial" slice as the command's
+        other outcome, so the specification can name it and the loop can build it. 26 slices, 24 specifications;
+        completeness as before (only the Sign Up page's error, by design);
+      - **chapter 20, "A Paddle notification is skipped"** (new): the translation gives up after 5 attempts →
+        `skipPaddleNotification` → `paddleNotificationSkipped` (failed), and the `UntranslatedNotifications` read
+        model (stored: a list of all of them isn't narrowed by a tag, ADR-023). 4 slices, 4 specifications, 0
+        completeness issues. **Plan it with chapter 1:** the translation's give-up needs the skip command;
+      - `trialWasStarted` got the two fields in chapters 17 and 18 too (40 event types, 0 different);
+      - scripts: `model/catalogue.sh`, `chapter-1.sh`, `chapter-1-specs.sh`, `chapter-20.sh`.
+      - **On the board,** the earlier chapter 1 is still there beside the rebuilt one (`--safe` never deletes):
+        a push without `--safe` removes it, when Gary says.
+    - [ ] **Open questions, as hotspots on chapter 20:**
+      - every event of ours recorded from Paddle must close its notification in `UntranslatedNotifications`: link
+        each one as its chapter is converted, or close on any event tagged with the `paddleEventId`;
+      - the alert on an old untranslated notification needs something on a schedule (polling, unproven) or the
+        operations page only.
+    - [ ] **The other 11 chapters' Paddle lanes** keep their typed events until each is fleshed out (Gary). With
+      them: which seat events carry the Paddle fields (a seat change is confirmed by Paddle's API reply, which has
+      no event id), and the **stale** specifications (the first decider with an order to keep).
+    - [ ] **Paddle's `verify` and `toEvent`** (with 16.5's `provider-paddle`), the endpoint's slice, and the
+      manual's section.
     - [ ] **Tests from recorded sandbox payloads** and the sandbox run (below).
   - **The pattern:**
 
@@ -3622,6 +3651,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-01 | Chapter 1 is proven end to end through the UI (Playwright) once its slices are built (16.3a) | A chapter is one flow, so it's one journey; slice tests first, then the journey; mock and sandbox runs |
 | 2026-10-01 | An automation's trigger is a `reacts-to` link, not a copy in its slice; emcli's export fills the automation slice's `events[]` from the link | The copy was a tooling requirement, not a modelling one: `build-automation` needs the trigger's fields in `events[]`, which the export only took from elements in the slice. Read slices already had this fallback. Copies looked like duplicate events on the board |
 | 2026-10-02 | An automation's inputs: trigger, one to-do list (`--todo-list`, exported `todoListElement`), and data inputs (other linked read models: ours, another chapter's, or `--external`); its command is fed only by these (ADR-039) | Commands stay deterministic and every value's source is visible; completeness catches a missing link; a flag rather than a new element type, because prooph board's card types are fixed and the eventmodelers format already has the flag |
+| 2026-10-02 | A translation isn't a special kind of automation: an event-driven automation keeps a to-do list or none (the trigger event is then the item, keyed by its own id). emcli says nothing about a missing list; the rule of thumb is in the skills (Gary) | One simple classification (what starts it, a list or not, where the work is done) that matches the code; emcli can't tell an event's own id from an entity's, so a warning would be noise on valid models |
 | 2026-10-02 | A list of one's give-up is counted in the kit (attempts per item, in memory, since the app started), not in the library | The library's `onError` isn't told the attempt number, and library PRs are Gary's to merge; a restart only means more attempts before giving up, and the recorded skip is the durable fact |
 | 2026-10-02 | The kit replaces the library's JSON parser with its own (`configureJsonBody`), which keeps the raw body of `/webhooks/…` requests | A signature is checked against the bytes as sent; the library parses JSON before any route runs, and a parsed body can't be turned back into those bytes |
 | 2026-10-02 | Paddle's webhooks are received through an inbox on the event store: a thin endpoint records `paddleNotificationReceived` (idempotent on `event_id`) and answers 200; an event-driven translation works it; deciders apply last writer wins on `paddleOccurredAt` (ADR-040); 16.4 before the loop builds chapter 1 | Durable, de-duplicated and replayable; reuses the proven automation machinery instead of an unproven synchronous mode; out-of-order handling is decided under DCB's append condition, so it's immediately consistent |
@@ -3631,7 +3661,7 @@ What each `build-*` skill generates and what it verifies:
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. **Next: 16.4 (hardened Paddle webhooks: the inbox, ADR-040), then the loop builds chapter 1, then 16.3a (chapter 1 end to end).** 16.3 is in process modelling: chapter 1 fleshed out (26 slices), 16.3b done (ADR-039) (16.2 done 2026-09-30: ADR-037 Accepted, trials included after the 16.2b tests) (16.1's knowledge work done 2026-09-30; only Gary's live onboarding open; 16.2's research done 2026-09-30). Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
+| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. **16.4 (the inbox, ADR-040) in progress: the kit's pieces and the model (chapters 1 and 20) done 2026-10-02; open: Paddle's signature check and payload reader (16.5), sandbox payload fixtures. Then the loop builds chapters 1 and 20, then 16.3a (chapter 1 end to end).** 16.3 is in process modelling: chapter 1 fleshed out (26 slices), 16.3b done (ADR-039) (16.2 done 2026-09-30: ADR-037 Accepted, trials included after the 16.2b tests) (16.1's knowledge work done 2026-09-30; only Gary's live onboarding open; 16.2's research done 2026-09-30). Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
 | 15 — Automations (restaurant orders) | ✅ Closed 2026-09-29 (a demo) | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27/28: the Restaurant Orders chapter (25 slices, 63 scenarios, 15 mockups) on prooph board, with stock and an internal automation (the Stock Returner); emcli push fixes (lanes, links, skipped deletions). 15.8 added: deciding from a growing event stream. 15.2 done 2026-09-28 (library PR #29 merged). 15.3 done 2026-09-28 (ADR-033 runtime, ADR-034 Braintree as a commercial directive; the loop built the restaurant backend; 8 end-to-end cases pass, with our own Temporal call deadline and Temporal in health; manual §21). Next: 15.4 redrive, then 15.5 the UI on Sonnet. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) | **Closed 2026-09-29:** 15.4 and 15.4c built through the loop (stalls, retry, give up, attempts, pay again, cancel); 15.4e provider skills; 15.9 on Sonnet at medium, about 2.5–3× cheaper per job; emcli re-queues changed built slices. The rest dropped or moved to Phase 16 |
 | 1 — Stack Scaffolding | ✅ Complete | Verified: init, npm install, tsc, 21/21 unit tests |
 | 2 — State Change Skill | ✅ Complete | 9-step SKILL.md with full DCB patterns |
