@@ -8,6 +8,7 @@ import { startWorker, temporalClient, temporalConfig, temporalWorkflowStarter, w
 import { configureProcessorStatusRoute } from "./shared/health.js"
 import type { SliceDependencies } from "./shared/dependencies.js"
 import { configureCors } from "./shared/cors.js"
+import { configureJsonBody } from "./shared/inbox.js"
 import { configureEventFeedRoute } from "./contexts/enrollment/slices/event-feed/route.js"
 import { configureOpenApiRoute } from "./contexts/enrollment/slices/openapi/route.js"
 
@@ -41,9 +42,12 @@ const workflows = temporalWorkflowStarter(temporalApi, temporal.taskQueue, { cal
 
 // Creates the event store with the inline projections, brings stored projections up to date
 // (rebuilds on a changed fingerprint, backfills new inline ones) and starts the async consumer.
-const readModelRuntime = await startReadModels(pool, readModels, imperative, {
-    processorFor: automationProcessors(automations, readModels, { pool, workflows })
-})
+const readModelRuntime = await startReadModels(
+    pool,
+    readModels,
+    imperative,
+    automationProcessors(automations, readModels, { pool, workflows })
+)
 const eventStore = readModelRuntime.eventStore
 
 // The external automations' activities (each slice's `activities.ts`), run by the Temporal worker in this process
@@ -62,8 +66,11 @@ export const waitFor = (projectionName: string) => readModelRuntime.waitFor(proj
 const deps: SliceDependencies = { store: eventStore, pool, readModels: readModelRuntime }
 
 const app = getApplication({
+    // The kit's JSON parser (configureJsonBody) keeps a webhook's raw body, which its signature is checked against
+    disableJsonMiddleware: true,
     apis: [
         configureCors(),
+        configureJsonBody(),
         configureProcessorStatusRoute(() => readModelRuntime.consumer, {
             // With external automations, health also asks Temporal directly and reports this process's worker
             ...(temporalWatch ? { temporal: () => temporalWatch.status() } : {})

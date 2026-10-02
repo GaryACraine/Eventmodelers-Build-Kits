@@ -2149,3 +2149,11 @@ with their first slices.
 - Translations reuse the automation builder. The `synchronous` mode is superseded for webhooks.
 - The pattern is general: any provider's webhooks (the auth system's, if ever) follow it, with that provider's
   signature check in its provider skill.
+
+**In the kit (2026-10-02):**
+- `defineAutomation` with a `key` instead of a `todoList` is the list of one. It has its own processor and
+  checkpoint, and an optional `giveUp` (attempts counted in the kit, since the app started).
+- `src/shared/inbox.ts` is the door: `configureWebhookInbox`, with the provider's `verify` and `toEvent`.
+- The kit's JSON parser (`configureJsonBody`) keeps the raw body of `/webhooks/…` requests for the signature check.
+- A signed notification that can't be read answers 400 and raises an alert, so the reader is fixed before the
+  provider stops retrying.

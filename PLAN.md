@@ -253,6 +253,32 @@ model and build only what's ours.
 - [ ] **16.4 Hardened Paddle webhooks: an inbox on the event store** (the main kit work; **next**, Gary 2026-10-02:
   before the loop builds chapter 1). Another system's webhook becomes our event, safely: duplicates are absorbed,
   out-of-order deliveries are ignored, and nothing is lost. **ADR-040.**
+  - **Status (started 2026-10-02):**
+    - [x] **The kit's two pieces,** proven in `licensing` (`automations.tests.ts` 19 of 19, `inbox.tests.ts` 7 of
+      7; the whole suite 91 of 91):
+      - **a list of one:** `defineAutomation` takes a `key` (a tag of the trigger event) instead of a to-do list.
+        It has a processor and a checkpoint of its own, named after the automation.
+        - It works the history it finds and resumes after a restart.
+        - `issue` keys each item `<automation>:<key>`, so there's one outcome per item.
+        - **`giveUp`**: after a number of failed attempts on one item, the automation records it (our skip
+          command), the kit alerts (`automation-gave-up`), and the processor moves on. If recording fails, the
+          processor stays blocked. The attempts are counted in the kit, since the app started.
+      - **the inbox's door:** `src/shared/inbox.ts`, `configureWebhookInbox({ system, path, verify, toEvent })`.
+        - bad signature → 401; a redelivery → 200 and nothing recorded again; a failed append → 5xx;
+        - signed but unreadable → 400 and an alert (`inbox-unreadable`);
+        - the signature is checked against the raw body, which the kit's JSON parser (`configureJsonBody`) keeps
+          for `/webhooks/…` requests.
+      - **Wiring changed** (`src/index.ts`, and the empty template): `startReadModels(…,
+        automationProcessors(…))`, and `getApplication({ disableJsonMiddleware: true, apis: [configureCors(),
+        configureJsonBody(), …] })`. A project on the old wiring fails to compile, which is the signal.
+      - `build-automation` has the section "A translation: a list of one"; `synchronous` is superseded (blocked
+        with a reason).
+    - [ ] **Model work** in `licensing` (below): next.
+    - [ ] **The safety net** ("Untranslated notifications"): a read model slice, built by the loop from the model.
+      To settle when modelling it: a list of every untranslated notification isn't narrowed by a tag, so it can't
+      be a live read model (ADR-023); database-projected has its own checkpoint, independent of the translation's.
+    - [ ] **Paddle's `verify` and `toEvent`** (with 16.5's `provider-paddle`), and the manual's section.
+    - [ ] **Tests from recorded sandbox payloads** and the sandbox run (below).
   - **The pattern:**
 
     ```
@@ -3596,6 +3622,8 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-01 | Chapter 1 is proven end to end through the UI (Playwright) once its slices are built (16.3a) | A chapter is one flow, so it's one journey; slice tests first, then the journey; mock and sandbox runs |
 | 2026-10-01 | An automation's trigger is a `reacts-to` link, not a copy in its slice; emcli's export fills the automation slice's `events[]` from the link | The copy was a tooling requirement, not a modelling one: `build-automation` needs the trigger's fields in `events[]`, which the export only took from elements in the slice. Read slices already had this fallback. Copies looked like duplicate events on the board |
 | 2026-10-02 | An automation's inputs: trigger, one to-do list (`--todo-list`, exported `todoListElement`), and data inputs (other linked read models: ours, another chapter's, or `--external`); its command is fed only by these (ADR-039) | Commands stay deterministic and every value's source is visible; completeness catches a missing link; a flag rather than a new element type, because prooph board's card types are fixed and the eventmodelers format already has the flag |
+| 2026-10-02 | A list of one's give-up is counted in the kit (attempts per item, in memory, since the app started), not in the library | The library's `onError` isn't told the attempt number, and library PRs are Gary's to merge; a restart only means more attempts before giving up, and the recorded skip is the durable fact |
+| 2026-10-02 | The kit replaces the library's JSON parser with its own (`configureJsonBody`), which keeps the raw body of `/webhooks/…` requests | A signature is checked against the bytes as sent; the library parses JSON before any route runs, and a parsed body can't be turned back into those bytes |
 | 2026-10-02 | Paddle's webhooks are received through an inbox on the event store: a thin endpoint records `paddleNotificationReceived` (idempotent on `event_id`) and answers 200; an event-driven translation works it; deciders apply last writer wins on `paddleOccurredAt` (ADR-040); 16.4 before the loop builds chapter 1 | Durable, de-duplicated and replayable; reuses the proven automation machinery instead of an unproven synchronous mode; out-of-order handling is decided under DCB's append condition, so it's immediately consistent |
 | 2026-09-29 | Phase 16's order: Paddle onboarding and a working knowledge of its UI and API first, then research into how other vendors license seats through a merchant of record, then our licensing model; voice modelling deferred until the model is established | Gary: the licensing model is ours, and Paddle is only an automation producing side effects; knowing Paddle's capabilities and the market's patterns first gives a model worth building |
 

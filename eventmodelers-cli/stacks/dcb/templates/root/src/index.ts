@@ -12,6 +12,7 @@ import {
 } from "./contexts/enrollment/slices/student-details/projection.js"
 
 import { configureCors } from "./shared/cors.js"
+import { configureJsonBody } from "./shared/inbox.js"
 import { startReadModels, type ReadModel, type StoredProjectionRegistration } from "./shared/readModels.js"
 import { automationProcessors, type Automation } from "./shared/automations.js"
 import { startWorker, temporalClient, temporalConfig, temporalWorkflowStarter, watchTemporal } from "./shared/temporal.js"
@@ -48,7 +49,7 @@ const imperative: StoredProjectionRegistration[] = [
 ]
 
 // Every automation (ADR-031, ADR-033): a to-do list worked by one processor. Its list is also in `readModels`, as
-// database-projected; its automation's processor runs it. Internal ones issue our commands; external ones start a
+// database-projected; its automation's processor runs it. A list of one (a translation, ADR-040) has no list. Internal ones issue our commands; external ones start a
 // Temporal workflow (TEMPORAL_ADDRESS, default localhost:7233; `npm run infra:start`). Every call to Temporal has a
 // deadline, TEMPORAL_CALL_TIMEOUT_MS (default 5000): past it a start fails and the processor shows `blocked`.
 const automations: Automation[] = []
@@ -58,9 +59,12 @@ const workflows = temporalWorkflowStarter(temporalApi, temporal.taskQueue, { cal
 
 // Creates the event store with the inline projections, brings stored projections up to date
 // (rebuilds on a changed fingerprint, backfills new inline ones) and starts the async consumer.
-const readModelRuntime = await startReadModels(pool, readModels, imperative, {
-    processorFor: automationProcessors(automations, readModels, { pool, workflows })
-})
+const readModelRuntime = await startReadModels(
+    pool,
+    readModels,
+    imperative,
+    automationProcessors(automations, readModels, { pool, workflows })
+)
 const eventStore = readModelRuntime.eventStore
 
 // The external automations' activities (each slice's `activities.ts`), run by the Temporal worker in this process
@@ -80,8 +84,11 @@ const studentWaitFn = readModelRuntime.waitFor(STUDENT_PROJECTION_NAME)
 const deps = { store: eventStore, pool, readModels: readModelRuntime }
 
 const app = getApplication({
+    // The kit's JSON parser (configureJsonBody) keeps a webhook's raw body, which its signature is checked against
+    disableJsonMiddleware: true,
     apis: [
         configureCors(),
+        configureJsonBody(),
         configureProcessorStatusRoute(() => readModelRuntime.consumer, {
             // With external automations, health also asks Temporal directly and reports this process's worker
             ...(temporalWatch ? { temporal: () => temporalWatch.status() } : {})

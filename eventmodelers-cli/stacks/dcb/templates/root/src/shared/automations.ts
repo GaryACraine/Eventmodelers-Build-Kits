@@ -1,14 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { Pool, PoolClient } from "pg"
-import { handle, type Command, type Decider, type EventHandler, type EventStore, type SequencedEvent } from "@dcb-es/event-store"
+import { handle, Query, type Command, type Decider, type EventHandler, type EventStore, type SequencedEvent } from "@dcb-es/event-store"
 import {
     projectionToProcessor,
     type ConsumerProcessorConfig,
     type Projection,
     type ProjectionProcessorOptions
 } from "@dcb-es/event-store-postgres"
-import { readLive, tagValues, type ReadModel, type ReadModelDoc } from "./readModels.js"
+import { readLive, tagValues, type ReadModel, type ReadModelDoc, type StartReadModelsOptions } from "./readModels.js"
 import { findExistingPosition, idempotencyKeyFor } from "./idempotency.js"
+import { alert as defaultAlert, type Alert } from "./alerts.js"
 
 /**
  * Automations are to-do lists worked by one processor (ADR-031, ADR-033).
@@ -31,6 +32,13 @@ import { findExistingPosition, idempotencyKeyFor } from "./idempotency.js"
  * An item whose work can be done again (a payment tried again after a decline or a stall, ADR-032) passes the
  * **attempt** its trigger belongs to: the key becomes `<automation>:<item key>:<attempt>`, so each attempt is worked
  * once and a later attempt isn't mistaken for a repeat of the first.
+ *
+ * **A list of one** (ADR-040) has no stored to-do list: the trigger event is the item, e.g. another system's
+ * notification recorded at a webhook, which a translation turns into our command. It has a processor and a checkpoint
+ * of its own, named after the automation, and works every trigger event, old history included: `issue`'s key
+ * `<automation>:<item key>` makes a repeat do nothing. The stored event and the checkpoint make it crash safe. An
+ * item that keeps failing can be **given up** on after a number of attempts (`giveUp`), so it doesn't block the ones
+ * behind it: the automation records that (an event of ours) and the administrator is alerted.
  */
 
 export interface AutomationContext<TItem extends ReadModelDoc> {
@@ -61,17 +69,52 @@ export function workKey(automation: string, key: string, options?: AttemptOption
     return options?.attempt === undefined ? `${automation}:${key}` : `${automation}:${key}:${options.attempt}`
 }
 
-export interface Automation<TItem extends ReadModelDoc = any> {
+interface AutomationBase<TItem extends ReadModelDoc> {
     /** The name its keys are built from, e.g. "stock-returner" (from the model's description) */
     name: string
-    /** The to-do list. Registered in `readModels` as database-projected; the automation's processor runs it. */
-    todoList: ReadModel<TItem, any>
-    /** The event types the automation reacts to (the model's `reacts-to`). The to-do list handles each of them. */
+    /** The event types the automation reacts to (the model's `reacts-to`). A to-do list handles each of them. */
     triggers: string[]
     act(context: AutomationContext<TItem>): Promise<void>
 }
 
+/** An automation with a to-do list (ADR-031) */
+export interface ListAutomation<TItem extends ReadModelDoc = any> extends AutomationBase<TItem> {
+    /** The to-do list. Registered in `readModels` as database-projected; the automation's processor runs it. */
+    todoList: ReadModel<TItem, any>
+}
+
+/** A list of one (ADR-040): no stored to-do list, the trigger event is the item (`item` is its data) */
+export interface ListOfOneAutomation<TItem extends ReadModelDoc = any> extends AutomationBase<TItem> {
+    /** The tag of the trigger events whose value is the item's key, e.g. "paddleEventId" */
+    key: string
+    /** Absent: an item that fails blocks the processor until it succeeds, as a to-do list's does */
+    giveUp?: GiveUp<TItem>
+}
+
+export interface GiveUp<TItem extends ReadModelDoc> {
+    /** The number of failed attempts on one item before giving up on it (counted since the app started) */
+    after: number
+    /**
+     * Record that the item was given up on, as an event of ours (through `issue`), so it's seen and can be worked
+     * again by hand. If this throws, the processor stays blocked on the item and tries again.
+     */
+    record(context: AutomationContext<TItem>, error: unknown): Promise<void>
+}
+
+export type Automation<TItem extends ReadModelDoc = any> = ListAutomation<TItem> | ListOfOneAutomation<TItem>
+
+const hasList = <TItem extends ReadModelDoc>(automation: Automation<TItem>): automation is ListAutomation<TItem> =>
+    "todoList" in automation && automation.todoList !== undefined
+
+export function defineAutomation<TItem extends ReadModelDoc>(automation: ListAutomation<TItem>): ListAutomation<TItem>
+export function defineAutomation<TItem extends ReadModelDoc>(automation: ListOfOneAutomation<TItem>): ListOfOneAutomation<TItem>
 export function defineAutomation<TItem extends ReadModelDoc>(automation: Automation<TItem>): Automation<TItem> {
+    if (!hasList(automation)) {
+        if (!automation.key) throw new Error(`${automation.name}: an automation has a to-do list, or the key (a tag) of its trigger events.`)
+        if (automation.triggers.length === 0) throw new Error(`${automation.name}: a list of one needs at least one trigger.`)
+        if (automation.giveUp && automation.giveUp.after < 1) throw new Error(`${automation.name}: giveUp.after is at least 1.`)
+        return automation
+    }
     const unhandled = automation.triggers.filter(type => !automation.todoList.canHandle.includes(type))
     if (unhandled.length > 0) {
         throw new Error(
@@ -93,6 +136,8 @@ export interface AutomationDependencies {
     pool: Pool
     /** Absent when no automation starts workflows */
     workflows?: WorkflowStarter
+    /** Told when a list of one gives up on an item. The app's alert (a JSON line on stderr) when absent */
+    alert?: (alert: Alert) => void
 }
 
 /**
@@ -111,9 +156,31 @@ export async function issueOnce<C extends Command>(
     await handle(deps.eventStore, decider, command, { idempotencyKey })
 }
 
+function contextFor<TItem extends ReadModelDoc>(
+    automation: Automation<TItem>,
+    deps: AutomationDependencies,
+    item: TItem,
+    key: string,
+    event: SequencedEvent
+): AutomationContext<TItem> {
+    return {
+        item,
+        key,
+        event,
+        issue: (decider, command, options) => issueOnce(deps, workKey(automation.name, key, options), decider, command),
+        read: async (readModel, dataKey) => (await readLive(deps.eventStore, readModel, dataKey)) as any,
+        start: async (workflowType, args, options) => {
+            if (!deps.workflows) {
+                throw new Error(`${automation.name}: no workflow starter (is TEMPORAL_ADDRESS set?)`)
+            }
+            await deps.workflows.start(workflowType, workKey(automation.name, key, options), args)
+        }
+    }
+}
+
 /** The automation's processor: the to-do list's projection (its name and bookmark), plus the automation step. */
 export function automationProcessor(
-    automation: Automation,
+    automation: ListAutomation,
     deps: AutomationDependencies,
     options?: ProjectionProcessorOptions
 ): ConsumerProcessorConfig {
@@ -131,21 +198,7 @@ export function automationProcessor(
                         for (const key of tagValues(event, automation.todoList.key)) {
                             const item = await readLive(deps.eventStore, automation.todoList, key)
                             if (!item) continue
-                            await automation.act({
-                                item,
-                                key,
-                                event,
-                                issue: (decider, command, options) =>
-                                    issueOnce(deps, workKey(automation.name, key, options), decider, command),
-                                read: async (readModel, dataKey) =>
-                                    (await readLive(deps.eventStore, readModel, dataKey)) as any,
-                                start: async (workflowType, args, options) => {
-                                    if (!deps.workflows) {
-                                        throw new Error(`${automation.name}: no workflow starter (is TEMPORAL_ADDRESS set?)`)
-                                    }
-                                    await deps.workflows.start(workflowType, workKey(automation.name, key, options), args)
-                                }
-                            })
+                            await automation.act(contextFor(automation, deps, item, key, event))
                         }
                     }
                 ])
@@ -156,16 +209,69 @@ export function automationProcessor(
 }
 
 /**
- * The hook `startReadModels` takes: each automation's processor replaces its to-do list's plain processor. Refuses to
- * start when a to-do list isn't registered as database-projected: an inline or live list has no processor to run the
+ * A list of one's processor (ADR-040): its own name and checkpoint, the trigger event as the item. A failure blocks it
+ * on that event, as any processor (retried with backoff, shown on `GET /health/processors`), until `giveUp.after`
+ * attempts: then the automation records that it gave up, the administrator is alerted, and the processor moves on.
+ */
+export function listOfOneProcessor(
+    automation: ListOfOneAutomation,
+    deps: AutomationDependencies,
+    options?: ProjectionProcessorOptions
+): ConsumerProcessorConfig {
+    const alert = deps.alert ?? defaultAlert
+    // Attempts per item, since the app started: a restart counts again, which only means more attempts before giving up
+    const failed = new Map<string, number>()
+    const work = async (event: SequencedEvent) => {
+        for (const key of tagValues(event, automation.key)) {
+            const context = contextFor(automation, deps, event.event.data as ReadModelDoc, key, event)
+            try {
+                await automation.act(context)
+            } catch (error) {
+                const attempts = (failed.get(key) ?? 0) + 1
+                if (!automation.giveUp || attempts < automation.giveUp.after) {
+                    failed.set(key, attempts)
+                    throw error
+                }
+                await automation.giveUp.record(context, error)
+                const message = error instanceof Error ? error.message : String(error)
+                alert({
+                    code: "automation-gave-up",
+                    severity: "critical",
+                    message: `${automation.name} gave up on ${key} (${event.event.type}) after ${attempts} attempt(s): ${message}`,
+                    details: { automation: automation.name, key, eventType: event.event.type, position: event.position.toString(), attempts, error: message }
+                })
+            }
+            failed.delete(key)
+        }
+    }
+    return {
+        processorName: automation.name,
+        query: Query.fromItems([{ types: automation.triggers }]),
+        handlerFactory: () => ({ when: Object.fromEntries(automation.triggers.map(type => [type, work])) }) as EventHandler<any, any>,
+        pollIntervalMs: options?.pollIntervalMs,
+        startFrom: options?.startFrom,
+        stopAfter: options?.stopAfter,
+        batchSize: options?.batchSize,
+        onError: options?.onError,
+        backoff: options?.backoff
+    }
+}
+
+/**
+ * What `startReadModels` takes to run the automations: each to-do list's automation processor replaces the list's
+ * plain processor (`processorFor`), and each list of one gets a processor of its own (`processors`). Refuses to start
+ * when a to-do list isn't registered as database-projected: an inline or live list has no processor to run the
  * automation step in.
  */
 export function automationProcessors(
     automations: Automation[],
     readModels: ReadModel<any, any>[],
-    deps: Omit<AutomationDependencies, "eventStore">
-): (projection: Projection, eventStore: EventStore, options: ProjectionProcessorOptions) => ConsumerProcessorConfig | undefined {
-    for (const automation of automations) {
+    deps: Omit<AutomationDependencies, "eventStore">,
+    options?: ProjectionProcessorOptions
+): Required<Pick<StartReadModelsOptions, "processorFor" | "processors">> {
+    const withList = automations.filter(hasList)
+    const listsOfOne = automations.filter((a): a is ListOfOneAutomation => !hasList(a))
+    for (const automation of withList) {
         const registered = readModels.find(r => r.name === automation.todoList.name)
         if (registered?.type !== "database-projected") {
             throw new Error(
@@ -174,8 +280,12 @@ export function automationProcessors(
             )
         }
     }
-    return (projection, eventStore, options) => {
-        const automation = automations.find(a => a.todoList.projection.name === projection.name)
-        return automation ? automationProcessor(automation, { ...deps, eventStore }, options) : undefined
+    return {
+        processorFor: (projection, eventStore, projectionOptions) => {
+            const automation = withList.find(a => a.todoList.projection.name === projection.name)
+            return automation ? automationProcessor(automation, { ...deps, eventStore }, projectionOptions) : undefined
+        },
+        processors: eventStore =>
+            listsOfOne.map(a => listOfOneProcessor(a, { ...deps, eventStore }, { batchSize: 100, startFrom: "BEGINNING", ...options }))
     }
 }

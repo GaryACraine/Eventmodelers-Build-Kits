@@ -5,6 +5,8 @@ import { waitUntilProcessed } from "@dcb-es/event-store-postgres"
 import { getTestPgDatabasePool } from "./testPgDbPool.js"
 import { startReadModels, type ReadModel, type ReadModelRuntime } from "../shared/readModels.js"
 import { automationProcessors, type Automation, type WorkflowStarter } from "../shared/automations.js"
+import type { Alert } from "../shared/alerts.js"
+import type { Backoff } from "@dcb-es/event-store-postgres"
 
 /**
  * GIVEN/THEN tests for automations (ADR-031, ADR-033): a fresh database per test, the read models and automations
@@ -34,6 +36,8 @@ export interface AutomationTestApp {
     waitForAppended(count: number, timeoutMs?: number): Promise<{ type: string; data: unknown }[]>
     /** The workflows started, when the recorder stands in for Temporal */
     started(): StartedWorkflow[]
+    /** The alerts raised: a list of one that gave up on an item (ADR-040) */
+    alerts(): Alert[]
     /** Wait again: every async read model and automation caught up with the event store */
     settle(): Promise<void>
     runtime(): ReadModelRuntime
@@ -62,19 +66,27 @@ export function automationTestApp(options: {
     automations: Automation[]
     /** Temporal (a `temporalWorkflowStarter` on the test server); the recorder when absent */
     workflows?: WorkflowStarter
+    /** The wait between a list of one's attempts on a failing item. The library's (1 s, doubling) when absent */
+    backoff?: Backoff
 }): AutomationTestApp {
     let pool: Pool
     let runtime: ReadModelRuntime
     let recorder: ReturnType<typeof recordingWorkflowStarter>
     let givenHead: string | null = null
+    let alerts: Alert[] = []
+    // What has a checkpoint: each database-projected read model, and each list of one (named after the automation)
+    const processorNames = [
+        ...options.readModels.filter(r => r.type === "database-projected").map(r => r.projection.name),
+        ...options.automations.filter(a => !("todoList" in a)).map(a => a.name)
+    ]
 
     const settle = async () => {
         // Each wait can lead to more events (the automation's command), which the next pass waits for.
         for (let pass = 0; pass < 5; pass++) {
             const head = await headPosition(pool)
             if (!head) return
-            for (const readModel of options.readModels.filter(r => r.type === "database-projected")) {
-                await waitUntilProcessed(pool, readModel.projection.name, SequencePosition.fromString(head), { timeoutMs: 10_000 })
+            for (const name of processorNames) {
+                await waitUntilProcessed(pool, name, SequencePosition.fromString(head), { timeoutMs: 10_000 })
             }
             if ((await headPosition(pool)) === head) return
         }
@@ -84,12 +96,18 @@ export function automationTestApp(options: {
         pool = await getTestPgDatabasePool({ max: 10 })
         recorder = recordingWorkflowStarter()
         givenHead = null
-        runtime = await startReadModels(pool, options.readModels, [], {
-            processorFor: automationProcessors(options.automations, options.readModels, {
-                pool,
-                workflows: options.workflows ?? recorder
-            })
-        })
+        alerts = []
+        runtime = await startReadModels(
+            pool,
+            options.readModels,
+            [],
+            automationProcessors(
+                options.automations,
+                options.readModels,
+                { pool, workflows: options.workflows ?? recorder, alert: a => alerts.push(a) },
+                options.backoff ? { backoff: options.backoff } : undefined
+            )
+        )
     })
 
     afterEach(async () => {
@@ -122,6 +140,7 @@ export function automationTestApp(options: {
             }
         },
         started: () => recorder.started,
+        alerts: () => alerts,
         settle,
         runtime: () => runtime,
         pool: () => pool
