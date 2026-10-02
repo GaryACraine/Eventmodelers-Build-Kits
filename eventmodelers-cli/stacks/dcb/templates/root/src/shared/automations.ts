@@ -36,9 +36,11 @@ import { alert as defaultAlert, type Alert } from "./alerts.js"
  * **A list of one** (ADR-040) has no stored to-do list: the trigger event is the item, e.g. another system's
  * notification recorded at a webhook, which a translation turns into our command. It has a processor and a checkpoint
  * of its own, named after the automation, and works every trigger event, old history included: `issue`'s key
- * `<automation>:<item key>` makes a repeat do nothing. The stored event and the checkpoint make it crash safe. An
- * item that keeps failing can be **given up** on after a number of attempts (`giveUp`), so it doesn't block the ones
- * behind it: the automation records that (an event of ours) and the administrator is alerted.
+ * `<automation>:<item key>` makes a repeat do nothing. The stored event and the checkpoint make it crash safe.
+ *
+ * **Giving up** (either kind): an item that keeps failing can be given up on after a number of attempts (`giveUp`),
+ * so it doesn't block the ones behind it. The automation records that (an event of ours; a to-do list keeps the item,
+ * marked failed) and the administrator is alerted.
  */
 
 export interface AutomationContext<TItem extends ReadModelDoc> {
@@ -75,6 +77,12 @@ interface AutomationBase<TItem extends ReadModelDoc> {
     /** The event types the automation reacts to (the model's `reacts-to`). A to-do list handles each of them. */
     triggers: string[]
     act(context: AutomationContext<TItem>): Promise<void>
+    /**
+     * Absent: an item that fails blocks the processor until it succeeds. Given: after `after` failed attempts the
+     * automation records that it gave up on the item, the administrator is alerted, and the items behind it are
+     * worked. For work where one bad item mustn't hold up the rest (another system's notifications, ADR-040).
+     */
+    giveUp?: GiveUp<TItem>
 }
 
 /** An automation with a to-do list (ADR-031) */
@@ -87,8 +95,6 @@ export interface ListAutomation<TItem extends ReadModelDoc = any> extends Automa
 export interface ListOfOneAutomation<TItem extends ReadModelDoc = any> extends AutomationBase<TItem> {
     /** The tag of the trigger events whose value is the item's key, e.g. "paddleEventId" */
     key: string
-    /** Absent: an item that fails blocks the processor until it succeeds, as a to-do list's does */
-    giveUp?: GiveUp<TItem>
 }
 
 export interface GiveUp<TItem extends ReadModelDoc> {
@@ -96,7 +102,8 @@ export interface GiveUp<TItem extends ReadModelDoc> {
     after: number
     /**
      * Record that the item was given up on, as an event of ours (through `issue`), so it's seen and can be worked
-     * again by hand. If this throws, the processor stays blocked on the item and tries again.
+     * again by hand: a to-do list keeps the item, marked failed. If this throws, the processor stays blocked on the
+     * item and tries again.
      */
     record(context: AutomationContext<TItem>, error: unknown): Promise<void>
 }
@@ -112,9 +119,9 @@ export function defineAutomation<TItem extends ReadModelDoc>(automation: Automat
     if (!hasList(automation)) {
         if (!automation.key) throw new Error(`${automation.name}: an automation has a to-do list, or the key (a tag) of its trigger events.`)
         if (automation.triggers.length === 0) throw new Error(`${automation.name}: a list of one needs at least one trigger.`)
-        if (automation.giveUp && automation.giveUp.after < 1) throw new Error(`${automation.name}: giveUp.after is at least 1.`)
-        return automation
     }
+    if (automation.giveUp && automation.giveUp.after < 1) throw new Error(`${automation.name}: giveUp.after is at least 1.`)
+    if (!hasList(automation)) return automation
     const unhandled = automation.triggers.filter(type => !automation.todoList.canHandle.includes(type))
     if (unhandled.length > 0) {
         throw new Error(
@@ -178,6 +185,45 @@ function contextFor<TItem extends ReadModelDoc>(
     }
 }
 
+/**
+ * `act` on one item, giving up when the automation says so: a failure is thrown (the processor blocks on the event and
+ * retries it, shown on `GET /health/processors`) until `giveUp.after` attempts; then the automation records that it
+ * gave up, the administrator is alerted, and the processor moves on. Attempts are counted per item since the app
+ * started: a restart counts again, which only means more attempts before giving up.
+ */
+function worker(automation: Automation, deps: AutomationDependencies) {
+    const alert = deps.alert ?? defaultAlert
+    const failed = new Map<string, number>()
+    return async (context: AutomationContext<any>): Promise<void> => {
+        const item = `${context.key}@${context.event.position.toString()}`
+        try {
+            await automation.act(context)
+        } catch (error) {
+            const attempts = (failed.get(item) ?? 0) + 1
+            if (!automation.giveUp || attempts < automation.giveUp.after) {
+                failed.set(item, attempts)
+                throw error
+            }
+            await automation.giveUp.record(context, error)
+            const message = error instanceof Error ? error.message : String(error)
+            alert({
+                code: "automation-gave-up",
+                severity: "critical",
+                message: `${automation.name} gave up on ${context.key} (${context.event.event.type}) after ${attempts} attempt(s): ${message}`,
+                details: {
+                    automation: automation.name,
+                    key: context.key,
+                    eventType: context.event.event.type,
+                    position: context.event.position.toString(),
+                    attempts,
+                    error: message
+                }
+            })
+        }
+        failed.delete(item)
+    }
+}
+
 /** The automation's processor: the to-do list's projection (its name and bookmark), plus the automation step. */
 export function automationProcessor(
     automation: ListAutomation,
@@ -185,6 +231,7 @@ export function automationProcessor(
     options?: ProjectionProcessorOptions
 ): ConsumerProcessorConfig {
     const list = projectionToProcessor(automation.todoList.projection, options)
+    const work = worker(automation, deps)
     return {
         ...list,
         handlerFactory: (client, context) => {
@@ -198,7 +245,7 @@ export function automationProcessor(
                         for (const key of tagValues(event, automation.todoList.key)) {
                             const item = await readLive(deps.eventStore, automation.todoList, key)
                             if (!item) continue
-                            await automation.act(contextFor(automation, deps, item, key, event))
+                            await work(contextFor(automation, deps, item, key, event))
                         }
                     }
                 ])
@@ -209,39 +256,17 @@ export function automationProcessor(
 }
 
 /**
- * A list of one's processor (ADR-040): its own name and checkpoint, the trigger event as the item. A failure blocks it
- * on that event, as any processor (retried with backoff, shown on `GET /health/processors`), until `giveUp.after`
- * attempts: then the automation records that it gave up, the administrator is alerted, and the processor moves on.
+ * A list of one's processor (ADR-040): its own name and checkpoint, the trigger event as the item.
  */
 export function listOfOneProcessor(
     automation: ListOfOneAutomation,
     deps: AutomationDependencies,
     options?: ProjectionProcessorOptions
 ): ConsumerProcessorConfig {
-    const alert = deps.alert ?? defaultAlert
-    // Attempts per item, since the app started: a restart counts again, which only means more attempts before giving up
-    const failed = new Map<string, number>()
+    const workItem = worker(automation, deps)
     const work = async (event: SequencedEvent) => {
         for (const key of tagValues(event, automation.key)) {
-            const context = contextFor(automation, deps, event.event.data as ReadModelDoc, key, event)
-            try {
-                await automation.act(context)
-            } catch (error) {
-                const attempts = (failed.get(key) ?? 0) + 1
-                if (!automation.giveUp || attempts < automation.giveUp.after) {
-                    failed.set(key, attempts)
-                    throw error
-                }
-                await automation.giveUp.record(context, error)
-                const message = error instanceof Error ? error.message : String(error)
-                alert({
-                    code: "automation-gave-up",
-                    severity: "critical",
-                    message: `${automation.name} gave up on ${key} (${event.event.type}) after ${attempts} attempt(s): ${message}`,
-                    details: { automation: automation.name, key, eventType: event.event.type, position: event.position.toString(), attempts, error: message }
-                })
-            }
-            failed.delete(key)
+            await workItem(contextFor(automation, deps, event.event.data as ReadModelDoc, key, event))
         }
     }
     return {
@@ -283,7 +308,7 @@ export function automationProcessors(
     return {
         processorFor: (projection, eventStore, projectionOptions) => {
             const automation = withList.find(a => a.todoList.projection.name === projection.name)
-            return automation ? automationProcessor(automation, { ...deps, eventStore }, projectionOptions) : undefined
+            return automation ? automationProcessor(automation, { ...deps, eventStore }, { ...projectionOptions, ...options }) : undefined
         },
         processors: eventStore =>
             listsOfOne.map(a => listOfOneProcessor(a, { ...deps, eventStore }, { batchSize: 100, startFrom: "BEGINNING", ...options }))
