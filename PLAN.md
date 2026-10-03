@@ -62,9 +62,11 @@ model and build only what's ours.
   - **Next, in order:**
     1. *ADR-044 Accepted (Gary, 2026-10-03).* Still to see: the inline checkout's payment step and a payment through
        it, and Paddle.js's own `checkout.completed` event (a person pays: `licensing/web/e2e/paddle/README.md`).
-    2. **The checks that need a notification destination,** through a tunnel: that a delivered webhook's `event_id`
-       is the stream's, how soon an event is in the stream, and redelivery and out-of-order delivery for real. Needs
-       a tunnel tool on Gary's machine, and creates a destination in his sandbox.
+    2. *Done 2026-10-03: the checks through a tunnel* (`cloudflared`, a sandbox destination now deactivated; results
+       in `licensing/e2e/paddle/README.md`). Real deliveries pass our signature check and carry exactly the stream's
+       event; delivered 0.7 s after it happened and in the stream within 2 s; a replay and a late retry recorded
+       once; a webhook lost while our endpoint was down was recorded by the fetch. Out-of-order delivery wasn't
+       seen (Paddle offers no way to cause it).
     3. **Plan chapters 1, 20 and 24 together** (the translation's give-up needs chapter 20's skip command; chapter
        24's refusal changes what chapter 1's page and checkout list show: its two hotspots), and chapters 22 and 23
        (the setup commands). "Choose How to Start" needs a place for Paddle's inline form and our summary. Then
@@ -453,8 +455,10 @@ model and build only what's ours.
     - [x] **Tests from recorded sandbox payloads,** 2026-10-02: five real events as fixtures; the same event twice,
       by both routes, a bad signature, from a checkpoint, and the sandbox's stream over HTTP.
     - [ ] **The endpoint's slice** (built by the loop, with chapter 1) and **the manual's section**.
-    - [ ] **Against a real notification destination:** redelivery, out-of-order delivery and equal `occurred_at`
-      (the tunnel session, "Where we are" step 2).
+    - [x] **Against a real notification destination,** 2026-10-03 (a tunnel): real signatures, the same `event_id`
+      and payload as the stream, a replay and a late retry recorded once, a lost webhook recovered by the fetch, and
+      one delivery's exact bytes kept as a fixture. Not seen: out-of-order delivery and equal `occurred_at` for real
+      (Paddle offers no way to cause them); they're the deciders' tests, built with the slices.
   - **The pattern:**
 
     ```
@@ -533,7 +537,8 @@ model and build only what's ours.
     - recorded sandbox payloads as fixtures, replayed twice, reversed, with equal `occurred_at`, and with a bad
       signature;
     - the mock Paddle (ADR-030) can redeliver.
-  - **Sandbox:** a notification destination through a tunnel. Saved payloads become the fixtures.
+  - **Sandbox:** a notification destination through a tunnel. Saved payloads become the fixtures. *Done
+    2026-10-03.*
   - **Removing seats at the next period** (ADR-037 decision 5): in the sandbox, a decrease with
     `proration_billing_mode: do_not_bill` outside a trial (no credit, no charge), then the next renewal's amount (the
     lower count); and putting the quantity back before the renewal.
@@ -3849,12 +3854,13 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-02 | A subscription's start is read from `subscription.trialing`, `subscription.activated` or `subscription.created`, whichever arrives first, with the payload's status; `subscription.trialing` is fetched and translated | Both purchases made at Paddle's checkout sent no `subscription.created` (only those made through the API did); a translation waiting for `created` would never start a trial |
 | 2026-10-02 | Paddle's checkout is shown inline (its form inside our page, our own summary beside it), and a trial that arrives without a web seat is refused and cancelled at Paddle at once (Gary; ADR-044 decision 7, model chapter 24) | The inline form has no list of items to change, where the overlay has + and −, a bin icon and no lock; the page can't be the only guard because the client-side token is public; Paddle refuses adding an item during a trial, so a seatless trial can't be repaired |
 | 2026-10-03 | ADR-044 Accepted (Gary): another system's browser library sits behind a module of ours with a mock; Paddle's checkout is inline; a trial without a web seat is refused | Settled after the sandbox spike and the paid checkout of 2026-10-02 |
+| 2026-10-03 | Tunnels for webhook checks use `cloudflared`'s quick tunnel (no account; a new address each run, set on the sandbox destination through Paddle's API) | Nothing to sign up for, installed by Homebrew; a fixed address (ngrok's free domain, or a named Cloudflare tunnel) isn't needed for occasional checks |
 
 ## Progress
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. **16.4 and 16.5 in progress (2026-10-02): the inbox (ADR-040), webhooks first with a fetch of Paddle's event stream (ADR-041), timed work on Temporal (ADR-042) and setup commands (ADR-043) are built and proven; the model has chapter 1 (32 slices) and chapters 20 to 23. Paddle's checkout from our page (ADR-044, Proposed) and our calls to Paddle are built and proven. Next: Gary pays the sandbox checkout by hand and decides ADR-044, the checks that need a notification destination, then the loop builds chapters 1 and 20, then 16.3a (chapter 1 end to end). See "Where we are" at the top of Phase 16.** 16.3 is in process modelling: chapter 1 fleshed out, 16.3b done (ADR-039) (16.2 done 2026-09-30: ADR-037 Accepted, trials included after the 16.2b tests) (16.1's knowledge work done 2026-09-30; only Gary's live onboarding open; 16.2's research done 2026-09-30). Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
+| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. **16.4 and 16.5 in progress (2026-10-02): the inbox (ADR-040), webhooks first with a fetch of Paddle's event stream (ADR-041), timed work on Temporal (ADR-042) and setup commands (ADR-043) are built and proven; the model has chapter 1 (32 slices) and chapters 20 to 23. Paddle's checkout from our page (ADR-044, Accepted: inline, a seatless trial refused, chapter 24) and our calls to Paddle are built and proven, and Paddle's real webhooks were received through a tunnel (2026-10-03). Next: plan chapters 1, 20 and 24 (and 22, 23), then the loop builds them, then 16.3a (chapter 1 end to end). See "Where we are" at the top of Phase 16.** 16.3 is in process modelling: chapter 1 fleshed out, 16.3b done (ADR-039) (16.2 done 2026-09-30: ADR-037 Accepted, trials included after the 16.2b tests) (16.1's knowledge work done 2026-09-30; only Gary's live onboarding open; 16.2's research done 2026-09-30). Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
 | 15 — Automations (restaurant orders) | ✅ Closed 2026-09-29 (a demo) | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27/28: the Restaurant Orders chapter (25 slices, 63 scenarios, 15 mockups) on prooph board, with stock and an internal automation (the Stock Returner); emcli push fixes (lanes, links, skipped deletions). 15.8 added: deciding from a growing event stream. 15.2 done 2026-09-28 (library PR #29 merged). 15.3 done 2026-09-28 (ADR-033 runtime, ADR-034 Braintree as a commercial directive; the loop built the restaurant backend; 8 end-to-end cases pass, with our own Temporal call deadline and Temporal in health; manual §21). Next: 15.4 redrive, then 15.5 the UI on Sonnet. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) | **Closed 2026-09-29:** 15.4 and 15.4c built through the loop (stalls, retry, give up, attempts, pay again, cancel); 15.4e provider skills; 15.9 on Sonnet at medium, about 2.5–3× cheaper per job; emcli re-queues changed built slices. The rest dropped or moved to Phase 16 |
 | 1 — Stack Scaffolding | ✅ Complete | Verified: init, npm install, tsc, 21/21 unit tests |
 | 2 — State Change Skill | ✅ Complete | 9-step SKILL.md with full DCB patterns |

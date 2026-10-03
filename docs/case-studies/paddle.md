@@ -166,6 +166,16 @@ and can't do, so the model asks it for the right things.
   receives the simulator's. **Hookdeck Console** shows webhooks with no endpoint of our own, which is handy for a
   first look.
 - **A webhook simulator** (with scenario configuration) sends sample events to a destination, for tests.
+- **Seen for real through a tunnel** (2026-10-03, `licensing/e2e/paddle/README.md`):
+  - a delivery carries exactly the stream's event (same `event_id`, same `data`) plus a `notification_id`;
+  - delivered **0.7 s** after `occurred_at`; in the stream within **2 s** of the change;
+  - `POST /notifications/{id}/replay` redelivers the same `event_id` under a new `notification_id`, about a minute
+    later;
+  - a failed delivery became `needs_retry`, retried after about 20 s and again about a minute after the first, then
+    delivered (`times_attempted: 3`);
+  - three changes a second apart were delivered in order.
+  - A destination is created and changed through the API (`/notification-settings`): its `endpoint_secret_key` comes
+    back on creation, and `active: false` pauses it.
 
 ### 7b. The event stream: the same events, pulled (2026-10-02, ADR-041)
 
