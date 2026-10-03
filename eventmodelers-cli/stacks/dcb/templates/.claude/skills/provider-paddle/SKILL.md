@@ -737,3 +737,10 @@ portal's links redacted). Never write a Paddle payload from memory.
 `PADDLE_API_URL=https://sandbox-api.paddle.com` and a sandbox API key, in `e2e/.env.sandbox` (gitignored, never
 committed). The sandbox retries a failed webhook 3 times in 15 minutes (production: 60 times over 3 days), and its
 stream holds the events whether or not a notification destination exists.
+
+**Receiving its webhooks on a laptop** needs a public address: `cloudflared tunnel --url http://localhost:<port>`
+gives one for the session, and a sandbox notification destination (`POST /notification-settings`, or `PATCH` an
+existing one's `destination`) points at `<address>/webhooks/paddle`. Seen that way (2026-10-03): a delivery is the
+stream's event plus a `notification_id`, 0.7 s after it happened; `POST /notifications/{id}/replay` redelivers it
+under a new `notification_id`; a failed delivery is retried after about 20 s and a minute. Pause the destination
+(`active: false`) when done.
