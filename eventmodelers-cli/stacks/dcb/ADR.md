@@ -2421,7 +2421,7 @@ until its first slice is built.
 
 ### ADR-044: Another system's browser library in a screen: behind a module of ours, with a mock
 
-**Status:** **Proposed, 2026-10-02.** Its open question is settled (Gary, 2026-10-02: the inline checkout, and
+**Status:** **Accepted, 2026-10-03 (Gary).** Its open question was settled on 2026-10-02 (the inline checkout, and
 decision 7's rule). Built and proven for Paddle's checkout by the module's own tests and Paddle's sandbox
 (`licensing/web/e2e/paddle/`), including a checkout paid by hand; a slice the loop builds is still to come. The
 skill sections are drafts until then.

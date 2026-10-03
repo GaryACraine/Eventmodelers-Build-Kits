@@ -51,7 +51,7 @@ model and build only what's ours.
     - **timed work on Temporal** (ADR-042): a Schedule, a start due at a date, timers in a workflow;
     - **settings seeded by setup commands** (ADR-043);
     - **the model:** chapter 1 (32 slices), and chapters 20 to 23, pushed to the board, not exported;
-    - **Paddle's checkout from our page** (Paddle.js, ADR-044 Proposed): a module behind which Paddle.js sits, with a
+    - **Paddle's checkout from our page** (Paddle.js, ADR-044 Accepted): a module behind which Paddle.js sits, with a
       mock; proven by its tests and by opening Paddle's real checkout in the sandbox (`licensing/web/e2e/paddle/`, 15
       of 15), shown inline;
     - **the calls we make to Paddle** (read a subscription, preview and change seats, cancel, withdraw), proven
@@ -60,10 +60,8 @@ model and build only what's ours.
       (`build-automation`), "A setup command" (`build-state-change`) and "A value from another system's browser
       library" (`build-screen`).
   - **Next, in order:**
-    1. **Accept ADR-044** (Gary), now that its open question is settled: the checkout is shown inline, and a trial
-       that arrives without a web seat is refused and cancelled at Paddle at once (model chapter 24). Still to see:
-       the inline checkout's payment step and a payment through it, and Paddle.js's own `checkout.completed` event
-       (a person pays: `licensing/web/e2e/paddle/README.md`).
+    1. *ADR-044 Accepted (Gary, 2026-10-03).* Still to see: the inline checkout's payment step and a payment through
+       it, and Paddle.js's own `checkout.completed` event (a person pays: `licensing/web/e2e/paddle/README.md`).
     2. **The checks that need a notification destination,** through a tunnel: that a delivered webhook's `event_id`
        is the stream's, how soon an event is in the stream, and redelivery and out-of-order delivery for real. Needs
        a tunnel tool on Gary's machine, and creates a destination in his sandbox.
@@ -550,7 +548,7 @@ model and build only what's ours.
     - **what we ask Paddle to do:** read a subscription, preview and change its seats, cancel at the period's end,
       withdraw that. Paddle is told the state we want, so a retried call changes and charges nothing (seen in the
       sandbox); a second cancel is refused and read as done; a refusal carries Paddle's code;
-    - **its checkout from our page** (Paddle.js, **ADR-044 Proposed**): a module in `web/src/providers/paddle/`
+    - **its checkout from our page** (Paddle.js, **ADR-044 Accepted**): a module in `web/src/providers/paddle/`
       that answers "completed, for this transaction" or "closed", with a mock that asks the mock Paddle. The page
       then submits `reportCheckoutCompleted`;
     - the errors, the mock (now with subscriptions and a checkout that makes the trial's events) and the sandbox.
@@ -3850,6 +3848,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-02 | Our calls to Paddle tell it the state we want (every item's quantity), over plain HTTP, and need no idempotency key of their own; a second cancel that Paddle refuses is read as done | In the sandbox the same seat change twice made one charge and one event; an activity can be retried safely |
 | 2026-10-02 | A subscription's start is read from `subscription.trialing`, `subscription.activated` or `subscription.created`, whichever arrives first, with the payload's status; `subscription.trialing` is fetched and translated | Both purchases made at Paddle's checkout sent no `subscription.created` (only those made through the API did); a translation waiting for `created` would never start a trial |
 | 2026-10-02 | Paddle's checkout is shown inline (its form inside our page, our own summary beside it), and a trial that arrives without a web seat is refused and cancelled at Paddle at once (Gary; ADR-044 decision 7, model chapter 24) | The inline form has no list of items to change, where the overlay has + and −, a bin icon and no lock; the page can't be the only guard because the client-side token is public; Paddle refuses adding an item during a trial, so a seatless trial can't be repaired |
+| 2026-10-03 | ADR-044 Accepted (Gary): another system's browser library sits behind a module of ours with a mock; Paddle's checkout is inline; a trial without a web seat is refused | Settled after the sandbox spike and the paid checkout of 2026-10-02 |
 
 ## Progress
 
