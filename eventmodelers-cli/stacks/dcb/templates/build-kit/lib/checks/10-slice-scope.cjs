@@ -9,6 +9,8 @@
 //   - src/index.ts                      (bootstrap — projection/route/automation wiring)
 //   - src/workflows.ts                  (the Temporal worker's workflows — append-only, ADR-033)
 //   - mocks/{system}/**                 (an external system's container mock, built with its automation — ADR-033)
+//   - src/providers/{system}/**         (an external system's code shared by the slices that use it: its provider
+//                                        skill's module, created by the first slice that needs it — ADR-045)
 //   - docker-compose.yml                (a mock's service)
 
 const ALLOWED_EXCEPTIONS = [
@@ -16,6 +18,7 @@ const ALLOWED_EXCEPTIONS = [
   /^src\/index\.ts$/,                     // projection registration, route wiring
   /^src\/workflows\.ts$/,                 // external automations' workflows (append-only)
   /^mocks\/[^/]+\//,                      // an external system's mock
+  /^src\/providers\/[^/]+\//,              // an external system's shared code (its provider skill's module)
   /^docker-compose\.yml$/,                // a mock's compose service
 ];
 

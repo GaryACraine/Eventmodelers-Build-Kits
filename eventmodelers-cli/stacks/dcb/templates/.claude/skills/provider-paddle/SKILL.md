@@ -119,16 +119,20 @@ export function paddleInbox(config: Pick<PaddleConfig, "apiKey" | "webhookSecret
 }
 ```
 
-Its route is `configureWebhookInbox({ eventStore }, paddleInbox(config))`, with `configureJsonBody()` in `apis`
-(the scaffold has it): the signature is checked against the raw body.
+It's built by the slice of the external event `paddleNotificationReceived` (`sliceType: "EXTERNAL_EVENT"`,
+`build-automation`'s section "An external event"): `inbox.ts` exports `paddleInbox(paddleConfig())`, wired as
+`configureWebhookInbox({ eventStore }, paddleNotificationInbox)` with `configureJsonBody()` in `apis` (the scaffold
+has it): the signature is checked against the raw body. Real deliveries passed this check through a tunnel
+(2026-10-03), and `e2e/paddle/fixtures/webhook-delivery.json` holds one as Paddle sent it.
 
 - The header is `Paddle-Signature: ts=<unix>;h1=<hex>`, where `h1` is the HMAC-SHA256 of `<ts>:<raw body>` with the
   destination's secret.
 - **The SDK refuses a timestamp more than 5 seconds from now.** A saved webhook can't be replayed with its original
   signature: tests sign it again (the mock's `paddleSignature`).
 - Paddle wants **200 within 5 seconds**: the route records and answers, and does nothing else.
-- After a webhook is recorded, the route **triggers the sync** (`scheduleWatch.trigger("paddle-sync")`), which fills
-  any gap before it. Best-effort: a failed trigger doesn't fail the webhook (the next sweep covers it).
+- **Later, with the Paddle Sync** (a polling automation, not built yet): after a webhook is recorded, trigger the
+  sync (`scheduleWatch.trigger("paddle-sync")`) so it fills any gap before it. Best-effort: a failed trigger doesn't
+  fail the webhook. Only when the slice's description says the sync exists.
 
 ## Fetching the event stream
 

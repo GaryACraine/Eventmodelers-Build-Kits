@@ -2498,3 +2498,45 @@ skill sections are drafts until then.
   models; they're settled when chapters 1 and 24 are planned. The same rule for "Buy now" would need a refund, and
   isn't decided.
 
+### ADR-045: Another system's event has a slice of its own: the endpoint that records it as it arrives
+
+**Status:** **Proposed, 2026-10-05.** From Gary's answer (2026-10-05): a webhook's event is recorded as an external
+event, read into a read model, and turned into our events by a processor, with no command of ours in front of it.
+Built in emcli and the kit; not yet built by the loop.
+**Date:** 2026-10-05
+
+**Context:**
+- **ADR-040's inbox** records another system's notification as an event (`paddleNotificationReceived`), and a
+  translation turns it into ours. In the model the event sits alone in the other system's lane, with fields from its
+  payload (`webhook:`).
+- **A slice with only an event was "mixed"** (a storm leftover) to emcli, which the hand-off refuses to plan and the
+  export treated as a state change with no command. So nothing could build the endpoint.
+- **Event Modeling's translation** is exactly this: an external event, a to-do list, an automation, our command.
+  The external event has no command of ours: it is a fact another system tells us.
+
+**Decision:**
+1. **An event is marked as another system's** (`emcli element update <event> --external <System>`, the flag read
+   models already use for an outside system's data). Its fields are mapped `webhook:<path in the payload>`.
+2. **Its slice is an external event slice** (`sliceType: external`, exported `EXTERNAL_EVENT`) when it has that
+   event and no command, read model or automation of ours. A copy of the event in another chapter shows the same
+   fact and stays unplanned: only the original's slice is external, so the endpoint is built once.
+3. **The loop builds its endpoint:** `build-automation`'s section "An external event" (a draft): the slice's
+   `inbox.ts` from the provider skill's reader and signature check, wired with `configureWebhookInbox`, with tests
+   from saved real payloads. Recording it is all it does; the translation is other slices.
+4. **A provider's shared code** (`src/providers/<system>/`) may be part of a slice commit, created by the first slice
+   that needs it (the backend's counterpart of ADR-044's `web/src/providers/<name>/`).
+
+**Alternatives considered:**
+- **A command the other system issues** (`receivePaddleNotification`), shaped like ADR-043's setup command: a
+  standard write slice, but a command of ours that no one of ours issues, and a decider with nothing to decide.
+- **Building the endpoint with the translation's first slice:** the door and what's done with what comes through it
+  are two jobs, and the to-do list or the automation would carry another system's signature check.
+
+**Consequences:**
+- emcli: the `external` slice type (classification, `--external` on events, recomputed on pull, the export's
+  `EXTERNAL_EVENT`, the schema); its skill's slicing and hand-off rules.
+- The kit: the loop's prompt routes `EXTERNAL_EVENT` to `build-automation`; `provider-paddle`'s endpoint section
+  points at it; `slice-scope` accepts `src/providers/<system>/`.
+- In the licensing model, chapter 1's `paddleNotificationReceived` is marked `--external Paddle`, and chapters 20
+  and 24 show copies of it.
+
