@@ -74,6 +74,19 @@ test('a workflow and activities without processor.tests.ts are refused', () => {
   assert.match(r.output, /no \*\.tests\.ts found/);
 });
 
+test('an external event\'s slice: its folder and the provider\'s shared module (src/providers/{system}/, ADR-045)', () => {
+  const inbox = 'src/contexts/licensing/slices/paddle-notification-received';
+  const r = commit(repo(), {
+    [`${inbox}/inbox.ts`]: null,
+    [`${inbox}/inbox.tests.ts`]: null,
+    'src/providers/paddle/paddle.ts': null,
+  });
+  assert.ok(r.ok, r.output);
+  const loose = commit(repo(), { [`${inbox}/inbox.ts`]: null, [`${inbox}/inbox.tests.ts`]: null, 'src/providers/index.ts': null });
+  assert.ok(!loose.ok);
+  assert.match(loose.output, /src\/providers\/index\.ts/);
+});
+
 test('other shared files are still outside a slice commit\'s scope', () => {
   const r = commit(repo(), {
     [`${SLICE}/processor.ts`]: null,

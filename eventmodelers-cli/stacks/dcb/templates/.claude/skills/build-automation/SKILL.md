@@ -403,8 +403,52 @@ export const carrierTranslation = defineAutomation<NotificationsToTranslateDoc>(
   in the wrong order, and one that can't be translated (`app.alerts()` has the alert, and the list still holds the
   item as failed; pass `backoff: { initialMs: 10 }` so the attempts don't take seconds).
 
-The endpoint that records the notification is its own slice's route, built from the provider skill (`verify` and
-`toEvent` for `configureWebhookInbox`).
+The endpoint that records the notification is its own slice, an **external event** (below).
+
+## An external event: the endpoint that records it (ADR-045): a draft, on first use
+
+> **Draft.** Proven by the kit's inbox tests and Paddle's real webhooks through a tunnel
+> (`licensing/e2e/paddle/`), not yet by a slice the loop built. Where a slice doesn't fit, block the job with
+> `request-feedback` saying what didn't fit.
+
+`sliceType: "EXTERNAL_EVENT"`: the slice holds one event that **another system tells us** (its `context` is
+`EXTERNAL`, `externalSystem` names the system, e.g. `Paddle`), and nothing else of ours: no command, no decider, no
+route of its own. Its fields are mapped `webhook:<path in the payload>`. Building the slice means building the door
+that event comes in by: the webhook endpoint of ADR-040, recording the event as it arrived and answering at once.
+What we do with it is the translation, built by other slices.
+
+Read the system's provider skill first (`provider-paddle`): it has the system's signature check, the reader that
+turns a payload into this event (`toEvent`), the endpoint's path, the saved payloads and the mock.
+
+**Files:**
+
+```
+src/providers/<system>/<system>.ts     the provider skill's module, if no slice has created it yet (shared)
+src/contexts/<ctx>/slices/<slice>/inbox.ts          the endpoint's inbox for this event
+src/contexts/<ctx>/slices/<slice>/inbox.tests.ts    its tests
+src/contexts/<ctx>/Events.ts           the event added to the context's union (append-only), as for any event
+```
+
+```typescript
+// inbox.ts: the door paddleNotificationReceived comes in by (Paddle's webhook, ADR-040)
+import { paddleConfig, paddleInbox } from "../../../../providers/paddle/paddle.js"
+
+export const paddleNotificationInbox = paddleInbox(paddleConfig())
+```
+
+- **The event's fields are exactly slice.json's:** the provider's `toEvent` must produce every field the slice
+  lists, with its name and type, and no others. Where they differ, the model wins: change the reader, or block the
+  job if the provider skill disagrees with the model.
+- **Wiring** (`chore: wire <Slice Name>`, in `src/index.ts`): `configureWebhookInbox({ eventStore }, <inbox>)` in
+  `apis`, after `configureJsonBody()` (the scaffold has it: the signature is checked against the raw body).
+- **Tests** (`inbox.tests.ts`), through the app with the kit's JSON parser, from the provider skill's **saved real
+  payloads** (never one written from memory), signed the way the system signs:
+  - a signed payload answers 200 and records the event with slice.json's fields, tagged as the slice says;
+  - the same notification again answers 200 and records nothing more;
+  - a wrong or missing signature answers 401 and records nothing;
+  - a signed payload that can't be read answers 400, records nothing, and alerts (`inbox-unreadable`).
+- **A copy of the event in another chapter** shows the same fact; only the original's slice is
+  `EXTERNAL_EVENT`, so the endpoint is built once.
 
 ## An automation with no to-do list
 
