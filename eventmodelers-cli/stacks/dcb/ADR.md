@@ -2500,7 +2500,7 @@ skill sections are drafts until then.
 
 ### ADR-045: Another system's event has a slice of its own: the endpoint that records it as it arrives
 
-**Status:** **Proposed, 2026-10-05.** From Gary's answer (2026-10-05): a webhook's event is recorded as an external
+**Status:** **Accepted, 2026-10-05 (Gary).** From Gary's answer (2026-10-05): a webhook's event is recorded as an external
 event, read into a read model, and turned into our events by a processor, with no command of ours in front of it.
 Built in emcli and the kit; not yet built by the loop.
 **Date:** 2026-10-05
