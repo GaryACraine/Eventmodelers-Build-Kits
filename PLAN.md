@@ -603,6 +603,11 @@ model and build only what's ours.
     `~/.claude/settings.json` ($17.15). Pinned (Sonnet, medium, $2 a job) and restarted: the next 25 jobs cost
     $8.14, 21 done and 4 blocked on the model, not on Sonnet. **Fix in the kit:** the loop now warns at startup
     when a concern's model isn't pinned, with the line to add (`unpinnedWarning`, `lib/runner.js`).
+  - *2026-10-06, two kit gaps from the same run:*
+    - **A read model and its extension in one export:** the contract had the extension's field, so the origin
+      couldn't match it (licensing settings). Now an unbuilt extension's fields are pending (PR #163).
+    - **A rebuild that renames a command** (ADR-046) must update its callers in other slices, which `slice-scope`
+      refused. Now allowed by the rename only, in name or route form (PRs #162, #164).
 - [ ] **16.7 Domain-bleed review** (from 15.5) of `build-state-change`, `build-state-view` and `build-screen`.
 - [ ] **16.8 Voice modelling** (15.7, fulfilling 13.6), **deferred until the model is established** (Gary): a
   spoken-style transcript of the established model, replayed through `event-model` in a fresh project, and the
