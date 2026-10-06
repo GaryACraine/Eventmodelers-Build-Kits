@@ -90,7 +90,8 @@ the tags exactly, so it fails until the producer's same-name replacement is buil
 - **Replacing a slice with one of the same name** (the usual case when only its definition changes, and nothing
   else uses what changes: see above):
   - add the new slice under a temporary name;
-  - move the command and the event into it (`emcli element move`), so their links and copies stay;
+  - move the command and the event into it (`emcli element move`), and its scenarios (`emcli spec move … --to`),
+    so their ids, links and copies stay;
   - remove the old slice, then rename the new one to the old name.
 
   The new slice is built into the **same folder**, over the old code. Leave that code in place: other slices may
