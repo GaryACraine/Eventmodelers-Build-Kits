@@ -329,7 +329,8 @@ in this job:
 - **Keep what it was asked**, so a test can check nothing was charged twice.
 - **Files:** `mocks/{system}/server.ts` (Node's `http`, no dependencies, erasable TypeScript only, so `node server.ts`
   runs it; export a `startMock(port)` for tests) and a `Dockerfile` (`FROM node:24-alpine`, `CMD ["node",
-  "server.ts"]`), plus a service in `docker-compose.yml` publishing its port.
+  "server.ts"]`), plus a service in `docker-compose.yml` publishing its port. Tests listen on 127.0.0.1; run as
+  `node server.ts` it listens on `HOST`, default `0.0.0.0`, or the container's published port reaches nothing.
 
 ---
 
