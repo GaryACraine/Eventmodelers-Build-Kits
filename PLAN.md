@@ -90,9 +90,10 @@ model and build only what's ours.
            and no query uses `paddleEventId` or `subscriptionId` for these events except the to-do list, which the
            extension means to change. The same gap is in `trialWasRefused` and `refusedTrialWasCancelled`, and
            nothing takes a refused or cancelled notification off the list. Steps:
-           - [ ] the kit: ADR-048, and `plan-change`, `provider-paddle` and `build-state-change` updated;
-           - [ ] emcli: `element field set --id`; the hold-back ignores id flags on events a slice only reads;
-             `completeness` warns when an event feeds a read model without its key as an id;
+           - [x] the kit: ADR-048, and `plan-change`, `provider-paddle` and `build-state-change` updated (PR #180);
+           - [x] emcli: `element field set --id`; the hold-back ignores id flags on events a slice only reads;
+             `completeness` warns when an event feeds a read model without its key as an id (`6185a72`). Tried on a
+             copy of licensing: one warning, on "settled"; marking the ids holds back start trial only;
            - [ ] model: mark `paddleEventId` and `subscriptionId` as ids on the three events; replace start trial,
              refuse trial and record refused trial cancelled with same-name slices; re-plan "settled"; add chapter
              24's extension slices, modelled with Gary;
