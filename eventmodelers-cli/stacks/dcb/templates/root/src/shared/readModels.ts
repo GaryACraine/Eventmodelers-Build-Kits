@@ -415,23 +415,45 @@ export const CONSUMER_CONNECTIONS = 2
  */
 export const FALLBACK_POLL_MS = 1000
 
-/** Connections left for requests, setup and rebuilds, on top of the processors' own. */
+/**
+ * How many processors may read new events at once (ADR-047, dcb-event-store phase 21; Marten's
+ * `MaxConcurrentEventLoadsPerDatabase`). An append wakes every processor; they take turns at reading, which takes
+ * milliseconds.
+ */
+export const SUBSCRIPTION_READS = 4
+
+/**
+ * How many processors may handle an event at once (ADR-047, phase 21; Marten's `MaxConcurrentBatchWritesPerDatabase`).
+ * A slow handler holds its turn, so slow outside work runs on Temporal, not in the transaction (ADR-033).
+ */
+export const HANDLING_TURNS = 4
+
+/** Connections left for requests, setup and rebuilds, and for what a handler borrows inside its transaction. */
 export const POOL_HEADROOM = 10
 
 /**
- * The pool size for these registrations: the consumer's two, one per possible processor, plus headroom.
+ * The connections a consumer of `processors` processors can borrow at once: its two, and its turns at reading and at
+ * handling, of which a processor can use only one each. So it stops growing at 4 processors (ADR-047).
+ */
+export const consumerConnections = (processors: number): number =>
+    processors > 0
+        ? CONSUMER_CONNECTIONS + Math.min(SUBSCRIPTION_READS, processors) + Math.min(HANDLING_TURNS, processors)
+        : 0
+
+/**
+ * The pool size: the consumer's connections, and headroom, whatever the number of processors (ADR-047). Before the
+ * caps it grew with them. Without processors, only the headroom.
  *
- * A processor borrows a connection while it handles an event (its transaction), and an automation's work borrows
- * more inside it: a read of its to-do list, a command's append. So the pool leaves one per processor beyond the
- * consumer's two: with fewer, automations handling events at once could each hold one and wait for another, for
- * good. The pool's `max` is a ceiling, not what the database sees: idle connections close (pg's `idleTimeoutMillis`),
- * so an idle app holds the consumer's two. An upper bound: an automation whose to-do list is a read model here
- * shares that read model's processor.
+ * Nested work in a handler (an automation's read of its to-do list, a command's append) borrows from the headroom,
+ * not a turn, so it can't deadlock. The pool's `max` is a ceiling, not what the database sees: idle connections close
+ * (pg's `idleTimeoutMillis`), so an idle app holds the consumer's two.
  */
 export function poolSize(readModels: ReadModel<any, any>[], imperative: StoredProjectionRegistration[] = [], automations = 0): number {
-    const asyncCount =
-        readModels.filter(r => r.type === "database-projected").length + imperative.filter(r => r.type === "database-projected").length
-    return CONSUMER_CONNECTIONS + asyncCount + automations + POOL_HEADROOM
+    const processors =
+        readModels.filter(r => r.type === "database-projected").length +
+        imperative.filter(r => r.type === "database-projected").length +
+        automations
+    return consumerConnections(processors) + POOL_HEADROOM
 }
 
 /**
@@ -466,7 +488,7 @@ export async function startReadModels(
         )
     }
 
-    const eventStore = new PostgresEventStore({ pool, inlineProjections })
+    const eventStore = new PostgresEventStore({ pool, inlineProjections, maxConcurrentSubscriptionReads: SUBSCRIPTION_READS })
     await eventStore.ensureInstalled()
 
     const client = await pool.connect()
@@ -486,16 +508,17 @@ export async function startReadModels(
         [...asyncProjections.map(p => p.name), ...ownProcessors.map(p => p.processorName)],
         "_handler_bookmarks"
     )
-    // The consumer holds two for good, and each processor borrows one while it handles an event, an automation more
-    // inside it: with too small a pool, processors handling events at once could wait on each other forever
+    // The consumer holds two for good, and its processors take turns at reading and at handling (ADR-047). A handler
+    // borrows more inside its turn, so the pool needs at least one beyond them, or processors could wait forever
     const processorCount = asyncProjections.length + ownProcessors.length
-    const needed = CONSUMER_CONNECTIONS + processorCount + 1
+    const needed = consumerConnections(processorCount) + 1
     const max = (pool as Pool & { options?: { max?: number } }).options?.max
     if (processorCount > 0 && max !== undefined && max < needed) {
         throw new Error(
-            `The database pool (max ${max}) is too small for ${processorCount} processors: the consumer holds ` +
-                `${CONSUMER_CONNECTIONS}, and each processor borrows one while it handles an event, an automation more. ` +
-                `Size it with poolSize(readModels, imperative, automations.length).`
+            `The database pool (max ${max}) is too small for the processors: the consumer holds ` +
+                `${CONSUMER_CONNECTIONS}, they take ${SUBSCRIPTION_READS} turns at reading and ${HANDLING_TURNS} at ` +
+                `handling, and a handler borrows more inside its turn. Size it with poolSize(readModels, imperative, ` +
+                `automations.length).`
         )
     }
     await ensureProjectionsCurrent(pool, eventStore, asyncProjections, {
@@ -508,6 +531,7 @@ export async function startReadModels(
             ? createConsumer({
                   pool,
                   eventStore,
+                  maxConcurrentHandling: HANDLING_TURNS,
                   processors: [
                       ...asyncProjections.map(p => {
                           const processorOptions: ProjectionProcessorOptions = {

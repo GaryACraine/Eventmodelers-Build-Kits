@@ -2671,6 +2671,23 @@ proven in licensing. Kit issue #170.
 - **How Axon does it:** the same pattern. Its token store's token claims have an owner and a timestamp, and
   another node may claim a token once the claim times out. A lease row is the established way to own a processor.
   A session lock held for the processor's whole life (ours) is the less common one.
+- **What holding few connections doesn't fix** (found after step 1, researched for step 1b on Gary's questions):
+  - every append wakes every processor at once, and each *borrows* a connection to read, then one to handle;
+  - licensing's database still saw 13 connections for 11 processors.
+
+  How the three references treat it:
+  - **Emmett** reads once per consumer, from the earliest processor's position, and passes each batch to all its
+    processors at once (`consumers.ts`; one failure fails the batch). Our reading of why: one read instead of N, a
+    store-agnostic source with no `LISTEN`, and a batch per transaction. Its lockstep would undo the library's rule
+    (Phase 19, ADR-031) that a blocked processor holds up only itself.
+  - **Marten's async daemon** reads per projection, as we do. It caps the daemon at 4 concurrent event loads
+    (`MaxConcurrentEventLoadsPerDatabase`) and 4 concurrent batch writes (`MaxConcurrentBatchWritesPerDatabase`),
+    because an unbounded daemon "can drive the connection pool's high-water mark toward the total agent count even
+    though only a handful of loads or writes are ever active at the same instant".
+  - **Axon** reads once per processor (a coordinator hands its stream to the processor's segments), with thread pools
+    per processor, so it caps a processor, not the app. Ownership is token claims (a lease, 10 s), and it handles a
+    batch per transaction. On PostgreSQL without Axon Server, load grows with processors and segments; AxonIQ's answer
+    is Axon Server, a separate product.
 
 **Decision** (two steps, Gary 2026-10-06; the second only if the deployment needs it):
 
@@ -2695,9 +2712,19 @@ proven in licensing. Kit issue #170.
 3. **Connections per app:** one for the listener and one for each consumer's locks, whatever the number of
    processors. Requests come on top. The kit sizes the pool from this, not from the processors.
 
+*Step 1b, governors (Marten's caps; library Phase 21):*
+
+4. **A store's subscriptions take turns at reading:** `maxConcurrentSubscriptionReads`, default 4. `read()` (requests)
+   isn't capped.
+5. **A consumer's processors take turns at handling** an event's transaction or a checkpoint move:
+   `maxConcurrentHandling`, default 4.
+   - A blocked processor's retry wait holds no turn.
+   - Nested work in a handler borrows from the pool, not a turn, so a pool of 2 + the caps + 1 can't deadlock.
+   - A slow handler holds its turn, so slow outside work runs on Temporal (ADR-033), not in the transaction.
+
 *Step 2, only if the app must run behind a transaction-mode pooler:*
 
-4. **Lease rows and polling only** (Emmett's and Axon's pattern), so nothing holds a session:
+6. **Lease rows and polling only** (Emmett's and Axon's pattern), so nothing holds a session:
    - the bookmark row gains its owner and a lease expiry;
    - a processor claims the row under a transaction-scoped advisory lock;
    - every checkpoint renews the lease, and so does an idle processor, on a timer;
@@ -2759,11 +2786,26 @@ If it can't give direct connections, step 2 is done before release.
   - one connection holds all 11 locks, and one listens;
   - killing the lock connection: all 11 processors stopped ("lost its lock"), took their locks back on a new
     connection within about a second, the app stayed up, and the owner chain passed again.
-- **Not yet as low as hoped:** idle, the database still sees 13 connections, not 2. Each append's notification wakes
-  every processor at once, so their reads run together, each on a connection of its own, and the pool keeps them
-  warm. These connections are borrowed, not held, so they close when the app is quiet for 10 s, but under steady
-  traffic they grow with the processors.
-  - **The fix is in the library:** either bound how many `subscribe` reads run at once per store (small), or read
-    once per consumer and pass the events to its processors, as Emmett does (larger).
-  - **Gary to decide** before the host is chosen.
+- **Step 1b** (library Phase 21, PR #33; this kit's follow-up), after step 1 left 13 connections idle (each append
+  woke every processor's read at once):
+  - **Library, measured:** 30 processors handling a burst borrowed 42 connections at once uncapped, and 14 capped.
+  - **Kit:** `SUBSCRIPTION_READS` and `HANDLING_TURNS` (4 each) are passed to the store and the consumer.
+    `consumerConnections(n)` = 2 + min(4, n) + min(4, n), and `poolSize` adds 10 headroom: **20 for any app with 4 or
+    more processors.**
+  - **Licensing:**
+    - pool 20 (was 23, and 32 before step 1); 305 tests pass;
+    - the owner chain passed with at most 14 connections at once, its own requests included;
+    - idle, 6 connections: the 2 held and the 4 reading turns, which the 1 s fallback poll keeps warm. That's 13 before
+      the caps, and it no longer grows with processors;
+    - killing the lock connection restarted all 11 processors within about a second, and the chain passed again.
+- **Roadmap: Axon's model, part by part, each when its trigger arrives.** None conflicts with the caps.
+
+  | Axon's part | Adopt when |
+  |---|---|
+  | Lease ownership (token claims; step 2 above) | The host forces a transaction-mode pooler, or segments arrive |
+  | Segments (a processor's events split by a key, such as a DCB tag value, claimed by app instances) | A processor's lag keeps growing, or several app instances should share the work rather than stand by |
+  | A batch per transaction | Commits limit throughput (a large rebuild, say) |
+
+  Also kept for later: targeted wake-ups (the NOTIFY payload carries event types), and Emmett's one reader per
+  consumer if the N reads ever become the bottleneck.
 - **Hosting:** choosing the backend's host includes the deployment check above. It's an open point in PLAN Phase 16.

@@ -99,12 +99,11 @@ model and build only what's ours.
     - **emcli:**
       - `slice remove` doesn't warn when the slice is built;
       - a generated constant (`roleId: "owner"`) comes back in the 201 response. It's harmless.
-    - **The library:** background processors share two held connections per app, a listener and a lock holder
-      (ADR-047 step 1, library Phase 20, built and proven in licensing 2026-10-06). The pool is 2 + one per processor
-      + headroom (23 for licensing, was 32). **Open (Gary to decide):** each append still wakes every processor at once,
-      and their reads each take a connection, so under traffic the database sees about one per processor (13 idle in
-      licensing). The options are to bound concurrent reads per store, or read once per consumer (Emmett). Kit issue
-      #170 stays open for it.
+    - **The library's connections: done.** Background processors hold 2 connections per app (ADR-047 step 1,
+      library Phase 20) and take turns at reading and handling, 4 each (step 1b, Phase 21, Marten's caps). The pool
+      is 20 for any app with 4 or more processors (licensing: 32 → 23 → 20). Idle, licensing's database sees 6
+      connections (was 13). Kit issue #170 closed. Axon's leases, segments and batches are the roadmap for scaling
+      out, each with its trigger (ADR-047).
     - **ADR-046's open items:**
       - retyping a read model, adding queries and changing a screen still re-queue a built slice in place;
       - deleting a slice's code is done by hand, since the loop has no job for it;
