@@ -5,8 +5,9 @@ description: The rules for changing what's already modelled or built. Use before
 
 # Plan a change
 
-> **Draft** (PLAN 16.6): written from ADR-017, 018, 019, 039 and 046. It is proven once its first change has run
-> through the loop (licensing: "untranslated notifications settled").
+> **Draft** (PLAN 16.6): written from ADR-017, 018, 019, 039 and 046. Its first use was licensing's "assign organisation
+> owner", replaced before release because its command took `roleId` from the caller. That use added the same-name
+> replacement below. It is proven once that replacement has run through the loop.
 
 A model keeps changing after slices are built. These rules say what a change may do, given how far its slice has
 got. The why is in the kit's `ADR.md` (index at the end): this skill is the what. Model through the `event-model`
@@ -46,8 +47,18 @@ changed, so an edit to one never reaches the loop. Replace it instead.
 ### Before release (replace)
 - Delete the old slice with emcli. If its event is still needed, **move** it to the new slice
   (`emcli element move`), so its copies stay linked.
-- Remove the old slice's code by hand: its folder, and its lines in `src/index.ts`. The loop has no job for this
-  yet.
+- **Replacing a slice with one of the same name** (the usual case when only its definition changes):
+  - add the new slice under a temporary name;
+  - move the command and the event into it (`emcli element move`), so their links and copies stay;
+  - remove the old slice, then rename the new one to the old name.
+
+  The new slice is built into the **same folder**, over the old code. Leave that code in place: other slices may
+  import it (an automation imports the decider of the command it issues), and deleting it first breaks the build.
+  emcli doesn't warn when you remove a built slice, so check `.build-kit/.slices` yourself.
+- **Replacing it with a slice of another name:** remove the old slice's code by hand, its folder and its lines in
+  `src/index.ts`, once nothing imports it (`grep -rl "<folder>/" src`). The loop has no job for this yet.
+- **A full push** (`emcli sync push`, which deletes) recreates on the board an element moved out of a deleted slice,
+  since the board deletes a slice's elements with it. Show the user the diff first.
 - Reset the local database, since its events were only ever development data.
 - `Events.ts` only grows in slice commits (the `events-append-only` check). A deliberate pre-release change to an
   event is its own commit, made outside the loop, and it says why.
@@ -65,6 +76,8 @@ changed, so an edit to one never reaches the loop. Replace it instead.
 - **Own command or not** is a judgement for each case. Two slices that `produce` the same event from one command
   is the sign to look (emcli `completeness` warns about it). Give one its own command, or keep the rules in one
   slice.
+- **A value the command always sets** (the owner command records the owner role) is a **generated** field mapped
+  `derived:"<value>"`. Otherwise the contract puts it in the request body, and a caller could send another value.
 - **A read-model test depends on events, not on other slices.** Its *given* goes in with `app.given(...)`
   (`build-state-view` Step 6), never through another slice's route.
 - **What the change touches:** every slice that produces or reads the same event, and every automation that
