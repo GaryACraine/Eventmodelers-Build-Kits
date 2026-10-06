@@ -606,8 +606,8 @@ model and build only what's ours.
   - *2026-10-06, two kit gaps from the same run:*
     - **A read model and its extension in one export:** the contract had the extension's field, so the origin
       couldn't match it (licensing settings). Now an unbuilt extension's fields are pending (PR #163).
-    - **A rebuild that renames a command** (ADR-046) must update its callers in other slices, which `slice-scope`
-      refused. Now allowed by the rename only, in name or route form (PRs #162, #164).
+    - **A rebuild that renames a command** had to update its callers in other slices, which `slice-scope` refused.
+      Allowed for a while (#162, #164), then reverted: a built slice is replaced, not amended (ADR-046 rewritten).
 - [ ] **16.7 Domain-bleed review** (from 15.5) of `build-state-change`, `build-state-view` and `build-screen`.
 - [ ] **16.8 Voice modelling** (15.7, fulfilling 13.6), **deferred until the model is established** (Gary): a
   spoken-style transcript of the established model, replayed through `event-model` in a fresh project, and the
@@ -3876,7 +3876,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-05 | A webhook's event is an external event with a slice of its own: the endpoint that records it (ADR-045, Proposed) | Gary: an external event is read into a read model and translated by a processor, with no command of ours; the hand-off couldn't plan an event-only slice, so nothing built the endpoint |
 | 2026-10-05 | One Paddle Translation, built from chapter 1's card with every case; other chapters show the cases they add and are never planned | Every notification lands on one list and needs one decision; chapters 1 and 24 receive the same notification type, so splitting would make two automations judge the same item |
 | 2026-10-05 | The auth role sync slices stay draft in increment 1 | The sign-in provider (Cognito or Supabase) isn't chosen, so there's nothing to build them against |
-| 2026-10-06 | One command per state-change slice: a specialised case gets its own command, a generic one may repeat its rules (ADR-046, Proposed) | Gary: slice independence over reuse. Licensing's `assignRole` in two slices meant two deciders on one route (the loop blocked); now `assignOwnerRole` and `assignRole`. emcli's `completeness` warns on a shared command; a built slice changes through the existing rebuild re-queue |
+| 2026-10-06 | Changing a slice: replace it before release, supersede it after (ADR-046 rewritten, Proposed; ADR-018 clarified) | Gary rejected the first ADR-046 (a general command-rename rule; a built slice amended in place, which rippled into other slices and blocked the loop twice). Released = deployed: events then follow ADR-017/018 (a new version for every change), endpoints are deprecated, automations switched over. Before release a slice and its unused event may be deleted. Enforced by `events-append-only` and emcli's removal guards; the rename exception (#162, #164) reverted |
 
 ## Progress
 
