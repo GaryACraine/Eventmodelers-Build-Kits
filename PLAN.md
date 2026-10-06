@@ -73,16 +73,22 @@ model and build only what's ours.
       - the `plan-change` skill;
       - `app.given` for read-model tests;
       - the `events-append-only` and `job-scope` checks;
-      - the database pool sized from the processors;
+      - background processors' connections (ADR-047, library Phases 20 and 21): 2 held per app, and turns at reading
+        and handling (4 each), so the pool is 20 for any app with 4 or more processors (licensing was 32);
       - emcli's push recovery, fingerprint v3 and `inModel` export.
+    - **Decided:** ADR-046 and ADR-047 Accepted (Gary, 2026-10-06). No ADR waits on Gary.
   - **Next, in order:**
-    1. **Gary: accept ADR-046,** and the ADR-018 line on every change to a released event being a new version.
-       Both are Proposed.
-    2. **The three blocked slices,** each planned with `plan-change` (they're its first real tests):
-       - **untranslated notifications settled** (an extension of the inbox's to-do list): `trialWasStarted` is
-         tagged only by organisation, but the to-do list is keyed by Paddle's event id. So the fix is a change to an
-         event that the built "start trial" produces. It isn't released, but other slices use it, so it's planned
-         as expand, switch, contract.
+    1. **The three blocked slices,** each planned with `plan-change` (they're its first real tests). **Now:**
+       - **untranslated notifications settled** (an extension of the inbox's to-do list, Untranslated Notifications,
+         keyed by `paddleEventId`).
+         - **The block:** `trialWasStarted` is tagged only by `organisationId`, so the extension can't find the
+           notification to drop. Its loop job wanted to tag the event with `paddleEventId` (in `Events.ts`, and in
+           `starttrial/route.integration.tests.ts`), which `extension-additive` refused.
+         - **The status:** "start trial" (which produces the event) is built, not released. So is everything else
+           that holds the event.
+         - **To plan with `plan-change`:** list every slice that produces or reads `trialWasStarted`, and every
+           slice that imports start trial's code. Then decide whether adding a tag changes what those users depend
+           on (expand, switch, contract) or only start trial's own decider (a same-name replacement).
        - **cancel the refused trial at paddle** (chapter 24): the description calls a refusal from Paddle a stall,
          but the model has no stall command or event. Add them (for example `markTrialCancellationStalled` →
          `trialCancellationWasStalled`, shown on Refused Trials At Paddle), built first. The slice also brings the
@@ -90,9 +96,9 @@ model and build only what's ours.
        - **watch for the trial after checkout** (chapter 1): it fetches Paddle's events "after our checkpoint",
          which is chapter 21's Paddle Sync, still draft. Plan chapter 21 first: the checkpoint's event, its command
          and a read of the latest one.
-    3. **16.3a: chapter 1 end to end through the UI,** first with the mock, then in the sandbox. It needs a stand-in
+    2. **16.3a: chapter 1 end to end through the UI,** first with the mock, then in the sandbox. It needs a stand-in
        for Sign Up until the sign-in provider is chosen.
-    4. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
+    3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
        `plan-change` and `job-scope` count as proven once a change with users goes through expand, switch,
        contract in the loop.
   - **Open points from the work so far** (for Gary to prioritise):
