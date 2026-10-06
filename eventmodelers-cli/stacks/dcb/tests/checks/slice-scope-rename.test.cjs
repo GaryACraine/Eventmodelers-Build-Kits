@@ -57,6 +57,15 @@ test('a renaming rebuild may update a caller by the rename only', () => {
   assert.deepStrictEqual(run(root), []);
 });
 
+test("a caller's test may follow the route's rename too", () => {
+  const root = repo();
+  write(root, `${CALLER}/processor.ts`, renamed + '        .post("/assign-role")\n');
+  execSync('git add -A && git commit -q -m tests', { cwd: root, stdio: 'pipe' });
+  write(root, `${OWN}/decider.ts`, 'export const assignOwnerRoleDecider = {}\n// rebuilt\n');
+  write(root, `${CALLER}/processor.ts`, renamed + '        .post("/assign-owner-role")\n');
+  assert.deepStrictEqual(run(root), []);
+});
+
 test('anything else in the caller is still refused', () => {
   const root = repo();
   write(root, `${CALLER}/processor.ts`, renamed.replace('item.organisationId', 'item.other'));
