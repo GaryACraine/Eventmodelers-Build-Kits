@@ -7,7 +7,7 @@ import {
     type Projection,
     type ProjectionProcessorOptions
 } from "@dcb-es/event-store-postgres"
-import { readLive, tagValues, type ReadModel, type ReadModelDoc, type StartReadModelsOptions } from "./readModels.js"
+import { FALLBACK_POLL_MS, readLive, tagValues, type ReadModel, type ReadModelDoc, type StartReadModelsOptions } from "./readModels.js"
 import { findExistingPosition, idempotencyKeyFor } from "./idempotency.js"
 import { alert as defaultAlert, type Alert } from "./alerts.js"
 
@@ -350,6 +350,10 @@ export function automationProcessors(
             return automation ? automationProcessor(automation, { ...deps, eventStore }, { ...projectionOptions, ...options }) : undefined
         },
         processors: eventStore =>
-            listsOfOne.map(a => listOfOneProcessor(a, { ...deps, eventStore }, { batchSize: 100, startFrom: "BEGINNING", ...options }))
+            listsOfOne.map(a => listOfOneProcessor(
+                    a,
+                    { ...deps, eventStore },
+                    { batchSize: 100, startFrom: "BEGINNING", pollIntervalMs: FALLBACK_POLL_MS, ...options }
+                ))
     }
 }

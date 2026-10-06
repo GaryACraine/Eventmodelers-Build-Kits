@@ -379,9 +379,10 @@ export interface ReadModelRuntime {
  * answers as 504.
  */
 const waitForProjection =
-    (pool: Pool, projectionName: string): WaitFunction =>
+    (pool: Pool, eventStore: PostgresEventStore, projectionName: string): WaitFunction =>
     (position: SequencePosition, timeoutMs: number) =>
-        waitUntilProcessed(pool, projectionName, position, { timeoutMs })
+        // A slow wait shares the store's one LISTEN connection rather than opening its own (ADR-047)
+        waitUntilProcessed(pool, projectionName, position, { timeoutMs, listener: eventStore.notificationListener })
 
 export interface StartReadModelsOptions {
     /**
@@ -401,22 +402,36 @@ export interface StartReadModelsOptions {
 }
 
 /**
- * Every processor on the consumer (an async read model, or an automation's own processor) holds two pool
- * connections for as long as it runs: its lock (`pg_try_advisory_lock`) and its LISTEN wakeup.
+ * The connections the consumer holds for as long as it runs, whatever its number of processors (ADR-047,
+ * dcb-event-store phase 20): the event store's one LISTEN, and the one session holding every processor's lock.
  */
-export const CONNECTIONS_PER_PROCESSOR = 2
+export const CONSUMER_CONNECTIONS = 2
+
+/**
+ * How often a processor looks for new events when nothing has woken it. The event store's LISTEN wakes it at once
+ * on every append, and wakes every processor when its connection is lost or back (ADR-047), so this is only a
+ * safety net. Slow enough that idle processors don't keep pool connections open: at the library's default of
+ * 100 ms, licensing's 11 processors made about 220 queries a second doing nothing, and kept 11 connections open.
+ */
+export const FALLBACK_POLL_MS = 1000
 
 /** Connections left for requests, setup and rebuilds, on top of the processors' own. */
 export const POOL_HEADROOM = 10
 
 /**
- * The pool size for these registrations: two connections per possible processor, plus headroom. An upper bound: an
- * automation whose to-do list is a read model here shares that read model's processor.
+ * The pool size for these registrations: the consumer's two, one per possible processor, plus headroom.
+ *
+ * A processor borrows a connection while it handles an event (its transaction), and an automation's work borrows
+ * more inside it: a read of its to-do list, a command's append. So the pool leaves one per processor beyond the
+ * consumer's two: with fewer, automations handling events at once could each hold one and wait for another, for
+ * good. The pool's `max` is a ceiling, not what the database sees: idle connections close (pg's `idleTimeoutMillis`),
+ * so an idle app holds the consumer's two. An upper bound: an automation whose to-do list is a read model here
+ * shares that read model's processor.
  */
 export function poolSize(readModels: ReadModel<any, any>[], imperative: StoredProjectionRegistration[] = [], automations = 0): number {
     const asyncCount =
         readModels.filter(r => r.type === "database-projected").length + imperative.filter(r => r.type === "database-projected").length
-    return (asyncCount + automations) * CONNECTIONS_PER_PROCESSOR + POOL_HEADROOM
+    return CONSUMER_CONNECTIONS + asyncCount + automations + POOL_HEADROOM
 }
 
 /**
@@ -471,14 +486,16 @@ export async function startReadModels(
         [...asyncProjections.map(p => p.name), ...ownProcessors.map(p => p.processorName)],
         "_handler_bookmarks"
     )
-    // Each processor holds its connections for good: with too small a pool the app waits forever for one at startup
+    // The consumer holds two for good, and each processor borrows one while it handles an event, an automation more
+    // inside it: with too small a pool, processors handling events at once could wait on each other forever
     const processorCount = asyncProjections.length + ownProcessors.length
-    const needed = processorCount * CONNECTIONS_PER_PROCESSOR + 1
+    const needed = CONSUMER_CONNECTIONS + processorCount + 1
     const max = (pool as Pool & { options?: { max?: number } }).options?.max
-    if (max !== undefined && max < needed) {
+    if (processorCount > 0 && max !== undefined && max < needed) {
         throw new Error(
-            `The database pool (max ${max}) is too small for ${processorCount} processors, which hold ` +
-                `${CONNECTIONS_PER_PROCESSOR} connections each. Size it with poolSize(readModels, imperative, automations.length).`
+            `The database pool (max ${max}) is too small for ${processorCount} processors: the consumer holds ` +
+                `${CONSUMER_CONNECTIONS}, and each processor borrows one while it handles an event, an automation more. ` +
+                `Size it with poolSize(readModels, imperative, automations.length).`
         )
     }
     await ensureProjectionsCurrent(pool, eventStore, asyncProjections, {
@@ -493,7 +510,11 @@ export async function startReadModels(
                   eventStore,
                   processors: [
                       ...asyncProjections.map(p => {
-                          const processorOptions: ProjectionProcessorOptions = { batchSize: 100, startFrom: "BEGINNING" }
+                          const processorOptions: ProjectionProcessorOptions = {
+                              batchSize: 100,
+                              startFrom: "BEGINNING",
+                              pollIntervalMs: FALLBACK_POLL_MS
+                          }
                           return options.processorFor?.(p, eventStore, processorOptions) ?? projectionToProcessor(p, processorOptions)
                       }),
                       ...ownProcessors
@@ -546,14 +567,14 @@ export async function startReadModels(
         waitFn: requested => {
             const readModel = resolve(requested)
             return readModel.type === "database-projected"
-                ? waitForProjection(pool, readModel.projection.name)
+                ? waitForProjection(pool, eventStore, readModel.projection.name)
                 : undefined
         },
         waitFor: projectionName => {
             const known =
                 asyncProjections.some(p => p.name === projectionName) || ownProcessors.some(p => p.processorName === projectionName)
             if (!known) throw new Error(`waitFor("${projectionName}"): no async projection or processor of that name is registered`)
-            return waitForProjection(pool, projectionName)
+            return waitForProjection(pool, eventStore, projectionName)
         },
         stop: async () => {
             await consumer?.stop()

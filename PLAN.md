@@ -99,8 +99,12 @@ model and build only what's ours.
     - **emcli:**
       - `slice remove` doesn't warn when the slice is built;
       - a generated constant (`roleId: "owner"`) comes back in the 201 response. It's harmless.
-    - **The library:** background processors share two connections per app, a listener and a lock holder (ADR-047
-      Proposed, step 1; library Phase 20, planned; kit issue #170). Until then the pool is sized from the processors.
+    - **The library:** background processors share two held connections per app, a listener and a lock holder
+      (ADR-047 step 1, library Phase 20, built and proven in licensing 2026-10-06). The pool is 2 + one per processor
+      + headroom (23 for licensing, was 32). **Open (Gary to decide):** each append still wakes every processor at once,
+      and their reads each take a connection, so under traffic the database sees about one per processor (13 idle in
+      licensing). The options are to bound concurrent reads per store, or read once per consumer (Emmett). Kit issue
+      #170 stays open for it.
     - **ADR-046's open items:**
       - retyping a read model, adding queries and changing a screen still re-queue a built slice in place;
       - deleting a slice's code is done by hand, since the loop has no job for it;

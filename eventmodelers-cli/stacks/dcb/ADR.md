@@ -2735,19 +2735,35 @@ If it can't give direct connections, step 2 is done before release.
   the answer; kept until Phase 20 lands.
 
 **Consequences:**
-- **Library:** Phase 20, with these tests:
-  - a hundred subscribers on one listener connection;
-  - a lost listener (`pg_terminate_backend`): polling carries on, then it reconnects;
-  - a lost lock connection: its processors stop and restart, and no event is handled twice;
-  - two app instances: the second takes over when the first's lock connection goes.
+- **Library:** Phase 20 (dcb-event-store PR #32, merged 2026-10-06).
+  - **Tests:** 100 subscribers on one listener connection; a lost listener (polling carries on, then it
+    reconnects); a lost lock connection (its processors stop and restart, and no event is handled twice); two
+    instances (the second takes over when the first's lock connection goes).
+  - **Building it found two faults on `main`:**
+    - a terminated lock connection was an uncaught exception, which ends the app, and the processor ran on unowned;
+    - `subscribe` held its read's connection and an open transaction while each event was handled, so processors
+      catching up at once could deadlock a small pool.
 
-  The locking doc's §8.8 is updated.
-- **Kit:**
-  - `poolSize` drops `CONNECTIONS_PER_PROCESSOR`: 2 per app plus headroom;
-  - `startReadModels`' check counts consumers, not processors;
-  - a kit update into licensing.
-- **Proven in licensing:**
-  - the app starts on a pool of 10 with its 11 processors;
-  - the owner chain passes;
-  - killing the lock connection restarts the processors without handling an event twice.
+    `subscribe` now reads a page and gives the connection back before yielding it.
+- **Kit (PR after #175):**
+  - `poolSize` is `CONSUMER_CONNECTIONS` (2) + one per processor + headroom. It's not a flat 2 plus headroom: a
+    processor borrows a connection while it handles an event, and an automation's work borrows more inside it (a
+    read of its to-do list, a command's append). So a pool smaller than the processors could still leave automations
+    waiting on each other for good. `startReadModels` refuses a pool below 2 + processors + 1.
+  - Read-your-writes waits share the store's listener (`waitUntilProcessed`'s `listener`).
+  - **The fallback poll is 1 s** (`FALLBACK_POLL_MS`), not the library's 100 ms: the listener wakes processors on
+    every append, and on its own loss and return.
+- **Proven in licensing (2026-10-06):**
+  - pool 23 (was 32);
+  - all 305 tests and the owner chain (9/9) pass;
+  - one connection holds all 11 locks, and one listens;
+  - killing the lock connection: all 11 processors stopped ("lost its lock"), took their locks back on a new
+    connection within about a second, the app stayed up, and the owner chain passed again.
+- **Not yet as low as hoped:** idle, the database still sees 13 connections, not 2. Each append's notification wakes
+  every processor at once, so their reads run together, each on a connection of its own, and the pool keeps them
+  warm. These connections are borrowed, not held, so they close when the app is quiet for 10 s, but under steady
+  traffic they grow with the processors.
+  - **The fix is in the library:** either bound how many `subscribe` reads run at once per store (small), or read
+    once per consumer and pass the events to its processors, as Emmett does (larger).
+  - **Gary to decide** before the host is chosen.
 - **Hosting:** choosing the backend's host includes the deployment check above. It's an open point in PLAN Phase 16.
