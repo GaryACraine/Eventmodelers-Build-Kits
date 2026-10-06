@@ -617,6 +617,14 @@ model and build only what's ours.
     installed in every project, since the ADRs aren't. It loads by its description, from `event-model`'s
     "decide the change" step, from `.build-kit/CLAUDE.md`, from emcli's guard messages, or by `/plan-change`.
     - [ ] Proven on "untranslated notifications settled" (an event change).
+  - *2026-10-06, the replacement's board push failed half way, and two emcli fixes followed:*
+    - **On the board, deleting a slice deletes its elements,** so `userWasAssignedToRole`, moving out of the
+      deleted slice, was gone before the move. Recovered by correcting the baseline to the board's state, then
+      creating the event. **Fix:** a push now creates such an element again, rather than moving it
+      (`recreatedOnDelete`).
+    - **The recreated event's new id held back three built slices** that hold copies of it, though nothing they
+      build had changed. **Fix:** the built-slice fingerprint ignores `linkedTo` (v3). The export preview then queues
+      only the two new slices.
 - [ ] **16.7 Domain-bleed review** (from 15.5) of `build-state-change`, `build-state-view` and `build-screen`.
 - [ ] **16.8 Voice modelling** (15.7, fulfilling 13.6), **deferred until the model is established** (Gary): a
   spoken-style transcript of the established model, replayed through `event-model` in a fresh project, and the
