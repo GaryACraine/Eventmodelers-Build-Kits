@@ -94,11 +94,15 @@ model and build only what's ours.
            - [x] emcli: `element field set --id`; the hold-back ignores id flags on events a slice only reads;
              `completeness` warns when an event feeds a read model without its key as an id (`6185a72`). Tried on a
              copy of licensing: one warning, on "settled"; marking the ids holds back start trial only;
-           - [ ] model: mark `paddleEventId` and `subscriptionId` as ids on the three events; replace start trial,
-             refuse trial and record refused trial cancelled with same-name slices; re-plan "settled"; add chapter
-             24's extension slices, modelled with Gary;
-           - [ ] licensing: one commit to `Events.ts`'s three tag lines (outside the loop); reset the local
-             database; export (Gary's go-ahead). The producers' tag tests fail until their replacements build.
+           - [x] model (licensing `d806438`): the ids marked on the three events; start trial, refuse trial and
+             record refused trial cancelled replaced with same-name slices (emcli's new `spec move` carries their
+             scenarios); "settled" planned again; chapter 24's "seatless trial settled" and "cancellation
+             notification settled" added (Gary approved the names). Rehearsed on a copy first: the export queues
+             those six and holds nothing back;
+           - [x] licensing `2dc153f`: the three tag lines in `Events.ts`, outside the loop. As predicted, only the
+             producers' three tag tests fail (302 pass, including every reader). Local database reset;
+           - [ ] the kit update into licensing, a board push (deletes the three old slices: diff to Gary first) and
+             the export (Gary's go-ahead).
        - **cancel the refused trial at paddle** (chapter 24): the description calls a refusal from Paddle a stall,
          but the model has no stall command or event. Add them (for example `markTrialCancellationStalled` →
          `trialCancellationWasStalled`, shown on Refused Trials At Paddle), built first. The slice also brings the
