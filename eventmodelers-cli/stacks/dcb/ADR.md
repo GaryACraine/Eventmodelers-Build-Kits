@@ -2901,5 +2901,11 @@ its downstream impact on projections and deciders.
   - skip paddle notification's "has outcome", which asks only for `paddleNotificationSkipped`.
 
   So the additions are compatible.
+- **Proven in licensing (2026-10-06):**
+  - the loop built all six slices with no blocks ($1.67);
+  - each producer's same-name rebuild changed only its tag test;
+  - 317 tests pass;
+  - `e2e/paddle/settled-chain.sh` passes 14 of 14 against the running app: each outcome is recorded with both
+    tags and leaves the to-do list, and a notification with no translation stays on it.
 - **Open:** tags built before this rule without an id in the model (`organisationWasActivated`'s `userId`,
   `paddleNotificationReceived`'s `subscriptionId`) are declared in the model when their slices are next replaced.
