@@ -2611,3 +2611,21 @@ both.
   - "assign organisation owner" (`assignOwnerRole`, `POST /assign-owner-role`) and "owner on activation" replace
     them;
   - `userWasAssignedToRole` lives on, produced by both role commands.
+- **A change other slices use goes expand, switch, contract** (added 2026-10-06, after the second replacement):
+  - **What happened:** "assign organisation owner" was replaced again, keeping its command's name
+    (`assignOwnerRole`) but dropping `roleId` from its fields. "Owner on activation" issues that command through
+    its type, so it no longer compiled, and the loop edited it in a commit of its own (licensing `1fc4905`).
+    `slice-scope` checks one commit at a time, so it passed.
+  - **The rule:** when a change alters something other slices use (a command's fields or name, an event's type):
+    1. **Expand:** add the new slice under a new name. The old one stays.
+    2. **Switch:** replace each user with a slice that uses the new one.
+    3. **Contract:** delete the old slice once nothing imports it (before release), or deprecate it (after).
+
+    Every step builds on its own, and no built slice is edited.
+  - **Rejected: follow-on fixes made by hand** (a compile-only edit to the user, recorded). They were proposed
+    and approved first, then withdrawn on review: a hand edit still amends a built slice, and the loop would have
+    to stop half-way through the job.
+  - **Enforced by `job-scope`:** while the loop has a job InProgress, no other slice's folder changes, in a commit
+    or left in the working tree (`tsc-build` checks the whole tree). An extension's origin is the exception. A
+    blocked job stashes its uncommitted work, so the next job starts clean.
+  - `1fc4905` stays as the one exception, since a proper replay produces the same line.

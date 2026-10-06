@@ -7,7 +7,8 @@ description: The rules for changing what's already modelled or built. Use before
 
 > **Draft** (PLAN 16.6): written from ADR-017, 018, 019, 039 and 046. Its first use was licensing's "assign organisation
 > owner", replaced before release because its command took `roleId` from the caller. That use added the same-name
-> replacement below. It is proven once that replacement has run through the loop.
+> replacement below, and "A change other slices use" (expand, switch, contract) after the replacement broke a slice
+> that issues the command. It is proven once a change with users has gone through all three steps in the loop.
 
 A model keeps changing after slices are built. These rules say what a change may do, given how far its slice has
 got. The why is in the kit's `ADR.md` (index at the end): this skill is the what. Model through the `event-model`
@@ -44,10 +45,32 @@ produces or reads the same event**. An event is released once any slice holding 
 **A built slice is never amended in place** (ADR-046). emcli's export holds back a built slice whose model
 changed, so an edit to one never reaches the loop. Replace it instead.
 
+### A change other slices use (expand, switch, contract)
+First find what else uses the thing you're changing: `grep -rl "slices/<folder>/" src/contexts`. Typically that's
+an automation importing the command it issues, or a slice importing an event's type.
+
+- **If nothing else uses it,** or the change leaves what they use as it was (only a rule changes, say), replace the
+  slice as below.
+- **If the change alters what they use** (a command's fields or name), a replacement in place breaks them. The loop
+  may not edit them (`job-scope`), so it blocks. Instead:
+  1. **Expand:** add the new slice with a **new name** for its command (and so its endpoint). The old one stays,
+     so its users still build.
+  2. **Switch:** replace each user with a slice that uses the new command (the same-name replacement below, for
+     that slice).
+  3. **Contract:** once nothing imports the old slice, delete it (before release), or deprecate it (after).
+
+  Every step builds on its own, and no built slice is edited.
+
+*Example:* "assign organisation owner" dropped `roleId` from `assignOwnerRole` but kept the name. "Owner on
+activation" issues that command, so it broke, and the loop edited it (licensing `1fc4905`, the one exception kept).
+The plan should have been: add `assignOrganisationOwner`, replace "owner on activation" to issue it, then delete the
+old slice.
+
 ### Before release (replace)
 - Delete the old slice with emcli. If its event is still needed, **move** it to the new slice
   (`emcli element move`), so its copies stay linked.
-- **Replacing a slice with one of the same name** (the usual case when only its definition changes):
+- **Replacing a slice with one of the same name** (the usual case when only its definition changes, and nothing
+  else uses what changes: see above):
   - add the new slice under a temporary name;
   - move the command and the event into it (`emcli element move`), so their links and copies stay;
   - remove the old slice, then rename the new one to the old name.
@@ -94,6 +117,7 @@ Plan around what will refuse you, not into it:
 | emcli `completeness` | One command producing an event in two slices (a warning) |
 | `events-append-only` check | A slice commit that removes or changes a line in `Events.ts` |
 | `slice-scope` check | A slice commit touching another slice's folder (an extension slice may touch its origin) |
+| `job-scope` check | The loop's job changing any slice but its own (or an extension's origin), committed or not: it blocks instead |
 | `api-contract` check | The code's API not matching `api/openapi.json` |
 
 ## 5. When the table doesn't cover it
