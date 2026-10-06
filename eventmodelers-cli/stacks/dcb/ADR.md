@@ -2540,3 +2540,49 @@ Built in emcli and the kit; not yet built by the loop.
 - In the licensing model, chapter 1's `paddleNotificationReceived` is marked `--external Paddle`, and chapters 20
   and 24 show copies of it.
 
+
+### ADR-046: One command per state-change slice: slice independence over reuse
+
+**Status:** **Proposed, 2026-10-06.** From Gary's direction (2026-10-06), after the loop blocked "assign owner admin
+role" in licensing.
+**Date:** 2026-10-06
+
+**Context:**
+- **Chapter 1 used one command in two state-change slices.** "assign owner role" (on activation) and "assign owner
+  admin role" (on the trial) both issued `assignRole`, the second as a copy of the first.
+- **The kit builds one decider and one route per state-change slice.** The second slice would have been a second
+  decider on `POST /assign-role`, so the loop stopped.
+- **The first slice's rule was written as if it were the command's only rule.** "rejects a second owner" named no
+  role, so the decider built from it refused every assignment once anyone held a role, and the admin role could
+  never be given.
+- **Read models already grow across slices** (ADR-019): a later slice extends the origin's projection, additively.
+  Nothing like that exists for a command.
+
+**Decision:**
+1. **A slice with its own rules has its own command.** A specialised case is its own command (`assignOwnerRole`,
+   `POST /assign-owner-role`) with its own specifications.
+2. **A generic command may repeat a specialised one's rules.** `assignRole` is the superset: it gives any role,
+   refuses one already held, and refuses a second owner, the same rule `assignOwnerRole` has. Vertical slices accept
+   that duplication in exchange for independence: each slice is built, tested and changed alone.
+3. **The duplication is safe in a DCB store:** both deciders decide on the same events (`userWasAssignedToRole`,
+   tagged by organisation), so an invariant like "one owner" holds whichever command records the fact.
+4. **A rule names exactly what it's about.** A spec's given and when carry the fields the rule turns on (here
+   `roleId owner`), so it can't be built broader than meant.
+5. **emcli guards it:** `completeness` warns when one command is the state change of two slices, and the
+   `event-model` skill gives each such slice its own command. Changing a built slice uses the existing rebuild
+   re-queue (a Done slice whose definition changed is planned again with `rebuild`; the loop updates its files in
+   place).
+
+**Alternatives considered:**
+- **One command with every rule in one slice,** the automations both issuing it. One decider, no duplication, but
+  the admin rule would live in the owner's slice, away from the step of the story it belongs to, and every new case
+  would change a built slice.
+- **A later slice extends the command's decider,** as ADR-019 does for read models: each slice adds its rules to one
+  shared decider. Slices become coupled through it; a change to one case edits code other slices depend on, and
+  rules that narrow an earlier one aren't additive, so the additive check couldn't hold it.
+
+**Consequences:**
+- Some logic is written twice (here, the one-owner rule); each copy has its own tests, from its own slice's specs.
+- emcli: the `completeness` warning and the skill's rule, with tests.
+- In licensing: "assign owner role" issues `assignOwnerRole` (rebuilt), and "assign owner admin role" has its own
+  `assignRole` with the generic rules.
