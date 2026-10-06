@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import {
-  appendMetrics, describeSettings, jobSettings, metricsLine, metricsPath, resetTime, settingsArgs, usageLimit, usageLimitWaitMs,
+  appendMetrics, describeSettings, jobSettings, metricsLine, metricsPath, resetTime, settingsArgs, unpinnedWarning, usageLimit, usageLimitWaitMs,
 } from './runner.js';
 
 test("a project pins its jobs' model, effort and budget; a concern's own setting wins over the default", () => {
@@ -26,6 +26,16 @@ test("nothing set: no arguments, so the job inherits the developer's own setting
   assert.deepEqual(settingsArgs(settings), []);
   assert.match(describeSettings(settings), /model inherited from ~\/\.claude\/settings\.json, effort inherited/);
   assert.equal(describeSettings({ model: 'sonnet', effort: 'medium', maxBudgetUsd: 2 }), 'sonnet, effort medium, up to $2 a job');
+});
+
+test('a concern with no model pinned is warned about at startup, with the line to add; none when both are pinned', () => {
+  const warning = unpinnedWarning({ agentIds: { BUILD: 'x' } }, {});
+  assert.match(warning, /No model pinned for backend and ui jobs/);
+  assert.match(warning, /"models": \{ "backend": "sonnet", "ui": "sonnet" \}/);
+  assert.match(unpinnedWarning({ models: { backend: 'sonnet' } }, {}), /No model pinned for ui jobs/);
+  assert.equal(unpinnedWarning({ models: { backend: 'sonnet', ui: 'sonnet' } }, {}), null);
+  assert.equal(unpinnedWarning({ model: 'sonnet' }, {}), null);
+  assert.equal(unpinnedWarning({}, { RALPH_MODEL: 'sonnet' }), null);
 });
 
 test('an unknown effort or a budget that is not a positive number is refused', () => {

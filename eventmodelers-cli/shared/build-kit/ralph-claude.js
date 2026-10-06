@@ -3,7 +3,7 @@
 // Usage: node ralph-claude.js [project_dir]
 
 import { startRalph, loadLocalConfig } from './lib/ralph.js';
-import { describeSettings, jobSettings, settingsArgs, usageLimit } from './lib/runner.js';
+import { describeSettings, jobSettings, settingsArgs, unpinnedWarning, usageLimit } from './lib/runner.js';
 import { spawn } from 'child_process';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
@@ -31,6 +31,8 @@ const claudeArgs = ['--dangerously-skip-permissions', '--output-format', 'stream
 // `"models": { "backend": "sonnet", "ui": "sonnet" }, "effort": "medium", "maxBudgetUsd": 2` (lib/runner.js).
 // Unset, a job inherits the developer's own ~/.claude/settings.json.
 for (const concern of ['backend', 'ui']) console.log(`         ${concern} jobs: ${describeSettings(jobSettings(cfg, concern))}`);
+const unpinned = unpinnedWarning(cfg);
+if (unpinned) console.log(`\n${unpinned}\n`);
 const claudeEnv = {
   ...process.env,
   ...(cfg.anthropicBaseUrl ? { ANTHROPIC_BASE_URL: cfg.anthropicBaseUrl } : {}),

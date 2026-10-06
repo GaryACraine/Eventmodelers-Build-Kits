@@ -599,6 +599,10 @@ model and build only what's ours.
   - distilling `build-automation` for Sonnet;
   - trimming what each turn carries;
   - defaults per concern and per kind of slice.
+  - *2026-10-06, licensing's first run:* the project had no model pin, so the first 21 jobs ran on Opus from
+    `~/.claude/settings.json` ($17.15). Pinned (Sonnet, medium, $2 a job) and restarted: the next 25 jobs cost
+    $8.14, 21 done and 4 blocked on the model, not on Sonnet. **Fix in the kit:** the loop now warns at startup
+    when a concern's model isn't pinned, with the line to add (`unpinnedWarning`, `lib/runner.js`).
 - [ ] **16.7 Domain-bleed review** (from 15.5) of `build-state-change`, `build-state-view` and `build-screen`.
 - [ ] **16.8 Voice modelling** (15.7, fulfilling 13.6), **deferred until the model is established** (Gary): a
   spoken-style transcript of the established model, replayed through `event-model` in a fresh project, and the

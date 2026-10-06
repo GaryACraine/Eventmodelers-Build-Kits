@@ -44,6 +44,20 @@ export function describeSettings({ model, effort, maxBudgetUsd }) {
 }
 
 /**
+ * A warning for the startup lines when a concern's model isn't pinned (its jobs would run on whatever the developer's
+ * own settings say, often a costlier model), with the line to add; null when every concern's model is pinned.
+ */
+export function unpinnedWarning(cfg = {}, env = process.env, concerns = ['backend', 'ui']) {
+  const unpinned = concerns.filter(concern => !jobSettings(cfg, concern, env).model);
+  if (unpinned.length === 0) return null;
+  return [
+    `⚠ No model pinned for ${unpinned.join(' and ')} jobs: they run on ~/.claude/settings.json's model.`,
+    `  Add to .eventmodelers/config.json, then restart the loop:`,
+    `  "models": { "backend": "sonnet", "ui": "sonnet" }, "effort": "medium", "maxBudgetUsd": 2`,
+  ].join('\n');
+}
+
+/**
  * Whether a run ended on the account's usage limit, from its result message (`is_error`, the text naming a limit).
  * Returns `{ resetAt }` (a Date when the text carries one: "…|<epoch seconds>"), or null for any other outcome.
  */
