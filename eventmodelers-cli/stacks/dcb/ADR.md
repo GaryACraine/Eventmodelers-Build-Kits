@@ -2816,8 +2816,9 @@ If it can't give direct connections, step 2 is done before release.
 
 ### ADR-048: An event's tags are part of its definition, and change by the compatibility rules
 
-**Status:** Proposed, 2026-10-06. Gary agreed the plan and added the compatibility rule: a tag change is judged by
-its downstream impact on projections and deciders.
+**Status:** **Accepted, 2026-10-06 (Gary),** after it was built and proven in licensing. Proposed the same day; Gary
+agreed the plan and added the compatibility rule: a tag change is judged by its downstream impact on projections and
+deciders.
 **Date:** 2026-10-06
 
 **Context:**
