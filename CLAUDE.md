@@ -30,4 +30,6 @@ board/platform is retired in this fork: don't call its API or MCP tools.
 - **Kit updates into a project:** run `node docs/tools/kit-drift.mjs <project>` before (to see what's out of step)
   and after (it must exit 0). Copy every file it lists, never just the ones you changed. Remove the lessons the
   change supersedes from the project's `.build-kit/learnings/` (ADR-028), and restart the loop if `ralph.js` changed.
+- **Planning rules live in the DCB kit's `plan-change` skill** (installed in every project, where the ADRs are
+  not). An ADR that changes how a slice, event or endpoint may be changed updates `plan-change` in the same PR.
 - Record decisions in `PLAN.md`'s Decisions Log with the reason, and tick tasks as they land.

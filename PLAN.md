@@ -608,6 +608,15 @@ model and build only what's ours.
       couldn't match it (licensing settings). Now an unbuilt extension's fields are pending (PR #163).
     - **A rebuild that renames a command** had to update its callers in other slices, which `slice-scope` refused.
       Allowed for a while (#162, #164), then reverted: a built slice is replaced, not amended (ADR-046 rewritten).
+  - *2026-10-06, replacing "assign owner role" before release:* its code couldn't be deleted, because three read
+    slices' tests set up an owner through its route (the `build-state-view` pattern). **Fix in the kit:**
+    `app.given(...)` in the read-model harness appends a spec's events straight to the store, and the skill says to
+    use it. The three tests were moved to it, and the old command's code was deleted (licensing: 51 files, 294 tests
+    pass). Four other read tests still post to write routes; they stay as built until they're replaced.
+  - **The `plan-change` skill (draft):** the rules for changing a built or released slice, event or endpoint,
+    installed in every project, since the ADRs aren't. It loads by its description, from `event-model`'s
+    "decide the change" step, from `.build-kit/CLAUDE.md`, from emcli's guard messages, or by `/plan-change`.
+    - [ ] Proven on "untranslated notifications settled" (an event change).
 - [ ] **16.7 Domain-bleed review** (from 15.5) of `build-state-change`, `build-state-view` and `build-screen`.
 - [ ] **16.8 Voice modelling** (15.7, fulfilling 13.6), **deferred until the model is established** (Gary): a
   spoken-style transcript of the established model, replayed through `event-model` in a fresh project, and the
@@ -3877,6 +3886,8 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-05 | One Paddle Translation, built from chapter 1's card with every case; other chapters show the cases they add and are never planned | Every notification lands on one list and needs one decision; chapters 1 and 24 receive the same notification type, so splitting would make two automations judge the same item |
 | 2026-10-05 | The auth role sync slices stay draft in increment 1 | The sign-in provider (Cognito or Supabase) isn't chosen, so there's nothing to build them against |
 | 2026-10-06 | Changing a slice: replace it before release, supersede it after (ADR-046 rewritten, Proposed; ADR-018 clarified) | Gary rejected the first ADR-046 (a general command-rename rule; a built slice amended in place, which rippled into other slices and blocked the loop twice). Released = deployed: events then follow ADR-017/018 (a new version for every change), endpoints are deprecated, automations switched over. Before release a slice and its unused event may be deleted. Enforced by `events-append-only` and emcli's removal guards; the rename exception (#162, #164) reverted |
+| 2026-10-06 | Planning rules live in the kit's `plan-change` skill; the ADRs stay the record of why | Gary asked how to stop planning rules being missed. `ADR.md` is 199 KB and isn't installed in projects, where the modelling mostly happens. A skill's description is always in context, so it loads when a change comes up. Mechanical rules go in emcli and the checks first. An ADR that changes a planning rule updates the skill in the same PR |
+| 2026-10-06 | A read-model test sets up its given with `app.given` (events straight to the store), never through another slice's route | Gary approved. Posting to a command slice's route made read slices depend on it, which blocked deleting a replaced command |
 
 ## Progress
 

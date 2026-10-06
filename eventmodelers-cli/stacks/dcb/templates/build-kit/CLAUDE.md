@@ -2,6 +2,12 @@
 
 Read `src/contexts/` to understand the global structure. Events for each context live at `src/contexts/{context}/Events.ts`.
 
+## Changing what's already modelled or built
+
+Before changing, renaming, removing or replacing a slice, an event or an endpoint, or re-planning a blocked
+slice, load the **`plan-change`** skill. What a change may do depends on whether its slice is built or released
+(ADR-046). The build loop doesn't plan changes: this is for modelling sessions.
+
 ## File Structure Constraints
 
 - **Strict Path Limitation**: if not instructed otherwise, only check `src/contexts/{context}/slices/{slicename}/*.ts`
