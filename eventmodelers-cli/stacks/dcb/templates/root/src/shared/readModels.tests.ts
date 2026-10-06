@@ -313,16 +313,20 @@ describe.each(READ_MODEL_TYPES)("readModelTestApp (%s)", type => {
 })
 
 describe("the pool holds two connections per processor", () => {
-    test("poolSize: the consumer's two, one per async read model and automation, plus headroom", () => {
-        // ADR-047: the consumer holds two whatever its processors; each borrows one while it handles an event
-        expect(poolSize([courseDetails, withType(courseDetails, "inline-projected")], [], 3)).toBe(2 + 1 + 3 + 10)
+    test("poolSize: the consumer's two, its turns at reading and handling, and headroom, whatever the processors", () => {
+        // ADR-047: the consumer holds two, and its processors take 4 turns at reading and 4 at handling
+        expect(poolSize([courseDetails, withType(courseDetails, "inline-projected")], [], 3)).toBe(2 + 4 + 4 + 10)
+        expect(poolSize([courseDetails], [], 30)).toBe(2 + 4 + 4 + 10)
+        expect(poolSize([withType(courseDetails, "inline-projected")])).toBe(10)
+        // one processor can use only one turn of each
+        expect(poolSize([courseDetails])).toBe(2 + 1 + 1 + 10)
     })
 
     test("a pool too small for its processors refuses to start, rather than waiting forever", async () => {
         // licensing, 2026-10-06: 11 processors on a pool of 20 deadlocked at startup (each then held two for good)
         const pool = await getTestPgDatabasePool({ max: 2 })
         try {
-            await expect(startReadModels(pool, [courseDetails])).rejects.toThrow(/too small for 1 processors/)
+            await expect(startReadModels(pool, [courseDetails])).rejects.toThrow(/too small for the processors/)
         } finally {
             await pool.end()
         }
