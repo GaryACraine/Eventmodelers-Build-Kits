@@ -324,29 +324,30 @@ start, and hands out the reader the route uses.
 File: `src/contexts/{context}/slices/{slicename}/route.tests.ts`
 
 The tests prove the contract: **the same scenarios, run against every type, get the same bodies.** They talk
-HTTP only. Write through the write slices' routes, call `settle()` (which waits for an async read model to
-catch up, and does nothing for inline and live), then GET.
+HTTP only for the read. The *given* goes straight to the store: `app.given(...)` appends the specification's
+events, made with the context's `Events.ts` factories, then settles (it waits for an async read model to catch
+up, and does nothing for inline and live). Then GET.
+
+**Never set up a given through another slice's route.** The test would then depend on that command slice, and
+replacing or deleting it (ADR-046) would break this slice. A read model depends on events, so its tests do too.
 
 ```typescript
 import { describe, test, expect } from "vitest"
 import { readModelTestApp } from "@test/readModelHarness"
 import { READ_MODEL_TYPES, withType } from "../../../../shared/readModels.js"
-import { configure{WriteSlice}Route } from "../{write-slice}/route.js"
+import { {eventName} } from "../../Events.js"
 import { configure{SliceName}Route } from "./route.js"
 import { {sliceName} } from "./readModel.js"
 
 describe.each(READ_MODEL_TYPES)("{slice title} (%s)", type => {
     const app = readModelTestApp({
         readModels: [withType({sliceName}, type)],
-        routes: deps => [configure{WriteSlice}Route(deps), configure{SliceName}Route(deps)]
+        routes: deps => [configure{SliceName}Route(deps)]
     })
 
     test("{specification title}", async () => {
-        // Given — through the write routes
-        const postRes = await app.agent().post("/{command}").send({ /* command body */ })
-        expect(postRes.status).toBe(204)
-
-        await app.settle()
+        // Given: the specification's events, in order, with its example values
+        await app.given({eventName}({ /* the given step's example values */ }))
 
         // Then
         const getRes = await app.agent().get("/{read-model}/test-id")
@@ -379,13 +380,12 @@ import { READ_MODEL_TYPES, queryTypes, withType } from "../../../../shared/readM
 describe.each(queryTypes({sliceName}, "{queryName}"))("{slice title}: {queryName} (%s)", type => {
     const app = readModelTestApp({
         readModels: [withType({sliceName}, type)],
-        routes: deps => [configure{WriteSlice}Route(deps), configure{SliceName}Route(deps)]
+        routes: deps => [configure{SliceName}Route(deps)]
     })
 
     test("{specification title}", async () => {
-        // Given: every event in the specification's given, through the write routes
-        expect((await app.agent().post("/{command}").send({ /* command body */ })).status).toBe(204)
-        await app.settle()
+        // Given: every event in the specification's given, straight to the store
+        await app.given({eventName}({ /* given step 1's examples */ }), {eventName}({ /* given step 2's examples */ }))
 
         // When: the query, with the when step's example values
         const res = await app.agent().get("{query path}").query({ {param}: "{example}" })
@@ -696,6 +696,10 @@ router.get(
 File: `src/contexts/{context}/slices/{slicename}/route.tests.ts`
 
 Integration tests using real Postgres (testcontainers via `getTestPgDatabasePool`).
+
+The example below proves read-your-writes, which needs a real write: its `Prefer: wait` follows the POST's
+ETag. Any other *given* goes straight to the store with `eventStore.append({ events: [ … ] })`, using the
+context's `Events.ts` factories, never through another slice's route (see Step 6).
 
 The setup (pool, projection init, consumer, reset) lives at **module level**, and the scenarios sit in a
 `describe` named after the slice title. That layout is what lets a later extension slice append its own
@@ -1015,7 +1019,8 @@ Append a new top-level block to the origin's `route.tests.ts`, with one `test(..
 extension slice:
 
 - **Fold form:** `describe.each(READ_MODEL_TYPES)("{extension slice title} (%s)", type => { … })`, with its
-  own `readModelTestApp`. Its `routes` include every write route the new scenarios use. Specifications whose
+  own `readModelTestApp`, whose `routes` hold only the origin's read route; the given events go in with
+`app.given`. Specifications whose
   *when* runs a query go in `describe.each(queryTypes(…))("{extension slice title}: {queryName} (%s)", …)`
   blocks instead (Step 6b).
 - **Imperative form:** `describe("{extension slice title}", () => { … })`, reusing the module-level setup, as

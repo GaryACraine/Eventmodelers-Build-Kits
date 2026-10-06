@@ -2598,6 +2598,9 @@ both.
 
 **Consequences:**
 - **Kit:** the `events-append-only` check. The exception that let a renaming rebuild touch its callers is removed.
+  The rules are distilled into the `plan-change` skill, which every project installs (this file isn't). A
+  read-model test sets up its *given* by appending events (`app.given`), never through another slice's route, so
+  deleting a command slice can't break a read slice.
 - **emcli:** the removal guards; the export's hold-back for changed built slices; the `event-model` skill's rule.
 - **Open:**
   - retyping a built read model, adding queries and changing a screen still re-queue a built slice; review them

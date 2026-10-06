@@ -302,4 +302,11 @@ describe.each(READ_MODEL_TYPES)("readModelTestApp (%s)", type => {
         expect(res.status).toBe(200)
         expect(res.body).toEqual(expectedC1)
     })
+
+    test("given() appends a specification's events straight to the store, then settles", async () => {
+        await app.given(...history)
+        const res = await app.agent().get("/courses/c1")
+        expect(res.status).toBe(200)
+        expect(res.body).toEqual(expectedC1)
+    })
 })

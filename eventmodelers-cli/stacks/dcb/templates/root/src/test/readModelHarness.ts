@@ -1,7 +1,7 @@
 import { beforeEach, afterEach } from "vitest"
 import supertest from "supertest"
 import type { Pool } from "pg"
-import { SequencePosition } from "@dcb-es/event-store"
+import { SequencePosition, type TaggedEvent } from "@dcb-es/event-store"
 import { waitUntilProcessed } from "@dcb-es/event-store-postgres"
 import { getApplication, type WebApiSetup } from "@dcb-es/event-store-express"
 import { getTestPgDatabasePool } from "./testPgDbPool.js"
@@ -11,6 +11,8 @@ import type { SliceDependencies } from "../shared/dependencies.js"
 export interface ReadModelTestApp {
     /** A supertest agent over the app built from `routes` */
     agent(): supertest.Agent
+    /** A specification's given: append these events, in order, straight to the store, then settle() */
+    given(...events: TaggedEvent[]): Promise<void>
     /** Wait until every async read model has caught up with the event store (no-op for inline and live) */
     settle(): Promise<void>
     deps(): SliceDependencies
@@ -44,19 +46,25 @@ export function readModelTestApp(options: {
         await pool?.end()
     })
 
+    const settle = async () => {
+        const r = await pool.query<{ head: string | null }>("SELECT max(sequence_position)::text AS head FROM events")
+        const head = r.rows[0]?.head
+        if (!head) return
+        const position = SequencePosition.fromString(head)
+        const asyncNames = [
+            ...options.readModels.filter(m => m.type === "database-projected").map(m => m.projection.name),
+            ...(options.imperative ?? []).filter(p => p.type === "database-projected").map(p => p.projection.name)
+        ]
+        for (const name of asyncNames) await waitUntilProcessed(pool, name, position, { timeoutMs: 5000 })
+    }
+
     return {
         agent: () => agent,
-        settle: async () => {
-            const r = await pool.query<{ head: string | null }>("SELECT max(sequence_position)::text AS head FROM events")
-            const head = r.rows[0]?.head
-            if (!head) return
-            const position = SequencePosition.fromString(head)
-            const asyncNames = [
-                ...options.readModels.filter(m => m.type === "database-projected").map(m => m.projection.name),
-                ...(options.imperative ?? []).filter(p => p.type === "database-projected").map(p => p.projection.name)
-            ]
-            for (const name of asyncNames) await waitUntilProcessed(pool, name, position, { timeoutMs: 5000 })
+        given: async (...events) => {
+            if (events.length > 0) await deps.store.append({ events })
+            await settle()
         },
+        settle,
         deps: () => deps,
         runtime: () => runtime
     }
