@@ -625,6 +625,12 @@ model and build only what's ours.
     - **The recreated event's new id held back three built slices** that hold copies of it, though nothing they
       build had changed. **Fix:** the built-slice fingerprint ignores `linkedTo` (v3). The export preview then queues
       only the two new slices.
+  - *2026-10-06, the owner chain end to end* (licensing `e2e/owner/owner-chain.sh`, against the running app): PASS
+    8/8. The two slices cost $0.63 on Sonnet. **The app wouldn't start:** each processor holds two pool connections
+    for good (its lock and its LISTEN), so 11 processors on the template's `max: 20` deadlocked startup. **Fix in the
+    kit:** `poolSize(readModels, imperative, automations.length)` sizes the pool, and `startReadModels` refuses a pool
+    too small for its processors rather than hanging. Later, in the library: one LISTEN connection shared by a
+    consumer's processors. **emcli:** an export now drops a slice removed from the model from the index.
 - [ ] **16.7 Domain-bleed review** (from 15.5) of `build-state-change`, `build-state-view` and `build-screen`.
 - [ ] **16.8 Voice modelling** (15.7, fulfilling 13.6), **deferred until the model is established** (Gary): a
   spoken-style transcript of the established model, replayed through `event-model` in a fresh project, and the

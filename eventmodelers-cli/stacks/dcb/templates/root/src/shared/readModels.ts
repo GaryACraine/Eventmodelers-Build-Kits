@@ -401,6 +401,25 @@ export interface StartReadModelsOptions {
 }
 
 /**
+ * Every processor on the consumer (an async read model, or an automation's own processor) holds two pool
+ * connections for as long as it runs: its lock (`pg_try_advisory_lock`) and its LISTEN wakeup.
+ */
+export const CONNECTIONS_PER_PROCESSOR = 2
+
+/** Connections left for requests, setup and rebuilds, on top of the processors' own. */
+export const POOL_HEADROOM = 10
+
+/**
+ * The pool size for these registrations: two connections per possible processor, plus headroom. An upper bound: an
+ * automation whose to-do list is a read model here shares that read model's processor.
+ */
+export function poolSize(readModels: ReadModel<any, any>[], imperative: StoredProjectionRegistration[] = [], automations = 0): number {
+    const asyncCount =
+        readModels.filter(r => r.type === "database-projected").length + imperative.filter(r => r.type === "database-projected").length
+    return (asyncCount + automations) * CONNECTIONS_PER_PROCESSOR + POOL_HEADROOM
+}
+
+/**
  * Start every read model by its type: async ones on the consumer, inline ones inside the event
  * store's append transaction, live ones as event store reads. Brings stored projections up to date
  * first (`ensureProjectionsCurrent`), before the app takes requests.
@@ -452,6 +471,16 @@ export async function startReadModels(
         [...asyncProjections.map(p => p.name), ...ownProcessors.map(p => p.processorName)],
         "_handler_bookmarks"
     )
+    // Each processor holds its connections for good: with too small a pool the app waits forever for one at startup
+    const processorCount = asyncProjections.length + ownProcessors.length
+    const needed = processorCount * CONNECTIONS_PER_PROCESSOR + 1
+    const max = (pool as Pool & { options?: { max?: number } }).options?.max
+    if (max !== undefined && max < needed) {
+        throw new Error(
+            `The database pool (max ${max}) is too small for ${processorCount} processors, which hold ` +
+                `${CONNECTIONS_PER_PROCESSOR} connections each. Size it with poolSize(readModels, imperative, automations.length).`
+        )
+    }
     await ensureProjectionsCurrent(pool, eventStore, asyncProjections, {
         inline: inlineProjections,
         live: liveProjections

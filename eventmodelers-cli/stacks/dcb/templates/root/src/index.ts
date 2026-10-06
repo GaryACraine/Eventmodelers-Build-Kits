@@ -13,7 +13,7 @@ import {
 
 import { configureCors } from "./shared/cors.js"
 import { configureJsonBody } from "./shared/inbox.js"
-import { startReadModels, type ReadModel, type StoredProjectionRegistration } from "./shared/readModels.js"
+import { poolSize, startReadModels, type ReadModel, type StoredProjectionRegistration } from "./shared/readModels.js"
 import { automationProcessors, type Automation, type ScheduleDefinition } from "./shared/automations.js"
 import {
     startWorker,
@@ -45,8 +45,6 @@ if (!connectionString) {
 
 const port = parseInt(process.env["PORT"] ?? "3000", 10)
 
-const pool = new Pool({ connectionString, max: 20 })
-
 // Every read model, in one place. Keyed-fold read models (`defineReadModel`) go in `readModels`, and
 // each one's `type` decides how it runs (ADR-022). Imperative projections that can't be keyed folds are
 // stored only: async or inline. Inline read models slow every append of their events — keep them few.
@@ -65,6 +63,8 @@ const automations: Automation[] = []
 // Created or updated in the background when the app starts; its workflow and activities are in `workflows.ts` and
 // `activities` below.
 const schedules: ScheduleDefinition[] = []
+// Each processor (an async read model, an automation) holds two connections for good: the pool is sized from them
+const pool = new Pool({ connectionString, max: poolSize(readModels, imperative, automations.length) })
 const temporal = temporalConfig()
 const temporalApi = temporalClient(temporal)
 const workflows = temporalWorkflowStarter(temporalApi, temporal.taskQueue, { callTimeoutMs: temporal.callTimeoutMs })
