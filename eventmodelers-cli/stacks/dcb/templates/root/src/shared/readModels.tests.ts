@@ -11,6 +11,7 @@ import {
     defineReadModel,
     readLive,
     readModelRoute,
+    poolSize,
     startReadModels,
     withType,
     type ReadModel,
@@ -308,5 +309,21 @@ describe.each(READ_MODEL_TYPES)("readModelTestApp (%s)", type => {
         const res = await app.agent().get("/courses/c1")
         expect(res.status).toBe(200)
         expect(res.body).toEqual(expectedC1)
+    })
+})
+
+describe("the pool holds two connections per processor", () => {
+    test("poolSize counts every async read model and automation, plus headroom", () => {
+        expect(poolSize([courseDetails, withType(courseDetails, "inline-projected")], [], 3)).toBe((1 + 3) * 2 + 10)
+    })
+
+    test("a pool too small for its processors refuses to start, rather than waiting forever", async () => {
+        // licensing, 2026-10-06: 11 processors on a pool of 20 deadlocked at startup
+        const pool = await getTestPgDatabasePool({ max: 2 })
+        try {
+            await expect(startReadModels(pool, [courseDetails])).rejects.toThrow(/too small for 1 processors/)
+        } finally {
+            await pool.end()
+        }
     })
 })
