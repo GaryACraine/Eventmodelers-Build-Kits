@@ -141,6 +141,8 @@ It loads every check under `.build-kit/lib/checks/` and rejects the commit if an
   `type:` line changes only that line of the slice's `readModel.ts`, to `retype.to`. No test, route or other
   slice edits, because the existing contract tests are the proof that clients see the same data. With
   `addQueries` too, the queries follow as their own commit, which query-additive checks.
+- **events-append-only** — `src/contexts/{context}/Events.ts` only gains lines: no event is removed or changed
+  (ADR-017). A released event changes only by a new version (ADR-018)
 - **test-file-present** — a changed `decider.ts`, `projection.ts`, `readModel.ts`, or `processor.ts` needs a sibling `*.tests.ts`
 - **no-invented-fields** — heuristic: flags a field used in code that isn't declared anywhere in
   `.build-kit/.slices/{context}/{slice}/slice.json`

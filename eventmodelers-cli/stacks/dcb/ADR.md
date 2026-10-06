@@ -316,6 +316,8 @@ because a frontend now generates its client from `/openapi.json`.
 
 **Decision:** Create explicit new versioned types (e.g. `CourseWasRegisteredV1`, `V2`, `V3`) as a union type. Set `schemaVersion` on new writes. Each consumer handles each version individually — either via a plain `switch (schemaVersion ?? "1")` or the `versionedHandler()` utility. No global upcasters transform old events before consumers see them.
 
+**Every change to a released event's schema is a new version, breaking or not** (Gary, 2026-10-06): adding an optional field too, so an old event is never mistaken for a new one in which the optional field wasn't given. Before release (ADR-046), an event may still be changed in place.
+
 **Alternatives considered:**
 - **Global upcaster pipeline** — transforms old events into the latest shape before any consumer sees them. Simpler consumer code but introduces a global transformation layer that must be maintained, tested, and applied consistently across all read paths
 - **Backwards-compatible-only changes** — never break the schema, only add optional fields. Avoids versioning entirely but constrains domain evolution (can't rename fields, can't make optional fields required, can't restructure)
@@ -2541,48 +2543,68 @@ Built in emcli and the kit; not yet built by the loop.
   and 24 show copies of it.
 
 
-### ADR-046: One command per state-change slice: slice independence over reuse
+### ADR-046: Changing a slice: replace it before release, supersede it after
 
-**Status:** **Proposed, 2026-10-06.** From Gary's direction (2026-10-06), after the loop blocked "assign owner admin
-role" in licensing.
+**Status:** **Proposed, 2026-10-06** (rewritten the same day after Gary's review). The first version proposed a
+general rule (a slice with its own rules gets its own command) and amended a built slice in place; Gary rejected
+both.
 **Date:** 2026-10-06
 
 **Context:**
-- **Chapter 1 used one command in two state-change slices.** "assign owner role" (on activation) and "assign owner
-  admin role" (on the trial) both issued `assignRole`, the second as a copy of the first.
-- **The kit builds one decider and one route per state-change slice.** The second slice would have been a second
-  decider on `POST /assign-role`, so the loop stopped.
-- **The first slice's rule was written as if it were the command's only rule.** "rejects a second owner" named no
-  role, so the decider built from it refused every assignment once anyone held a role, and the admin role could
-  never be given.
-- **Read models already grow across slices** (ADR-019): a later slice extends the origin's projection, additively.
-  Nothing like that exists for a command.
+- **What happened:** in licensing, "assign owner role" and "assign owner admin role" shared one `assignRole`
+  command.
+  - The first fix renamed the built slice's command and queued a rebuild.
+  - The change rippled into other slices: the automation that issues the command, and two slices' tests that post
+    to its route. The loop blocked twice.
+  - Amending a built slice cuts against slice independence: development should move forward by adding.
+- **The event policy already exists** (ADR-017, ADR-018):
+  - `Events.ts` only grows; "event shapes are frozen once deployed";
+  - a released event changes only by a new version, for every change, breaking or not.
+- **What was missing:**
+  - the boundary between the flexibility of development and the discipline of a live event-sourced system;
+  - what changing a *slice* means on each side of that boundary;
+  - any enforcement: no check guarded `Events.ts`, and emcli removed any event that had no copies.
 
 **Decision:**
-1. **A slice with its own rules has its own command.** A specialised case is its own command (`assignOwnerRole`,
-   `POST /assign-owner-role`) with its own specifications.
-2. **A generic command may repeat a specialised one's rules.** `assignRole` is the superset: it gives any role,
-   refuses one already held, and refuses a second owner, the same rule `assignOwnerRole` has. Vertical slices accept
-   that duplication in exchange for independence: each slice is built, tested and changed alone.
-3. **The duplication is safe in a DCB store:** both deciders decide on the same events (`userWasAssignedToRole`,
-   tagged by organisation), so an invariant like "one owner" holds whichever command records the fact.
-4. **A rule names exactly what it's about.** A spec's given and when carry the fields the rule turns on (here
-   `roleId owner`), so it can't be built broader than meant.
-5. **emcli guards it:** `completeness` warns when one command is the state change of two slices, and the
-   `event-model` skill gives each such slice its own command. Changing a built slice uses the existing rebuild
-   re-queue (a Done slice whose definition changed is planned again with `rebuild`; the loop updates its files in
-   place).
+1. **Released means deployed** (emcli's slice status `deployed`). A released slice's events are in a real event
+   store, and ADR-017 and ADR-018 govern them.
+2. **A built slice is never amended in place.** To change what it does, add a new slice. Whether that slice has
+   its own command is a modelling judgement for the case at hand, not a general rule.
+3. **Before release, the old slice may be deleted.** Its event may be deleted or changed too, if nothing else
+   produces or reads it: its events were only ever development data, and the local database is reset after.
+4. **After release, the old slice is superseded, never deleted:**
+   - **Events:** never deleted; changed only by a new version (ADR-018).
+   - **A command or read endpoint:** deprecated (marked so in the contract) and removed once its clients have
+     moved to the successor's endpoint, which is a route of its own.
+   - **An automation:** switched off when its successor goes in, since two would act on every trigger. Its to-do
+     list carries the open items over.
+   - **A projection:** keeps handling old events for as long as anything reads it.
+5. **Enforced:**
+   - **`events-append-only`:** a slice commit only adds to `Events.ts`. The loop never removes or changes an
+     event; a deliberate pre-release removal is a model change, made outside the loop's slice commits.
+   - **emcli:**
+     - refuses to remove a released event, or a slice holding one;
+     - warns when a removal before release takes built code with it;
+     - an export holds back a built slice whose model changed, rather than re-queueing it for a rebuild in place.
 
 **Alternatives considered:**
-- **One command with every rule in one slice,** the automations both issuing it. One decider, no duplication, but
-  the admin rule would live in the owner's slice, away from the step of the story it belongs to, and every new case
-  would change a built slice.
-- **A later slice extends the command's decider,** as ADR-019 does for read models: each slice adds its rules to one
-  shared decider. Slices become coupled through it; a change to one case edits code other slices depend on, and
-  rules that narrow an earlier one aren't additive, so the additive check couldn't hold it.
+- **Amend in place, with a rebuild** (emcli's re-queue and the first version of this ADR). It's cheap, but the
+  change ripples into the slices that use the old one, and it hides history. Rejected for built slices.
+- **Supersede even before release, deprecating rather than deleting.** It's disciplined, but it leaves dead code
+  and dead events in a system nobody runs yet. Rejected: before release, deleting is the flexibility development
+  needs.
+- **A general rule that a slice with its own rules gets its own command** (the first version). Rejected: it's a
+  modelling judgement.
 
 **Consequences:**
-- Some logic is written twice (here, the one-owner rule); each copy has its own tests, from its own slice's specs.
-- emcli: the `completeness` warning and the skill's rule, with tests.
-- In licensing: "assign owner role" issues `assignOwnerRole` (rebuilt), and "assign owner admin role" has its own
-  `assignRole` with the generic rules.
+- **Kit:** the `events-append-only` check. The exception that let a renaming rebuild touch its callers is removed.
+- **emcli:** the removal guards; the export's hold-back for changed built slices; the `event-model` skill's rule.
+- **Open:**
+  - retyping a built read model, adding queries and changing a screen still re-queue a built slice; review them
+    against this rule;
+  - deleting a slice's code is done by hand until the loop has a job for it.
+- **In licensing (before release):**
+  - "assign owner role" and "owner role on activation" are deleted;
+  - "assign organisation owner" (`assignOwnerRole`, `POST /assign-owner-role`) and "owner on activation" replace
+    them;
+  - `userWasAssignedToRole` lives on, produced by both role commands.
