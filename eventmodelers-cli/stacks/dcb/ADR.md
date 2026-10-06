@@ -2545,9 +2545,10 @@ Built in emcli and the kit; not yet built by the loop.
 
 ### ADR-046: Changing a slice: replace it before release, supersede it after
 
-**Status:** **Proposed, 2026-10-06** (rewritten the same day after Gary's review). The first version proposed a
-general rule (a slice with its own rules gets its own command) and amended a built slice in place; Gary rejected
-both.
+**Status:** **Accepted, 2026-10-06 (Gary).** Proposed and rewritten the same day after Gary's review: the first
+version proposed a general rule (a slice with its own rules gets its own command) and amended a built slice in place,
+and Gary rejected both. The "expand, switch, contract" consequence and the `job-scope` check were added before
+acceptance.
 **Date:** 2026-10-06
 
 **Context:**
@@ -2634,8 +2635,9 @@ both.
 
 ### ADR-047: Background processors share two database connections per app: one listener, one lock holder
 
-**Status:** **Proposed, 2026-10-06.** Built in the library as its Phase 20 (`dcb-event-store` `PLAN.md`), then
-proven in licensing. Kit issue #170.
+**Status:** **Accepted, 2026-10-06 (Gary).** Steps 1 and 1b are built (library Phases 20 and 21, kit PRs #176 and
+#177) and proven in licensing. Step 2 waits on its trigger: a host that forces a transaction-mode pooler. Kit issue
+#170 (closed).
 **Date:** 2026-10-06
 
 **Context:**
