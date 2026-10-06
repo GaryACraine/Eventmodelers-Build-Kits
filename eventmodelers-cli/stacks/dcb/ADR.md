@@ -2657,7 +2657,7 @@ proven in licensing. Kit issue #170.
     old and new run side by side;
   - a small hosted Postgres (RDS, Supabase) allows about 60 to 100 connections in all.
 - **A pooler can't absorb it.** PgBouncer in transaction mode can't carry a session's advisory lock or a `LISTEN`,
-  so the library needs direct, session-mode connections (the locking doc's invariant 7).
+  so the library needs direct, session-mode connections (invariant 7 in the library's `CLAUDE.md`; the append path alone has `rowLocks()` for poolers).
 - **A lost lock connection isn't noticed today.** Nothing listens for the lock client's `error`. A processor whose
   connection drops runs on, unowned, until its next checkpoint write fails the CAS ("lock may have been stolen"). An
   unhandled `error` on a checked-out `pg` client may even end the process. To verify in Phase 20.
