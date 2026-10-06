@@ -15,8 +15,9 @@
 //
 // And one exception for another slice: a **rebuild** that renames an element (slice.json's `rebuild.changes` lists
 // "<old>: removed" and "<new>: new", e.g. assignRole → assignOwnerRole, ADR-046) may update the slices that use it,
-// as long as each of their changed lines is an old line with the old name replaced by the new one. Anything else in
-// another slice is still refused.
+// as long as each of their changed lines is an old line with the old name replaced by the new one, in either form:
+// the name, or its route (/assign-role → /assign-owner-role, e.g. another slice's tests posting to it). Anything
+// else in another slice is still refused.
 
 const ALLOWED_EXCEPTIONS = [
   /^src\/contexts\/[^/]+\/Events\.ts$/,   // per-context event union (append-only)
@@ -54,7 +55,8 @@ function inProgressRename(repoRoot) {
     const named = (suffix) => changes.filter((c) => c.endsWith(suffix)).map((c) => c.slice(0, -suffix.length).trim());
     const removed = named(': removed');
     const added = named(': new');
-    const pairs = removed.flatMap((o) => added.map((n) => [o, n]));
+    const kebab = (name) => name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+    const pairs = removed.flatMap((o) => added.flatMap((n) => [[o, n], [kebab(o), kebab(n)]]));
     if (pairs.length) return { folder: entry.folder.toLowerCase(), pairs };
   }
   return null;
@@ -73,7 +75,8 @@ function onlyRenamed(repoRoot, file, pairs) {
   const removed = pick('-', '---');
   const added = pick('+', '+++');
   if (removed.length === 0 || removed.length !== added.length) return false;
-  const back = (line) => pairs.map(([o, n]) => line.split(n).join(o));
+  // Every pair put back at once (a line may hold the name and its route), and each pair alone
+  const back = (line) => [pairs.reduce((l, [o, n]) => l.split(n).join(o), line), ...pairs.map(([o, n]) => line.split(n).join(o))];
   // Line for line: each added line, with a new name put back to the old one, is the removed line it replaced
   return added.every((line, i) => line !== removed[i] && back(line).includes(removed[i]));
 }
