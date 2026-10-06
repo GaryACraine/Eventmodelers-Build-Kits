@@ -53,17 +53,17 @@ model and build only what's ours.
       mock and the sandbox.
     - **Paddle's notification is an external event with a slice of its own** (ADR-045).
   - **Increment 1, built by the loop** (exported 2026-10-06). It covers chapters 1, 22, 23, and the planned parts of
-    20 and 24 (40 slices):
-    - **Built:** 37 slices (backend), 6 of them with their screens. Every built slice is `ready` in the model.
+    20 and 24 (42 slices, with the two added by ADR-048):
+    - **Built:** 40 slices (backend), 6 of them with their screens. Every built slice is `ready` in the model.
       Nothing is `deployed`, so nothing is released.
-    - **Blocked:** 3 slices, each waiting on a model change (see "Next").
+    - **Blocked:** 2 slices, each waiting on a model change (see "Next").
     - **Not planned (draft):** 13 slices, left out on purpose:
       - Sign Up and the four auth role sync slices: the sign-in provider isn't chosen yet;
       - chapter 20's notification copies and its operations page;
       - chapter 21, the Paddle Sync;
       - chapter 24's notification copies.
-    - **Cost:** 53 loop runs, $27.53. $17.15 of that was 21 runs on Opus before the project pinned a model; 32 runs
-      on Sonnet (medium) cost $10.38 (16.6).
+    - **Cost:** 59 loop runs, $29.20. $17.15 of that was 21 runs on Opus before the project pinned a model; 38 runs
+      on Sonnet (medium) cost $12.05 (16.6).
     - **"Assign owner role" was replaced before release** (ADR-046), twice:
       - once to split the owner's command from the generic role command;
       - once so the command sets the owner role itself (`roleId` generated).
@@ -73,37 +73,29 @@ model and build only what's ours.
       - the `plan-change` skill;
       - `app.given` for read-model tests;
       - the `events-append-only` and `job-scope` checks;
+      - event tags as the model's id fields (ADR-048), with emcli's `field set --id`, `spec move` and a
+        `completeness` warning;
       - background processors' connections (ADR-047, library Phases 20 and 21): 2 held per app, and turns at reading
         and handling (4 each), so the pool is 20 for any app with 4 or more processors (licensing was 32);
       - emcli's push recovery, fingerprint v3 and `inModel` export.
-    - **Decided:** ADR-046 and ADR-047 Accepted (Gary, 2026-10-06). No ADR waits on Gary.
+    - **Decided:** ADR-046 and ADR-047 Accepted (Gary, 2026-10-06). **ADR-048 waits on Gary:** Proposed, built and
+      proven in licensing.
   - **Next, in order:**
-    1. **The three blocked slices,** each planned with `plan-change` (they're its first real tests). **Now:**
-       - **untranslated notifications settled** (an extension of the inbox's to-do list, Untranslated Notifications,
-         keyed by `paddleEventId`).
-         - **The block:** `trialWasStarted` is tagged only by `organisationId`, so the extension can't find the
-           notification to drop. Its loop job wanted to tag the event with `paddleEventId` (in `Events.ts`, and in
-           `starttrial/route.integration.tests.ts`), which `extension-additive` refused.
-         - **The status:** "start trial" (which produces the event) is built, not released. So is everything else
-           that holds the event.
-         - **Planned (2026-10-06, ADR-048 Proposed):** adding a tag is compatible here. Reads match tags by overlap,
-           and no query uses `paddleEventId` or `subscriptionId` for these events except the to-do list, which the
-           extension means to change. The same gap is in `trialWasRefused` and `refusedTrialWasCancelled`, and
-           nothing takes a refused or cancelled notification off the list. Steps:
-           - [x] the kit: ADR-048, and `plan-change`, `provider-paddle` and `build-state-change` updated (PR #180);
-           - [x] emcli: `element field set --id`; the hold-back ignores id flags on events a slice only reads;
-             `completeness` warns when an event feeds a read model without its key as an id (`6185a72`). Tried on a
-             copy of licensing: one warning, on "settled"; marking the ids holds back start trial only;
-           - [x] model (licensing `d806438`): the ids marked on the three events; start trial, refuse trial and
-             record refused trial cancelled replaced with same-name slices (emcli's new `spec move` carries their
-             scenarios); "settled" planned again; chapter 24's "seatless trial settled" and "cancellation
-             notification settled" added (Gary approved the names). Rehearsed on a copy first: the export queues
-             those six and holds nothing back;
-           - [x] licensing `2dc153f`: the three tag lines in `Events.ts`, outside the loop. As predicted, only the
-             producers' three tag tests fail (302 pass, including every reader). Local database reset;
-           - [ ] the kit update into licensing, a board push (deletes the three old slices: diff to Gary first) and
-             the export (Gary's go-ahead).
-       - **cancel the refused trial at paddle** (chapter 24): the description calls a refusal from Paddle a stall,
+    1. **The blocked slices,** each planned with `plan-change` (they're its first real tests).
+       - **Done: untranslated notifications settled** (ADR-048, 2026-10-06). The Paddle outcomes were tagged only by
+         `organisationId`, so the to-do list never saw them. Planned as an event tag change before release: adding
+         `paddleEventId` and `subscriptionId` is compatible (no other query uses them for these events).
+         - **Kit and emcli:** ADR-048 and the skills (PRs #180, #182); emcli's `field set --id`, `spec move`, the
+           hold-back that ignores tags on events a slice only reads, and the `completeness` warning.
+         - **Licensing:** the ids marked in the model; start trial, refuse trial and record refused trial cancelled
+           replaced with same-name slices; the tags changed in `Events.ts` outside the loop (`2dc153f`); "settled"
+           planned again, plus chapter 24's "seatless trial settled" and "cancellation notification settled".
+         - **The loop built all six with no blocks** ($1.67). Each producer's rebuild changed only its tag test; each
+           extension only the origin read model and its tests. 317 tests pass, and
+           `licensing/e2e/paddle/settled-chain.sh` passes 14 of 14 against the running app: a trial, the same start
+           again, a seatless trial and its cancellation each leave the list, and a notification with no translation
+           stays.
+       - **Now: cancel the refused trial at paddle** (chapter 24): the description calls a refusal from Paddle a stall,
          but the model has no stall command or event. Add them (for example `markTrialCancellationStalled` →
          `trialCancellationWasStalled`, shown on Refused Trials At Paddle), built first. The slice also brings the
          Paddle calls module and the mock.
@@ -3982,7 +3974,7 @@ What each `build-*` skill generates and what it verifies:
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. **Increment 1 built by the loop (2026-10-06): 37 of its 40 slices built, 3 blocked on model changes, 13 left as draft; owner chain 9/9 end to end; 53 runs, $27.53. Before it, 16.1 to 16.5 built and proved the inbox, webhooks with a fetch behind them, timed work, setup commands, Paddle's inline checkout and our calls to Paddle (ADR-040 to 045). Next: Gary accepts ADR-046, the three blocked slices are planned with `plan-change`, then 16.3a (chapter 1 end to end through the UI). See "Where we are" at the top of Phase 16.** 16.3 is in process modelling: chapter 1 fleshed out, 16.3b done (ADR-039) (16.2 done 2026-09-30: ADR-037 Accepted, trials included after the 16.2b tests) (16.1's knowledge work done 2026-09-30; only Gary's live onboarding open; 16.2's research done 2026-09-30). Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
+| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. **Increment 1 built by the loop (2026-10-06): 40 of its 42 slices built, 2 blocked on model changes, 13 left as draft; owner chain 9/9 and the settling to-do list 14/14 end to end; 59 runs, $29.20. Before it, 16.1 to 16.5 built and proved the inbox, webhooks with a fetch behind them, timed work, setup commands, Paddle's inline checkout and our calls to Paddle (ADR-040 to 045). Next: Gary decides ADR-048, the two blocked slices are planned with `plan-change`, then 16.3a (chapter 1 end to end through the UI). See "Where we are" at the top of Phase 16.** 16.3 is in process modelling: chapter 1 fleshed out, 16.3b done (ADR-039) (16.2 done 2026-09-30: ADR-037 Accepted, trials included after the 16.2b tests) (16.1's knowledge work done 2026-09-30; only Gary's live onboarding open; 16.2's research done 2026-09-30). Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
 | 15 — Automations (restaurant orders) | ✅ Closed 2026-09-29 (a demo) | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27/28: the Restaurant Orders chapter (25 slices, 63 scenarios, 15 mockups) on prooph board, with stock and an internal automation (the Stock Returner); emcli push fixes (lanes, links, skipped deletions). 15.8 added: deciding from a growing event stream. 15.2 done 2026-09-28 (library PR #29 merged). 15.3 done 2026-09-28 (ADR-033 runtime, ADR-034 Braintree as a commercial directive; the loop built the restaurant backend; 8 end-to-end cases pass, with our own Temporal call deadline and Temporal in health; manual §21). Next: 15.4 redrive, then 15.5 the UI on Sonnet. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) | **Closed 2026-09-29:** 15.4 and 15.4c built through the loop (stalls, retry, give up, attempts, pay again, cancel); 15.4e provider skills; 15.9 on Sonnet at medium, about 2.5–3× cheaper per job; emcli re-queues changed built slices. The rest dropped or moved to Phase 16 |
 | 1 — Stack Scaffolding | ✅ Complete | Verified: init, npm install, tsc, 21/21 unit tests |
 | 2 — State Change Skill | ✅ Complete | 9-step SKILL.md with full DCB patterns |
