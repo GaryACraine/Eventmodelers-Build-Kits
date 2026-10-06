@@ -9,6 +9,10 @@
 // `node dist/contract.js --only …` (src/contract.ts): field names, required, types, component names, parameters and
 // the success status. Descriptions, headers and which 4xx a rejection uses are the code's to choose.
 //
+// A response field that a read model's extension slice adds (ADR-019) is pending while that extension isn't built:
+// the contract shows the read model's final shape, and the origin is built first (src/contract.ts reads the
+// extensions from .build-kit/.slices).
+//
 // Skipped when the project has no contract (a project not exported by emcli), and once the commit is already
 // rejected (it builds dist/ first, after tsc-build has passed).
 
