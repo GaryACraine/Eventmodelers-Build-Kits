@@ -616,7 +616,12 @@ model and build only what's ours.
   - **The `plan-change` skill (draft):** the rules for changing a built or released slice, event or endpoint,
     installed in every project, since the ADRs aren't. It loads by its description, from `event-model`'s
     "decide the change" step, from `.build-kit/CLAUDE.md`, from emcli's guard messages, or by `/plan-change`.
-    - [ ] Proven on "untranslated notifications settled" (an event change).
+    - [ ] Proven once a change it planned has run through the loop. First use (2026-10-06): "assign organisation
+      owner" replaced before release, because `POST /assign-owner-role` took `roleId` from the caller. Now `roleId`
+      is generated (`derived:"owner"`), and emcli counts a constant as server-derived. The use added the same-name
+      replacement to the skill: the new slice is built over the old folder, which stays, because "owner on
+      activation" imports its decider. Next: "untranslated notifications settled" (an event change).
+    - The shared-LISTEN fix for the library is issue #170.
   - *2026-10-06, the replacement's board push failed half way, and two emcli fixes followed:*
     - **On the board, deleting a slice deletes its elements,** so `userWasAssignedToRole`, moving out of the
       deleted slice, was gone before the move. Recovered by correcting the baseline to the board's state, then
