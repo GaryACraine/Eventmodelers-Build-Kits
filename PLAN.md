@@ -99,7 +99,8 @@ model and build only what's ours.
     - **emcli:**
       - `slice remove` doesn't warn when the slice is built;
       - a generated constant (`roleId: "owner"`) comes back in the 201 response. It's harmless.
-    - **The library:** one LISTEN connection shared by a consumer's processors (dcb-event-store issue #170).
+    - **The library:** background processors share two connections per app, a listener and a lock holder (ADR-047
+      Proposed, step 1; library Phase 20, planned; kit issue #170). Until then the pool is sized from the processors.
     - **ADR-046's open items:**
       - retyping a read model, adding queries and changing a screen still re-queue a built slice in place;
       - deleting a slice's code is done by hand, since the loop has no job for it;
@@ -111,6 +112,9 @@ model and build only what's ours.
       - chapter 24's two hotspots: what the owner sees after a refusal, and whether the same rule applies to
         "Buy now".
     - **The sign-in provider,** which Sign Up and the four auth role sync slices wait on.
+    - **The backend's host, and its Postgres.** It must give direct, session-mode connections (ADR-047's deployment
+      constraint). Check the connection cap on the tier, IPv4, and that idle sessions aren't ended (scale-to-zero).
+      If it can't give direct connections, ADR-047 step 2 (lease rows, polling only) comes before release.
   - **Waiting on a date, or on Gary:**
     - the `tax_mode` renewal, read after 2026-10-29 (16.2b);
     - org-test-5's renewal on 2026-11-01: £42.00 (3 web seats and 1 mobile seat, with VAT). It will show whether a
@@ -3947,6 +3951,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-06 | Planning rules live in the kit's `plan-change` skill; the ADRs stay the record of why | Gary asked how to stop planning rules being missed. `ADR.md` is 199 KB and isn't installed in projects, where the modelling mostly happens. A skill's description is always in context, so it loads when a change comes up. Mechanical rules go in emcli and the checks first. An ADR that changes a planning rule updates the skill in the same PR |
 | 2026-10-06 | A read-model test sets up its given with `app.given` (events straight to the store), never through another slice's route | Gary approved. Posting to a command slice's route made read slices depend on it, which blocked deleting a replaced command |
 | 2026-10-06 | A change other slices use goes expand, switch, contract; a loop job changes only its own slice (`job-scope`) | The owner replacement kept its command's name and changed its fields, which broke the automation issuing it, and the loop edited that automation. Follow-on fixes made by hand (a compile-only edit, recorded) were approved first, then withdrawn on review (Gary asked whether they were additive): they still amend a built slice, and the loop would stop half-way through the job. A new name lets every step build on its own |
+| 2026-10-06 | Background processors share two connections per app (ADR-047 step 1: a shared listener, a lock holder per consumer); lease rows and polling only (step 2) only if the host forces a transaction-mode pooler | Each processor held two connections for good, so connections grew with the model (licensing's 11 hung startup on a pool of 20). Emmett and Axon own a processor by a lease row, but that is about a phase more work and only frees the app from session connections with polling only. A pooler comes from serverless compute, which this backend can't use, and mainstream hosts give direct connections. Choosing the host checks it (Gary) |
 
 ## Progress
 

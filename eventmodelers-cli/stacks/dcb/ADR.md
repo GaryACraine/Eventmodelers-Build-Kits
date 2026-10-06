@@ -2629,3 +2629,125 @@ both.
     or left in the working tree (`tsc-build` checks the whole tree). An extension's origin is the exception. A
     blocked job stashes its uncommitted work, so the next job starts clean.
   - `1fc4905` stays as the one exception, since a proper replay produces the same line.
+
+---
+
+### ADR-047: Background processors share two database connections per app: one listener, one lock holder
+
+**Status:** **Proposed, 2026-10-06.** Built in the library as its Phase 20 (`dcb-event-store` `PLAN.md`), then
+proven in licensing. Kit issue #170.
+**Date:** 2026-10-06
+
+**Context:**
+- **What happened:** licensing has 11 background processors (async read models and automations), and its app
+  hung at startup on the template's pool of 20. Every connection was held, and the setup step waited for one
+  forever.
+- **Why:** each processor holds two pooled connections for as long as it runs:
+  - **its lock:** `acquireProcessorLock` takes a session-level `pg_try_advisory_lock`, so the connection can't go
+    back to the pool (`eventHandling/processorLock.ts`);
+  - **its wake-up:** `PostgresEventStore.subscribe` takes a connection of its own and `LISTEN`s on it
+    (`eventStore/PostgresEventStore.ts`).
+
+  A request waiting on `afterLastWrite` (`waitUntilProcessed`) also takes a `LISTEN` connection of its own once
+  the processor is slow.
+- **The stopgap** (kit PR #169) sizes the pool from the processors (`poolSize`), and `startReadModels` refuses a
+  pool too small for them. Startup is now correct, but the connections still grow with the model:
+  - licensing is about a fifth of its model and holds 22 connections;
+  - the whole model would hold roughly 60 to 90 for each running copy of the app, and more during a deploy, when
+    old and new run side by side;
+  - a small hosted Postgres (RDS, Supabase) allows about 60 to 100 connections in all.
+- **A pooler can't absorb it.** PgBouncer in transaction mode can't carry a session's advisory lock or a `LISTEN`,
+  so the library needs direct, session-mode connections (the locking doc's invariant 7).
+- **A lost lock connection isn't noticed today.** Nothing listens for the lock client's `error`. A processor whose
+  connection drops runs on, unowned, until its next checkpoint write fails the CAS ("lock may have been stolen"). An
+  unhandled `error` on a checked-out `pg` client may even end the process. To verify in Phase 20.
+- **How Emmett does it** (`emmett-postgresql`, read 2026-10-06):
+  - **No `LISTEN`:** each consumer polls with one message source (`pullingFrequencyInMs`, `batchSize`) and passes
+    each batch to all of its processors.
+  - **Ownership is a lease row:** `emt_try_acquire_processor_lock` takes a *transaction-scoped* advisory lock only
+    to claim the processor's row (`processor_instance_id`, `status`, `last_updated`). Another instance may take
+    the row over once it's stopped, or `last_updated` is older than the lock timeout (300 s by default). Every
+    checkpoint renews it. No connection is held.
+- **How Axon does it:** the same pattern. Its token store's token claims have an owner and a timestamp, and
+  another node may claim a token once the claim times out. A lease row is the established way to own a processor.
+  A session lock held for the processor's whole life (ours) is the less common one.
+
+**Decision** (two steps, Gary 2026-10-06; the second only if the deployment needs it):
+
+*Step 1, now:*
+1. **One listener per event store.** `PostgresEventStore` opens one `LISTEN` connection when the first subscriber
+   or waiter needs it, and closes it when the last one goes.
+   - It listens on the event channel and the bookmark channel, and passes each notification to every subscriber in
+     this process.
+   - `subscribe` and `waitUntilProcessed` register with it, and no longer take a connection of their own.
+   - **If it fails,** subscribers carry on at their poll interval, which they already have. The listener
+     reconnects after a backoff, and clears the high-water-mark cache when it's back, since notifications were
+     missed while it was down.
+2. **One lock connection per consumer.** `createConsumer` holds every processor's session advisory lock on a single
+   connection, a lock holder. A session can hold many advisory locks.
+   - Each processor takes and releases its own key through the lock holder. Locking is unchanged: the same keys,
+     the same `P:` namespace, still session-scoped.
+   - **If that connection fails,** every processor whose lock it held is stopped at once, rather than left running
+     unowned. The consumer's supervision (library Phase 19) starts them again after its backoff: a new connection,
+     the locks taken again. The CAS checkpoint stays as the backstop.
+   - **A processor started on its own** (`createProcessor` outside a consumer) keeps a connection of its own,
+     through the same lock holder.
+3. **Connections per app:** one for the listener and one for each consumer's locks, whatever the number of
+   processors. Requests come on top. The kit sizes the pool from this, not from the processors.
+
+*Step 2, only if the app must run behind a transaction-mode pooler:*
+
+4. **Lease rows and polling only** (Emmett's and Axon's pattern), so nothing holds a session:
+   - the bookmark row gains its owner and a lease expiry;
+   - a processor claims the row under a transaction-scoped advisory lock;
+   - every checkpoint renews the lease, and so does an idle processor, on a timer;
+   - another instance takes the row over once the lease runs out. A crashed instance's processors therefore wait
+     out the lease, which is seconds with a short one;
+   - the shared listener goes, and every subscriber polls (consumer-level polling, as Emmett's, keeps the queries
+     down).
+
+   The checkpoint's `instance_id` and its version check (CAS) are already there.
+
+**The deployment constraint:** the backend runs as a **long-running process with direct, session-mode connections**:
+2 for the background work (step 1), plus the request pool. A transaction-mode pooler comes from serverless compute
+(Lambda, Vercel functions, Workers), not from the database host. This backend can't be serverless anyway, since its
+processors and the Temporal worker run continuously.
+
+As of 2026-10-06, the mainstream managed Postgres hosts offer direct connections (RDS, Aurora, Cloud SQL, Azure,
+DigitalOcean, Crunchy Bridge, Render, Railway, Heroku). Supabase and Neon offer a direct endpoint beside a pooled
+one. **When the backend's host is chosen, check:**
+- it gives direct connections, and how many on the tier chosen;
+- whether they're IPv4 (Supabase's direct endpoint is IPv6 unless you buy its IPv4 add-on);
+- whether it ends idle sessions (Neon's scale-to-zero, which must be off for this app).
+
+If it can't give direct connections, step 2 is done before release.
+
+**Alternatives considered:**
+- **Lease rows now** (step 2 straight away). It's the established pattern, but it's about a phase more work. It also
+  only frees the app from session connections if `LISTEN` goes too, so every processor would wait a poll interval.
+  Deferred to when a host needs it.
+- **Polling only, no `LISTEN`, with session locks.** It saves one connection, but every processor would wait a poll
+  interval for new events and query the database on every poll. The shared listener costs one connection. Rejected
+  for step 1.
+- **Transaction-scoped locks around each batch.** No instance would own a processor between batches, so two
+  instances could interleave its events. Rejected.
+- **A bigger pool** (the stopgap). It grows with the model, and small hosted databases cap the total. Rejected as
+  the answer; kept until Phase 20 lands.
+
+**Consequences:**
+- **Library:** Phase 20, with these tests:
+  - a hundred subscribers on one listener connection;
+  - a lost listener (`pg_terminate_backend`): polling carries on, then it reconnects;
+  - a lost lock connection: its processors stop and restart, and no event is handled twice;
+  - two app instances: the second takes over when the first's lock connection goes.
+
+  The locking doc's §8.8 is updated.
+- **Kit:**
+  - `poolSize` drops `CONNECTIONS_PER_PROCESSOR`: 2 per app plus headroom;
+  - `startReadModels`' check counts consumers, not processors;
+  - a kit update into licensing.
+- **Proven in licensing:**
+  - the app starts on a pool of 10 with its 11 processors;
+  - the owner chain passes;
+  - killing the lock connection restarts the processors without handling an event twice.
+- **Hosting:** choosing the backend's host includes the deployment check above. It's an open point in PLAN Phase 16.
