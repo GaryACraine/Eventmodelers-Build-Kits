@@ -5,7 +5,7 @@ description: The rules for changing what's already modelled or built. Use before
 
 # Plan a change
 
-> **Draft** (PLAN 16.6): written from ADR-017, 018, 019, 039 and 046. Its first use was licensing's "assign organisation
+> **Draft** (PLAN 16.6): written from ADR-017, 018, 019, 039, 046 and 048. Its first use was licensing's "assign organisation
 > owner", replaced before release because its command took `roleId` from the caller. That use added the same-name
 > replacement below, and "A change other slices use" (expand, switch, contract) after the replacement broke a slice
 > that issues the command. It is proven once a change with users has gone through all three steps in the loop.
@@ -38,6 +38,7 @@ produces or reads the same event**. An event is released once any slice holding 
 | Rename a command, event or read model | Rename | **Replace:** a new slice with the new name; delete the old one | **Supersede:** a new slice; deprecate the old endpoint |
 | Remove a slice | Remove it | **Delete** it, its code, and its event if nothing else produces or reads it; reset the local database | **Never delete events.** Deprecate the endpoint, then remove it once clients have moved |
 | Change an event's fields | Edit it | Edit it, if nothing *released* holds it; re-plan every slice that holds it | **A new version** (`…V2`, `schemaVersion`, `versionedHandler`), even for an optional field (ADR-018) |
+| Change an event's tags (its id fields) | Edit it | Check who uses the tag (below); then one commit to `Events.ts`, and a same-name replacement of each slice whose tests check the old tags | **A new version**: a stored event keeps its tags (ADR-048) |
 | Retire an automation | Remove it | Delete it and its code | **Switch it off** when its successor goes in (two would both act); its to-do list carries the open items over (ADR-039) |
 | Split or merge slices | Reshape | New slices; delete the old ones | New slices; supersede the old ones |
 | A read model's projection | Edit it | An extension slice (ADR-019) | An extension slice; it keeps handling old events and old versions |
@@ -65,6 +66,23 @@ an automation importing the command it issues, or a slice importing an event's t
 activation" issues that command, so it broke, and the loop edited it (licensing `1fc4905`, the one exception kept).
 The plan should have been: add `assignOrganisationOwner`, replace "owner on activation" to issue it, then delete the
 old slice.
+
+### Changing an event's tags (ADR-048)
+An event's tags are its id fields (`emcli element field set … --id`). An event recorded from another system also
+carries that system's ids (Paddle: `paddleEventId`, `subscriptionId`). A read finds an event with **any** of a query
+item's tags; an append condition conflicts with one that has **all** of its tags. So first find who uses the tag:
+
+```bash
+grep -rn "<tagKey>" src/contexts --include=decisionModels.ts --include=readModel.ts   # tagFilter, key, lookups, query tags
+```
+
+| The change | Compatible when | Otherwise |
+|---|---|---|
+| **Add a tag** | No query uses the new key for the event's type. If one does, it now finds the event: a decision folds more, a projection files it under more documents. | Replace that slice too |
+| **Remove a tag, rename its key or change its value** | Never: every query by the old tag stops finding the event | Expand (add the new tag), switch (replace each user), contract (remove the old one) |
+
+Before release, the change to `Events.ts` is one commit outside the loop. The producer's integration test checks
+the tags exactly, so it fails until the producer's same-name replacement is built. Reset the local database.
 
 ### Before release (replace)
 - Delete the old slice with emcli. If its event is still needed, **move** it to the new slice
@@ -114,7 +132,7 @@ Plan around what will refuse you, not into it:
 |---|---|
 | emcli `element remove` / `slice remove` | Removing a released event (refused); removing anything built (a warning: its code goes too) |
 | emcli `workspace export` | A built slice whose model changed (held back, not queued) |
-| emcli `completeness` | One command producing an event in two slices (a warning) |
+| emcli `completeness` | One command producing an event in two slices; an event feeding a read model without its key as an id (warnings) |
 | `events-append-only` check | A slice commit that removes or changes a line in `Events.ts` |
 | `slice-scope` check | A slice commit touching another slice's folder (an extension slice may touch its origin) |
 | `job-scope` check | The loop's job changing any slice but its own (or an extension's origin), committed or not: it blocks instead |
@@ -151,3 +169,4 @@ The full text is in the kit repo (`eventmodelers-cli/stacks/dcb/ADR.md`):
 | 038 | One flow per chapter; an event has the same fields in every chapter. |
 | 039 | An automation has a trigger, a to-do list and data inputs. |
 | 046 | Replace a slice before release, supersede it after; released = `deployed`. |
+| 048 | An event's tags are its id fields; a tag change follows the compatibility rules, by who queries the tag. |

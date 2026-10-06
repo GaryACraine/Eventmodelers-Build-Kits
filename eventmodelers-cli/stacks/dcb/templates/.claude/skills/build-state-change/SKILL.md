@@ -67,6 +67,10 @@ for choosing tag keys:
 
 - **`idAttribute` fields are tag keys.** In slice.json, fields marked `idAttribute: true` on an
   event are the entity identity fields. Use these as tag keys. Example: `courseId`, `studentId`.
+  An event's tags are part of its definition (ADR-048): tag with **every** id field the model marks, and if a read
+  model or query needs a tag the model doesn't mark, block the job and say so (the model changes first).
+- **An event recorded from another system** also carries that system's ids as tags (ADR-040, ADR-048). The
+  provider skill names them (Paddle: `paddleEventId`, and `subscriptionId` when known).
 - **Single-entity events** tag with the entity's ID:
   `Tags.fromObj({ courseId })` — all course events are scoped to one course.
 - **Multi-entity events** tag with ALL participating entity IDs:
