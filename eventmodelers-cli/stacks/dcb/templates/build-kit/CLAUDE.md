@@ -96,9 +96,7 @@ When asked to build a slice, always follow this flow:
      (`rebuild.changes` says what, in plain words). Use the slice type's skill as usual, but **update the existing
      files** in its folder to the new slice.json (fields, rules, scenarios), don't write them anew; keep what still
      holds, add a test per new scenario, and drop tests of removed ones. Change a line in place rather than adding a
-     new one before it: remove any code the change supersedes, so no branch is left that can never run. When it renames
-     an element other slices use (a command another slice's automation issues), update those uses in the same commit,
-     changing nothing else there: the build must pass. The commit says `feat: [<slice>] updated`.
+     new one before it: remove any code the change supersedes, so no branch is left that can never run. The commit says `feat: [<slice>] updated`.
    - **Retype** — a state-view slice whose slice.json has a `retype` block: the model switched a built read model's
      type → `/build-state-view` ("Changing a read model's type"). It changes the `type:` line only.
    - **Queries** — a state-view slice whose slice.json has `addQueries`: its specs now run queries the built read
@@ -128,8 +126,7 @@ It loads every check under `.build-kit/lib/checks/` and rejects the commit if an
 - **blocked-paths** — `package.json`/lockfiles, `api/openapi.json` (the model's) and `index.ts` are never touched
   by slice work
 - **slice-scope** — everything staged must be inside the slice folder or a documented exception:
-  `src/contexts/{context}/Events.ts`. A rebuild that renames an element (`rebuild.changes` lists `<old>: removed` and `<new>: new`) may
-  also update the slices that use it, in the same commit, by that rename only (ADR-046)
+  `src/contexts/{context}/Events.ts`
 - **extension-additive** — while an extension slice (`extends` in slice.json) is InProgress: changes stay in
   its origin's folder, the origin's `readModel.ts` / `projection.ts` only gains lines, and the origin's
   `route.tests.ts` has top-level blocks for the extension (`describe("{extension title}")`, or
