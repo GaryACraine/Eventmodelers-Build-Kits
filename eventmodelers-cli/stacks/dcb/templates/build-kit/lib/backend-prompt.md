@@ -30,7 +30,9 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
 9. Lessons: add what a later backend job in this project should know to `.build-kit/learnings/backend.md` (or `learnings/shared.md` if the UI needs it too), following "Lessons" below. Most jobs add none or one.
 10. Finish the iteration. Don't write to `progress.txt` unless you block the job.
 
-**Blocking the job** (step 7, or a skill's escalation): in `index.json`, set `concerns.backend` to `{ "status": "Blocked", "blockedReason": "<the check output or the question, in short>", "blockedAt": "<now, ISO 8601>" }`, and add a journal entry to `progress.txt` ("Journal entry" below). The model plans it again after the fix, and the export queues it again only when that planning came after `blockedAt`. The slice's UI doesn't wait for it (it builds from the contract), and other slices go on.
+**Blocking the job** (step 7, or a skill's escalation): in `index.json`, set `concerns.backend` to `{ "status": "Blocked", "blockedReason": "<the check output or the question, in short>", "blockedAt": "<now, ISO 8601>" }`, and add a journal entry to `progress.txt` ("Journal entry" below). Leave the working tree as you found it: stash what the job changed and didn't commit (`git stash push --include-untracked -m "Blocked: <Slice>" -- <its paths>`), and name the stash in the journal entry. The model plans it again after the fix, and the export queues it again only when that planning came after `blockedAt`. The slice's UI doesn't wait for it (it builds from the contract), and other slices go on.
+
+**Only this job's slice changes** (the `job-scope` check, ADR-046), or an extension's origin. Never edit another slice's folder, even to make the build pass, and don't leave such an edit uncommitted either. If this job's change stops another slice compiling (it calls a command whose fields changed, say), the plan is wrong: block the job with `blockedReason` "another slice uses what this job changes: `<file>:<line>`". The model plans it as expand, switch, contract (`plan-change`).
 
 ## Escalating Ambiguity
 

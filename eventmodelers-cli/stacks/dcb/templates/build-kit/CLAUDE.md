@@ -133,6 +133,10 @@ It loads every check under `.build-kit/lib/checks/` and rejects the commit if an
   by slice work
 - **slice-scope** — everything staged must be inside the slice folder or a documented exception:
   `src/contexts/{context}/Events.ts`
+- **job-scope** — while the loop has a backend job InProgress, no other slice's folder changes, in the commit or
+  left in the working tree (an extension slice may change its origin). A job that can't build without changing
+  another slice blocks: the change alters something other slices use, which `plan-change` plans as expand, switch,
+  contract (ADR-046)
 - **extension-additive** — while an extension slice (`extends` in slice.json) is InProgress: changes stay in
   its origin's folder, the origin's `readModel.ts` / `projection.ts` only gains lines, and the origin's
   `route.tests.ts` has top-level blocks for the extension (`describe("{extension title}")`, or

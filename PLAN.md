@@ -622,6 +622,16 @@ model and build only what's ours.
       replacement to the skill: the new slice is built over the old folder, which stays, because "owner on
       activation" imports its decider. Next: "untranslated notifications settled" (an event change).
     - The shared-LISTEN fix for the library is issue #170.
+    - **The replacement broke a slice that uses its command** (built 2026-10-06, owner chain 9/9). It kept the
+      name `assignOwnerRole` but dropped `roleId`, so "owner on activation", which issues it, no longer compiled.
+      The loop edited it in a commit of its own (`1fc4905`). `slice-scope` passed it, because it checks one commit
+      at a time, and `tsc-build` checks the whole working tree.
+      - **Kit fix:**
+        - the `job-scope` check: while a job is InProgress, no other slice's folder changes, committed or not;
+        - the loop prompt: block rather than edit, and stash a blocked job's work;
+        - `plan-change` and ADR-046: a change other slices use goes expand, switch, contract.
+      - `1fc4905` stays as the one exception, since a proper replay produces the same line.
+      - [ ] Proven once a change with users goes through the three steps in the loop.
   - *2026-10-06, the replacement's board push failed half way, and two emcli fixes followed:*
     - **On the board, deleting a slice deletes its elements,** so `userWasAssignedToRole`, moving out of the
       deleted slice, was gone before the move. Recovered by correcting the baseline to the board's state, then
@@ -3907,6 +3917,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-06 | Changing a slice: replace it before release, supersede it after (ADR-046 rewritten, Proposed; ADR-018 clarified) | Gary rejected the first ADR-046 (a general command-rename rule; a built slice amended in place, which rippled into other slices and blocked the loop twice). Released = deployed: events then follow ADR-017/018 (a new version for every change), endpoints are deprecated, automations switched over. Before release a slice and its unused event may be deleted. Enforced by `events-append-only` and emcli's removal guards; the rename exception (#162, #164) reverted |
 | 2026-10-06 | Planning rules live in the kit's `plan-change` skill; the ADRs stay the record of why | Gary asked how to stop planning rules being missed. `ADR.md` is 199 KB and isn't installed in projects, where the modelling mostly happens. A skill's description is always in context, so it loads when a change comes up. Mechanical rules go in emcli and the checks first. An ADR that changes a planning rule updates the skill in the same PR |
 | 2026-10-06 | A read-model test sets up its given with `app.given` (events straight to the store), never through another slice's route | Gary approved. Posting to a command slice's route made read slices depend on it, which blocked deleting a replaced command |
+| 2026-10-06 | A change other slices use goes expand, switch, contract; a loop job changes only its own slice (`job-scope`) | The owner replacement kept its command's name and changed its fields, which broke the automation issuing it, and the loop edited that automation. Follow-on fixes made by hand (a compile-only edit, recorded) were approved first, then withdrawn on review (Gary asked whether they were additive): they still amend a built slice, and the loop would stop half-way through the job. A new name lets every step build on its own |
 
 ## Progress
 
