@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest"
-import { compareContract, renderReport } from "./contract.js"
+import { compareContract, extensionFields, renderReport } from "./contract.js"
 
 // A contract as emcli writes it, and the document the code serves (zod-to-openapi's shapes), for one command, one
 // read model and one query.
@@ -144,7 +144,7 @@ describe("the API contract check (PLAN 14.10)", () => {
         expect(report.extra).toEqual(["GET /ratings/{courseId}"])
         expect(report.pending).toContain("GET /course-ratings/{courseId}")
         const one = compareContract(served({ ratingsPath: "/ratings/{courseId}" }), contract(), { only: ["POST /rate-course"] })
-        expect(one).toEqual({ match: ["POST /rate-course"], pending: [], differ: [], extra: [] })
+        expect(one).toEqual({ match: ["POST /rate-course"], pending: [], differ: [], extra: [], pendingFields: [] })
     })
 
     test("compares the component names the UI imports", () => {
@@ -167,5 +167,40 @@ describe("the API contract check (PLAN 14.10)", () => {
             "query parameter courseId: in the code, not in the contract",
             "response: the code has object, the contract has none"
         ])
+    })
+})
+
+describe("a field a read model's extension adds (ADR-019): pending until the extension is built", () => {
+    // The contract has the read model's final shape: CourseRatings with ratingCount, which a later slice adds
+    const grown = () =>
+        contract({
+            readModel: {
+                type: "object",
+                properties: { courseId: { type: "string" }, averageRating: { type: "number" }, comments: { type: "array", items: { type: "object", properties: { text: { type: "string" } }, required: ["text"] } }, ratingCount: { type: "integer" } },
+                required: ["courseId", "averageRating", "comments"]
+            }
+        })
+    const extension = (built: boolean) => ({
+        built,
+        readmodels: [{ apiEndpoint: "/course-ratings/{courseId}" }],
+        extends: { addedFields: [{ name: "ratingCount" }] }
+    })
+
+    test("the origin, built first, matches without the extension's field, which shows as pending", () => {
+        const report = compareContract(served(), grown(), { pendingFields: extensionFields([extension(false)], grown()) })
+        expect(report.differ).toEqual([])
+        expect(report.match).toContain("GET /course-ratings/{courseId}")
+        expect(report.pendingFields).toEqual([{ op: "GET /course-ratings/{courseId}", fields: ["ratingCount"] }])
+        expect(renderReport(report).lines).toContain("  pending GET /course-ratings/{courseId}: ratingCount (an extension not built yet adds them)")
+    })
+
+    test("any other missing field still differs", () => {
+        const report = compareContract(served(), grown(), { pendingFields: extensionFields([{ ...extension(false), extends: { addedFields: [{ name: "other" }] } }], grown()) })
+        expect(report.differ).toEqual([{ op: "GET /course-ratings/{courseId}", what: ["response.ratingCount: in the contract, missing from the code"] }])
+    })
+
+    test("once the extension is built, its field must be served", () => {
+        const report = compareContract(served(), grown(), { pendingFields: extensionFields([extension(true)], grown()) })
+        expect(report.differ.map(d => d.op)).toEqual(["GET /course-ratings/{courseId}"])
     })
 })

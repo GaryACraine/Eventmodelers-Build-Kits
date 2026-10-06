@@ -12,7 +12,9 @@
  * model doesn't decide them, and the UI shows a rejection's `detail` whatever its status.
  *
  * A served operation missing from the contract is an error, except the infrastructure routes. A contract operation
- * not served yet is pending: that's a UI built before its backend, which is the point.
+ * not served yet is pending: that's a UI built before its backend, which is the point. Likewise a response field a
+ * read model's extension slice adds (ADR-019) is pending until that extension is built: the contract shows the read
+ * model's final shape, and its origin is built first (`pendingFields`, from `extensionFields`).
  */
 
 type Json = Record<string, any>
@@ -39,7 +41,40 @@ export interface ContractReport {
     pending: string[]
     differ: { op: string; what: string[] }[]
     extra: string[]
+    /** Response fields left for an extension slice not built yet, per operation */
+    pendingFields: { op: string; fields: string[] }[]
 }
+
+/** What `extensionFields` reads of a slice.json in `.build-kit/.slices`. */
+export interface ExtensionSlice {
+    built: boolean
+    readmodels?: { apiEndpoint?: string }[]
+    extends?: { addedFields?: { name: string }[] }
+}
+
+/**
+ * The response fields extension slices not built yet will add, per read operation: their read model's keyed GET and
+ * every GET under it (its queries). Built extensions add nothing: their fields must be served.
+ */
+export function extensionFields(slices: ExtensionSlice[], contract: Json): Map<string, Set<string>> {
+    const out = new Map<string, Set<string>>()
+    const ops = [...operations(contract).keys()].filter(op => op.startsWith("GET "))
+    for (const slice of slices) {
+        const fields = (slice.extends?.addedFields ?? []).map(f => f.name)
+        if (slice.built || fields.length === 0) continue
+        for (const endpoint of (slice.readmodels ?? []).map(r => r.apiEndpoint).filter((e): e is string => !!e)) {
+            const base = endpoint.replace(/\/\{[^}]+\}$/, "")
+            for (const op of ops.filter(op => op === `GET ${endpoint}` || op.startsWith(`GET ${base}/`))) {
+                const set = out.get(op) ?? new Set<string>()
+                for (const f of fields) set.add(f)
+                out.set(op, set)
+            }
+        }
+    }
+    return out
+}
+
+const MISSING_RESPONSE_FIELD = /^response(?:\[\])?\.(\w+): in the contract, missing from the code$/
 
 const METHODS = ["get", "post", "put", "patch", "delete"]
 
@@ -167,11 +202,15 @@ export function diffOperation(contract: OperationView, served: OperationView): s
  * Compares the served document with the contract. `only` limits it to those operations (`POST /rate-course`), e.g.
  * the ones a commit's slices serve; without it every operation is compared.
  */
-export function compareContract(served: Json, contract: Json, { only }: { only?: string[] } = {}): ContractReport {
+export function compareContract(
+    served: Json,
+    contract: Json,
+    { only, pendingFields }: { only?: string[]; pendingFields?: Map<string, Set<string>> } = {}
+): ContractReport {
     const a = operations(contract)
     const b = operations(served)
     const wanted = only ? new Set(only) : undefined
-    const report: ContractReport = { match: [], pending: [], differ: [], extra: [] }
+    const report: ContractReport = { match: [], pending: [], differ: [], extra: [], pendingFields: [] }
     const keys = [...new Set([...a.keys(), ...b.keys()])].sort()
     for (const op of keys) {
         if (wanted && !wanted.has(op)) continue
@@ -183,7 +222,17 @@ export function compareContract(served: Json, contract: Json, { only }: { only?:
         } else if (!inCode) {
             report.pending.push(op)
         } else {
-            const what = diffOperation(inContract, inCode)
+            const later = pendingFields?.get(op)
+            const left: string[] = []
+            const what = diffOperation(inContract, inCode).filter(line => {
+                const field = line.match(MISSING_RESPONSE_FIELD)?.[1]
+                if (field && later?.has(field)) {
+                    if (!left.includes(field)) left.push(field)
+                    return false
+                }
+                return true
+            })
+            if (left.length > 0) report.pendingFields.push({ op, fields: left })
             if (what.length === 0) report.match.push(op)
             else report.differ.push({ op, what })
         }
@@ -203,5 +252,6 @@ export function renderReport(report: ContractReport): { lines: string[]; problem
     }
     for (const op of report.extra) lines.push(`  EXTRA   ${op} (served, but the model has no such route)`)
     for (const op of report.pending) lines.push(`  pending ${op}`)
+    for (const { op, fields } of report.pendingFields) lines.push(`  pending ${op}: ${fields.join(", ")} (an extension not built yet adds them)`)
     return { lines, problems: report.differ.length + report.extra.length }
 }

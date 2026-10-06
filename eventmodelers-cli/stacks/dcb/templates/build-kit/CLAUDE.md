@@ -154,7 +154,8 @@ It loads every check under `.build-kit/lib/checks/` and rejects the commit if an
   `./schema.js`; every `readModelRoute(…)` passes `schema:` (it documents the keyed GET and the queries itself)
 - **api-contract** — the operations the touched slices serve match the API contract (`api/openapi.json`): path,
   parameters, success status, body and response fields, types, required ones and schema names (`node
-  dist/contract.js --only …`). Descriptions, headers and which 4xx a rejection uses aren't compared. Skipped
+  dist/contract.js --only …`). Descriptions, headers and which 4xx a rejection uses aren't compared. A field
+  that an extension slice not built yet adds is pending, not missing: build the origin without it. Skipped
   without a contract
 - **tsc-build** — `npx tsc --noEmit` must still pass
 - **slice-tests** — the tests of every slice folder the commit touches must pass (for an extension, that is

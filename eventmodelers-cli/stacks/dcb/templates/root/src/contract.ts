@@ -13,7 +13,7 @@ import { dirname, join, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { buildOpenApiDocument } from "./shared/openapi.js"
 import { registerRoutesFromCode, sliceFiles } from "./shared/openapiFromCode.js"
-import { compareContract, renderReport } from "./shared/contract.js"
+import { compareContract, extensionFields, renderReport, type ExtensionSlice } from "./shared/contract.js"
 
 const here = dirname(fileURLToPath(import.meta.url))
 const root = resolve(here, "..")
@@ -39,6 +39,29 @@ const served = documentFile && existsSync(documentFile)
 
 const onlyAt = process.argv.indexOf("--only")
 const only = onlyAt > 0 ? process.argv[onlyAt + 1].split(",").map(s => s.trim()).filter(Boolean) : undefined
-const { lines, problems } = renderReport(compareContract(served, JSON.parse(readFileSync(contractFile, "utf8")), { only }))
+const contract = JSON.parse(readFileSync(contractFile, "utf8"))
+const { lines, problems } = renderReport(compareContract(served, contract, { only, pendingFields: extensionFields(extensionSlices(), contract) }))
 for (const line of lines) console.log(line)
 process.exit(problems > 0 ? 1 : 0)
+
+/** The extension slices in the loop's queue (`.build-kit/.slices`), and whether each one's backend is built. */
+function extensionSlices(): ExtensionSlice[] {
+    const read = (file: string) => {
+        try {
+            return JSON.parse(readFileSync(file, "utf8"))
+        } catch {
+            return undefined
+        }
+    }
+    const slicesDir = join(root, ".build-kit", ".slices")
+    const context = read(join(slicesDir, "current_context.json"))?.name
+    if (!context) return []
+    const entries: { folder: string; status?: string; concerns?: { backend?: { status?: string } } }[] =
+        read(join(slicesDir, context, "index.json"))?.slices ?? []
+    return entries.flatMap(entry => {
+        const slice = read(join(slicesDir, context, entry.folder, "slice.json"))
+        if (!slice?.extends) return []
+        const status = entry.concerns?.backend?.status ?? entry.status
+        return [{ ...slice, built: status === "Done" }]
+    })
+}
