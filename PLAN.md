@@ -3871,6 +3871,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-05 | A webhook's event is an external event with a slice of its own: the endpoint that records it (ADR-045, Proposed) | Gary: an external event is read into a read model and translated by a processor, with no command of ours; the hand-off couldn't plan an event-only slice, so nothing built the endpoint |
 | 2026-10-05 | One Paddle Translation, built from chapter 1's card with every case; other chapters show the cases they add and are never planned | Every notification lands on one list and needs one decision; chapters 1 and 24 receive the same notification type, so splitting would make two automations judge the same item |
 | 2026-10-05 | The auth role sync slices stay draft in increment 1 | The sign-in provider (Cognito or Supabase) isn't chosen, so there's nothing to build them against |
+| 2026-10-06 | One command per state-change slice: a specialised case gets its own command, a generic one may repeat its rules (ADR-046, Proposed) | Gary: slice independence over reuse. Licensing's `assignRole` in two slices meant two deciders on one route (the loop blocked); now `assignOwnerRole` and `assignRole`. emcli's `completeness` warns on a shared command; a built slice changes through the existing rebuild re-queue |
 
 ## Progress
 
