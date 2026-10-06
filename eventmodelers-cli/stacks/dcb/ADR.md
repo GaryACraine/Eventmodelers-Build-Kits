@@ -2811,3 +2811,95 @@ If it can't give direct connections, step 2 is done before release.
   Also kept for later: targeted wake-ups (the NOTIFY payload carries event types), and Emmett's one reader per
   consumer if the N reads ever become the bottleneck.
 - **Hosting:** choosing the backend's host includes the deployment check above. It's an open point in PLAN Phase 16.
+
+---
+
+### ADR-048: An event's tags are part of its definition, and change by the compatibility rules
+
+**Status:** Proposed, 2026-10-06. Gary agreed the plan and added the compatibility rule: a tag change is judged by
+its downstream impact on projections and deciders.
+**Date:** 2026-10-06
+
+**Context:**
+- **What happened:** in licensing, "untranslated notifications settled" blocked.
+  - The to-do list `UntranslatedNotifications` is keyed by `paddleEventId`: a notification leaves it when an
+    outcome tagged with that id arrives.
+  - `trialWasStarted` carries `paddleEventId` as data but is tagged only with `organisationId`, so the trial's
+    start never reached the document.
+  - Tagging it meant changing a line of `Events.ts` (refused by `events-append-only`) and start trial's integration
+    test, which checks the persisted tags exactly (refused by `extension-additive`).
+- **ADR-040 already needed the tag:** its safety net is "received, with no outcome event for its `paddleEventId`",
+  and its deciders read "our events for that subscription". So every outcome of a Paddle notification must be found
+  by `paddleEventId`, and by `subscriptionId`. `trialWasRefused` and `refusedTrialWasCancelled` have the same gap.
+- **Why it got through:** the model marks an event's tags as id fields (`idAttribute`), and only `organisationId`
+  was marked. emcli couldn't mark an existing field as an id, and no check compares a read model's key with the
+  tags of the events that feed it.
+- **What the library does with tags** (dcb-event-store):
+  - **a read** (a decision model's query, a projection's live read) finds an event that has **any** of a query
+    item's tags, and one of its types (`tags && …`);
+  - **an append condition** conflicts with an event that has **all** of the condition's tags (`tags @> …`);
+  - **a read model** files an event under each of its `${key}=` tags (the kit's `readModels.ts`), and a live read
+    model queries the store by that tag (ADR-022, ADR-023).
+- **The references:**
+  - **Axon 5** declares tags on the event's fields (`@EventTag`, resolved by `AnnotationBasedTagResolver` when the
+    event is appended). So, as here, a tag belongs to the event's definition, and a change only reaches events
+    appended after it.
+  - **Emmett and Marten** file an event under one stream when it's appended, and never move a stored event: the
+    same constraint as a stored event's tags.
+
+**Decision:**
+1. **An event's tags are part of its definition, declared by its id fields.** The build tags an event with every
+   field the model marks as an id.
+2. **An event recorded from another system carries that system's ids as tags.** For Paddle these are
+   `paddleEventId` and, when known, `subscriptionId` (ADR-040).
+3. **A tag change follows the compatibility rules, by who uses the tag.** Its users are:
+   - every query whose item has one of the event's types and uses the tag's key: a decision model's
+     `tagFilter`, and the append condition built from it;
+   - a read model's key, lookup or query parameter, for a read model that handles the event.
+
+   | The change | Its impact | So |
+   |---|---|---|
+   | **Add a tag** | No query loses the event. A query that uses the new key for the event's type now finds it: a decision folds more events, an append condition conflicts more often, a projection files the event under more documents. | **Compatible** when no such query exists. If one does, that slice's behaviour changes: replace it (ADR-046). |
+   | **Remove a tag, rename its key or change its value** | Every query by the old tag stops finding the event: a decision silently loses state, a projection loses documents. | **Breaking:** expand (add the new tag), switch (replace each user to query it), contract (remove the old tag). |
+
+4. **Before release,** a tag change is an event change (ADR-046): one commit to `Events.ts` made outside the loop,
+   saying why. Each slice whose tests check the old tags gets a same-name replacement, and the other slices that
+   hold the event are re-planned. Reset the local database: its events keep their old tags.
+5. **After release, a stored event keeps the tags it was appended with.** Any tag change is a new version of the
+   event (ADR-018), and a reader by a new tag can't find the old version's events by it.
+6. **emcli:**
+   - `element field set --id` / `--no-id` marks a field as an id. Like the other flags, it follows the element's
+     copies and spec steps.
+   - The export's hold-back (ADR-046) ignores an id flag on an event a slice doesn't produce, and on spec steps:
+     those slices' code takes the event's tags from `Events.ts`, so their build doesn't change.
+   - `completeness` warns when an event feeds a read model without its key as an id: the projection would never
+     file it.
+
+**Alternatives considered:**
+- **Tags as a build rule only, not in the model** (how `organisationWasActivated`'s `userId` tag was built).
+  Rejected: the model can't then check a read model's key against its events, which is how this got through.
+- **File events under a read model's key read from the event's data** (Marten's and Emmett's identity from a
+  field). Rejected: a live read model queries the store by the key tag (ADR-022, ADR-023), so the tag is needed
+  anyway.
+- **A new event version before release.** Rejected: before release an event may change in place (ADR-046).
+- **Edit the producers' tests by hand in the event commit.** Rejected: it amends built slices (ADR-046's
+  withdrawn "follow-on fixes").
+
+**Consequences:**
+- **The commit to `Events.ts` breaks the producers' integration tests** until the loop rebuilds them, since only
+  their same-name replacements may change their tests.
+- **Kit:** `plan-change` gets a row for tags and the impact check; `provider-paddle` and `build-state-change` say
+  which ids an event is tagged with.
+- **In licensing (before release):**
+  - `trialWasStarted`, `trialWasRefused` and `refusedTrialWasCancelled` are tagged with `paddleEventId` and
+    `subscriptionId` as well as `organisationId`;
+  - their producers are replaced with same-name slices: start trial, refuse trial, record refused trial cancelled;
+  - "untranslated notifications settled" is re-planned;
+  - new extension slices in chapter 24 take a refused or cancelled notification off the to-do list.
+- **The impact check, in licensing:** the only queries using the new keys are
+  - `UntranslatedNotifications` (key `paddleEventId`), which the extension means to change;
+  - skip paddle notification's "has outcome", which asks only for `paddleNotificationSkipped`.
+
+  So the additions are compatible.
+- **Open:** tags built before this rule without an id in the model (`organisationWasActivated`'s `userId`,
+  `paddleNotificationReceived`'s `subscriptionId`) are declared in the model when their slices are next replaced.

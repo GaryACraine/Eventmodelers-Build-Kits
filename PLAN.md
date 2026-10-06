@@ -86,9 +86,18 @@ model and build only what's ours.
            `starttrial/route.integration.tests.ts`), which `extension-additive` refused.
          - **The status:** "start trial" (which produces the event) is built, not released. So is everything else
            that holds the event.
-         - **To plan with `plan-change`:** list every slice that produces or reads `trialWasStarted`, and every
-           slice that imports start trial's code. Then decide whether adding a tag changes what those users depend
-           on (expand, switch, contract) or only start trial's own decider (a same-name replacement).
+         - **Planned (2026-10-06, ADR-048 Proposed):** adding a tag is compatible here. Reads match tags by overlap,
+           and no query uses `paddleEventId` or `subscriptionId` for these events except the to-do list, which the
+           extension means to change. The same gap is in `trialWasRefused` and `refusedTrialWasCancelled`, and
+           nothing takes a refused or cancelled notification off the list. Steps:
+           - [ ] the kit: ADR-048, and `plan-change`, `provider-paddle` and `build-state-change` updated;
+           - [ ] emcli: `element field set --id`; the hold-back ignores id flags on events a slice only reads;
+             `completeness` warns when an event feeds a read model without its key as an id;
+           - [ ] model: mark `paddleEventId` and `subscriptionId` as ids on the three events; replace start trial,
+             refuse trial and record refused trial cancelled with same-name slices; re-plan "settled"; add chapter
+             24's extension slices, modelled with Gary;
+           - [ ] licensing: one commit to `Events.ts`'s three tag lines (outside the loop); reset the local
+             database; export (Gary's go-ahead). The producers' tag tests fail until their replacements build.
        - **cancel the refused trial at paddle** (chapter 24): the description calls a refusal from Paddle a stall,
          but the model has no stall command or event. Add them (for example `markTrialCancellationStalled` →
          `trialCancellationWasStalled`, shown on Refused Trials At Paddle), built first. The slice also brings the
@@ -3962,6 +3971,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-06 | A change other slices use goes expand, switch, contract; a loop job changes only its own slice (`job-scope`) | The owner replacement kept its command's name and changed its fields, which broke the automation issuing it, and the loop edited that automation. Follow-on fixes made by hand (a compile-only edit, recorded) were approved first, then withdrawn on review (Gary asked whether they were additive): they still amend a built slice, and the loop would stop half-way through the job. A new name lets every step build on its own |
 | 2026-10-06 | Background processors share two connections per app (ADR-047 step 1: a shared listener, a lock holder per consumer); lease rows and polling only (step 2) only if the host forces a transaction-mode pooler | Each processor held two connections for good, so connections grew with the model (licensing's 11 hung startup on a pool of 20). Emmett and Axon own a processor by a lease row, but that is about a phase more work and only frees the app from session connections with polling only. A pooler comes from serverless compute, which this backend can't use, and mainstream hosts give direct connections. Choosing the host checks it (Gary) |
 | 2026-10-06 | ADR-046 and ADR-047 Accepted (Gary) | ADR-046 after its first use (the owner replacement) added expand, switch, contract and the `job-scope` check; ADR-047 after steps 1 and 1b were built and proven in licensing (pool 32 → 20, idle connections 33 → 6). Step 2 waits on a host that forces a transaction-mode pooler |
+| 2026-10-06 | An event's tags are part of its definition (its id fields); a tag change follows the compatibility rules, by who queries the tag (ADR-048, Proposed) | "Untranslated notifications settled" couldn't find `trialWasStarted`, tagged only by organisation, though ADR-040 needs every Paddle outcome found by `paddleEventId`. Gary: a tag change should follow backwards-compatibility rules for the projections and deciders that use it. Reads match by any tag, append conditions by all: adding a tag is compatible unless a query already uses its key for that type; removing or renaming is breaking (expand, switch, contract). After release, a new version. Axon 5 declares tags on the event's fields too (`@EventTag`) |
 
 ## Progress
 
