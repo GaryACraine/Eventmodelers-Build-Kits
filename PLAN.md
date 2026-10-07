@@ -93,8 +93,21 @@ model and build only what's ours.
       - **Kit:** `build-state-change` (`[]`, `handleCommand`, the bodiless 200, `thenNothingAppended`),
         `build-automation`, `plan-change`; the scaffold's `registerCommand({ nothingNew })`, and the contract
         comparer now takes a command's body from its 201, not an empty 200 (a test proves it).
-      - **Next:** after the merge, a kit update into licensing, then ADR-049's plan with "our answer of a cancellation
-        already recorded: nothing happens". **Later:** find the built slices that refuse a repeat, and replace them
+      - **Done:** the merge, the kit update into licensing (`74e7174`), and ADR-049's expand and switch (exported
+        2026-10-07): the new slice "record trial cancelled at paddle" built as planned (`[]` for our answer after
+        Paddle's event, `handleCommand`, the bodiless 200), and the translation switched to it.
+      - **Found: a replaced automation was marked Done with nothing changed.** "cancel the refused trial at paddle"
+        was replaced so its workflow records Paddle's answer, but a replacement has a new id, so the export queued it
+        as a new slice; its folder held the old code and tests, and the job took it as already built (no commit,
+        $0.18). Earlier replacements were saved by their scenarios changing; an automation's change is only its
+        description and links. This is the open "a job that commits nothing is never checked". Fixed:
+        - **emcli** (`514bf0c`): a replacement of a built slice is queued with a `rebuild` block ("replaces the
+          built slice in this folder", then what changed against its last export); `definitionChanges` reports
+          links added and removed;
+        - **the loop's instructions:** a Planned slice is never "already built"; compare descriptions too;
+        - **`ralph.js`:** a rebuild marked Done with no commit warns in the log and in `runs.jsonl` (`warning`);
+        - **`plan-change`:** how a replacement reaches the loop.
+      - **Also found:** `kit-drift` doesn't cover the scaffold's `src/shared` files (compared by hand this time). **Later:** find the built slices that refuse a repeat, and replace them
         when next touched.
     - **ADR-049 Accepted (Gary, 2026-10-07).** A decisive answer to our own call is a fact, recorded at
       once, and the provider's event of it is a repeat, skipped as "already done". Gary asked why the refused

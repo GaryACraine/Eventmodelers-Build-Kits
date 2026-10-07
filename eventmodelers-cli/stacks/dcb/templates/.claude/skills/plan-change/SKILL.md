@@ -94,7 +94,10 @@ the tags exactly, so it fails until the producer's same-name replacement is buil
     so their ids, links and copies stay;
   - remove the old slice, then rename the new one to the old name.
 
-  The new slice is built into the **same folder**, over the old code. Leave that code in place: other slices may
+  The new slice is built into the **same folder**, over the old code. emcli's export queues it as a **rebuild**
+  (`rebuild.changes`: "replaces the built slice in this folder", then what changed, links included), so the job
+  updates that code rather than taking it as built. Put every change in the model, descriptions included: for an
+  automation, the description and its links are all the job has to go on. Leave that code in place: other slices may
   import it (an automation imports the decider of the command it issues), and deleting it first breaks the build.
   emcli doesn't warn when you remove a built slice, so check `.build-kit/.slices` yourself.
 - **Replacing it with a slice of another name:** remove the old slice's code by hand, its folder and its lines in

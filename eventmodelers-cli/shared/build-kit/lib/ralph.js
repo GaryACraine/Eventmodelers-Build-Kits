@@ -14,7 +14,7 @@ import { execFileSync } from 'child_process';
 import { createRealtimeAdapter } from './adapters/realtime-adapter.js';
 import { concernsOf, inProgressConcerns, nextWork, setConcernStatus, settleEntries } from './concerns.js';
 import { LEARNINGS_CAP, contractPath, journalPath, journalTag, memoryBlock, pruneJournal, usesLearnings, withRepeatedNote } from './memory.js';
-import { appendMetrics, metricsLine, usageLimitWaitMs } from './runner.js';
+import { appendMetrics, metricsLine, rebuildWarning, usageLimitWaitMs } from './runner.js';
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 
@@ -805,11 +805,12 @@ async function runWithRetry(label, fn) {
 function recordRun(kitDir, projectDir, planned, run, result, failure) {
   try {
     let outcome;
+    let entry;
     if (failure?.usageLimit) outcome = 'usage-limit';
     else if (failure) outcome = 'error';
     else {
       const index = JSON.parse(readFileSync(join(kitDir, '.slices', planned.ctx, 'index.json'), 'utf-8'));
-      const entry = (index.slices ?? []).find((e) => e.id === planned.id);
+      entry = (index.slices ?? []).find((e) => e.id === planned.id);
       outcome = (entry && concernsOf(entry)[planned.concern ?? 'backend']?.status) ?? 'unknown';
     }
     let commit = null;
@@ -817,7 +818,15 @@ function recordRun(kitDir, projectDir, planned, run, result, failure) {
       const head = git(projectDir, ['rev-parse', 'HEAD']).trim();
       if (head !== run?.worktree?.head) commit = head.slice(0, 7);
     } catch {}
-    appendMetrics(kitDir, metricsLine({ planned, settings: result?.settings, result, outcome, commit }));
+    let rebuild;
+    if ((planned.concern ?? 'backend') === 'backend' && entry?.folder) {
+      try {
+        rebuild = JSON.parse(readFileSync(join(kitDir, '.slices', planned.ctx, entry.folder, 'slice.json'), 'utf-8')).rebuild;
+      } catch {}
+    }
+    const warning = rebuildWarning({ outcome, commit, rebuild });
+    if (warning) console.warn(`\n[ralph] ⚠ "${planned.title}": ${warning}\n`);
+    appendMetrics(kitDir, metricsLine({ planned, settings: result?.settings, result, outcome, commit, warning }));
   } catch (err) {
     console.error('[ralph] Failed to record the run in metrics/runs.jsonl:', err.message);
   }

@@ -108,8 +108,20 @@ export function usageLimitWaitMs(limit, now = Date.now()) {
   return 15 * 60_000;
 }
 
+/**
+ * A job that ended Done without a commit on a slice queued as a rebuild (a built slice whose model changed, or a
+ * same-name replacement of one): its code was meant to change, and nothing did. Licensing, 2026-10-07: a replaced
+ * automation's job took the folder's code as already built. A warning, not a block: an extension's rebuild can have
+ * nothing left to change (its origin's job did it).
+ */
+export function rebuildWarning({ outcome, commit, rebuild }) {
+  if (outcome !== 'Done' || commit || !rebuild) return undefined;
+  const changes = Array.isArray(rebuild.changes) && rebuild.changes.length > 0 ? `: ${rebuild.changes.join('; ')}` : '';
+  return `rebuild marked Done with no commit; check that the code has the change${changes}`;
+}
+
 /** One job's line in .build-kit/metrics/runs.jsonl. */
-export function metricsLine({ at = new Date(), planned, settings, result, outcome, commit }) {
+export function metricsLine({ at = new Date(), planned, settings, result, outcome, commit, warning }) {
   const usage = result?.usage ?? {};
   return {
     at: at.toISOString(),
@@ -130,6 +142,7 @@ export function metricsLine({ at = new Date(), planned, settings, result, outcom
       output: usage.output_tokens ?? 0,
     },
     commit: commit ?? null,
+    ...(warning ? { warning } : {}),
   };
 }
 
