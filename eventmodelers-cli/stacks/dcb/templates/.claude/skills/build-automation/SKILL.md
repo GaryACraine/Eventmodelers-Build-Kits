@@ -583,6 +583,8 @@ Nothing runs on a timer, so a stall must be recorded, or the item looks in progr
 
 ## `processor.tests.ts`: one test per specification
 
+Each test is **named after its specification: its title, verbatim** (the `spec-coverage` check matches the titles).
+
 File: `src/contexts/{context}/slices/{slicename}/processor.tests.ts`. Specs are GIVEN/THEN. `automationTestApp`
 starts the read models and automations as the app does, on a fresh database per test. It appends the GIVEN events in
 **one** append, so the automation never sees part of the history.

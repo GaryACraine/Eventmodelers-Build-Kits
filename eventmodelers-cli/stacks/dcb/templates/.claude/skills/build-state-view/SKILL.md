@@ -357,7 +357,8 @@ describe.each(READ_MODEL_TYPES)("{slice title} (%s)", type => {
 })
 ```
 
-- **One `test(...)` per specification** in slice.json, inside the `describe.each` block.
+- **One `test(...)` per specification** in slice.json, inside the `describe.each` block, **named after it: its title,
+  verbatim** (the `spec-coverage` check matches the titles, an extension's included).
 - **Assert bodies with `toMatchObject`**, never an exact-shape `toEqual`. The read model grows as extension
   slices add fields. An exact-shape assertion would then fail although its scenario still holds.
 - **Nothing type-specific in the file.** No consumers, no `Prefer: wait`, no store setup. That is what lets a
