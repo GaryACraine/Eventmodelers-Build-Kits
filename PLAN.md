@@ -79,7 +79,15 @@ model and build only what's ours.
       - background processors' connections (ADR-047, library Phases 20 and 21): 2 held per app, and turns at reading
         and handling (4 each), so the pool is 20 for any app with 4 or more processors (licensing was 32);
       - emcli's push recovery, fingerprint v3 and `inModel` export.
-    - **Decided:** ADR-046, ADR-047 and ADR-048 Accepted (Gary, 2026-10-06). No ADR waits on Gary.
+    - **Decided:** ADR-046, ADR-047 and ADR-048 Accepted (Gary, 2026-10-06).
+    - **Waiting on Gary: ADR-049, Proposed (2026-10-07).** A decisive answer to our own call is a fact, recorded at
+      once, and the provider's event of it is a repeat, skipped as "already done". Gary asked why the refused
+      trial's cancellation throws away Paddle's answer (`status: canceled`) and waits for `subscription.canceled`.
+      The rule was one line of `provider-paddle`, which no ADR had decided; ADR-031/032 and `build-automation`
+      already say the opposite, and the restaurant's Braintree charge records its answer. Paddle's docs are silent
+      on the answer to your own call. Once accepted, plan licensing's change with `plan-change`: the workflow
+      records the cancel from the answer, and the translation's "record refused trial cancelled" skips a
+      cancellation already recorded.
   - **Next, in order:**
     1. **The blocked slices,** each planned with `plan-change` (they're its first real tests).
        - **Done: untranslated notifications settled** (ADR-048, 2026-10-06). The Paddle outcomes were tagged only by

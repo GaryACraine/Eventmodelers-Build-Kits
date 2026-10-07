@@ -2275,7 +2275,7 @@ item. The decision is only about the door: the webhook endpoint, a poller, or bo
 | Scenario | Who starts it | If the webhook is lost | Harm from the delay |
 |---|---|---|---|
 | Owner starts a trial, or buys now | us (checkout on our page) | the fetch when the checkout completes | none |
-| Owner changes seats, or cancels from our screen | us (our call to Paddle) | Paddle's reply to our call confirms it | none |
+| Owner changes seats, or cancels from our screen | us (our call to Paddle) | Paddle's reply to our call confirms it (ADR-049: a decisive answer is recorded at once, and the webhook repeats it) | none |
 | The trial converts; a renewal succeeds or fails | Paddle, on a date we know | the sweep after that date | none |
 | The grace period runs out | Paddle, on a date we know | the sweep after that date | none: access ends when Paddle's cancellation arrives |
 | The owner cancels in Paddle's portal | the customer, unannounced | the next sweep | low: it takes effect at the period's end |
@@ -2910,3 +2910,87 @@ deciders.
     tags and leaves the to-do list, and a notification with no translation stays on it.
 - **Open:** tags built before this rule without an id in the model (`organisationWasActivated`'s `userId`,
   `paddleNotificationReceived`'s `subscriptionId`) are declared in the model when their slices are next replaced.
+
+### ADR-049: A decisive answer to our own call is a fact, recorded at once; the provider's event of it is a repeat
+
+**Status:** **Proposed, 2026-10-07.** Gary asked why the refused trial's cancellation ignores Paddle's answer and
+waits for the webhook.
+**Date:** 2026-10-07
+
+**Context:**
+- **What happens today, in licensing:**
+  - the cancellation's workflow calls Paddle's `POST /subscriptions/{id}/cancel` (`effective_from: immediately`);
+  - Paddle answers 200 with the subscription, `status: canceled`, and the workflow ignores it;
+  - the to-do item closes only when `subscription.canceled` arrives through the inbox, about three seconds later.
+- **The rule behind it was never decided.** It's one line of `provider-paddle`: "Never record a business event from
+  the call's answer". The rest of the kit says the opposite:
+  - **ADR-031/032 and `build-automation`:** "the workflow calls, then records the answer as a command". The
+    restaurant's Braintree charge records `paid` or `declined` from the answer.
+  - **ADR-041's table:** for a seat change or cancel we start, "Paddle's reply to our call confirms it".
+- **What waiting costs:**
+  - **the item stays open** until the webhook arrives, and indefinitely if it's lost. The fetch (Paddle Sync,
+    chapter 21) isn't built;
+  - **a screen can't confirm** the owner's own action from our state;
+  - **an answer we asked for, and hold, is thrown away.**
+- **The references:**
+  - **Paddle's docs:**
+    - they say to "use webhooks to keep your app in sync with Paddle", plus a periodic reconciliation through the
+      API ("Provision access and handle subscription state");
+    - they're silent on the answer to your own call;
+    - delivery is at least once and in no guaranteed order: deduplicate by `event_id`, order by `occurred_at`
+      ("Handle webhook delivery");
+    - a cancel with `effective_from: immediately` answers `status: canceled` at once ("Cancel a subscription").
+  - **In the sandbox (2026-10-02),** Paddle sends its event for a change made through the API too: our own calls
+    come back as webhooks.
+  - **The book (`publishCart`):** the command handler records the outcome of the external send itself, and its
+    failure as `failPublication`. It doesn't wait for a later confirmation.
+- **What the old rule guarded against.** Each concern is real, and each has a narrower answer:
+  - **two writers of one fact** (the answer and the webhook): the webhook's command sees the change already
+    recorded and skips it, "already done", as it skips Paddle's duplicates now (ADR-040);
+  - **order:** an answer has no `event_id` or `occurred_at`, but its entity's `updated_at` (or `canceled_at`) dates
+    it in Paddle's own clock;
+  - **answers that only accept a request** and don't state its result: these are not decisive, and wait as before.
+
+**Decision:**
+1. **A decisive answer to our own call is a fact.** It states the result: the entity in its new state (Paddle's
+   subscription with `status: canceled`, the new item quantities, or a `scheduled_change`), or a business answer
+   (Braintree's `declined`). The workflow records it at once as our command, through an activity, as
+   `build-automation` already says.
+   - The event carries the time from the answer's entity (`updated_at`, or `canceled_at`) as its occurred time.
+   - It carries the provider's ids that the answer gives (Paddle: `subscriptionId`). It has no `paddleEventId`,
+     since no event of Paddle's has arrived (ADR-048: "when known").
+2. **An answer that isn't decisive records nothing:** a timeout, a 429 or 5xx once the retries have run out, or an
+   answer that only accepts the request. The fact comes from the provider's event (webhook or fetch), and ADR-032's
+   stalls apply as before.
+3. **The provider's event of the same change is a repeat.** The translation's command finds the change already
+   recorded and records `paddleNotificationSkipped`, "already done", tagged with the event's `paddleEventId`, so it
+   leaves the to-do list (ADR-048). The decision is made on our state (the subscription is already cancelled, or its
+   seats are already those numbers), not on matching ids.
+4. **What we didn't start comes only from the provider's events:** renewals, a failed payment, its recovery, the
+   customer's portal, a change made in Paddle's dashboard. ADR-041's fetch still covers a lost webhook.
+
+**Alternatives considered:**
+- **Keep waiting for the provider's event** (today's `provider-paddle`). One writer per fact, but it throws away an
+  answer we hold, leaves the item open while the webhook is lost, and contradicts ADR-031/032.
+- **Record from the answer and ignore the webhook** for changes we start. Rejected: the webhook would then never be
+  translated, and the to-do list of notifications would hold it until it gave up.
+- **Two events: "requested at Paddle" from the answer, "confirmed by Paddle" from the webhook.** More honest about
+  the source, but nobody acts on the difference: both mean the subscription is cancelled. A screen can show the
+  source if needed (a field), without a second event.
+
+**Consequences:**
+- **Kit:**
+  - `provider-paddle`: the rule is replaced, with which of Paddle's answers are decisive, and the webhook of our own
+    change skipped as "already done";
+  - ADR-041's table: the row for changes we start says the answer records it, and the webhook repeats it;
+  - `build-automation`: unchanged (it already says this); `plan-change`: unchanged.
+- **Licensing (before release), chapter 24, planned with `plan-change` once accepted:**
+  - the cancellation's workflow records the cancel from Paddle's answer: a new command and slice ("record refused
+    trial cancelled at paddle"), and the automation replaced under the same name;
+  - "record refused trial cancelled" (the translation's) replaced under the same name: a subscription already
+    cancelled is skipped, "already done". Today a second cancellation would be recorded twice;
+  - `refusedTrialWasCancelled`: `paddleEventId` and `paddleOccurredAt` become optional, or an `occurredAt` plus
+    its source. An event change before release (ADR-046, ADR-048), checked by who uses the `paddleEventId` tag.
+- **Proven when:** in `trial-cancellation.sh`, the item closes after the mock's answer, before any
+  `subscription.canceled` is delivered; the delivered webhook is then skipped as "already done", and the trial is
+  cancelled once. A `not_found` still stalls, and the settled chain still passes.

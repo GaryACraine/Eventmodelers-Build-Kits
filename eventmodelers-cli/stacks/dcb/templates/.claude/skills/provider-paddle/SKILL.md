@@ -278,8 +278,9 @@ import { PaddleApiError, paddleRequest, type PaddleConfig } from "./paddle.js"
  * that cancellation. Each is the work of an external automation's activity, so each is **safe to run again**: Paddle
  * is told the state we want (every item with its quantity), never a difference.
  *
- * What the answer says is for the activity only. Our events come from Paddle's own events, through the inbox
- * (ADR-040): a seat change is `subscription.updated`, about three seconds after the call answers.
+ * A decisive answer (the subscription in its new state) is a fact: the workflow records it at once as our command
+ * (ADR-049). Paddle's own event of the same change arrives through the inbox about three seconds later, and is
+ * skipped as already done.
  */
 
 /** A seat type's price at Paddle, and how many seats of it */
@@ -416,9 +417,21 @@ export async function withdrawCancellation(config: PaddleConfig, subscriptionId:
   refused, before anything is charged. It cancels at once, even with a cancel already scheduled, and Paddle sends
   `subscription.canceled`. Asked again, Paddle refuses (`subscription_update_when_canceled`): done.
 - **Withdrawing** is `scheduled_change: null`. With nothing scheduled, Paddle changes nothing.
-- **What the answer says is for the activity only.** Our events come from Paddle's own events through the inbox: a
-  seat change is `subscription.updated`, about three seconds after the call answers. Never record a business event
-  from the call's answer.
+- **A decisive answer is a fact, recorded at once** (ADR-049, Proposed). The workflow records it as our command,
+  through an activity, as `build-automation` says:
+  - **decisive:** the subscription in its new state. A cancel `immediately` answers `status: canceled` with
+    `canceled_at`; a cancel at the period's end answers `scheduled_change` (`action: cancel`, `effective_at`); a seat
+    change answers every item with its quantity; a withdrawal answers `scheduled_change: null`;
+  - the event is dated by the answer's `updated_at` (or `canceled_at`), carries `subscriptionId`, and has no
+    `paddleEventId`: no event of Paddle's has arrived yet;
+  - **not decisive:** no answer by our deadline, or a 429 or 5xx once the retries run out. Record nothing; the fact
+    comes from Paddle's event (webhook or fetch), and the stall rules apply.
+- **Paddle's own event of that change repeats it.** Paddle sends it for changes made through the API too (a seat
+  change is `subscription.updated`, a cancel `subscription.canceled`), about three seconds after the answer. The
+  translation's command sees the change already recorded, on our state rather than by matching ids, and records
+  `paddleNotificationSkipped`, "already done", so the notification leaves the to-do list.
+- **What we didn't start comes only from Paddle's events:** renewals, a failed payment and its recovery, the
+  customer's portal, a change made in Paddle's dashboard.
 - **The preview** (`previewSeatChange`) is for the screen that asks the owner to confirm: a read, called by a route of
   ours, never by the browser (the API key is the backend's).
 
