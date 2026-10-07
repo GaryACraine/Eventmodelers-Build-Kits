@@ -278,8 +278,26 @@ model and build only what's ours.
            chain fails "admin once the trial starts": "owner admin role on trial" and "owner web seat on trial" throw
            "no owner of organisation … yet" for a trial whose organisation has no owner (the Paddle scripts start trials
            for organisations that never registered), and the throw blocks their processor at that event, retrying
-           with backoff. Not from this change. Open, for Gary: whether such an item waits on its own (skipped and
-           retried, or stalled) rather than holding up the list.
+           with backoff. Not from this change.
+         - **Decided (Gary, 2026-10-07): "wait on its own, blocking is bad for business", and "fix this properly".**
+           - **ADR-051** (kit PRs #200, #201): an automation's item waits for a missing data input (`act` returns),
+             and the data input's event works it (`defineAutomation`'s `waitsFor`, read by the automation's processor
+             though its list doesn't fold it; 3 helper tests). Changes ADR-039 decision 3. emcli's `event-model`
+             method says to link that event `reacts-to` (`add4db8`).
+           - **How an organisation got a trial with no owner:** `startTrial` takes `organisationId` from Paddle's
+             `custom_data`, which our checkout page sets in the browser, and never checked it. And the owner was
+             assigned by an automation after activation, so a trial could in principle arrive first.
+           - **Guarded at the decider** (option 1): start trial refuses an organisation that was never activated
+             ("unknown organisation"), so chapter 24 cancels it at Paddle. **No race left** (option 3): activation
+             records the owner role in the same decision; the owner chain (organisations awaiting an owner and its
+             settled copy, owner on activation, assign organisation owner, `POST /assign-owner-role`) is retired
+             before release, its code removed by hand (four commits). The owner automations are also replaced
+             with ADR-051's wait, as defence in depth.
+           - Licensing: kit `a6a13b0`, `5f24383`; model `5afa24e`, `18b591a` (pushed); code `d3336d0`..`dc42160`
+             (368 tests pass); e2e `d522824` (organisations activated before their trials, `e2e/lib/organisation.sh`;
+             trial-cancellation case 8). Rehearsed, then **exported 2026-10-07**: activate organisation, start trial and
+             the two owner automations re-queued, nothing else; the contract drops the two retired routes. The local
+             database is kept for the first e2e run (its old ownerless trial proves the wait), then reset.
          - **Found by the rehearsal: an element's prose never reached the loop.** emcli exported (and pushed) an
            event's or command's description as its field list only, and a pull cleared it, so 8 descriptions in
            licensing (`startTrial`'s "once ever", `refuseTrial`'s rules, the checkpoint's) were never seen by the
