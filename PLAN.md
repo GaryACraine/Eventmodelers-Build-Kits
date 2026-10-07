@@ -62,8 +62,8 @@ model and build only what's ours.
       - chapter 20's notification copies and its operations page;
       - chapter 21, the Paddle Sync;
       - chapter 24's notification copies.
-    - **Cost:** 63 loop runs, $31.02. $17.15 of that was 21 runs on Opus before the project pinned a model; 42 runs
-      on Sonnet (medium) cost $13.86 (16.6). Two runs ended on the account's usage limit; the loop waited for the
+    - **Cost:** 67 loop runs, $32.06. $17.15 of that was 21 runs on Opus before the project pinned a model; 46 runs
+      on Sonnet (medium) cost $14.91 (16.6). Two runs ended on the account's usage limit; the loop waited for the
       reset and built the slice on its own (`runWithRetry`).
     - **"Assign owner role" was replaced before release** (ADR-046), twice:
       - once to split the owner's command from the generic role command;
@@ -113,16 +113,31 @@ model and build only what's ours.
          - **The mock's container listened on 127.0.0.1**, so its published port reached nothing (fixed in licensing
            and in `build-automation`: `node server.ts` listens on `HOST`, default `0.0.0.0`).
          - **Left open** (for Gary):
-           - **One refused trial per organisation.** `refuseTrial` decides by `organisationId` ("already refused"), and
-             the list is keyed by it, so the workflow id is `paddle-trial-cancellation:<organisationId>:1`, not the
-             description's `<subscriptionId>`. A second seatless trial for the same organisation (the owner checks
-             out again) wouldn't be refused, so it wouldn't be cancelled. From the code; not tested. The fix is a
-             replacement keyed by `subscriptionId` (refuse trial, the list, the automation), before release.
+           - **Done (2026-10-07): refused trials per subscription.** `refuseTrial` decided per organisation ("already
+             refused"), and the list was keyed by it. So an organisation's second trial without a web seat failed
+             five times and was never cancelled at Paddle, and so did the same refusal sent twice (Paddle sends
+             `subscription.created` too, for a subscription made through its API).
+             - **Planned** with `plan-change`, before release: same-name replacements of refuse trial (per subscription;
+               a repeat is skipped as "already done", as start trial does) and of Refused Trials At Paddle with its
+               two extensions (keyed by `subscriptionId`, route `GET /refused-trials-at-paddle/{subscriptionId}`).
+               No event changed: the three events were already tagged `subscriptionId` (ADR-048). The automation
+               wasn't touched: its workflow id follows the list's key, so it's now `<subscriptionId>`, as described.
+               The database was reset.
+             - **The loop built the four** ($1.05). The origin's job re-pointed its extensions' tests; the two
+               extensions had nothing left to change and made no commit. 335 tests pass, and `trial-cancellation.sh`
+               passes 23 of 23 (an organisation's two refusals, each cancelled and listed on its own; the same refusal
+               twice, already done). The settled chain still passes.
+             - **A gap:** the origin's new scenario ("lists each refused subscription of an organisation") got no
+               test of its own; the end-to-end case covers it. A scenario without a test should block the job, or
+               a check should catch it (for Gary).
            - **An item in progress has no `state`** (the model says `waiting`): an extension may only add to its
              origin's projection, and the contract has `state` optional. Harmless for a screen; noted.
            - **Retry, give up and the stalled query** (ADR-032's decisions 3 and 5) wait for an operator screen. Until
              then a stall is resolved by cancelling in Paddle's dashboard, whose `subscription.canceled` closes it.
-       - **Now: watch for the trial after checkout** (chapter 1): it fetches Paddle's events "after our checkpoint",
+       - **Next, related: start trial is once per organisation too.** A second subscription with a web seat for an
+         organisation already on trial is skipped as "already done", and nothing cancels it at Paddle, so it could
+         bill when the trial ends (chapter 1). Plan it with `plan-change`.
+       - **Then: watch for the trial after checkout** (chapter 1): it fetches Paddle's events "after our checkpoint",
          which is chapter 21's Paddle Sync, still draft. Plan chapter 21 first: the checkpoint's event, its command
          and a read of the latest one.
     2. **16.3a: chapter 1 end to end through the UI,** first with the mock, then in the sandbox. It needs a stand-in
@@ -3997,7 +4012,7 @@ What each `build-*` skill generates and what it verifies:
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. **Increment 1 built by the loop (2026-10-06): 43 of its 44 slices built, 1 blocked on a model change, 13 left as draft; owner chain 9/9, the settling to-do list 14/14 and the refused trial's cancellation 11/11 end to end; 63 runs, $31.02. Before it, 16.1 to 16.5 built and proved the inbox, webhooks with a fetch behind them, timed work, setup commands, Paddle's inline checkout and our calls to Paddle (ADR-040 to 045). Next: "watch for the trial after checkout" (chapter 21's Paddle Sync planned first), then 16.3a (chapter 1 end to end through the UI). See "Where we are" at the top of Phase 16.** 16.3 is in process modelling: chapter 1 fleshed out, 16.3b done (ADR-039) (16.2 done 2026-09-30: ADR-037 Accepted, trials included after the 16.2b tests) (16.1's knowledge work done 2026-09-30; only Gary's live onboarding open; 16.2's research done 2026-09-30). Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
+| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. **Increment 1 built by the loop (2026-10-06): 43 of its 44 slices built, 1 blocked on a model change, 13 left as draft; owner chain 9/9, the settling to-do list 14/14 and the refused trial's cancellation 23/23 end to end; 67 runs, $32.06. Before it, 16.1 to 16.5 built and proved the inbox, webhooks with a fetch behind them, timed work, setup commands, Paddle's inline checkout and our calls to Paddle (ADR-040 to 045). Next: "watch for the trial after checkout" (chapter 21's Paddle Sync planned first), then 16.3a (chapter 1 end to end through the UI). See "Where we are" at the top of Phase 16.** 16.3 is in process modelling: chapter 1 fleshed out, 16.3b done (ADR-039) (16.2 done 2026-09-30: ADR-037 Accepted, trials included after the 16.2b tests) (16.1's knowledge work done 2026-09-30; only Gary's live onboarding open; 16.2's research done 2026-09-30). Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
 | 15 — Automations (restaurant orders) | ✅ Closed 2026-09-29 (a demo) | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27/28: the Restaurant Orders chapter (25 slices, 63 scenarios, 15 mockups) on prooph board, with stock and an internal automation (the Stock Returner); emcli push fixes (lanes, links, skipped deletions). 15.8 added: deciding from a growing event stream. 15.2 done 2026-09-28 (library PR #29 merged). 15.3 done 2026-09-28 (ADR-033 runtime, ADR-034 Braintree as a commercial directive; the loop built the restaurant backend; 8 end-to-end cases pass, with our own Temporal call deadline and Temporal in health; manual §21). Next: 15.4 redrive, then 15.5 the UI on Sonnet. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) | **Closed 2026-09-29:** 15.4 and 15.4c built through the loop (stalls, retry, give up, attempts, pay again, cancel); 15.4e provider skills; 15.9 on Sonnet at medium, about 2.5–3× cheaper per job; emcli re-queues changed built slices. The rest dropped or moved to Phase 16 |
 | 1 — Stack Scaffolding | ✅ Complete | Verified: init, npm install, tsc, 21/21 unit tests |
 | 2 — State Change Skill | ✅ Complete | 9-step SKILL.md with full DCB patterns |
