@@ -116,7 +116,7 @@ When asked to build a slice, always follow this flow:
      `buildScreen` in slice.json (`"added"` or `"changed"`), the model added or changed the screen of a slice
      already built: its "A screen added or changed" section.
 3. Invoke the matching skill and follow its instructions completely. Do not deviate.
-4. **Verify against slice.json**: After the skill completes, diff slice.json against the code field by field. No invented fields — if it is not in slice.json, it must not be in the code.
+4. **Verify against slice.json**: After the skill completes, diff slice.json against the code field by field. No invented fields — if it is not in slice.json, it must not be in the code. Every specification has a test named after it, its title verbatim (spec-coverage checks it at the commit).
 5. Run quality checks (backend: `npm run build`, then the slice tests only; UI: the `web/` checks in `build-screen`).
 6. If checks pass, commit with `feat: [Slice Name]` (backend) or `feat: [Slice Name] screen` (UI).
 7. Set the job's concern to `Done` in `index.json` (`concerns.backend` or `concerns.ui`). When blocked instead,
@@ -156,8 +156,9 @@ It loads every check under `.build-kit/lib/checks/` and rejects the commit if an
 - **test-file-present** — a changed `decider.ts`, `projection.ts`, `readModel.ts`, or `processor.ts` needs a sibling `*.tests.ts`
 - **no-invented-fields** — heuristic: flags a field used in code that isn't declared anywhere in
   `.build-kit/.slices/{context}/{slice}/slice.json`
-- **spec-coverage** — heuristic: each `*.tests.ts` file needs at least as many `test(...)` blocks as
-  slice.json has `specifications[]` entries (applies to both `route.tests.ts` and `route.integration.tests.ts`)
+- **spec-coverage** — every specification of the slice, and of each extension built on it, has a test named after
+  it, its title verbatim, in one of the folder's `*.tests.ts` files (an extension's are in its origin's
+  `route.tests.ts`); and each test file has at least as many `test(...)` blocks as slice.json has specifications
 - **openapi-registered** — every `router.get/post/put/patch/delete("<path>")` in a slice's `route.ts` has a
   `registerCommand` / `registerRead` with the same method and path in its `schema.ts`, and `route.ts` imports
   `./schema.js`; every `readModelRoute(…)` passes `schema:` (it documents the keyed GET and the queries itself)

@@ -2325,7 +2325,7 @@ folder, so nothing can skip them:
 | retype-scope | a retype that changes more than the `type:` line |
 | test-file-present | code without a test file |
 | no-invented-fields | fields not in `slice.json` (heuristic) |
-| spec-coverage | fewer tests than scenarios |
+| spec-coverage | a scenario with no test named after it (an extension's included), or fewer tests than scenarios in a file |
 | openapi-registered | a route missing from `/openapi.json` (no `registerCommand`/`registerRead` in `schema.ts`) |
 | tsc-build | TypeScript errors (including a read model's `schema` that doesn't match its document) |
 | api-contract | routes that don't match the API contract: a field, a type, a required field, a schema name, a parameter or the success status (it names the difference) |

@@ -404,7 +404,7 @@ const spec = ApiSpecification.for({
 })
 
 describe("POST {commands[0].apiEndpoint} — {slice title}", () => {
-    test("happy path returns 204", async () => {
+    test("{specification title}", async () => {   // the happy path
         await spec
             .existingEvents(/* events that must be present for this command to succeed */)
             .when(agent => agent.post("{commands[0].apiEndpoint}").send({ {field1}: "value", {field2}: 30 }))
@@ -420,7 +420,7 @@ describe("POST {commands[0].apiEndpoint} — {slice title}", () => {
             .then(expectError(404))
     })
 
-    test("returns 422 when business rule violated", async () => {
+    test("{specification title}", async () => {   // a rule's rejection: 422
         await spec
             .existingEvents(/* events that trigger the rule */)
             .when(agent => agent.post("{commands[0].apiEndpoint}").send({ {field1}: "value", {field2}: 30 }))
@@ -435,7 +435,8 @@ describe("POST {commands[0].apiEndpoint} — {slice title}", () => {
 })
 ```
 
-Add one `test(...)` block per specification in slice.json.
+Add one `test(...)` block per specification in slice.json, **named after it: its title, verbatim** (the
+`spec-coverage` check matches the titles). Tests beyond the specifications (a validation 400) are welcome.
 
 ---
 
