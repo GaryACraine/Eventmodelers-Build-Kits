@@ -127,9 +127,12 @@ model and build only what's ours.
                extensions had nothing left to change and made no commit. 335 tests pass, and `trial-cancellation.sh`
                passes 23 of 23 (an organisation's two refusals, each cancelled and listed on its own; the same refusal
                twice, already done). The settled chain still passes.
-             - **A gap:** the origin's new scenario ("lists each refused subscription of an organisation") got no
-               test of its own; the end-to-end case covers it. A scenario without a test should block the job, or
-               a check should catch it (for Gary).
+             - **A gap, closed (2026-10-07, kit PR #187):** the origin's new scenario got no test, and `spec-coverage`
+               didn't notice: it counted test blocks per file, and an extension's tests live in its origin's file
+               (ADR-019), so they made up the count. It now matches every scenario title (an extension's included)
+               to a test title, verbatim; the skills say to name tests that way. Against licensing's 43 test files it
+               found exactly two gaps; two same-name replacements, rebuilt under it, closed them (one test added, one
+               renamed), and it now finds none. Still open: a job that commits nothing is never checked.
            - **An item in progress has no `state`** (the model says `waiting`): an extension may only add to its
              origin's projection, and the contract has `state` optional. Harmless for a screen; noted.
            - **Retry, give up and the stalled query** (ADR-032's decisions 3 and 5) wait for an operator screen. Until
