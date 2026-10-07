@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import {
-  appendMetrics, describeSettings, jobSettings, metricsLine, metricsPath, resetTime, settingsArgs, unpinnedWarning, usageLimit, usageLimitWaitMs,
+  appendMetrics, describeSettings, jobSettings, metricsLine, metricsPath, rebuildWarning, resetTime, settingsArgs, unpinnedWarning, usageLimit, usageLimitWaitMs,
 } from './runner.js';
 
 test("a project pins its jobs' model, effort and budget; a concern's own setting wins over the default", () => {
@@ -91,4 +91,18 @@ test("a job's metrics line: the slice, what it ran on, its cost, tokens, outcome
     model: 'claude-sonnet-5', effort: 'medium', outcome: 'Done', durationMs: 70000, costUsd: 0.61, turns: 34,
     tokens: { input: 12, cacheRead: 540000, cacheWrite: 9000, output: 6000 }, commit: 'ba76f96',
   });
+});
+
+test('a rebuild marked Done with no commit is warned about, with what was to change (licensing, 2026-10-07)', () => {
+  const rebuild = { changes: ['replaces the built slice in this folder', 'Paddle Trial Cancellation: description changed'] };
+  assert.equal(rebuildWarning({ outcome: 'Done', commit: null, rebuild }),
+    'rebuild marked Done with no commit; check that the code has the change: replaces the built slice in this folder; Paddle Trial Cancellation: description changed');
+  // a commit, another outcome, or no rebuild: nothing to say
+  assert.equal(rebuildWarning({ outcome: 'Done', commit: 'abc1234', rebuild }), undefined);
+  assert.equal(rebuildWarning({ outcome: 'Blocked', commit: null, rebuild }), undefined);
+  assert.equal(rebuildWarning({ outcome: 'Done', commit: null, rebuild: undefined }), undefined);
+  // the line carries it only when there is one
+  const planned = { title: 's', id: 'i', ctx: 'c' };
+  assert.equal(metricsLine({ planned, outcome: 'Done', commit: null, warning: 'w' }).warning, 'w');
+  assert.equal('warning' in metricsLine({ planned, outcome: 'Done', commit: null }), false);
 });

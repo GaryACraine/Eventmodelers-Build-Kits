@@ -99,7 +99,12 @@ When asked to build a slice, always follow this flow:
        definition (`readModel.ts`) whose `type:` line picks how it runs, so every type returns the same data (ADR-022).
        Never build a different type than slice.json names.
    - **Rebuild** — any slice whose slice.json has a `rebuild` block: it's already built, and its model changed since
-     (`rebuild.changes` says what, in plain words). Use the slice type's skill as usual, but **update the existing
+     (`rebuild.changes` says what, in plain words), or it **replaces a built slice in the same folder** (the first
+     change says so: its code is the replaced slice's, ADR-046). **A Planned slice is never "already built"**, even
+     when its folder has code and passing tests: compare the code with slice.json, its descriptions included, and
+     make every change `rebuild.changes` lists. An automation's change is often only in its description and its
+     links, which no test catches. Committing nothing is right only when nothing is left to change (an extension
+     whose origin's job did it); say so in the job's summary. Use the slice type's skill as usual, but **update the existing
      files** in its folder to the new slice.json (fields, rules, scenarios), don't write them anew; keep what still
      holds, add a test per new scenario, and drop tests of removed ones. Change a line in place rather than adding a
      new one before it: remove any code the change supersedes, so no branch is left that can never run. The commit says `feat: [<slice>] updated`.
