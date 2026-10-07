@@ -2033,7 +2033,8 @@ with their first slices.
 3. **In the kit:**
    - `act` gets `read(readModel, key)`, which folds a data input live from the event store, as the item is, so it's
      current;
-   - a missing value throws, and the processor retries the event;
+   - a missing value throws, and the processor retries the event; *changed by ADR-051 (2026-10-07): the item waits,
+     and the data input's event is a trigger too, so nothing blocks the items behind it;*
    - an external data input is fetched in an activity, through the provider skill;
    - polling stays blocked as unproven until its first slice. *(Translations: ADR-040.)*
 4. **A to-do list whose closing event comes later** sits before the automation, opened by its events, with a copy
@@ -3124,3 +3125,65 @@ cases, instead of an invented event or a refusal; and the status code should tel
   contract adds the 200 (no body) to a command with such a scenario (emcli `6228bf3`).
 - **Licensing:** ADR-049's plan models our answer of a cancellation already recorded as "nothing happens". Built slices
   that refuse a repeat are found and replaced when next touched (PLAN).
+
+
+### ADR-051: An automation's item waits for a missing data input; it never blocks the items behind it
+
+**Status:** **Accepted in principle, 2026-10-07 (Gary):** "wait on its own, blocking is bad for business". The
+mechanism below is **Proposed** until licensing's two owner automations are rebuilt with it and the owner chain passes.
+**Date:** 2026-10-07
+**Changes:** ADR-039 decision 3 ("a missing value throws, and the processor retries the event").
+
+**Context:**
+- **What happened:** licensing's owner chain failed "the owner is an admin once the trial starts". "Owner admin role"
+  and "owner web seat" read the data input `OrganisationOwner` and threw "no owner of organisation … yet" for a trial
+  whose organisation had no owner (an end-to-end script's organisation that never registered). ADR-031's fail fast
+  blocked each processor on that event, retrying with a growing backoff, so **every later organisation's owner waited
+  behind one item that could never succeed**.
+- **The same in production:** a trial for an organisation we don't know (bad `custom_data`), or one whose owner is
+  removed, stops every new owner getting their role.
+- **Fail fast is right for a fault of ours** (the store unavailable, a bug): every item would fail the same way, and
+  blocking shows it at once. **A missing data input is a fact about one item:** the items behind it are fine.
+- **The references:**
+  - **The book (Dilger, ch. 35):** a to-do item is worked when the processor has what it needs; an item stays on
+    the list until then, and the list shows it.
+  - **Axon** (sagas, Axon 4 and 5's stateful handlers): a process waits for its correlated events, each event moving
+    it on; nothing retries in a loop.
+  - **Emmett** workflows: state gathers inputs, and `decide` returns nothing until they're all there.
+  - **Enterprise Integration Patterns' Aggregator:** wait for the correlated messages, complete when the set is.
+
+**Decision:**
+1. **An automation with a to-do list never throws for a missing data input.** `act` returns without acting: the item
+   stays open on the list, visibly waiting, and the processor moves on to the next event.
+2. **The event that supplies the data input is a trigger too.** When it arrives, the automation step reads the item
+   (still open) and the data input (now there) and acts. Nothing is retried, polled or timed: the work is done by
+   the event that makes it possible. In the model, that event `reacts-to` the automation as well as the opening event;
+   the to-do list already folds it, or folds it to know nothing (the helper checks the list handles every trigger).
+3. **Order doesn't matter.** With the data first (the usual case: the owner is assigned before the trial starts),
+   the opening event acts at once. With the item first, the data's event acts. Either way the command's idempotency
+   key (`<automation>:<item key>`) makes a second run a no-op.
+4. **An item that can never be worked stays on the list.** It's an open item with no owner, seen on the list's
+   screen like any other; no alert (it's not a failure of ours). A business rule for it (expire it, refuse the trial)
+   is a model decision when one is needed.
+5. **Throwing stays for faults:** an error from the store, a decider's refusal that shouldn't happen, a bug. Those
+   block, as ADR-031 says.
+6. **Out of scope:** a list of one (a translation, ADR-040) has no item to wait on. It keeps `giveUp`, which records
+   the failure and moves on after its attempts.
+
+**Alternatives considered:**
+- **Retry the item with a backoff, apart from the others** (a per-item retry queue). Rejected: a timer of our own
+  (ADR-031 leaves retries to Temporal), and it polls for a fact an event will tell us.
+- **`giveUp` on the owner automations.** Rejected: it records a failure and alerts for what is only waiting, and it
+  gives up on an item that would succeed a moment later when the owner is assigned.
+- **The to-do list opens the item only when the data is there** (the list folds the owner too). Rejected: the list
+  would hold rows that aren't to-do items, and it hides the data input the model shows (ADR-039).
+- **Skip the event (Emmett's `skip()`).** Rejected: the work is lost unless something runs it again, which is
+  decision 2 anyway.
+
+**Consequences:**
+- **`build-automation`:** a null data input returns without acting; its event is a trigger.
+- **emcli's `event-model` method:** an automation's data input whose event can come after the trigger links that
+  event to the automation (`reacts-to`).
+- **Licensing:** "owner admin role on trial" and "owner web seat on trial" replaced before release (`plan-change`):
+  each also reacts to the owner's `userWasAssignedToRole`, and waits when there's no owner. The owner chain gets a
+  case: a trial before its owner, then the owner, then the roles.

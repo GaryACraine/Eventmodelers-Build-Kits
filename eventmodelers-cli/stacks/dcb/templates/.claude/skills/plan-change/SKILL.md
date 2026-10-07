@@ -136,6 +136,9 @@ the tags exactly, so it fails until the producer's same-name replacement is buil
   system's event as the step that leads to our fact ("paddle subscription updated" → `seatsWereAdded`), is reshaped
   when it's planned: the automation's reply issues our command, and the other system's event is a "skipped, already
   done" scenario. The `event-model` skill's method, "Asking another system to change something", has the shape.
+- **An automation's data input that can arrive after its trigger** (the owner, after the trial) is a trigger too
+  (ADR-051): link its event `reacts-to` the automation, and say in the description that the item waits without it.
+  An automation built before ADR-051 that throws for it is replaced (a same-name replacement before release).
 - **A read-model test depends on events, not on other slices.** Its *given* goes in with `app.given(...)`
   (`build-state-view` Step 6), never through another slice's route.
 - **What the change touches:** every slice that produces or reads the same event, and every automation that
