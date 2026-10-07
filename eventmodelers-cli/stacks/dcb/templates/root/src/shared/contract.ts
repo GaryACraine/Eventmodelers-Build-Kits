@@ -123,7 +123,8 @@ export function operations(doc: Json): Map<string, OperationView> {
                 .map(p => ({ name: String(p.name), in: String(p.in), required: Boolean(p.required) }))
                 .sort((a, b) => `${a.in} ${a.name}`.localeCompare(`${b.in} ${b.name}`))
             const successCodes = Object.keys(op.responses ?? {}).filter(code => /^2\d\d$/.test(code)).sort()
-            const success = successCodes[0]
+            // the success response with a body (a command's 201 beside a no-op's empty 200, ADR-050), else the first
+            const success = successCodes.find(code => json(op.responses[code]?.content)) ?? successCodes[0]
             const body = json(op.requestBody?.content)
             const response = success ? json(op.responses[success]?.content) : undefined
             ops.set(`${method.toUpperCase()} ${path}`, {

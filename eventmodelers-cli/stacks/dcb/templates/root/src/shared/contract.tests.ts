@@ -168,6 +168,25 @@ describe("the API contract check (PLAN 14.10)", () => {
             "response: the code has object, the contract has none"
         ])
     })
+
+    test("a command that can decide nothing answers 200 as well (ADR-050); its body is the 201's, not the empty 200's", () => {
+        const created = { "application/json": { schema: { type: "object", properties: { userId: { type: "string" } }, required: ["userId"] } } }
+        const both = (responses: object) => {
+            const doc = served()
+            ;(doc.paths["/rate-course"] as any).post.responses = responses
+            return doc
+        }
+        const model = contract()
+        ;(model.paths["/rate-course"] as any).post.responses = { "200": { description: "Nothing new" }, "201": { content: created } }
+
+        expect(compareContract(both({ "200": { description: "Nothing new" }, "201": { content: created } }), model, { only: ["POST /rate-course"] }).match).toEqual(["POST /rate-course"])
+        const without200 = compareContract(both({ "201": { content: created } }), model, { only: ["POST /rate-course"] })
+        expect(without200.differ[0].what).toEqual(["answers 201 in the code, 200,201 in the contract"])
+        // the 201's fields are still compared, though the empty 200 sorts first
+        const renamed = { "application/json": { schema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] } } }
+        const differs = compareContract(both({ "200": { description: "Nothing new" }, "201": { content: renamed } }), model, { only: ["POST /rate-course"] })
+        expect(differs.differ[0].what).toEqual(["response.userId: in the contract, missing from the code", "response.id: in the code, not in the contract"])
+    })
 })
 
 describe("a field a read model's extension adds (ADR-019): pending until the extension is built", () => {

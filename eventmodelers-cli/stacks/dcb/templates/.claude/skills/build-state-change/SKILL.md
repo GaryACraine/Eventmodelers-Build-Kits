@@ -265,6 +265,19 @@ doesn't match the spec.
 Add only the rules a specification states. A capacity or duplicate check that no scenario asks for stays out
 until a slice specifies it.
 
+**A specification whose `then` is "nothing happens"** (a `SPEC_NOTHING` step, ADR-050). The command's intent already holds (the same
+request again, a cancellation already recorded), so the decider returns `[]`: nothing is appended and nothing is
+refused. Its title says why ("…: nothing happens"). Refuse with an error only when the intent *can't* hold. An **empty** `then` is an unfinished specification: block
+the job with `request-feedback`, don't guess.
+
+```typescript
+    decide: (cmd, state) => {
+        if (state.{alreadyDone}) return []   // the specification "…: nothing happens"
+        if (state.{blocked}) throw new IllegalStateError(`{its SPEC_ERROR title}`)
+        return {eventFactory}({ /* … */ })
+    }
+```
+
 ---
 
 ## Step 6 — Create `schema.ts`
@@ -313,6 +326,8 @@ overridden in the model with `{param}` segments do those come from `req.params`,
 
 - `success`: `"noContent"` (204) normally; `"created"` (201) when the command has `generated: true` fields, with
   `created` the schema of those fields (Step 7).
+- `nothingNew: true` when a specification's `then` is nothing happens (`SPEC_NOTHING`, ADR-050): the route also answers
+  200 with no body. The contract has the 200 then.
 - `errors`: one entry per status the specifications' rejections produce (`NotFoundError` → 404,
   `IllegalStateError` → 422, `ValidationError` → 400), described by their error text. Leave it out when no
   specification rejects. 400 for a bad body is added for you.
@@ -370,8 +385,33 @@ export function configure{SliceName}Route(deps: SliceDependencies): WebApiSetup 
 }
 ```
 
-### Responses (ADR-025)
-- **204** `NoContent()`: the normal answer. The client reads the position from `ETag`.
+**When a specification's `then` is nothing happens (`SPEC_NOTHING`, ADR-050),** call `handleCommand` instead of `handle`: it
+says whether anything was appended, and the route answers 200 when nothing was.
+
+```typescript
+import { handleCommand } from "@dcb-es/event-store"
+import { NoContent, withETag /* … */ } from "@dcb-es/event-store-express"
+// …
+                const existingPosition = await findExistingPosition(pool, idempotencyKey)
+                if (existingPosition) return res => { withETag(existingPosition)(res); NoContent()(res) }
+                const { position, events } = await handleCommand(
+                    store,
+                    {commandHandlerFn},
+                    { type: "{commandName}", data: { {field1}, {field2} } },
+                    { idempotencyKey }
+                )
+                return res => {
+                    withETag(position)(res)
+                    if (events.length === 0) res.status(200).end()   // nothing new: the intent already holds, no body
+                    else NoContent()(res)
+                }
+```
+
+### Responses (ADR-025, ADR-050): the status says what the request did
+- **204** `NoContent()`: the normal answer, something was recorded. The client reads the position from `ETag`.
+- **200**, no body (`res.status(200).end()`; `OK()` would send "OK" as the body): **nothing new**, the command's
+  intent already holds (a specification whose `then` is nothing happens). `ETag` is the position the decision was read at. Never
+  304: that's for conditional reads only.
 - **201** with the generated fields, when the command has `generated: true` fields: make them before `handle`
   (`const {generatedField} = crypto.randomUUID()`, and pass them in `data`), then answer
   `res.status(201).json({ {generatedField} })` after `withETag`. On an idempotent replay, return the same body
@@ -425,6 +465,13 @@ describe("POST {commands[0].apiEndpoint} — {slice title}", () => {
             .existingEvents(/* events that trigger the rule */)
             .when(agent => agent.post("{commands[0].apiEndpoint}").send({ {field1}: "value", {field2}: 30 }))
             .then(expectError(422))
+    })
+
+    test("{specification title}", async () => {   // a specification whose then is nothing happens: 200
+        await spec
+            .existingEvents(/* events that make the intent already hold */)
+            .when(agent => agent.post("{commands[0].apiEndpoint}").send({ {field1}: "value", {field2}: 30 }))
+            .thenNothingAppended(expectResponse(200))
     })
 
     test("returns 400 when required field missing", async () => {

@@ -120,6 +120,12 @@ the tags exactly, so it fails until the producer's same-name replacement is buil
   slice.
 - **A value the command always sets** (the owner command records the owner role) is a **generated** field mapped
   `derived:"<value>"`. Otherwise the contract puts it in the request body, and a caller could send another value.
+- **A repeat is "nothing happens", not a rejection** (ADR-050). When the command's intent already holds (the same
+  request again, a change already recorded by another route), its scenario's `then` is **nothing happens**
+  (`emcli spec step add … then nothing "Nothing happens"`, never an empty `then`) and its title says why
+  ("…: nothing happens"): the decider returns `[]` and the route answers 200. A rejection (`then` an error) is
+  only for an intent that can't hold. Keep an event for a repeat only when something needs it (a notification's
+  `paddleNotificationSkipped` "already done" closes its to-do item).
 - **A read-model test depends on events, not on other slices.** Its *given* goes in with `app.given(...)`
   (`build-state-view` Step 6), never through another slice's route.
 - **What the change touches:** every slice that produces or reads the same event, and every automation that
@@ -171,3 +177,5 @@ The full text is in the kit repo (`eventmodelers-cli/stacks/dcb/ADR.md`):
 | 039 | An automation has a trigger, a to-do list and data inputs. |
 | 046 | Replace a slice before release, supersede it after; released = `deployed`. |
 | 048 | An event's tags are its id fields; a tag change follows the compatibility rules, by who queries the tag. |
+| 049 | A decisive answer to our own call is recorded at once; the same change is recognised by its version. |
+| 050 | A command whose intent already holds decides nothing (`[]`, 200); a rejection only when it can't hold. |

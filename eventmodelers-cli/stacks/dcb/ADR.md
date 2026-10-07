@@ -3038,8 +3038,8 @@ answer and the webhook are deduplicated without a `paddleEventId`.
 
 ### ADR-050: A command may decide nothing: its intent already holds
 
-**Status:** **Proposed, 2026-10-07.** Gary: a decider can return an empty array, for idempotency and no-op cases,
-instead of an invented event or a refusal; and it could give the caller the right HTTP code.
+**Status:** **Accepted, 2026-10-07 (Gary).** Gary: a decider can return an empty array, for idempotency and no-op
+cases, instead of an invented event or a refusal; and the status code should tell the caller which it was.
 **Date:** 2026-10-07
 
 **Context:**
@@ -3055,10 +3055,21 @@ instead of an invented event or a refusal; and it could give the caller the righ
   - **Emmett** (`handleCommand`): a decision of no events appends nothing and returns `newEvents: []`, the stream
     version unchanged.
   - **The decider pattern** (Chassaing): `decide` returns a list of events, and an empty list means nothing happened.
+  - **Emmett over HTTP** (`emmett-expressjs`): `ResponseFromEvents` answers **204 whether or not events were
+    appended** (a route may pass its own mapping). Its errors map `ValidationError` 400, `IllegalStateError` 403,
+    `NotFoundError` 404, `ConcurrencyError` 412 (an `If-Match` mismatch), else 500. Its sample's `confirm` returns
+    `[]` for a cart already confirmed, and the API answers **200 with the same body and the same ETag** first time and
+    on the retry ("allows a client to safely retry confirmation"). So Emmett doesn't tell a no-op by status: the ETag,
+    the **stream's version**, didn't advance.
+  - **Ours differs there:** our ETag is a **global position**. On a no-op it's the position the decision was read at,
+    which a client can't compare with anything it holds. So the ETag can't carry the signal; the status must.
   - **HTTP** (RFC 9110): **304 Not Modified is only for a conditional GET or HEAD** (a cache's copy is still valid),
-    never for a command. A command whose intent already holds succeeded: **200 OK** carries "a representation of the
-    status of the action", **204 No Content** "successfully fulfilled, no additional content". Stripe answers a
-    replayed idempotent request with the original response.
+    never for a command. A command whose intent already holds succeeded, so it's a 2xx. Stripe answers a replayed
+    idempotent request with the original response.
+  - **The codes in use before this ADR,** for commands: 204 (handled, events appended, `ETag` = the position), 201
+    with the generated fields, 400 (validation), 404 (`NotFoundError`), 422 (`IllegalStateError`, the contract's
+    `4XX` "Rejected"), 409 (`AppendConditionError`), 504 (`Prefer: wait` timed out), 500. A replay with the same
+    `Idempotency-Key` answers what the original did. 204 also answers a CORS preflight, unrelated.
 - **Fixed in the library** (dcb-event-store phase 22): a decision of `[]` appends nothing and throws nothing;
   `handleCommand()` returns `{ position, events }`; `handle()` keeps its signature.
 
@@ -3069,29 +3080,42 @@ instead of an invented event or a refusal; and it could give the caller the righ
      cancellation for a trial that wasn't refused.
    - **Record an event** only when it is a fact something needs: a Paddle notification's outcome that closes its
      to-do item stays `paddleNotificationSkipped` "already done".
-2. **In the model, a scenario with no `then` step means "nothing happens"** (its title says why, e.g. "our answer of a
-   cancellation already recorded: nothing happens"). It's tested with `thenNothingHappened()`.
-3. **Over HTTP** (proposed; Gary decides):
-   - a change recorded: **204** with the `ETag` of its position, or **201** with the generated fields, as now;
-   - **nothing new: 200 OK** with `{ "changed": false }` and the `ETag` of the position the decision was read at.
-     Still a success, so a retrying client never mistakes it for a failure, and a client that cares can tell;
-   - the route calls `handleCommand()` and answers by `events.length`.
-   - emcli's contract adds the 200 response to a command that has a "nothing happens" scenario.
+2. **In the model, "nothing happens" is a `then` step of its own** (`SPEC_NOTHING`: `emcli spec step add … then
+   nothing "Nothing happens"`), standing alone in `then`; the scenario's title says why (e.g. "our answer of a
+   cancellation already recorded: nothing happens"). It's stated, not an empty `then`: a scenario not yet finished
+   has an empty `then` too, and must never be read as a no-op (found in emcli's own test fixture, whose happy paths
+   have empty thens). It's tested with `thenNothingHappened()` / `thenNothingAppended(expectResponse(200))`.
+3. **Over HTTP, the status says which it was** (Gary):
+
+   | Outcome | Code |
+   |---|---|
+   | a change recorded | **204**, `ETag` = its position (**201** with the generated fields), as before |
+   | **nothing new: the intent already holds** | **200, no body**, `ETag` = the position the decision was read at |
+   | refused | **422** (`IllegalStateError`), 404, 400, as before |
+   | a concurrent write changed what the decision read | **409**, as before |
+
+   - The route calls `handleCommand()` and answers by `events.length`.
+   - Both success codes are 2xx, so a client that checks only for success is unaffected; one that cares reads the
+     status. Unlike Emmett, a retry after a lost 204 answers 200: the status reports what this request did.
+   - emcli's contract adds the 200 to a command that has a "nothing happens" scenario.
 4. **Inside the app** (an automation's `issue`, a workflow's activity): a decision of nothing is done, like any
    success. No special case.
 
 **Alternatives considered:**
 - **304 Not Modified.** Rejected: it's for conditional reads, and caches and clients would misread it on a POST.
-- **204 for both.** Simplest, and true to "the state you asked for holds"; but the caller can't tell, and Gary wants
-  the code to say it. Kept as the fallback if the 200 body proves noise.
+- **204 for both, as Emmett's default.** Simplest; but Emmett's client tells a no-op by an ETag that didn't advance,
+  and ours can't (a global position). Rejected.
+- **200 with a body (`{ "changed": false }`).** Redundant with the status. Rejected: one rule, read the status.
 - **409 Conflict or 422.** Rejected: they say the request failed, so a retry after a lost response would look like an
   error.
 
 **Consequences:**
-- **dcb-event-store:** phase 22 (PR #34, Gary merges).
-- **Kit:** `build-state-change`: `[]` for a repeat, `thenNothingHappened()` for a scenario with no `then`, the route
+- **dcb-event-store:** phase 22 (PR #34, Gary merges). Licensing links the library with `file:`, so the merge must
+  be on `main` and built before licensing relies on it.
+- **Kit:** `build-state-change`: `[]` for a repeat, `thenNothingAppended(expectResponse(200))` for a "nothing happens" scenario, the route
   through `handleCommand()` and the 200 answer; `plan-change`: model a repeat as "nothing happens"; `build-automation`:
   a decision of nothing is done.
-- **emcli:** a scenario with no `then` step is valid and exported as "nothing happens"; the contract adds the 200.
+- **emcli:** the `SPEC_NOTHING` step (`then nothing`), rendered on the board as NOTHING HAPPENS and exported; the
+  contract adds the 200 (no body) to a command with such a scenario (emcli `6228bf3`).
 - **Licensing:** ADR-049's plan models our answer of a cancellation already recorded as "nothing happens". Built slices
   that refuse a repeat are found and replaced when next touched (PLAN).
