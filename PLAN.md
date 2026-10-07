@@ -80,6 +80,22 @@ model and build only what's ours.
         and handling (4 each), so the pool is 20 for any app with 4 or more processors (licensing was 32);
       - emcli's push recovery, fingerprint v3 and `inModel` export.
     - **Decided:** ADR-046, ADR-047 and ADR-048 Accepted (Gary, 2026-10-06).
+    - **ADR-050 Accepted (Gary, 2026-10-07): a command may decide nothing.** Gary spotted that the ADR-049 plan
+      refused a repeat ("Already cancelled") only because dcb-event-store's `handle()` rejected a decision of no
+      events, though its own `thenNothingHappened()` tests one.
+      - **Library** (phase 22, **PR #34, waiting for Gary's merge**): `[]` appends nothing; `handleCommand()` returns
+        `{ position, events }`.
+      - **The status says what the request did:** 204 recorded (201 with generated fields), **200 with no body:
+        nothing new**, 422/404/400 refused, 409 a concurrent write. 304 is only for conditional reads. Emmett answers
+        204 either way and lets the ETag (a stream version) tell; ours is a global position, so the status must.
+      - **The model states it:** a `then nothing` step (`SPEC_NOTHING`, emcli `6228bf3`), never an empty `then`, which
+        means unfinished (emcli's own test fixture has empty thens on its happy paths).
+      - **Kit:** `build-state-change` (`[]`, `handleCommand`, the bodiless 200, `thenNothingAppended`),
+        `build-automation`, `plan-change`; the scaffold's `registerCommand({ nothingNew })`, and the contract
+        comparer now takes a command's body from its 201, not an empty 200 (a test proves it).
+      - **Next:** after the merge, a kit update into licensing, then ADR-049's plan with "our answer of a cancellation
+        already recorded: nothing happens". **Later:** find the built slices that refuse a repeat, and replace them
+        when next touched.
     - **ADR-049 Accepted (Gary, 2026-10-07).** A decisive answer to our own call is a fact, recorded at
       once, and the provider's event of it is a repeat, skipped as "already done". Gary asked why the refused
       trial's cancellation throws away Paddle's answer (`status: canceled`) and waits for `subscription.canceled`.

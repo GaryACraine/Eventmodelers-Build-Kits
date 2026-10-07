@@ -91,6 +91,11 @@ export interface CommandPath {
      */
     success: "noContent" | "created"
     created?: ZodTypeAny
+    /**
+     * The command can decide nothing (ADR-050: a specification whose `then` is nothing happens, its intent already holds): the route
+     * answers 200 with no body and the `ETag` of the position its decision was read at
+     */
+    nothingNew?: boolean
     /** The rejections the slice's specifications name, by status: `{ 422: "Course is full" }` */
     errors?: Partial<Record<404 | 409 | 422, string>>
 }
@@ -107,6 +112,9 @@ export function registerCommand(command: CommandPath): void {
         }
     } else {
         responses[204] = { description: "Done", headers: z.object({ ETag: ETagResponseHeader }) }
+    }
+    if (command.nothingNew) {
+        responses[200] = { description: "Nothing new: the intent already holds", headers: z.object({ ETag: ETagResponseHeader }) }
     }
     if (command.body) responses[400] = problemResponse("The body failed validation")
     for (const [status, description] of Object.entries(command.errors ?? {})) {

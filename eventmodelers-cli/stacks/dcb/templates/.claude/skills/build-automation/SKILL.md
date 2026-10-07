@@ -167,7 +167,8 @@ const { chargeCard } = proxyActivities<PaymentRequestActivities>({
     retry: { initialInterval: "1 second", backoffCoefficient: 2, maximumInterval: "1 minute", maximumAttempts: 10 }
 })
 // Recording in our own store: retried until it succeeds (our database back is the only fix). A command our rules
-// refuse (the order already paid) is an answer, not an outage: never retried
+// refuse (an order cancelled meanwhile) is an answer, not an outage: never retried. A command whose intent already
+// holds (the order already paid) decides nothing (ADR-050): a success, with nothing to catch
 const { recordPaid, recordFailed, recordStalled } = proxyActivities<PaymentRequestActivities>({
     startToCloseTimeout: "30 seconds",
     retry: {
@@ -270,6 +271,10 @@ export type PaymentRequestActivities = ReturnType<typeof paymentRequestActivitie
   the provider skill says what to combine instead (typically: look for an earlier attempt by our reference before
   calling again, and treat a "duplicate" or "already used" rejection as "look again", bounded by the attempt
   (Temporal's `Context.current().info.attempt`, injectable so tests can set it)).
+- **A decisive answer is recorded at once** (ADR-049), and its command may find it already recorded: the provider's
+  own event of the same change can arrive first (Paddle's does within a second). Its decider then decides nothing
+  (`[]`, ADR-050), and the activity returns as for any success. Never refuse it and teach the workflow to swallow
+  the refusal.
 - **Keys per attempt:** the answer's idempotency key is `<result>:<item key>:<attempt>`, and the stall's
   `<stalled>:<item key>:<attempt>`, so a later attempt records its own answer.
 - **Config comes from the environment**, with defaults that point at the mock (`localhost:<its port>`), so the
@@ -387,9 +392,12 @@ export const carrierTranslation = defineAutomation<NotificationsToTranslateDoc>(
 - **Classify from the other system's type plus our own state** (`read` a data input), as the description says: the
   same type can mean different things (a subscription "activated" is a trial converting, or a payment recovering).
   The provider skill says what each type carries.
-- **Order and repeats are the command's decider's job, not `act`'s.** The decider compares the notification's
-  `occurredAt` with the last one it applied for that entity and records the notification as **skipped** (`stale`),
-  or as `already done` when the same fact arrived by another route; otherwise it records our event. It decides under
+- **Order and repeats are the command's decider's job, not `act`'s.** The decider compares the notification's place
+  in the other system's order (the provider skill says which field: for a Paddle subscription, its version
+  `paddleUpdatedAt`, ADR-049) with the last one recorded for that entity, and records the notification as
+  **skipped** (`stale`), or as `already done` when the same change arrived by another route (our own call's answer
+  included); otherwise it records our event. The skip is an event because the notification's to-do item closes on
+  it; a command with no notification to close (our call's answer) decides nothing instead (ADR-050). It decides under
   the append condition, so there's no race. `act` never reads a stored row to decide that.
 - **A type the description doesn't list is an error**: throw. Don't drop it silently.
 - **`giveUp`** (any automation can have one; a translation always does): after `after` failed attempts on one item,
