@@ -265,7 +265,18 @@ model and build only what's ours.
            re-planned. **Gary: each of the watch's tries runs the Sync now** (its schedule's trigger), rather than
            fetching itself, so one place fetches and records the checkpoint (ADR-041 decision 3). Kit: the
            scaffold's `configureWebhookInbox` gains `afterRecorded` (after the 200, best effort, tested);
-           `build-automation` ("Run it now", the watch) and `provider-paddle` say how to wire both.
+           `build-automation` ("Run it now", the watch) and `provider-paddle` say how to wire both (PR #197,
+           licensing `254d665`). Model `e885bde`, pushed and **exported 2026-10-07**: the webhook slice's rebuild
+           and the watch queued, nothing else; contract unchanged.
+         - **Found by the rehearsal: an element's prose never reached the loop.** emcli exported (and pushed) an
+           event's or command's description as its field list only, and a pull cleared it, so 8 descriptions in
+           licensing (`startTrial`'s "once ever", `refuseTrial`'s rules, the checkpoint's) were never seen by the
+           loop; their scenarios carried the rules. **Gary: prose goes after the fields.** emcli (`1c3b3ae`,
+           `69dbe08`, `e67e574`): `renderDescription` for export, push and `completeness --push`; a pull and
+           `field add` keep the prose; fingerprint v6, with a v5-built slice whose only difference is the new
+           prose kept Done (all 45 built slices stayed Done); a baseline saved before the rule is read without
+           prose, so the first push sent the 8 (proven: a pull with the local prose blanked brings it back from
+           the board). 425 tests.
     2. **16.3a: chapter 1 end to end through the UI,** first with the mock, then in the sandbox. It needs a stand-in
        for Sign Up until the sign-in provider is chosen.
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
