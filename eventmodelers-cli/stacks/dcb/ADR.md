@@ -2945,29 +2945,58 @@ waits for the webhook.
   - **The book (`publishCart`):** the command handler records the outcome of the external send itself, and its
     failure as `failPublication`. It doesn't wait for a later confirmation.
 - **What the old rule guarded against.** Each concern is real, and each has a narrower answer:
-  - **two writers of one fact** (the answer and the webhook): the webhook's command sees the change already
-    recorded and skips it, "already done", as it skips Paddle's duplicates now (ADR-040);
-  - **order:** an answer has no `event_id` or `occurred_at`, but its entity's `updated_at` (or `canceled_at`) dates
-    it in Paddle's own clock;
+  - **two writers of one fact** (the answer and the webhook): whichever arrives second must be recognised as the
+    same change and skipped, "already done", as Paddle's duplicates are now (ADR-040);
+  - **order:** an answer has no `event_id` or `occurred_at`;
   - **answers that only accept a request** and don't state its result: these are not decisive, and wait as before.
+- **How the same change is recognised: proven in the sandbox (2026-10-07,** licensing
+  `e2e/paddle/answer-vs-event.mjs`, two runs on fresh cardless trials, recorded in its README):
+  - **the subscription's `updated_at` is its version.** Every answer and every event of one change carry the same
+    `updated_at`, to the millisecond: 10 of 10 answers matched their events, none matched two, none was left
+    without one. A cancel's two events (`subscription.updated`, `subscription.canceled`) share the answer's;
+  - **a repeat of the same request changes nothing:** the same seat numbers answer the previous `updated_at` and make
+    no event, and a second cancel is refused and makes no event. So a retried activity answers the version of the
+    change it already made;
+  - **Paddle's `occurred_at` is not the change's time:** it's about 200 ms after `updated_at`, so it can't be
+    matched with an answer;
+  - **the event can arrive before we record the answer:** it follows the change within a second, and the workflow
+    records only after its activity returns. Either may be first;
+  - **a request id of ours in `custom_data` doesn't work:** setting it is itself a change (a new version and event
+    even for the same numbers), and it stays on the subscription, so later changes, Paddle's own included, carry it;
+  - **matching on state alone isn't enough:** seats 1 → 2 → 1 leave two changes with the same numbers, and a late
+    event of the first would look like the last.
 
 **Decision:**
 1. **A decisive answer to our own call is a fact.** It states the result: the entity in its new state (Paddle's
    subscription with `status: canceled`, the new item quantities, or a `scheduled_change`), or a business answer
    (Braintree's `declined`). The workflow records it at once as our command, through an activity, as
    `build-automation` already says.
-   - The event carries the time from the answer's entity (`updated_at`, or `canceled_at`) as its occurred time.
    - It carries the provider's ids that the answer gives (Paddle: `subscriptionId`). It has no `paddleEventId`,
      since no event of Paddle's has arrived (ADR-048: "when known").
-2. **An answer that isn't decisive records nothing:** a timeout, a 429 or 5xx once the retries have run out, or an
+2. **Every event we record from a subscription's change carries its version:** Paddle's `updated_at`, as
+   `paddleUpdatedAt`, whether it came from our call's answer or from Paddle's event (`data.updated_at`).
+3. **The same change is recognised by (subscription, version), whichever report arrives first.** The command that
+   records a report reads the subscription's events (by its `subscriptionId` tag) and compares versions:
+
+   | The report's version, against the latest recorded | So |
+   |---|---|
+   | the same | **already done**: the other report of this change was first. From Paddle's event, `paddleNotificationSkipped` "already done", tagged with its `paddleEventId`, so it leaves the to-do list (ADR-048); from our answer, nothing more |
+   | older | **superseded**: a later change is recorded, and it states the subscription as it is now. Skipped the same way |
+   | newer, or none recorded | **a new change**: recorded |
+
+   A retried activity's answer carries the version of the change the first try made, so it is "already done" too.
+   This holds for facts that are the subscription's state (its status, its seats, a scheduled change), where the
+   latest state supersedes an earlier one. A fact that a later state doesn't replace (a payment, a refund) comes from
+   its own entity's events (`transaction.*`), never from a subscription's version.
+4. **An answer that isn't decisive records nothing:** a timeout, a 429 or 5xx once the retries have run out, or an
    answer that only accepts the request. The fact comes from the provider's event (webhook or fetch), and ADR-032's
    stalls apply as before.
-3. **The provider's event of the same change is a repeat.** The translation's command finds the change already
-   recorded and records `paddleNotificationSkipped`, "already done", tagged with the event's `paddleEventId`, so it
-   leaves the to-do list (ADR-048). The decision is made on our state (the subscription is already cancelled, or its
-   seats are already those numbers), not on matching ids.
-4. **What we didn't start comes only from the provider's events:** renewals, a failed payment, its recovery, the
-   customer's portal, a change made in Paddle's dashboard. ADR-041's fetch still covers a lost webhook.
+5. **What we didn't start comes only from the provider's events:** renewals, a failed payment, its recovery, the
+   customer's portal, a change made in Paddle's dashboard. They carry a version too, so the same table orders them.
+   ADR-041's fetch still covers a lost webhook, deduplicated with the webhook by `paddleEventId` in the inbox
+   (ADR-040), as now.
+6. **We don't put request ids of ours in `custom_data`** to match changes: setting it is a change of its own, and it
+   stays on the subscription.
 
 **Alternatives considered:**
 - **Keep waiting for the provider's event** (today's `provider-paddle`). One writer per fact, but it throws away an
@@ -2977,6 +3006,13 @@ waits for the webhook.
 - **Two events: "requested at Paddle" from the answer, "confirmed by Paddle" from the webhook.** More honest about
   the source, but nobody acts on the difference: both mean the subscription is cancelled. A screen can show the
   source if needed (a field), without a second event.
+- **Match on state alone** (the subscription is already cancelled; its seats are already those numbers). Enough for
+  a cancel, which happens once, but not for seats: 1 → 2 → 1 makes a late event of the first change look like the
+  last. Rejected in favour of the version.
+- **Our request id in `custom_data`**, echoed by Paddle's event. It is echoed (8 of 8 in the sandbox), but setting it
+  makes every call a change, and later changes carry the old id. Rejected.
+- **Match on Paddle's `occurred_at`.** It's the event's time, about 200 ms after the change, and no answer has it.
+  Rejected.
 
 **Consequences:**
 - **Kit:**
@@ -2989,8 +3025,12 @@ waits for the webhook.
     trial cancelled at paddle"), and the automation replaced under the same name;
   - "record refused trial cancelled" (the translation's) replaced under the same name: a subscription already
     cancelled is skipped, "already done". Today a second cancellation would be recorded twice;
-  - `refusedTrialWasCancelled`: `paddleEventId` and `paddleOccurredAt` become optional, or an `occurredAt` plus
-    its source. An event change before release (ADR-046, ADR-048), checked by who uses the `paddleEventId` tag.
+  - `refusedTrialWasCancelled` gains `paddleUpdatedAt`, and `paddleEventId` and `paddleOccurredAt` become optional
+    (absent when the answer recorded it). An event change before release (ADR-046, ADR-048), checked by who uses
+    the `paddleEventId` tag;
+  - the mock keeps Paddle's versions: a change gets a new `updated_at` that its events carry, and a repeat answers
+    the previous one and sends nothing.
 - **Proven when:** in `trial-cancellation.sh`, the item closes after the mock's answer, before any
   `subscription.canceled` is delivered; the delivered webhook is then skipped as "already done", and the trial is
-  cancelled once. A `not_found` still stalls, and the settled chain still passes.
+  cancelled once. A webhook delivered **before** the answer is recorded closes the item, and the answer is then
+  "already done". A `not_found` still stalls, and the settled chain still passes.

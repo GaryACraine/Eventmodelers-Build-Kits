@@ -85,7 +85,11 @@ model and build only what's ours.
       trial's cancellation throws away Paddle's answer (`status: canceled`) and waits for `subscription.canceled`.
       The rule was one line of `provider-paddle`, which no ADR had decided; ADR-031/032 and `build-automation`
       already say the opposite, and the restaurant's Braintree charge records its answer. Paddle's docs are silent
-      on the answer to your own call. Once accepted, plan licensing's change with `plan-change`: the workflow
+      on the answer to your own call. **Proven in the sandbox (2026-10-07, `licensing/e2e/paddle/answer-vs-event.mjs`,
+      two runs):** an answer and Paddle's events of the same change carry the same `updated_at` (10 of 10, to the
+      millisecond), and a repeat answers the previous one with no event. So the same change is recognised by
+      (subscription, `updated_at`), whichever report arrives first; a request id in `custom_data` was rejected (it's
+      a change of its own, and it sticks). Once accepted, plan licensing's change with `plan-change`: the workflow
       records the cancel from the answer, and the translation's "record refused trial cancelled" skips a
       cancellation already recorded.
   - **Next, in order:**
