@@ -140,9 +140,10 @@ has it): the signature is checked against the raw body. Real deliveries passed t
 - **The SDK refuses a timestamp more than 5 seconds from now.** A saved webhook can't be replayed with its original
   signature: tests sign it again (the mock's `paddleSignature`).
 - Paddle wants **200 within 5 seconds**: the route records and answers, and does nothing else.
-- **Later, with the Paddle Sync** (a polling automation, not built yet): after a webhook is recorded, trigger the
-  sync (`scheduleWatch.trigger("paddle-sync")`) so it fills any gap before it. Best-effort: a failed trigger doesn't
-  fail the webhook. Only when the slice's description says the sync exists.
+- **With the Paddle Sync** (ADR-041): after a webhook is recorded, run the sync now so it fills any gap before it:
+  `configureWebhookInbox({ eventStore, afterRecorded: () => scheduleWatch.trigger("paddle-sync") }, …)`. It runs
+  after the 200, best effort: a failed trigger is logged and never fails the webhook. Only when the slice's
+  description says so. The Paddle Checkout Watch's tries run the same sync (`build-automation`, "Run it now").
 
 ## Fetching the event stream
 

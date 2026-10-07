@@ -2250,7 +2250,10 @@ item. The decision is only about the door: the webhook endpoint, a poller, or bo
      webhook. **A short burst, not one fetch** (revised 2026-10-02): Paddle creates the subscription a moment after
      the payment, so one fetch may be too early. The "Paddle Checkout Watch" fetches at about 2, 5, 15, 30 and 60
      seconds and stops as soon as the trial shows (a to-do list of checkouts awaiting Paddle; timers in a workflow,
-     ADR-042);
+     ADR-042). **Each try runs the sweep now** (Gary, 2026-10-07), rather than fetching itself: one place fetches
+     and records the checkpoint, and a try during a sweep queues one more run;
+   - a webhook and the watch run the sweep through its schedule's trigger (`scheduleWatch.trigger`), best effort:
+     the webhook's after its 200 (the scaffold's `afterRecorded`), and a failed trigger fails neither;
    - **a scheduled sweep,** about every 15 minutes, as the backstop: a Temporal Schedule (ADR-042);
    - as a principle, **before any action of ours that would harm a customer.** Nothing in the model needs it
      today: we never act against a customer on our own clock. Access ends only when Paddle's own cancellation

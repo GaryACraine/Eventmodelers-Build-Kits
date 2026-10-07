@@ -17,7 +17,8 @@ import { alert as defaultAlert, type Alert } from "./alerts.js"
  *   - a redelivery → 200, nothing recorded again: the notification's id at the other system is the idempotency key;
  *   - the append fails → 5xx, so the other system delivers it again;
  *   - signed, but we can't read it → 400 and an alert: the reader (`toEvent`) needs fixing before the other system
- *     stops retrying.
+ *     stops retrying;
+ *   - recorded (or a redelivery), and the 200 sent → `afterRecorded`, if given (best effort).
  *
  * What's true of one system (its signature header, its payload) is in its provider skill, which gives `verify` and
  * `toEvent`.
@@ -72,10 +73,19 @@ export function configureJsonBody(): WebApiSetup {
     }
 }
 
-export function configureWebhookInbox(
-    deps: { eventStore: EventStore; alert?: (alert: Alert) => void },
-    inbox: WebhookInbox
-): WebApiSetup {
+export interface WebhookInboxDeps {
+    eventStore: EventStore
+    alert?: (alert: Alert) => void
+    /**
+     * Run after a notification is recorded (a redelivery too), once the 200 is sent: e.g. run the fetch of the other
+     * system's event stream now, so it fills any gap before this notification (ADR-041), with
+     * `() => scheduleWatch.trigger("paddle-sync")`. Best effort: a failure is logged, and the webhook was already
+     * answered.
+     */
+    afterRecorded?: () => void | Promise<void>
+}
+
+export function configureWebhookInbox(deps: WebhookInboxDeps, inbox: WebhookInbox): WebApiSetup {
     const alert = deps.alert ?? defaultAlert
     return router => {
         router.post(inbox.path, async (req, res) => {
@@ -110,6 +120,14 @@ export function configureWebhookInbox(
             // A redelivery has the same id: the event store finds it and appends nothing
             await recordNotification(deps.eventStore, inbox.system, notification)
             res.status(200).json({ received: true })
+            if (deps.afterRecorded) {
+                const afterRecorded = deps.afterRecorded
+                void Promise.resolve()
+                    .then(() => afterRecorded())
+                    .catch(error =>
+                        console.error(`${inbox.path}: after recording a notification: ${error instanceof Error ? error.message : String(error)}`)
+                    )
+            }
         })
     }
 }
