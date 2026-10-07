@@ -14,7 +14,7 @@ description: Paddle (a merchant of record) for the slices that touch it. What Pa
 ADR-036 (Paddle), ADR-037 (seats), ADR-040 (the inbox), ADR-041 (webhooks first, a fetch of the event stream behind
 them), ADR-042 (timed work on Temporal), ADR-044 (its checkout in our page). The facts are in `docs/case-studies/paddle.md` §7 and §7b.
 
-Checked against `@paddle/paddle-node-sdk` 3.10 and Paddle's sandbox (2026-10-02). Where they differ from what you'd
+Checked against `@paddle/paddle-node-sdk` 3.10 and Paddle's sandbox (2026-10-02, and 2026-10-07 for ADR-049). Where they differ from what you'd
 assume, this skill says so: follow it, not memory.
 
 ## What Paddle tells us, and how it reaches us
@@ -27,7 +27,9 @@ Paddle tells us what happened to a subscription in two ways, and both are record
 
 Both record `paddleNotificationReceived` through `recordNotification` (`src/shared/inbox.ts`) under the idempotency
 key `paddle:<event_id>`, so the same event by both routes is one item. **Order across the two routes isn't Paddle's:**
-never rely on the inbox's order; the deciders compare `paddleOccurredAt`.
+never rely on the inbox's order. For a subscription's changes the deciders compare its version, `paddleUpdatedAt`
+(the payload's `data.updated_at`), not `paddleOccurredAt`: `occurred_at` is the event's time, about 200 ms after the
+change, and our own call's answer has no `occurred_at` at all (ADR-049, below under "What we ask Paddle to do").
 
 The envelope is the same in both: `event_id`, `event_type`, `occurred_at`, `data` (the whole entity as it now stands).
 A webhook adds `notification_id`.
@@ -99,8 +101,11 @@ export function toNotification(body: unknown, receivedAt: Date = new Date()): No
   destination subscribes to the same list. A type the slices' descriptions add goes there.
 - **A subscription's start has no single event.** A purchase or a trial made at Paddle's checkout sent **no
   `subscription.created`** (sandbox, twice): a trial sent `subscription.trialing`, a paid purchase
-  `subscription.activated`. One made through the API sent `created` as well. So a start is whichever of them arrives
-  first, read with the payload's `status` (`trialing` or `active`), and the other is already done.
+  `subscription.activated`. One made through the API usually sent `created` as well, but not always (2026-10-07: three
+  of four). So a start is whichever of them arrives first, read with the payload's `status` (`trialing` or
+  `active`), and the other is already done.
+- **Events of one change share one `occurred_at`** (a start's `created` and `trialing`, a cancel's `updated` and
+  `canceled`), and their ids among themselves are in no useful order. Never infer which came first from them.
 - **`transaction.completed` names its subscription** (`data.subscription_id`) and carries our `custom_data`, so the
   transaction the page reported can be matched to its subscription.
 
@@ -169,6 +174,9 @@ export async function fetchPaddleEvents(
 }
 ```
 
+- **Always `order_by=id[ASC]`.** Unordered, Paddle lists newest first and `after` follows the listing's order, so
+  `after=<checkpoint>` returns the events *before* it and the fetch sees nothing new (sandbox, 2026-10-07). The newest
+  event, for a test's starting point, is `order_by=id[DESC]&per_page=1`.
 - `after` is the checkpoint; none means from the start of what Paddle keeps.
 - Up to 200 a page; `meta.pagination.has_more` says whether to go on. **`estimated_total` is an estimate** (it said
   1,850 for a stream holding 156): never rely on it.
@@ -278,8 +286,9 @@ import { PaddleApiError, paddleRequest, type PaddleConfig } from "./paddle.js"
  * that cancellation. Each is the work of an external automation's activity, so each is **safe to run again**: Paddle
  * is told the state we want (every item with its quantity), never a difference.
  *
- * What the answer says is for the activity only. Our events come from Paddle's own events, through the inbox
- * (ADR-040): a seat change is `subscription.updated`, about three seconds after the call answers.
+ * A decisive answer (the subscription in its new state) is a fact: the workflow records it at once as our command
+ * (ADR-049). Paddle's own event of the same change carries the same `updated_at` (the subscription's version), so
+ * whichever of the two is recorded second is skipped as already done.
  */
 
 /** A seat type's price at Paddle, and how many seats of it */
@@ -416,9 +425,33 @@ export async function withdrawCancellation(config: PaddleConfig, subscriptionId:
   refused, before anything is charged. It cancels at once, even with a cancel already scheduled, and Paddle sends
   `subscription.canceled`. Asked again, Paddle refuses (`subscription_update_when_canceled`): done.
 - **Withdrawing** is `scheduled_change: null`. With nothing scheduled, Paddle changes nothing.
-- **What the answer says is for the activity only.** Our events come from Paddle's own events through the inbox: a
-  seat change is `subscription.updated`, about three seconds after the call answers. Never record a business event
-  from the call's answer.
+- **A decisive answer is a fact, recorded at once** (ADR-049). The workflow records it as our command,
+  through an activity, as `build-automation` says:
+  - **decisive:** the subscription in its new state. A cancel `immediately` answers `status: canceled` with
+    `canceled_at`; a cancel at the period's end answers `scheduled_change` (`action: cancel`, `effective_at`); a seat
+    change answers every item with its quantity; a withdrawal answers `scheduled_change: null`;
+  - the event carries `subscriptionId` and the subscription's version, `paddleUpdatedAt` (the answer's
+    `updated_at`), and no `paddleEventId`: no event of Paddle's has arrived yet;
+  - **not decisive:** no answer by our deadline, or a 429 or 5xx once the retries run out. Record nothing; the fact
+    comes from Paddle's event (webhook or fetch), and the stall rules apply.
+- **A change is recognised by the subscription's version, `updated_at`** (sandbox, 2026-10-07: 10 of 10 answers
+  matched their events to the millisecond; licensing `e2e/paddle/answer-vs-event.mjs`). Our answer and every event
+  of that change (`subscription.updated`, and `subscription.canceled` for a cancel) carry the same `updated_at`; a
+  repeat of the same request answers the previous one and makes no event. Paddle sends its event for a change made
+  through the API too, within a second, so **either report may arrive first**. The command that records a report
+  reads the subscription's events by `subscriptionId` and compares `paddleUpdatedAt` with the latest recorded:
+  - **the same:** already done. From Paddle's event, record `paddleNotificationSkipped`, "already done", so the
+    notification leaves the to-do list; from our answer, record nothing more;
+  - **older:** superseded by a later change already recorded; skipped the same way;
+  - **newer, or none recorded:** a new change; record it.
+
+  Every event recorded from a subscription change carries `paddleUpdatedAt` (from Paddle's event: `data.updated_at`).
+  Don't match on `occurred_at` (the event's time, about 200 ms after the change) or on the state alone (1 → 2 → 1
+  seats).
+- **Never put a request id of ours in `custom_data`** to match a change: setting it is a change of its own (a new
+  version and event, even for the same numbers), and it stays on the subscription, so later changes carry it.
+- **What we didn't start comes only from Paddle's events:** renewals, a failed payment and its recovery, the
+  customer's portal, a change made in Paddle's dashboard.
 - **The preview** (`previewSeatChange`) is for the screen that asks the owner to confirm: a read, called by a route of
   ours, never by the browser (the API key is the backend's).
 
@@ -719,7 +752,8 @@ Built by the first slice that needs it, as `build-automation` says for any outsi
   a number of requests, so a failure midway can be reached;
 - **a subscription's calls** (read, preview, change seats, cancel, withdraw), answering as Paddle does: the same
   numbers again change nothing, a second cancel is refused, an unknown or cancelled subscription is refused with
-  Paddle's code;
+  Paddle's code. **Versions as Paddle keeps them** (ADR-049): a change gets a new `updated_at`, which its answer and
+  the events it adds to the stream carry; a repeat answers the previous `updated_at` and adds no event;
 - **a checkout,** `POST /mock/checkouts` with `{ items: [{ price_id, quantity }], custom_data }`, which the web app's
   mock checkout calls in place of Paddle.js. It completes at once, answers `{ transaction_id }`, and adds the events
   Paddle would for a trial (`subscription.trialing` and `transaction.completed`, made from real ones, with the
@@ -753,3 +787,9 @@ existing one's `destination`) points at `<address>/webhooks/paddle`. Seen that w
 stream's event plus a `notification_id`, 0.7 s after it happened; `POST /notifications/{id}/replay` redelivers it
 under a new `notification_id`; a failed delivery is retried after about 20 s and a minute. Pause the destination
 (`active: false`) when done.
+
+**A fresh trial for an experiment, with no checkout:** a customer and an address (`POST /customers`,
+`POST /customers/{id}/addresses`), then `POST /transactions` with a cardless trial price
+(`requires_payment_method: false`), `collection_mode: "automatic"` and `status: "billed"`. Paddle completes it and
+makes the subscription within seconds (`subscription_id` on the transaction). Never use org-test-1. Each experiment
+that changes the sandbox is a script in `e2e/paddle/` with its results in the README (`answer-vs-event.mjs` is one).
