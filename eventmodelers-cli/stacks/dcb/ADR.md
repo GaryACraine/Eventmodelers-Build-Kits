@@ -3129,8 +3129,9 @@ cases, instead of an invented event or a refusal; and the status code should tel
 
 ### ADR-051: An automation's item waits for a missing data input; it never blocks the items behind it
 
-**Status:** **Accepted in principle, 2026-10-07 (Gary):** "wait on its own, blocking is bad for business". The
-mechanism below is **Proposed** until licensing's two owner automations are rebuilt with it and the owner chain passes.
+**Status:** **Accepted, 2026-10-07 (Gary):** "wait on its own, blocking is bad for business". Proven the same day:
+licensing's two owner automations, rebuilt by the loop with `waitsFor`, moved past the trial with no owner that had
+blocked them at event 26, and the owner chain passed (10/10), on that database and on a reset one.
 **Date:** 2026-10-07
 **Changes:** ADR-039 decision 3 ("a missing value throws, and the processor retries the event").
 
