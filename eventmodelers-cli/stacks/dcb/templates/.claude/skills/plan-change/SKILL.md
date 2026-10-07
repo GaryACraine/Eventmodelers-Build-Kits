@@ -143,6 +143,10 @@ the tags exactly, so it fails until the producer's same-name replacement is buil
   (`build-state-view` Step 6), never through another slice's route.
 - **What the change touches:** every slice that produces or reads the same event, and every automation that
   issues the same command. Each is re-planned under the table above, by its own status.
+- **A new rule on a command breaks the tests of the automations that issue it**, though their model doesn't change
+  (so nothing re-queues them): their givens lack what the rule now needs. Find them (`grep -rl "<command>Decider"
+  src/contexts`), and add the missing given to their tests by hand, in its own commit, before the export or right
+  after the build (licensing, 2026-10-07: start trial's "unknown organisation" broke two of the translation's tests).
 
 ## 4. Check the guards before you plan
 
