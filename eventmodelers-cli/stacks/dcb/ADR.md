@@ -3031,10 +3031,12 @@ answer and the webhook are deduplicated without a `paddleEventId`.
     the `paddleEventId` tag;
   - the mock keeps Paddle's versions: a change gets a new `updated_at` that its events carry, and a repeat answers
     the previous one and sends nothing.
-- **Proven when:** in `trial-cancellation.sh`, the item closes after the mock's answer, before any
-  `subscription.canceled` is delivered; the delivered webhook is then skipped as "already done", and the trial is
-  cancelled once. A webhook delivered **before** the answer is recorded closes the item, and the answer is then
-  "already done". A `not_found` still stalls, and the settled chain still passes.
+- **Proven (2026-10-07,** licensing `trial-cancellation.sh`, 44 of 44): the item closes on the mock's answer, before
+  any `subscription.canceled`; the webhook with the same `updated_at` is then skipped as "already done", and the trial
+  is cancelled once. With the mock failing our cancel three times, Paddle's event first closes the item and our
+  answer, when it comes, decides nothing (ADR-050): no second cancellation, no stall. A `not_found` still stalls, and
+  the settled chain still passes. Built by the loop through expand, switch, contract; the replaced automation needed
+  a second build, as a rebuild (emcli now queues a replacement so).
 
 ### ADR-050: A command may decide nothing: its intent already holds
 

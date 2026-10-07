@@ -8,7 +8,10 @@ description: The rules for changing what's already modelled or built. Use before
 > **Draft** (PLAN 16.6): written from ADR-017, 018, 019, 039, 046 and 048. Its first use was licensing's "assign organisation
 > owner", replaced before release because its command took `roleId` from the caller. That use added the same-name
 > replacement below, and "A change other slices use" (expand, switch, contract) after the replacement broke a slice
-> that issues the command. It is proven once a change with users has gone through all three steps in the loop.
+> that issues the command. **Proven (2026-10-07):** licensing's ADR-049 change went through all three steps in the
+> loop (a new command; the translation and the cancellation's automation switched to it; the old slice removed), and
+> its end-to-end run passes 44 of 44. It found that a replacement must reach the loop as a rebuild (emcli queues it so
+> now). Ready to distil.
 
 A model keeps changing after slices are built. These rules say what a change may do, given how far its slice has
 got. The why is in the kit's `ADR.md` (index at the end): this skill is the what. Model through the `event-model`
