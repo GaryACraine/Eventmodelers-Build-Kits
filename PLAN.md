@@ -268,6 +268,18 @@ model and build only what's ours.
            `build-automation` ("Run it now", the watch) and `provider-paddle` say how to wire both (PR #197,
            licensing `254d665`). Model `e885bde`, pushed and **exported 2026-10-07**: the webhook slice's rebuild
            and the watch queued, nothing else; contract unchanged.
+         - **Built by the loop with no blocks** ($0.76), statuses imported and pushed (`c2caefa`); 380 tests pass.
+           **`paddle-sync.sh` passes 33 of 33** (`9a147b9`), with two new cases: a webhook carrying only a
+           checkout's transaction event starts a run that fetches its subscription event, and the trial starts with no
+           trigger from us; a checkout reported by the page is watched until its trial starts (3 s, item closed, the
+           watch stops at its next try), while a checkout whose events never come is tried five times and its item
+           stays open. No failed trigger in the app's log. The settled chain and the trial cancellation still pass.
+         - **Found: an internal automation's missing precondition blocks every organisation behind it.** The owner
+           chain fails "admin once the trial starts": "owner admin role on trial" and "owner web seat on trial" throw
+           "no owner of organisation … yet" for a trial whose organisation has no owner (the Paddle scripts start trials
+           for organisations that never registered), and the throw blocks their processor at that event, retrying
+           with backoff. Not from this change. Open, for Gary: whether such an item waits on its own (skipped and
+           retried, or stalled) rather than holding up the list.
          - **Found by the rehearsal: an element's prose never reached the loop.** emcli exported (and pushed) an
            event's or command's description as its field list only, and a pull cleared it, so 8 descriptions in
            licensing (`startTrial`'s "once ever", `refuseTrial`'s rules, the checkpoint's) were never seen by the
