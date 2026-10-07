@@ -80,6 +80,13 @@ model and build only what's ours.
         and handling (4 each), so the pool is 20 for any app with 4 or more processors (licensing was 32);
       - emcli's push recovery, fingerprint v3 and `inModel` export.
     - **Decided:** ADR-046, ADR-047 and ADR-048 Accepted (Gary, 2026-10-06).
+    - **Waiting on Gary: ADR-050, Proposed (2026-10-07): a command may decide nothing.** Gary spotted that the
+      ADR-049 plan refused a repeat ("Already cancelled") only because dcb-event-store's `handle()` rejected a
+      decision of no events, though its own `thenNothingHappened()` tests one. Fixed in the library (phase 22,
+      PR #34, Gary merges): `[]` appends nothing, `handleCommand()` says whether anything was appended. The ADR
+      proposes 200 `{ "changed": false }` for a no-op over HTTP (304 is only for conditional reads), a scenario with
+      no `then` as "nothing happens", and the skills and emcli to follow. Then ADR-049's licensing plan runs with
+      that scenario. **Later:** find the built slices that refuse a repeat, and replace them when next touched.
     - **ADR-049 Accepted (Gary, 2026-10-07).** A decisive answer to our own call is a fact, recorded at
       once, and the provider's event of it is a repeat, skipped as "already done". Gary asked why the refused
       trial's cancellation throws away Paddle's answer (`status: canceled`) and waits for `subscription.canceled`.

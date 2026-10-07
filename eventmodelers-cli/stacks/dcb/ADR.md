@@ -3035,3 +3035,63 @@ answer and the webhook are deduplicated without a `paddleEventId`.
   `subscription.canceled` is delivered; the delivered webhook is then skipped as "already done", and the trial is
   cancelled once. A webhook delivered **before** the answer is recorded closes the item, and the answer is then
   "already done". A `not_found` still stalls, and the settled chain still passes.
+
+### ADR-050: A command may decide nothing: its intent already holds
+
+**Status:** **Proposed, 2026-10-07.** Gary: a decider can return an empty array, for idempotency and no-op cases,
+instead of an invented event or a refusal; and it could give the caller the right HTTP code.
+**Date:** 2026-10-07
+
+**Context:**
+- **What we had:** dcb-event-store's `handle()` threw "Decider must return at least one event" (since its phase 2),
+  although the same phase's `DeciderSpecification.thenNothingHappened()` tests a decider that returns `[]`. The kit
+  read that rule as design, so a command whose intent already held had two ways out:
+  - **a refusal:** licensing's ADR-049 plan had our cancel's answer, after Paddle's event of the same cancel, refused
+    "Already cancelled", and the workflow taught to treat that refusal as done; refuse trial had "already refused"
+    until its replacement (2026-10-07);
+  - **an event:** where an event is really needed, it stays. `paddleNotificationSkipped` "already done" closes the
+    notification's item on the to-do list (ADR-040, ADR-048), so it is a fact we need, not an invented one.
+- **The references:**
+  - **Emmett** (`handleCommand`): a decision of no events appends nothing and returns `newEvents: []`, the stream
+    version unchanged.
+  - **The decider pattern** (Chassaing): `decide` returns a list of events, and an empty list means nothing happened.
+  - **HTTP** (RFC 9110): **304 Not Modified is only for a conditional GET or HEAD** (a cache's copy is still valid),
+    never for a command. A command whose intent already holds succeeded: **200 OK** carries "a representation of the
+    status of the action", **204 No Content** "successfully fulfilled, no additional content". Stripe answers a
+    replayed idempotent request with the original response.
+- **Fixed in the library** (dcb-event-store phase 22): a decision of `[]` appends nothing and throws nothing;
+  `handleCommand()` returns `{ position, events }`; `handle()` keeps its signature.
+
+**Decision:**
+1. **A command whose intent already holds decides nothing:** its decider returns `[]`. A repeat of the same request
+   (the same seats again, a cancellation already recorded) is a no-op, not a refusal and not an invented event.
+   - **Refuse** (a typed error, 4xx) only when the intent can't hold: another capacity for a course that exists, a
+     cancellation for a trial that wasn't refused.
+   - **Record an event** only when it is a fact something needs: a Paddle notification's outcome that closes its
+     to-do item stays `paddleNotificationSkipped` "already done".
+2. **In the model, a scenario with no `then` step means "nothing happens"** (its title says why, e.g. "our answer of a
+   cancellation already recorded: nothing happens"). It's tested with `thenNothingHappened()`.
+3. **Over HTTP** (proposed; Gary decides):
+   - a change recorded: **204** with the `ETag` of its position, or **201** with the generated fields, as now;
+   - **nothing new: 200 OK** with `{ "changed": false }` and the `ETag` of the position the decision was read at.
+     Still a success, so a retrying client never mistakes it for a failure, and a client that cares can tell;
+   - the route calls `handleCommand()` and answers by `events.length`.
+   - emcli's contract adds the 200 response to a command that has a "nothing happens" scenario.
+4. **Inside the app** (an automation's `issue`, a workflow's activity): a decision of nothing is done, like any
+   success. No special case.
+
+**Alternatives considered:**
+- **304 Not Modified.** Rejected: it's for conditional reads, and caches and clients would misread it on a POST.
+- **204 for both.** Simplest, and true to "the state you asked for holds"; but the caller can't tell, and Gary wants
+  the code to say it. Kept as the fallback if the 200 body proves noise.
+- **409 Conflict or 422.** Rejected: they say the request failed, so a retry after a lost response would look like an
+  error.
+
+**Consequences:**
+- **dcb-event-store:** phase 22 (PR #34, Gary merges).
+- **Kit:** `build-state-change`: `[]` for a repeat, `thenNothingHappened()` for a scenario with no `then`, the route
+  through `handleCommand()` and the 200 answer; `plan-change`: model a repeat as "nothing happens"; `build-automation`:
+  a decision of nothing is done.
+- **emcli:** a scenario with no `then` step is valid and exported as "nothing happens"; the contract adds the 200.
+- **Licensing:** ADR-049's plan models our answer of a cancellation already recorded as "nothing happens". Built slices
+  that refuse a repeat are found and replaced when next touched (PLAN).
