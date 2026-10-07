@@ -117,6 +117,12 @@ model and build only what's ours.
         first closes it and our answer decides nothing. The route answers 200 with no body for a no-op, 422 for a
         refusal. The settled chain still passes. **`plan-change` is proven** (expand, switch, contract through the
         loop). The six runs and the rebuild cost $1.91.
+      - **Audit (Gary, 2026-10-07): does anything else ignore Paddle's reply?** Nothing built: the cancellation records
+        it now; the checkout watch and the Paddle Sync fetch the event stream, whose reply *is* the events they
+        record; the browser's checkout is rightly not a fact (ADR-041). **The draft chapters 6, 7, 9, 12, 15, 16 and
+        17** (seats, cancel, withdraw) are still modelled the old way, with "paddle subscription updated" as the step
+        before our fact: each is reshaped when it's processed. Encoded at the modelling end: emcli's `event-model`
+        method, "Asking another system to change something" (`562d366`), and a line in `plan-change`.
       - **Small, open:** the export's console summary of a re-queued replacement adds "dependencies or details
         changed" though `slice.json`'s `rebuild.changes` doesn't; emcli's `element remove` now warns on a built
         slice (the open point on `slice remove` is answered for elements). **Later:** find the built slices that refuse a repeat, and replace them

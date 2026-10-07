@@ -132,6 +132,10 @@ the tags exactly, so it fails until the producer's same-name replacement is buil
   ("…: nothing happens"): the decider returns `[]` and the route answers 200. A rejection (`then` an error) is
   only for an intent that can't hold. Keep an event for a repeat only when something needs it (a notification's
   `paddleNotificationSkipped` "already done" closes its to-do item).
+- **A call to another system: its reply is the fact** (ADR-049). A chapter modelled before it, with the other
+  system's event as the step that leads to our fact ("paddle subscription updated" → `seatsWereAdded`), is reshaped
+  when it's planned: the automation's reply issues our command, and the other system's event is a "skipped, already
+  done" scenario. The `event-model` skill's method, "Asking another system to change something", has the shape.
 - **A read-model test depends on events, not on other slices.** Its *given* goes in with `app.given(...)`
   (`build-state-view` Step 6), never through another slice's route.
 - **What the change touches:** every slice that produces or reads the same event, and every automation that
