@@ -18,7 +18,7 @@ import { getTestPgDatabasePool } from "@test/testPgDbPool"
 import { automationTestApp, recordingWorkflowStarter } from "@test/automationHarness"
 import { startTemporalTestServer, withWorker, type TemporalTestServer } from "@test/temporalHarness"
 import { defineReadModel, startReadModels, withType, type ReadModelRuntime } from "./readModels.js"
-import { automationProcessors, defineAutomation, issueOnce, workKey, type Automation } from "./automations.js"
+import { automationProcessors, defineAutomation, issueOnce, NonRetryableError, workKey, type Automation } from "./automations.js"
 import { temporalWorkflowStarter } from "./temporal.js"
 import { configureProcessorStatusRoute } from "./health.js"
 
@@ -216,6 +216,7 @@ const carrierTranslation = (giveUpAfter?: number) =>
         key: "notificationId",
         triggers: ["carrierNotificationReceived"],
         act: async ({ item, issue }) => {
+            if (item.status === "returned") throw new NonRetryableError(`carrier status ${item.status} has no translation`)
             if (item.status !== "delivered") throw new Error(`unknown status ${item.status}`)
             await issue(recordDelivery, { type: "recordDelivery", data: { parcelId: item.parcelId, notificationId: item.notificationId } })
         },
@@ -276,6 +277,21 @@ describe("a list of one (ADR-040)", () => {
         expect(app.alerts()).toMatchObject([
             { code: "automation-gave-up", severity: "critical", details: { automation: "carrier-translation", key: "n1", attempts: 2 } }
         ])
+    })
+
+    test("gives up at once on a failure a retry can't change (NonRetryableError): not retried, so nothing waits behind it", async () => {
+        const log = { error: console.error }
+        console.error = () => undefined
+        try {
+            await app.given(carrierNotified("n1", "p1", "returned"), carrierNotified("n2", "p2"))
+        } finally {
+            Object.assign(console, log)
+        }
+        expect(await app.appended()).toEqual([
+            { type: "carrierNotificationSkipped", data: { notificationId: "n1", reason: "failed", error: "carrier status returned has no translation" } },
+            { type: "parcelDelivered", data: { parcelId: "p2" } }
+        ])
+        expect(app.alerts()).toMatchObject([{ code: "automation-gave-up", details: { key: "n1", attempts: 1 } }])
     })
 })
 

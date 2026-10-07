@@ -351,7 +351,7 @@ recorded until it has an outcome. The list's key is the notification's id, so ev
 carries that id as a tag (it's a field of each of them in slice.json).
 
 ```typescript
-import { defineAutomation } from "../../../../shared/automations.js"
+import { defineAutomation, NonRetryableError } from "../../../../shared/automations.js"
 import { notificationsToTranslate, type NotificationsToTranslateDoc } from "../notificationstotranslate/readModel.js"
 import { recordDeliveryDecider } from "../recorddelivery/decider.js"
 import { skipCarrierNotificationDecider } from "../skipcarriernotification/decider.js"
@@ -367,7 +367,7 @@ export const carrierTranslation = defineAutomation<NotificationsToTranslateDoc>(
     triggers: ["carrierNotificationReceived"],
     act: async ({ item, read, issue }) => {
         // Classify by the other system's type plus our own state, as the description says
-        if (item.status !== "delivered") throw new Error(`carrier status ${item.status} has no translation`)
+        if (item.status !== "delivered") throw new NonRetryableError(`carrier status ${item.status} has no translation`)
         const parcel = await read(parcelStatus, item.parcelId)
         if (!parcel) throw new Error(`no parcel ${item.parcelId} yet`)
         await issue(recordDeliveryDecider, {
@@ -399,8 +399,13 @@ export const carrierTranslation = defineAutomation<NotificationsToTranslateDoc>(
   included); otherwise it records our event. The skip is an event because the notification's to-do item closes on
   it; a command with no notification to close (our call's answer) decides nothing instead (ADR-050). It decides under
   the append condition, so there's no race. `act` never reads a stored row to decide that.
-- **A type the description doesn't list is an error**: throw. Don't drop it silently.
-- **`giveUp`** (any automation can have one; a translation always does): after `after` failed attempts on one item,
+- **A type with no translation is given up on at once**: throw `NonRetryableError` (`src/shared/automations.ts`),
+  never drop it silently. A retry can't change it, and a plain `Error` is retried `giveUp.after` times while every
+  notification behind it waits (licensing: each checkout's `transaction.completed` held up the trials behind it by
+  ~15 s). It's recorded as failed and alerted like any give-up, at its first attempt. Throw a plain `Error` only for
+  what may pass later: a read model not caught up (`no parcel yet`), our store or a provider unavailable.
+- **`giveUp`** (any automation can have one; a translation always does): after `after` failed attempts on one item
+  (or at the first, for a `NonRetryableError`),
   `record` issues the model's skip command with `reason: "failed"` and the error, the kit alerts the administrator
   (`automation-gave-up`), and the processor moves on to the items behind it. Use the number the description gives (5
   if it gives none). Without `giveUp`, a failing item blocks the ones behind it until it succeeds.
