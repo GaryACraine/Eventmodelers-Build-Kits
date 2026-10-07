@@ -109,6 +109,13 @@ interface AutomationBase<TItem extends ReadModelDoc> {
 export interface ListAutomation<TItem extends ReadModelDoc = any> extends AutomationBase<TItem> {
     /** The to-do list. Registered in `readModels` as database-projected; the automation's processor runs it. */
     todoList: ReadModel<TItem, any>
+    /**
+     * The events that supply a **data input** that can arrive after the item opens (ADR-051), e.g. the owner's
+     * `userWasAssignedToRole` for a trial: the model links them `reacts-to` too. Each runs `act` again for its open item
+     * (by the list's key tag), so an item whose data input wasn't there (`act` returned without acting) is worked when
+     * it arrives. The list needn't fold them.
+     */
+    waitsFor?: string[]
 }
 
 /** A list of one (ADR-040): no stored to-do list, the trigger event is the item (`item` is its data) */
@@ -141,6 +148,9 @@ export function defineAutomation<TItem extends ReadModelDoc>(automation: Automat
         if (automation.triggers.length === 0) throw new Error(`${automation.name}: a list of one needs at least one trigger.`)
     }
     if (automation.giveUp && automation.giveUp.after < 1) throw new Error(`${automation.name}: giveUp.after is at least 1.`)
+    if (!hasList(automation) && "waitsFor" in automation) {
+        throw new Error(`${automation.name}: only an automation with a to-do list waits for a data input (ADR-051).`)
+    }
     if (!hasList(automation)) return automation
     const unhandled = automation.triggers.filter(type => !automation.todoList.canHandle.includes(type))
     if (unhandled.length > 0) {
@@ -287,16 +297,21 @@ export function automationProcessor(
 ): ConsumerProcessorConfig {
     const list = projectionToProcessor(automation.todoList.projection, options)
     const work = worker(automation, deps)
+    const waitsFor = automation.waitsFor ?? []
+    const acts = new Set([...automation.triggers, ...waitsFor])
+    // The list's events, plus the data inputs' events it doesn't fold (ADR-051): those run only the automation step
+    const types = [...new Set([...automation.todoList.canHandle, ...waitsFor])]
     return {
         ...list,
+        query: Query.fromItems([{ types }]),
         handlerFactory: (client, context) => {
-            const listStep = list.handlerFactory(client, context)
+            const listStep = list.handlerFactory(client, context).when as Record<string, (event: SequencedEvent) => Promise<void>>
             const when = Object.fromEntries(
-                Object.entries(listStep.when).map(([type, step]) => [
+                types.map(type => [
                     type,
                     async (event: SequencedEvent) => {
-                        await (step as (event: SequencedEvent) => Promise<void>)(event)
-                        if (context.rebuilding || !automation.triggers.includes(type)) return
+                        await listStep[type]?.(event)
+                        if (context.rebuilding || !acts.has(type)) return
                         for (const key of tagValues(event, automation.todoList.key)) {
                             const item = await readLive(deps.eventStore, automation.todoList, key)
                             if (!item) continue
