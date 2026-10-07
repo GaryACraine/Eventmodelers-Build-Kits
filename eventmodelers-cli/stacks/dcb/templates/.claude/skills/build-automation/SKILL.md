@@ -119,12 +119,14 @@ export const stockReturner = defineAutomation<StockToReturnDoc>({
   `menuItems`; `OrganisationOwner.ownerUserId` → `(await read(organisationOwner, item.organisationId)).ownerUserId`).
   `read` folds the read model live from the event store, so it's current.
 - **A data input that isn't there yet: return, never throw** (ADR-051). The item stays open on the list, and the
-  processor moves on: a throw would block every item behind this one. The event that supplies the data input is a
-  **trigger too** (the model links it `reacts-to`; add it to `triggers`): when it arrives, the item is worked. Never
-  issue the command without the data. Throw only for a fault of ours (the store unavailable, a bug).
+  processor moves on: a throw would block every item behind this one. The event that supplies the data input is
+  linked `reacts-to` too, after the opening event: put it in **`waitsFor`**, not `triggers` (the list needn't fold
+  it). When it arrives, `act` runs again for its open item. Never issue the command without the data. Throw only for
+  a fault of ours (the store unavailable, a bug).
 
   ```typescript
-  triggers: ["trialWasStarted", "userWasAssignedToRole"],   // the opening event, and the owner's (the data input's)
+  triggers: ["trialWasStarted"],             // opens the item
+  waitsFor: ["userWasAssignedToRole"],       // supplies the data input (the owner): works an item that waited
   act: async ({ item, read, issue }) => {
       const owner = await read(organisationOwner, item.organisationId)
       if (!owner) return   // waits on the list until the owner is assigned, which runs this again
@@ -728,7 +730,7 @@ docker-compose.yml        ← the mock's service
 - [ ] `act` only issues a command or starts a workflow; nothing is caught and logged
 - [ ] Every field of the command comes from the item, the trigger event, or a data input read with `read`, per
       slice.json's mappings (ADR-039)
-- [ ] A data input that isn't there yet returns without acting (never throws), and its event is in `triggers` (ADR-051)
+- [ ] A data input that isn't there yet returns without acting (never throws), and its event is in `waitsFor` (ADR-051)
 - [ ] External: the workflow is deterministic, its retries are configuration, and business answers are recorded as
       our commands through `issueOnce` with the key from the description
 - [ ] External: the provider skill read and followed; its official SDK, host and our deadline from the environment,

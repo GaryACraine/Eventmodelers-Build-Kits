@@ -3157,8 +3157,10 @@ mechanism below is **Proposed** until licensing's two owner automations are rebu
    stays open on the list, visibly waiting, and the processor moves on to the next event.
 2. **The event that supplies the data input is a trigger too.** When it arrives, the automation step reads the item
    (still open) and the data input (now there) and acts. Nothing is retried, polled or timed: the work is done by
-   the event that makes it possible. In the model, that event `reacts-to` the automation as well as the opening event;
-   the to-do list already folds it, or folds it to know nothing (the helper checks the list handles every trigger).
+   the event that makes it possible. In the model, that event `reacts-to` the automation as well as the opening event.
+   In code it's the automation's **`waitsFor`** (`defineAutomation`): the processor reads it too, and runs only the
+   automation step for it, for the open item under the list's key tag. The list needn't fold it (a list that does,
+   folds it first), and `triggers` stay the events the list folds, so a typo is still caught.
 3. **Order doesn't matter.** With the data first (the usual case: the owner is assigned before the trial starts),
    the opening event acts at once. With the item first, the data's event acts. Either way the command's idempotency
    key (`<automation>:<item key>`) makes a second run a no-op.
@@ -3181,7 +3183,11 @@ mechanism below is **Proposed** until licensing's two owner automations are rebu
   decision 2 anyway.
 
 **Consequences:**
-- **`build-automation`:** a null data input returns without acting; its event is a trigger.
+- **The scaffold's helper:** `waitsFor` on an automation with a to-do list; the processor's query adds those events.
+  Three tests: an item waiting doesn't hold up the next; the data's event works it; with no open item it does
+  nothing. **Adding an event to a running processor's query** only sees it from the bookmark on: an item already
+  waiting before the deploy is worked by the next such event, or by hand.
+- **`build-automation`:** a null data input returns without acting; its event goes in `waitsFor`.
 - **emcli's `event-model` method:** an automation's data input whose event can come after the trigger links that
   event to the automation (`reacts-to`).
 - **Licensing:** "owner admin role on trial" and "owner web seat on trial" replaced before release (`plan-change`):

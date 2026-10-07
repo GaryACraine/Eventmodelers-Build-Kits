@@ -121,9 +121,11 @@ const dispatcher = defineAutomation<ParcelToShip>({
     name: "dispatcher",
     todoList: ParcelsToShip,
     triggers: ["parcelBooked"],
+    // A courier can be assigned after the parcel is booked: the item waits for it (ADR-051)
+    waitsFor: ["courierAssigned"],
     act: async ({ item, read, issue }) => {
         const assigned = await read(ParcelCouriers, item.parcelId)
-        if (!assigned) throw new Error(`no courier assigned to ${item.parcelId} yet`)
+        if (!assigned) return
         await issue(dispatchParcel, { type: "dispatchParcel", data: { parcelId: item.parcelId, courier: assigned.courier } })
     }
 })
@@ -151,6 +153,22 @@ describe("an automation with a data input (ADR-039)", () => {
     test("reads the data input as it stands now and passes it into the command", async () => {
         await app.given(courierAssigned("p1", "DPD"), parcelBooked("p1"))
         expect(await app.appended()).toEqual([{ type: "parcelDispatched", data: { parcelId: "p1", courier: "DPD" } }])
+    })
+
+    test("an item whose data input isn't there yet waits, and the items behind it are worked (ADR-051)", async () => {
+        await app.given(parcelBooked("p1"), courierAssigned("p2", "UPS"), parcelBooked("p2"))
+        expect(await app.appended()).toEqual([{ type: "parcelDispatched", data: { parcelId: "p2", courier: "UPS" } }])
+        expect(await app.runtime().reader(ParcelsToShip)("p1")).not.toBeNull()
+    })
+
+    test("the data input's event works the waiting item", async () => {
+        await app.given(parcelBooked("p1"), courierAssigned("p1", "DPD"))
+        expect(await app.appended()).toEqual([{ type: "parcelDispatched", data: { parcelId: "p1", courier: "DPD" } }])
+    })
+
+    test("the data input's event does nothing for a key with no open item", async () => {
+        await app.given(courierAssigned("p1", "DPD"))
+        expect(await app.appended()).toEqual([])
     })
 })
 
@@ -560,6 +578,7 @@ describe("the automation step", () => {
 
     test("an automation reacts only to events its list handles", () => {
         expect(() => defineAutomation({ ...shipper, triggers: ["parcelLost"] })).toThrow(/doesn't handle parcelLost/)
+        expect(() => defineAutomation({ name: "x", key: "id", triggers: ["a"], waitsFor: ["b"], act: async () => undefined } as never)).toThrow(/only an automation with a to-do list/)
     })
 })
 
