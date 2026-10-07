@@ -62,8 +62,8 @@ model and build only what's ours.
       - chapter 20's notification copies and its operations page;
       - chapter 21, the Paddle Sync;
       - chapter 24's notification copies.
-    - **Cost:** 68 loop runs, $32.41. $17.15 of that was 21 runs on Opus before the project pinned a model; 47 runs
-      on Sonnet (medium) cost $15.26 (16.6). Two runs ended on the account's usage limit; the loop waited for the
+    - **Cost:** 75 loop runs, $34.32. $17.15 of that was 21 runs on Opus before the project pinned a model; 54 runs
+      on Sonnet (medium) cost $17.17 (16.6). Two runs ended on the account's usage limit; the loop waited for the
       reset and built the slice on its own (`runWithRetry`).
     - **"Assign owner role" was replaced before release** (ADR-046), twice:
       - once to split the owner's command from the generic role command;
@@ -107,7 +107,19 @@ model and build only what's ours.
         - **the loop's instructions:** a Planned slice is never "already built"; compare descriptions too;
         - **`ralph.js`:** a rebuild marked Done with no commit warns in the log and in `runs.jsonl` (`warning`);
         - **`plan-change`:** how a replacement reaches the loop.
-      - **Also found:** `kit-drift` doesn't cover the scaffold's `src/shared` files (compared by hand this time). **Later:** find the built slices that refuse a repeat, and replace them
+      - **Also found:** `kit-drift` doesn't cover the scaffold's `src/shared` files (compared by hand this time).
+      - **Done (2026-10-07): ADR-049 in licensing, proven.** Re-queued as a rebuild, the cancellation's job changed the
+        workflow ($0.30): it records Paddle's answer through `recordTrialCancelledAtPaddle`. Then the contract step:
+        "record refused trial cancelled" removed from the model (pushed), its code and wiring by hand (three commits:
+        the commit guard keeps slice code apart from shared files), the database reset; 350 tests pass.
+        `trial-cancellation.sh` passes **44 of 44**: the item closes on the answer before any webhook, and the webhook
+        is then skipped; with the mock failing our cancel three times (`POST /mock/fail-next`, new), Paddle's event
+        first closes it and our answer decides nothing. The route answers 200 with no body for a no-op, 422 for a
+        refusal. The settled chain still passes. **`plan-change` is proven** (expand, switch, contract through the
+        loop). The six runs and the rebuild cost $1.91.
+      - **Small, open:** the export's console summary of a re-queued replacement adds "dependencies or details
+        changed" though `slice.json`'s `rebuild.changes` doesn't; emcli's `element remove` now warns on a built
+        slice (the open point on `slice remove` is answered for elements). **Later:** find the built slices that refuse a repeat, and replace them
         when next touched.
     - **ADR-049 Accepted (Gary, 2026-10-07).** A decisive answer to our own call is a fact, recorded at
       once, and the provider's event of it is a repeat, skipped as "already done". Gary asked why the refused
@@ -4079,7 +4091,7 @@ What each `build-*` skill generates and what it verifies:
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. **Increment 1 built by the loop (2026-10-06): 43 of its 44 slices built, 1 blocked on a model change, 13 left as draft; owner chain 9/9, the settling to-do list 14/14 and the refused trial's cancellation 34/34 end to end; 68 runs, $32.41. Before it, 16.1 to 16.5 built and proved the inbox, webhooks with a fetch behind them, timed work, setup commands, Paddle's inline checkout and our calls to Paddle (ADR-040 to 045). Next: "watch for the trial after checkout" (chapter 21's Paddle Sync planned first), then 16.3a (chapter 1 end to end through the UI). See "Where we are" at the top of Phase 16.** 16.3 is in process modelling: chapter 1 fleshed out, 16.3b done (ADR-039) (16.2 done 2026-09-30: ADR-037 Accepted, trials included after the 16.2b tests) (16.1's knowledge work done 2026-09-30; only Gary's live onboarding open; 16.2's research done 2026-09-30). Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
+| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. **Increment 1 built by the loop (2026-10-06): 43 of its 44 slices built, 1 blocked on a model change, 13 left as draft; owner chain 9/9, the settling to-do list 14/14 and the refused trial's cancellation 44/44 end to end; 75 runs, $34.32. Before it, 16.1 to 16.5 built and proved the inbox, webhooks with a fetch behind them, timed work, setup commands, Paddle's inline checkout and our calls to Paddle (ADR-040 to 045). Next: "watch for the trial after checkout" (chapter 21's Paddle Sync planned first), then 16.3a (chapter 1 end to end through the UI). See "Where we are" at the top of Phase 16.** 16.3 is in process modelling: chapter 1 fleshed out, 16.3b done (ADR-039) (16.2 done 2026-09-30: ADR-037 Accepted, trials included after the 16.2b tests) (16.1's knowledge work done 2026-09-30; only Gary's live onboarding open; 16.2's research done 2026-09-30). Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
 | 15 — Automations (restaurant orders) | ✅ Closed 2026-09-29 (a demo) | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27/28: the Restaurant Orders chapter (25 slices, 63 scenarios, 15 mockups) on prooph board, with stock and an internal automation (the Stock Returner); emcli push fixes (lanes, links, skipped deletions). 15.8 added: deciding from a growing event stream. 15.2 done 2026-09-28 (library PR #29 merged). 15.3 done 2026-09-28 (ADR-033 runtime, ADR-034 Braintree as a commercial directive; the loop built the restaurant backend; 8 end-to-end cases pass, with our own Temporal call deadline and Temporal in health; manual §21). Next: 15.4 redrive, then 15.5 the UI on Sonnet. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) | **Closed 2026-09-29:** 15.4 and 15.4c built through the loop (stalls, retry, give up, attempts, pay again, cancel); 15.4e provider skills; 15.9 on Sonnet at medium, about 2.5–3× cheaper per job; emcli re-queues changed built slices. The rest dropped or moved to Phase 16 |
 | 1 — Stack Scaffolding | ✅ Complete | Verified: init, npm install, tsc, 21/21 unit tests |
 | 2 — State Change Skill | ✅ Complete | 9-step SKILL.md with full DCB patterns |

@@ -754,6 +754,9 @@ Built by the first slice that needs it, as `build-automation` says for any outsi
   numbers again change nothing, a second cancel is refused, an unknown or cancelled subscription is refused with
   Paddle's code. **Versions as Paddle keeps them** (ADR-049): a change gets a new `updated_at`, which its answer and
   the events it adds to the stream carry; a repeat answers the previous `updated_at` and adds no event;
+- **a failure on purpose over HTTP,** for a test against the mock's container: `POST /mock/fail-next
+  { status, after?, path?, times? }` fails the next API calls whose path ends with `path` (`/cancel`), `times` times in
+  a row, so Temporal's retries leave a window (licensing's "Paddle's event first" case). `/mock/*` calls never fail;
 - **a checkout,** `POST /mock/checkouts` with `{ items: [{ price_id, quantity }], custom_data }`, which the web app's
   mock checkout calls in place of Paddle.js. It completes at once, answers `{ transaction_id }`, and adds the events
   Paddle would for a trial (`subscription.trialing` and `transaction.completed`, made from real ones, with the
