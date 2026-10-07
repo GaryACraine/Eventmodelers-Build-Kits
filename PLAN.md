@@ -223,6 +223,27 @@ model and build only what's ours.
        - **Then: watch for the trial after checkout** (chapter 1): it fetches Paddle's events "after our checkpoint",
          which is chapter 21's Paddle Sync, still draft. Plan chapter 21 first: the checkpoint's event, its command
          and a read of the latest one.
+         - **Chapter 21 planned and exported (2026-10-07), the loop building it.** Nothing built was touched (all
+           draft). Three slices, in build order:
+           - "record paddle events fetched": `recordPaddleEventsFetched` → `paddleEventsWereFetched`, tagged
+             `syncId` (`"paddle-sync"`, a singleton like `LicensingSettings`) and `upToPaddleEventId`; the same
+             checkpoint again decides nothing (ADR-050);
+           - "paddle sync checkpoint": `PaddleSyncCheckpoint`, database-projected, keeps the greatest
+             `upToPaddleEventId` so it only moves forward (a late, older one leaves it);
+           - "fetch paddle events": the Paddle Sync, a polling automation every 15 minutes and at start
+             (ADR-042), working Paddle's event stream after the checkpoint (ADR-041 decision 5) and recording the
+             checkpoint from the fetch's reply (ADR-049). The kit's first polling slice: `build-automation`'s
+             "Timed work" draft gets its first use.
+         - Removed: `PaddleEventStream` (Paddle's list, not ours to build) and the "polling isn't proven" hotspot.
+           The draft copy was renamed "fetched notification received" (its old name clashed with an exported
+           folder).
+         - **emcli fixes on the way:** `completeness` demanded a to-do list of every polling automation, against
+           ADR-042; a checkpoint's read model as a data input now counts (`6200cb4`, `d845d45`, with
+           `slicing.md` and `review.md`). `slice reorder` ignored an explicit chapter when the context had one
+           (`778d3a0`).
+         - **Later, its own step:** a webhook received triggers the sync (ADR-041), a same-name replacement of
+           chapter 1's built webhook slice. Then re-plan the watch to issue the same command and read the same
+           checkpoint.
     2. **16.3a: chapter 1 end to end through the UI,** first with the mock, then in the sandbox. It needs a stand-in
        for Sign Up until the sign-in provider is chosen.
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
