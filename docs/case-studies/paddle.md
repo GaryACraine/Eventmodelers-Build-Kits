@@ -202,6 +202,16 @@ Paddle keeps every event that occurred and lets us read them: `GET /events` ("th
   it, and whether we're told).
 - **Still to verify, with a destination set up:** that a delivered webhook's `event_id` is the stream's; how soon
   after it happens an event is in the stream.
+- **Order (sandbox, 2026-10-07):** **unless asked for `order_by=id[ASC]`, Paddle lists newest first, and `after`
+  follows the listing's order:** `after=<checkpoint>` then returns the events *before* the checkpoint, and a fetch
+  sees nothing new. Always pass `order_by=id[ASC]` to page forward; the newest event is
+  `order_by=id[DESC]&per_page=1` (a test's starting point).
+- **Events of one change share an `occurred_at`** (a cancel's `subscription.updated` and `subscription.canceled`; a
+  start's `subscription.created` and `subscription.trialing`), and their ids among themselves aren't in any useful
+  order: `created` came before `trialing` in one run and after it in another.
+- **`occurred_at` is the event's time, not the change's:** about 200 ms after the subscription's `updated_at`.
+- *Verified since:* a delivered webhook is the stream's event, same `event_id` and payload (the tunnel, 2026-10-03);
+  an event is in the stream within seconds of happening (2026-10-07).
 
 ## 8. What this means for our model (input to 16.2 and 16.3)
 
@@ -532,6 +542,29 @@ So:
 - **Withdraw** (`scheduled_change: null`) restores `next_billed_at`. With nothing scheduled, it changes nothing.
 - **Refusals:** 404 `not_found` for an unknown subscription; 400 `subscription_update_when_canceled` for a cancelled
   one.
+
+### 11d. Our call's answer and Paddle's event of the same change (2026-10-07, ADR-049)
+
+Asked: when we record a change from Paddle's answer, which of Paddle's later events is the same change? Licensing's
+`e2e/paddle/answer-vs-event.mjs`, run twice on fresh cardless trials (`org-test-8-<run>`, `org-test-9-<run>`), cancels
+one at once, changes the other's seats back to back, and matches each answer to the stream's events.
+
+- **A cardless trial can be made through the API:** a transaction with a cardless trial price
+  (`requires_payment_method: false`), `collection_mode: automatic`, `status: billed`. Paddle completes it and makes
+  the subscription within seconds (`subscription_id` on the transaction).
+- **The subscription's `updated_at` is its version.** The answer and every event of one change carry the same
+  `updated_at`, to the millisecond: 10 of 10 answers matched their events, none matched two, none was left without
+  one. A cancel `immediately` answers `status: canceled` with `canceled_at`, and its two events carry the same
+  `updated_at` and `canceled_at`.
+- **A repeat of the same request changes nothing:** the same seat numbers answer the previous `updated_at` and make
+  no event (as on 2026-10-02); a second cancel is refused (400 `subscription_update_when_canceled`) and makes no event.
+- **`custom_data` on a change:** Paddle echoes it in the event (8 of 8), but **setting it is itself a change** (a new
+  `updated_at` and event, even with the same numbers), and **it stays on the subscription:** a later change without
+  `custom_data` still carried the earlier call's. So it can't identify a request.
+- **The event follows the change within a second**, so it can arrive before the caller has recorded the answer.
+- **`subscription.created` isn't certain for one made through the API either:** three of four got `created` and
+  `trialing`; one got only `trialing`.
+- **Seats changed with `do_not_bill` during a trial** charged nothing, as before.
 
 ## 12. Getting paid
 

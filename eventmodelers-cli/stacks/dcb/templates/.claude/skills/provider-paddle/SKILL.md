@@ -14,7 +14,7 @@ description: Paddle (a merchant of record) for the slices that touch it. What Pa
 ADR-036 (Paddle), ADR-037 (seats), ADR-040 (the inbox), ADR-041 (webhooks first, a fetch of the event stream behind
 them), ADR-042 (timed work on Temporal), ADR-044 (its checkout in our page). The facts are in `docs/case-studies/paddle.md` §7 and §7b.
 
-Checked against `@paddle/paddle-node-sdk` 3.10 and Paddle's sandbox (2026-10-02). Where they differ from what you'd
+Checked against `@paddle/paddle-node-sdk` 3.10 and Paddle's sandbox (2026-10-02, and 2026-10-07 for ADR-049). Where they differ from what you'd
 assume, this skill says so: follow it, not memory.
 
 ## What Paddle tells us, and how it reaches us
@@ -27,7 +27,9 @@ Paddle tells us what happened to a subscription in two ways, and both are record
 
 Both record `paddleNotificationReceived` through `recordNotification` (`src/shared/inbox.ts`) under the idempotency
 key `paddle:<event_id>`, so the same event by both routes is one item. **Order across the two routes isn't Paddle's:**
-never rely on the inbox's order; the deciders compare `paddleOccurredAt`.
+never rely on the inbox's order. For a subscription's changes the deciders compare its version, `paddleUpdatedAt`
+(the payload's `data.updated_at`), not `paddleOccurredAt`: `occurred_at` is the event's time, about 200 ms after the
+change, and our own call's answer has no `occurred_at` at all (ADR-049, below under "What we ask Paddle to do").
 
 The envelope is the same in both: `event_id`, `event_type`, `occurred_at`, `data` (the whole entity as it now stands).
 A webhook adds `notification_id`.
@@ -99,8 +101,11 @@ export function toNotification(body: unknown, receivedAt: Date = new Date()): No
   destination subscribes to the same list. A type the slices' descriptions add goes there.
 - **A subscription's start has no single event.** A purchase or a trial made at Paddle's checkout sent **no
   `subscription.created`** (sandbox, twice): a trial sent `subscription.trialing`, a paid purchase
-  `subscription.activated`. One made through the API sent `created` as well. So a start is whichever of them arrives
-  first, read with the payload's `status` (`trialing` or `active`), and the other is already done.
+  `subscription.activated`. One made through the API usually sent `created` as well, but not always (2026-10-07: three
+  of four). So a start is whichever of them arrives first, read with the payload's `status` (`trialing` or
+  `active`), and the other is already done.
+- **Events of one change share one `occurred_at`** (a start's `created` and `trialing`, a cancel's `updated` and
+  `canceled`), and their ids among themselves are in no useful order. Never infer which came first from them.
 - **`transaction.completed` names its subscription** (`data.subscription_id`) and carries our `custom_data`, so the
   transaction the page reported can be matched to its subscription.
 
@@ -169,6 +174,9 @@ export async function fetchPaddleEvents(
 }
 ```
 
+- **Always `order_by=id[ASC]`.** Unordered, Paddle lists newest first and `after` follows the listing's order, so
+  `after=<checkpoint>` returns the events *before* it and the fetch sees nothing new (sandbox, 2026-10-07). The newest
+  event, for a test's starting point, is `order_by=id[DESC]&per_page=1`.
 - `after` is the checkpoint; none means from the start of what Paddle keeps.
 - Up to 200 a page; `meta.pagination.has_more` says whether to go on. **`estimated_total` is an estimate** (it said
   1,850 for a stream holding 156): never rely on it.
@@ -417,7 +425,7 @@ export async function withdrawCancellation(config: PaddleConfig, subscriptionId:
   refused, before anything is charged. It cancels at once, even with a cancel already scheduled, and Paddle sends
   `subscription.canceled`. Asked again, Paddle refuses (`subscription_update_when_canceled`): done.
 - **Withdrawing** is `scheduled_change: null`. With nothing scheduled, Paddle changes nothing.
-- **A decisive answer is a fact, recorded at once** (ADR-049, Proposed). The workflow records it as our command,
+- **A decisive answer is a fact, recorded at once** (ADR-049). The workflow records it as our command,
   through an activity, as `build-automation` says:
   - **decisive:** the subscription in its new state. A cancel `immediately` answers `status: canceled` with
     `canceled_at`; a cancel at the period's end answers `scheduled_change` (`action: cancel`, `effective_at`); a seat
@@ -779,3 +787,9 @@ existing one's `destination`) points at `<address>/webhooks/paddle`. Seen that w
 stream's event plus a `notification_id`, 0.7 s after it happened; `POST /notifications/{id}/replay` redelivers it
 under a new `notification_id`; a failed delivery is retried after about 20 s and a minute. Pause the destination
 (`active: false`) when done.
+
+**A fresh trial for an experiment, with no checkout:** a customer and an address (`POST /customers`,
+`POST /customers/{id}/addresses`), then `POST /transactions` with a cardless trial price
+(`requires_payment_method: false`), `collection_mode: "automatic"` and `status: "billed"`. Paddle completes it and
+makes the subscription within seconds (`subscription_id` on the transaction). Never use org-test-1. Each experiment
+that changes the sandbox is a script in `e2e/paddle/` with its results in the README (`answer-vs-event.mjs` is one).

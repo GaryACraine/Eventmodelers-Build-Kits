@@ -80,7 +80,7 @@ model and build only what's ours.
         and handling (4 each), so the pool is 20 for any app with 4 or more processors (licensing was 32);
       - emcli's push recovery, fingerprint v3 and `inModel` export.
     - **Decided:** ADR-046, ADR-047 and ADR-048 Accepted (Gary, 2026-10-06).
-    - **Waiting on Gary: ADR-049, Proposed (2026-10-07).** A decisive answer to our own call is a fact, recorded at
+    - **ADR-049 Accepted (Gary, 2026-10-07).** A decisive answer to our own call is a fact, recorded at
       once, and the provider's event of it is a repeat, skipped as "already done". Gary asked why the refused
       trial's cancellation throws away Paddle's answer (`status: canceled`) and waits for `subscription.canceled`.
       The rule was one line of `provider-paddle`, which no ADR had decided; ADR-031/032 and `build-automation`
@@ -91,7 +91,10 @@ model and build only what's ours.
       (subscription, `updated_at`), whichever report arrives first; a request id in `custom_data` was rejected (it's
       a change of its own, and it sticks). Once accepted, plan licensing's change with `plan-change`: the workflow
       records the cancel from the answer, and the translation's "record refused trial cancelled" skips a
-      cancellation already recorded.
+      cancellation already recorded. The Paddle nuances found on the way (the event stream lists newest first
+      unless asked `order_by=id[ASC]`; events of one change share `occurred_at`; `subscription.created` isn't
+      certain; `custom_data` sticks; a cardless trial made through the API) are in `docs/case-studies/paddle.md`
+      §7b and §11d, and in `provider-paddle`.
   - **Next, in order:**
     1. **The blocked slices,** each planned with `plan-change` (they're its first real tests).
        - **Done: untranslated notifications settled** (ADR-048, 2026-10-06). The Paddle outcomes were tagged only by

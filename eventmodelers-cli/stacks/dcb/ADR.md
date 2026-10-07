@@ -2913,8 +2913,9 @@ deciders.
 
 ### ADR-049: A decisive answer to our own call is a fact, recorded at once; the provider's event of it is a repeat
 
-**Status:** **Proposed, 2026-10-07.** Gary asked why the refused trial's cancellation ignores Paddle's answer and
-waits for the webhook.
+**Status:** **Accepted, 2026-10-07 (Gary),** after the sandbox proved the version match. Proposed the same day:
+Gary asked why the refused trial's cancellation ignores Paddle's answer and waits for the webhook, then how the
+answer and the webhook are deduplicated without a `paddleEventId`.
 **Date:** 2026-10-07
 
 **Context:**
