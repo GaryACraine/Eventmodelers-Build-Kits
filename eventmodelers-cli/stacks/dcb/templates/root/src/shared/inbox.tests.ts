@@ -117,6 +117,67 @@ describe("a webhook inbox (ADR-040)", () => {
         expect(await recorded()).toEqual([])
     })
 
+    describe("afterRecorded (ADR-041: a webhook runs the fetch now)", () => {
+        // Each call resolves the next waiter, so a test waits on the call itself, never on a timer
+        let calls: number
+        let waiters: Array<() => void>
+        const nextCall = () => new Promise<void>(resolve => waiters.push(resolve))
+        const withAfterRecorded = (afterRecorded: () => void | Promise<void>) =>
+            supertest(
+                getApplication({
+                    disableJsonMiddleware: true,
+                    apis: [configureJsonBody(), configureWebhookInbox({ eventStore: new PostgresEventStore({ pool }), alert: a => alerts.push(a), afterRecorded }, carrierInbox)]
+                })
+            )
+        beforeEach(() => {
+            calls = 0
+            waiters = []
+        })
+
+        test("runs after a notification is recorded, and after a redelivery; not after a refusal", async () => {
+            const app = withAfterRecorded(() => {
+                calls++
+                waiters.shift()?.()
+            })
+            const send = (body: string, signature = sign(body)) =>
+                app.post("/webhooks/carrier").set("Content-Type", "application/json").set("Carrier-Signature", signature).send(body)
+
+            let called = nextCall()
+            expect((await send(delivered)).status).toBe(200)
+            await called
+            called = nextCall()
+            expect((await send(delivered)).status).toBe(200)
+            await called
+            expect((await send(delivered, sign("something else"))).status).toBe(401)
+            expect((await send('{"notification_id":"n2"}')).status).toBe(400)
+            // Had either refusal run it, this call would be counted before it
+            called = nextCall()
+            await send('{ "notification_id": "n3", "parcel_id": "p3" }')
+            await called
+            expect(calls).toBe(3)
+        })
+
+        test("a failure is logged; the notification is recorded and answered 200 all the same", async () => {
+            const logged: string[] = []
+            const log = console.error
+            console.error = (message: string) => {
+                logged.push(message)
+                waiters.shift()?.()
+            }
+            try {
+                const app = withAfterRecorded(() => Promise.reject(new Error("Temporal isn't answering")))
+                const called = nextCall()
+                const response = await app.post("/webhooks/carrier").set("Content-Type", "application/json").set("Carrier-Signature", sign(delivered)).send(delivered)
+                expect(response.status).toBe(200)
+                await called
+            } finally {
+                console.error = log
+            }
+            expect(await recorded()).toHaveLength(1)
+            expect(logged).toEqual(["/webhooks/carrier: after recording a notification: Temporal isn't answering"])
+        })
+    })
+
     test("other routes still get their JSON body", async () => {
         const app = getApplication({
             disableJsonMiddleware: true,

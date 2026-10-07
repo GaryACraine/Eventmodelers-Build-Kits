@@ -454,7 +454,10 @@ export const paddleNotificationInbox = paddleInbox(paddleConfig())
   lists, with its name and type, and no others. Where they differ, the model wins: change the reader, or block the
   job if the provider skill disagrees with the model.
 - **Wiring** (`chore: wire <Slice Name>`, in `src/index.ts`): `configureWebhookInbox({ eventStore }, <inbox>)` in
-  `apis`, after `configureJsonBody()` (the scaffold has it: the signature is checked against the raw body).
+  `apis`, after `configureJsonBody()` (the scaffold has it: the signature is checked against the raw body). When
+  the description says a webhook received runs a polling automation now (ADR-041),
+  `configureWebhookInbox({ eventStore, afterRecorded: () => scheduleWatch.trigger("<schedule>") }, <inbox>)`:
+  it runs after the 200 is sent, best effort (the scaffold's `inbox.tests.ts` proves both).
 - **Tests** (`inbox.tests.ts`), through the app with the kit's JSON parser, from the provider skill's **saved real
   payloads** (never one written from memory), signed the way the system signs:
   - a signed payload answers 200 and records the event with slice.json's fields, tagged as the slice says;
@@ -530,8 +533,14 @@ export const carrierSync = defineSchedule({
 - Don't set overlap, catch-up or pause policies: the kit sets them (a run still going means the next is skipped).
 - **Wiring** (`src/index.ts`, the wiring commit): add it to `schedules`, its workflow to `src/workflows.ts`, its
   activities to `activities`.
-- **"Run it now"** from elsewhere (a webhook's route): `scheduleWatch.trigger("carrier-sync")`, which
-  `src/index.ts` holds and passes to what needs it (the wiring commit). A trigger during a run queues one more.
+- **"Run it now"** from elsewhere: `scheduleWatch.trigger("carrier-sync")`, which `src/index.ts` holds and passes
+  to what needs it (the wiring commit). A trigger during a run queues one more; further triggers add nothing.
+  - **a webhook's route:** `afterRecorded` (above, "An external event");
+  - **another automation's workflow** (a watch whose try is "run the sync now"): an activity of its own,
+    `runSyncNow`, whose factory takes `triggerSync: () => Promise<void>`, wired as
+    `() => scheduleWatch.trigger("carrier-sync")`. It fails while Temporal doesn't have the schedule yet; the
+    watch's try then fails and it carries on to the next wait. The watch never fetches itself: one place fetches
+    and records the checkpoint.
 - **Tests:** the activities against the mock, as for an external automation; and the workflow started directly on
   the test server (`client.workflow.start("carrierSync", …)`), never by waiting for the timetable.
 
@@ -562,11 +571,18 @@ export async function checkoutWatch(organisationId: string): Promise<void> {
     for (const wait of ["2 seconds", "3 seconds", "10 seconds", "15 seconds", "30 seconds"]) {
         await sleep(wait)
         if (!(await isStillAwaited(organisationId))) return
-        await fetchEvents()
+        try {
+            await runSyncNow()
+        } catch {
+            // the next wait tries again
+        }
     }
 }
 ```
 
+- **A try is what the description says.** When it's "run the sync now" (licensing's Paddle Checkout Watch), the
+  activity triggers the polling automation's schedule ("Run it now" above), and the next try's `isStillAwaited`
+  sees whether the fact arrived. The watch records nothing itself.
 - The waits are the gaps between the description's times (2, 5, 15, 30, 60 seconds → 2, 3, 10, 15, 30).
 - **Bounded:** it stops after the last try whatever happened. Something else (a webhook, the polling automation)
   brings the fact later. Nothing is recorded as stalled.
