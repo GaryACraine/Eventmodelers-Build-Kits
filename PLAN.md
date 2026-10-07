@@ -62,8 +62,8 @@ model and build only what's ours.
       - chapter 20's notification copies and its operations page;
       - chapter 21, the Paddle Sync;
       - chapter 24's notification copies.
-    - **Cost:** 67 loop runs, $32.06. $17.15 of that was 21 runs on Opus before the project pinned a model; 46 runs
-      on Sonnet (medium) cost $14.91 (16.6). Two runs ended on the account's usage limit; the loop waited for the
+    - **Cost:** 68 loop runs, $32.41. $17.15 of that was 21 runs on Opus before the project pinned a model; 47 runs
+      on Sonnet (medium) cost $15.26 (16.6). Two runs ended on the account's usage limit; the loop waited for the
       reset and built the slice on its own (`runWithRetry`).
     - **"Assign owner role" was replaced before release** (ADR-046), twice:
       - once to split the owner's command from the generic role command;
@@ -137,9 +137,27 @@ model and build only what's ours.
              origin's projection, and the contract has `state` optional. Harmless for a screen; noted.
            - **Retry, give up and the stalled query** (ADR-032's decisions 3 and 5) wait for an operator screen. Until
              then a stall is resolved by cancelling in Paddle's dashboard, whose `subscription.canceled` closes it.
-       - **Next, related: start trial is once per organisation too.** A second subscription with a web seat for an
-         organisation already on trial is skipped as "already done", and nothing cancels it at Paddle, so it could
-         bill when the trial ends (chapter 1). Plan it with `plan-change`.
+       - **Done (2026-10-07): one trial per organisation, ever** (Gary). Start trial skipped an organisation's second
+         subscription with a web seat as "already done", and nothing cancelled it at Paddle, so it would have billed
+         when its trial ended (chapter 1).
+         - **Planned** with `plan-change`, before release: a same-name replacement of start trial. Any later
+           subscription that arrives as a trial is refused (`trialWasRefused`, "already had a trial", a derived field),
+           so chapter 24 cancels it at Paddle unchanged; a repeat of either outcome is skipped as "already done".
+           Nothing in `Events.ts` changed, and the translation calls the same command. The database was reset.
+         - **Chapter 1 has its own `trialWasRefused`,** with chapter 24's fields and tags (ADR-038): emcli places a
+           copy only later on the timeline than its origin, and chapter 1 comes before chapter 24.
+         - **The push recreated the moved elements on the board** (the board deletes a slice's elements with it), so
+           `startTrial`, `trialWasStarted` and `paddleNotificationSkipped` got new ids. emcli remapped every reference,
+           and the export after it queued only start trial.
+         - **The export takes chapters 1 and 24 together.** The index still listed two chapter 24 slices under their
+           ids from before their last replacement; a chapter 1 export alone dropped both entries and wrote nothing in
+           their place. Exported with chapter 24, they came back under their current ids, still Done.
+         - **The loop built it in one run** ($0.35), its tests named after the four scenarios.
+           `trial-cancellation.sh` passes 34 of 34 (case 6: the second trial refused, cancelled at the mock and
+           closed; sent again, skipped; the first untouched), and the settled chain 14 of 14.
+         - **A side effect, noted:** Start Options records the organisation's last refusal reason, so an organisation
+           on trial shows "already had a trial" there. Harmless while the start page is only for organisations
+           without a trial.
        - **Then: watch for the trial after checkout** (chapter 1): it fetches Paddle's events "after our checkpoint",
          which is chapter 21's Paddle Sync, still draft. Plan chapter 21 first: the checkpoint's event, its command
          and a read of the latest one.
@@ -151,6 +169,8 @@ model and build only what's ours.
   - **Open points from the work so far** (for Gary to prioritise):
     - **emcli:**
       - `slice remove` doesn't warn when the slice is built;
+      - an export limited by `--chapter` drops another chapter's index entries whose slice ids changed (a
+        replacement), and writes nothing in their place: export the replaced slices' chapters too (found 2026-10-07);
       - a generated constant (`roleId: "owner"`) comes back in the 201 response. It's harmless.
     - **The library's connections: done.** Background processors hold 2 connections per app (ADR-047 step 1,
       library Phase 20) and take turns at reading and handling, 4 each (step 1b, Phase 21, Marten's caps). The pool
@@ -4015,7 +4035,7 @@ What each `build-*` skill generates and what it verifies:
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. **Increment 1 built by the loop (2026-10-06): 43 of its 44 slices built, 1 blocked on a model change, 13 left as draft; owner chain 9/9, the settling to-do list 14/14 and the refused trial's cancellation 23/23 end to end; 67 runs, $32.06. Before it, 16.1 to 16.5 built and proved the inbox, webhooks with a fetch behind them, timed work, setup commands, Paddle's inline checkout and our calls to Paddle (ADR-040 to 045). Next: "watch for the trial after checkout" (chapter 21's Paddle Sync planned first), then 16.3a (chapter 1 end to end through the UI). See "Where we are" at the top of Phase 16.** 16.3 is in process modelling: chapter 1 fleshed out, 16.3b done (ADR-039) (16.2 done 2026-09-30: ADR-037 Accepted, trials included after the 16.2b tests) (16.1's knowledge work done 2026-09-30; only Gary's live onboarding open; 16.2's research done 2026-09-30). Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
+| 16 — Web app with seats, through Paddle | 🚧 Top priority | Opened 2026-09-29 after Phase 15 closed: Gary's real product. **Increment 1 built by the loop (2026-10-06): 43 of its 44 slices built, 1 blocked on a model change, 13 left as draft; owner chain 9/9, the settling to-do list 14/14 and the refused trial's cancellation 34/34 end to end; 68 runs, $32.41. Before it, 16.1 to 16.5 built and proved the inbox, webhooks with a fetch behind them, timed work, setup commands, Paddle's inline checkout and our calls to Paddle (ADR-040 to 045). Next: "watch for the trial after checkout" (chapter 21's Paddle Sync planned first), then 16.3a (chapter 1 end to end through the UI). See "Where we are" at the top of Phase 16.** 16.3 is in process modelling: chapter 1 fleshed out, 16.3b done (ADR-039) (16.2 done 2026-09-30: ADR-037 Accepted, trials included after the 16.2b tests) (16.1's knowledge work done 2026-09-30; only Gary's live onboarding open; 16.2's research done 2026-09-30). Order (Gary): 16.1 Paddle onboarding and its UI and API; 16.2 how other vendors license seats through a merchant of record; 16.2b Paddle's lifecycle in the sandbox; 16.3 our licensing model (Paddle only an automation with side effects); then translation slices, `provider-paddle`, the loop on Sonnet, domain-bleed review; voice modelling (16.8) deferred until the model is established. ADR-036 Accepted |
 | 15 — Automations (restaurant orders) | ✅ Closed 2026-09-29 (a demo) | 15.0 done 2026-09-27: phase recorded, ADR-030 (containers only), ADR-031 Accepted (a to-do list worked by one processor group; external work in Temporal from day one; fail fast after Axon), ADR-032 redrive Proposed, blueprint `docs/case-studies/automation-todo-list.md`. 15.1 done 2026-09-27/28: the Restaurant Orders chapter (25 slices, 63 scenarios, 15 mockups) on prooph board, with stock and an internal automation (the Stock Returner); emcli push fixes (lanes, links, skipped deletions). 15.8 added: deciding from a growing event stream. 15.2 done 2026-09-28 (library PR #29 merged). 15.3 done 2026-09-28 (ADR-033 runtime, ADR-034 Braintree as a commercial directive; the loop built the restaurant backend; 8 end-to-end cases pass, with our own Temporal call deadline and Temporal in health; manual §21). Next: 15.4 redrive, then 15.5 the UI on Sonnet. Order: model → library failure policy → `build-automation` with Temporal → redrive → whole domain through the loop (domain-bleed review) → knowledge investment → voice transcript (13.6) | **Closed 2026-09-29:** 15.4 and 15.4c built through the loop (stalls, retry, give up, attempts, pay again, cancel); 15.4e provider skills; 15.9 on Sonnet at medium, about 2.5–3× cheaper per job; emcli re-queues changed built slices. The rest dropped or moved to Phase 16 |
 | 1 — Stack Scaffolding | ✅ Complete | Verified: init, npm install, tsc, 21/21 unit tests |
 | 2 — State Change Skill | ✅ Complete | 9-step SKILL.md with full DCB patterns |
