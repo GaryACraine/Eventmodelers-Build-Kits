@@ -298,6 +298,16 @@ model and build only what's ours.
              trial-cancellation case 8). Rehearsed, then **exported 2026-10-07**: activate organisation, start trial and
              the two owner automations re-queued, nothing else; the contract drops the two retired routes. The local
              database is kept for the first e2e run (its old ownerless trial proves the wait), then reset.
+           - **Built by the loop with no blocks** ($1.04; the activation screen's handler and the web app's API types
+             updated by its UI job), statuses imported and pushed (`b6c7a10`); 372 tests pass. **Proven:** on the old
+             database the owner processors moved past the ownerless trial at event 26 to the newest event (ADR-051
+             Accepted), and all four e2e scripts passed; then again on a reset database: owner chain 10/10, settled
+             chain 14/14, trial cancellation 49/49 (case 8: an unknown organisation's trial refused and cancelled at the
+             mock), Paddle Sync 33/33.
+           - **Missed in the plan:** start trial's new rule broke two of the translation's tests (they started trials
+             for an organisation never activated). Its model didn't change, so nothing re-queued it; the givens were
+             fixed by hand (`8e6166c`). `plan-change` now says to find the automations that issue a command whose rule
+             changes, and fix their tests' givens.
          - **Found by the rehearsal: an element's prose never reached the loop.** emcli exported (and pushed) an
            event's or command's description as its field list only, and a pull cleared it, so 8 descriptions in
            licensing (`startTrial`'s "once ever", `refuseTrial`'s rules, the checkpoint's) were never seen by the
