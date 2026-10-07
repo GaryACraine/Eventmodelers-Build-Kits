@@ -241,6 +241,25 @@ model and build only what's ours.
            ADR-042; a checkpoint's read model as a data input now counts (`6200cb4`, `d845d45`, with
            `slicing.md` and `review.md`). `slice reorder` ignored an explicit chapter when the context had one
            (`778d3a0`).
+         - **Built by the loop with no blocks** ($1.45), and **proven end to end: `e2e/paddle/paddle-sync.sh` 21 of
+           21** against the app, Temporal and the mock: a checkout whose webhook never comes (its events fetched, the
+           trial started, the checkpoint the stream's newest, recorded from the reply), nothing new (nothing
+           recorded), an event by webhook and fetch (one item), our key refused (fails at once, alerts, no
+           checkpoint; the next run catches up), Paddle busy (retried). The schedule is as ADR-042 says: 900 s,
+           overlap skip, a 60 s catch-up window, a run at start. 369 tests pass.
+         - **Found by the first e2e run:** trials fetched together started 0, 14, 26 and 34 s after arriving. Each
+           checkout's `transaction.completed` has no translation; the translation threw, retried 5 times (~15 s),
+           and works in order. **Gary: a type with no translation is skipped at once** (reason failed, the error
+           says so, alerted), not retried. "translate paddle notification" replaced before release (one rebuild,
+           $0.36); trials now start in 0.0 s; the settled chain and the trial cancellation (44/44) still pass. The
+           kit gains `NonRetryableError` (`src/shared/automations.ts`: given up on at its first attempt, tested),
+           and `build-automation` says to throw it for a type with no translation (the loop's rebuild, without it,
+           issued the skip and the alert inside `act`; it moves to the error when the translation is next replaced).
+         - **Also found:** the mock's container had no checkout templates (`mock_not_seeded`, which would have
+           stopped 16.3a's mock checkout too); the mock listed `/events` ascending whatever `order_by` said, so a
+           fetch that forgot it passed (both fixed in licensing's mock and `provider-paddle`). A removed slice's
+           compiled folder stayed in `dist/` and kept serving its route (`contract:check` saw it): the scaffold's
+           `build` now starts from a clean `dist/`.
          - **Later, its own step:** a webhook received triggers the sync (ADR-041), a same-name replacement of
            chapter 1's built webhook slice. Then re-plan the watch to issue the same command and read the same
            checkpoint.

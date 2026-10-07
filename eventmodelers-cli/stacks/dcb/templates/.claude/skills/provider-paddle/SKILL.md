@@ -176,7 +176,8 @@ export async function fetchPaddleEvents(
 
 - **Always `order_by=id[ASC]`.** Unordered, Paddle lists newest first and `after` follows the listing's order, so
   `after=<checkpoint>` returns the events *before* it and the fetch sees nothing new (sandbox, 2026-10-07). The newest
-  event, for a test's starting point, is `order_by=id[DESC]&per_page=1`.
+  event, for a test's starting point, is `order_by=id[DESC]&per_page=1`. **The mock lists the same way** (newest
+  first unless asked, `after` following the listing), so a fetch that forgets `order_by` fails against it too.
 - `after` is the checkpoint; none means from the start of what Paddle keeps.
 - Up to 200 a page; `meta.pagination.has_more` says whether to go on. **`estimated_total` is an estimate** (it said
   1,850 for a stream holding 156): never rely on it.
@@ -746,8 +747,8 @@ checkout at a time, Paddle.js not loading, and the mock.
 
 Built by the first slice that needs it, as `build-automation` says for any outside system:
 
-- `GET /events`, as Paddle's API reference describes it: ascending by id, `after`, `per_page` (200 at most),
-  `event_type`, a bearer key (403 otherwise), `meta.pagination.has_more`;
+- `GET /events`, as Paddle answers it: **newest first unless `order_by=id[ASC]`**, `after` following the listing's
+  order, `per_page` (200 at most), `event_type`, a bearer key (403 otherwise), `meta.pagination.has_more`;
 - a way to add events (Paddle had more happen), and switches for a failing answer (429 with `Retry-After`, 500), after
   a number of requests, so a failure midway can be reached;
 - **a subscription's calls** (read, preview, change seats, cancel, withdraw), answering as Paddle does: the same
@@ -760,7 +761,9 @@ Built by the first slice that needs it, as `build-automation` says for any outsi
 - **a checkout,** `POST /mock/checkouts` with `{ items: [{ price_id, quantity }], custom_data }`, which the web app's
   mock checkout calls in place of Paddle.js. It completes at once, answers `{ transaction_id }`, and adds the events
   Paddle would for a trial (`subscription.trialing` and `transaction.completed`, made from real ones, with the
-  items, the custom data and the transaction's id; **no `subscription.created`**, as at Paddle). It takes any origin and no API key: the browser calls it;
+  items, the custom data and the transaction's id; **no `subscription.created`**, as at Paddle). It takes any origin and no API key: the browser calls it.
+  **Its container loads the templates** from `mocks/paddle/checkout-trial.events.json` beside `server.ts` (copied
+  in by the Dockerfile; `CHECKOUT_EVENTS` names another file); without them it answers `mock_not_seeded`;
 - it keeps what it was asked;
 - `paddleSignature(rawBody, secret, at?)` and `webhookBody(event)`, to deliver a webhook as Paddle signs it.
 

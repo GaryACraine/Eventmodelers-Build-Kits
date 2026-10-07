@@ -40,8 +40,21 @@ import { alert as defaultAlert, type Alert } from "./alerts.js"
  *
  * **Giving up** (either kind): an item that keeps failing can be given up on after a number of attempts (`giveUp`),
  * so it doesn't block the ones behind it. The automation records that (an event of ours; a to-do list keeps the item,
- * marked failed) and the administrator is alerted.
+ * marked failed) and the administrator is alerted. A failure a retry can't change (`NonRetryableError`: another
+ * system's notification type we have no translation for) is given up on at once.
  */
+
+/**
+ * A failure that trying again can't change, e.g. a notification type with no translation. An automation with
+ * `giveUp` gives up on the item at once (records it, alerts) instead of retrying it while the items behind it wait.
+ * Anything that may pass later (a read model not caught up, our store unavailable) is a plain `Error`, and retried.
+ */
+export class NonRetryableError extends Error {
+    constructor(message: string) {
+        super(message)
+        this.name = "NonRetryableError"
+    }
+}
 
 export interface AutomationContext<TItem extends ReadModelDoc> {
     /** The open item, as it stands now */
@@ -85,7 +98,8 @@ interface AutomationBase<TItem extends ReadModelDoc> {
     /**
      * Absent: an item that fails blocks the processor until it succeeds. Given: after `after` failed attempts the
      * automation records that it gave up on the item, the administrator is alerted, and the items behind it are
-     * worked. For work where one bad item mustn't hold up the rest (another system's notifications, ADR-040).
+     * worked. For work where one bad item mustn't hold up the rest (another system's notifications, ADR-040). A
+     * `NonRetryableError` is given up on at its first attempt.
      */
     giveUp?: GiveUp<TItem>
 }
@@ -239,7 +253,8 @@ function worker(automation: Automation, deps: AutomationDependencies) {
             await automation.act(context)
         } catch (error) {
             const attempts = (failed.get(item) ?? 0) + 1
-            if (!automation.giveUp || attempts < automation.giveUp.after) {
+            const retry = !(error instanceof NonRetryableError) && attempts < (automation.giveUp?.after ?? Infinity)
+            if (!automation.giveUp || retry) {
                 failed.set(item, attempts)
                 throw error
             }
