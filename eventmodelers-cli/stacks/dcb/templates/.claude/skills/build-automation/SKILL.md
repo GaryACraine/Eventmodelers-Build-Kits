@@ -117,8 +117,23 @@ export const stockReturner = defineAutomation<StockToReturnDoc>({
 - The command's data comes from `item` (the to-do list's document), `event` (the trigger), or a **data input** read
   with `read(readModel, key)`, as the command's field mappings in slice.json say (`stockDeducted.menuItems` → the list's
   `menuItems`; `OrganisationOwner.ownerUserId` → `(await read(organisationOwner, item.organisationId)).ownerUserId`).
-  `read` folds the read model live from the event store, so it's current. If it returns null, throw: the processor
-  retries the event until the data is there (never issue the command without it).
+  `read` folds the read model live from the event store, so it's current.
+- **A data input that isn't there yet: return, never throw** (ADR-051). The item stays open on the list, and the
+  processor moves on: a throw would block every item behind this one. The event that supplies the data input is a
+  **trigger too** (the model links it `reacts-to`; add it to `triggers`): when it arrives, the item is worked. Never
+  issue the command without the data. Throw only for a fault of ours (the store unavailable, a bug).
+
+  ```typescript
+  triggers: ["trialWasStarted", "userWasAssignedToRole"],   // the opening event, and the owner's (the data input's)
+  act: async ({ item, read, issue }) => {
+      const owner = await read(organisationOwner, item.organisationId)
+      if (!owner) return   // waits on the list until the owner is assigned, which runs this again
+      await issue(assignRoleDecider, { type: "assignRole", data: { organisationId: item.organisationId, userId: owner.ownerUserId, … } })
+  }
+  ```
+
+  Test both orders: the data first (acts on the opening event), and the item first (acts on the data's event; nothing
+  before it, and a later item still worked).
 - `issue` gives the command the idempotency key `<name>:<item key>`. A repeat (a retry after a crash, the same event
   handled again) is recognised and not decided again.
 - **An item worked again** (a payment declined, paid again, declined again: the stock goes back each time) passes the
@@ -713,6 +728,7 @@ docker-compose.yml        ← the mock's service
 - [ ] `act` only issues a command or starts a workflow; nothing is caught and logged
 - [ ] Every field of the command comes from the item, the trigger event, or a data input read with `read`, per
       slice.json's mappings (ADR-039)
+- [ ] A data input that isn't there yet returns without acting (never throws), and its event is in `triggers` (ADR-051)
 - [ ] External: the workflow is deterministic, its retries are configuration, and business answers are recorded as
       our commands through `issueOnce` with the key from the description
 - [ ] External: the provider skill read and followed; its official SDK, host and our deadline from the environment,

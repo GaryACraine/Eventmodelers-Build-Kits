@@ -27,7 +27,8 @@ import { alert as defaultAlert, type Alert } from "./alerts.js"
  * `act` does the work: `issue` for our own command (internal work, with the idempotency key
  * `<automation>:<item key>`), `start` for a Temporal workflow (external work, the workflow id `<automation>:<item
  * key>`). Neither catches an error: a failure blocks the processor, which retries the same event (the library's
- * fail fast) and shows it on `GET /health/processors`.
+ * fail fast) and shows it on `GET /health/processors`. So a fault of ours throws, but a **data input not there yet**
+ * doesn't (ADR-051): `act` returns, the item waits on the list, and the data input's event, a trigger too, works it.
  *
  * An item whose work can be done again (a payment tried again after a decline or a stall, ADR-032) passes the
  * **attempt** its trigger belongs to: the key becomes `<automation>:<item key>:<attempt>`, so each attempt is worked
