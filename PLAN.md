@@ -358,15 +358,21 @@ model and build only what's ours.
          - **Found** (for Gary; the loop's code, not changed):
            1. nothing leads from Get Started to Activate Organisation, or from the checkout to the dashboard;
            2. the session never learns the user id registration returns: Activate asks for it (for the sign-in ADR);
-           3. every checkout raises a **critical** alert: `transaction.completed` has no translation. A type we don't
-              act on should be skipped quietly, or not fetched (`PADDLE_EVENT_TYPES`);
+           3. every checkout raises a **critical** alert: `transaction.completed` has no translation (fixed: 2b.1);
            4. the page promises a 14-day trial; the sandbox's prices give 1 day. Nothing checks Paddle's trial
               length against `trialDays`.
     2b. **Next, in this order (Gary, 2026-10-08), from 16.3a's findings:**
-       1. **Gap 3: a Paddle event type we don't act on is skipped quietly.** Still fetched and recorded (we'll need
-          `transaction.completed` for "Buy now" and billing), skipped with a reason like `not acted on` and no alert;
-          a type never seen still alerts. Not filtered out with `PADDLE_EVENT_TYPES`. Planned through `plan-change`,
-          built by the loop, then both journeys rerun (the mock one shows the alert gone). **Planning next.**
+       1. ✅ **Gap 3: a checkout's own payment is skipped quietly (done 2026-10-08; licensing `26a0810`, `1b73a89`,
+          `71b4a5f`, `7782ea6`).** Planned through `plan-change`: the model showed later chapters act on every type
+          we fetch (renewals and conversions are `transaction.completed` with origin `subscription_recurring`,
+          chapter 8; `subscription.activated`, 1b), so a quiet skip of every untranslated type would lose them after
+          release. Decided (Gary): a `transaction.completed` that isn't `subscription_recurring` (the checkout's own,
+          origin `web`) is skipped as `not needed`, no alert, and its to-do item closes; every other untranslated
+          type still alerts; nothing filtered out of the fetch. Two same-name replacements in chapter 1 ("translate
+          paddle notification", "untranslated notifications settled"), rehearsed on a scratch copy (exactly two
+          rebuilds, completeness and contract unchanged), built by the loop first time. Journey case 8 checks it
+          (this checkout's notifications: `not needed`, nothing `failed`, none left on the to-do list): before the
+          rebuild it failed at 8 as expected; after, **mock 8/8 and sandbox 8/8**.
        2. **The sign-in provider ADR:** Sign Up, the four auth role sync slices, gap 2 (the user id in the session) and
           ADR-052 point 5 wait on it. Mostly research, and Gary's decision.
        3. **Gap 4: the trial's length.** Before release: a check at start that Paddle's trial matches `trialDays`, or
@@ -4246,6 +4252,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-08 | 16.3a's stand-in for Sign Up is the web app's session stub; the session is modelled as a read model held by the sign-in system, marked `--external` (ADR-052, Proposed) | Gary: an event reaches a screen through a read model, even one we don't store; the property (`externalSystem`), not prose, tells every builder to build nothing for it. Choosing the real sign-in is its own increment |
 | 2026-10-08 | An external event says how it reaches us (`intake`: webhook or none); an endpoint is built only for a webhook (ADR-053, Proposed) | Gary: a webhook is the special case, not the general one; `userSignedUp` is Auth's event that we start but never record, and it feeds only the external session read model. The loop must not build an endpoint nobody decided on |
 | 2026-10-08 | A sandbox journey runs on its own database and Temporal namespace, with Paddle Sync's checkpoint set at the sandbox stream's newest event before each run; Playwright types Paddle's test card | Paddle Sync with no checkpoint fetches the whole sandbox stream, and every earlier trial's organisation is unknown to a fresh database: it would refuse and cancel them at Paddle (org-test-1 among them). Gary agreed the setup and the automated card entry |
+| 2026-10-08 | A Paddle `transaction.completed` that isn't a renewal (origin other than `subscription_recurring`) is skipped as `not needed`, with no alert; every other type without a translation still alerts | Later chapters act on every type we fetch (renewals and conversions in chapter 8, `subscription.activated` in 1b): a quiet skip of all untranslated types would lose a paid subscription after release. Only the checkout's own payment is never needed: the subscription's events carry it (Gary) |
 
 ## Progress
 
