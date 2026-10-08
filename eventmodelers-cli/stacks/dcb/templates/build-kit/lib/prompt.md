@@ -53,8 +53,10 @@ Inspect `sliceStatus`:
 2. Read the slice definition from `.build-kit/.slices/<contextSlug>/<sliceFolder>/slice.json`.
 
 3. Determine the **slice type**:
-   - **External event** — `sliceType === "EXTERNAL_EVENT"`: another system's event, recorded as it arrives (the
-     endpoint its webhook calls) → `/build-automation`, its section "An external event: the endpoint that records it"
+   - **External event** — `sliceType === "EXTERNAL_EVENT"`: another system's event that comes in by webhook
+     (`intake: "webhook"`), recorded as it arrives (the endpoint its webhook calls) → `/build-automation`, its section
+     "An external event: the endpoint that records it". An external event with `intake: "none"` (left in its system,
+     ADR-053) is never built: no endpoint, no `Events.ts` entry"
    - **Automation** — `processors` array is non-empty, or `sliceType === "TRANSLATION"` → `/build-automation`
      (event-driven, keeping a to-do list or none; the skill picks the form from the slice)
    - **State-view** — `projections` or `queries` array is non-empty → `/build-state-view`

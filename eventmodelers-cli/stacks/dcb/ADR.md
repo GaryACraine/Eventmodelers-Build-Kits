@@ -3254,3 +3254,54 @@ blocked them at event 26, and the owner chain passed (10/10), on that database a
   CSS `:has()`, no script) work in the board's preview; the push re-queued no built slice.
 - **Proven when:** the card shows on the board with its held-by line, completeness is clean, and the export re-queues
   no built slice.
+
+### ADR-053: An external event says how it reaches us; an endpoint is built only for a webhook
+
+**Status:** Proposed, 2026-10-08 (Gary: "receiving external events via a webhook is the special case, not the
+general case"; "we need this flexibility in our loop, whether we want an endpoint to be built or not").
+**Date:** 2026-10-08
+**Changes:** ADR-045 (any external event without a command had a slice that builds its webhook endpoint).
+
+**Context:**
+- **The case:** licensing's chapter 1 starts with the person signing up with the sign-in provider. Gary's shape
+  (agreed): "sign up" (our form only), then "user signed up" (`userSignedUp`, Auth's event: we start it, Auth records
+  it), then "signed in user" (the session, an external read model, ADR-052), which "Get Started" reads.
+- **`userSignedUp` is an external event,** but nothing of ours records it: it stays in Auth, and we see what it
+  leaves behind, the session. Marking it `--external` made emcli infer an `external` slice, exported as
+  `EXTERNAL_EVENT`, and the loop builds a webhook inbox for that (ADR-045). That rule came from Paddle, where a
+  webhook is the way in.
+- **A webhook is one way in, not the definition:** another system's event may be sent to us (a webhook), fetched (a
+  poll), or left where it is.
+
+**Decision:**
+1. **An external event has an `intake`** (emcli `--intake`), how it gets into our event store:
+   - **`webhook`:** it's sent to us and recorded as it arrives; its slice is `EXTERNAL_EVENT` and the loop builds the
+     endpoint (ADR-045, unchanged). Paddle's `paddleNotificationReceived`.
+   - **`none`:** it stays in its system. Nothing is built or recorded for it (no endpoint, no `Events.ts` entry); only
+     an external read model may show it. Auth's `userSignedUp`.
+   - **`fetched`** is left until a case needs it (Paddle Sync records the same event the webhook does).
+2. **Unset builds nothing.** emcli's completeness warns until the model says; the event makes no job.
+3. **Completeness errors** when an event left in its system feeds one of our read models, triggers our automation or
+   command, or is given in one of our scenarios: we can only project, react to or test what we record.
+4. **Built slices stay built:** every external event the loop built so far came in by webhook, so a built slice whose
+   only difference is `intake: "webhook"` stays Done (emcli's fingerprint check, as for v5's prose). Another slice's
+   copy or given of the event isn't affected by its intake.
+
+**Alternatives considered:**
+- **Infer it from the field mappings (`webhook:`).** Rejected: `webhook:` names where a value comes from in the
+  other system's payload, which holds for the session too; it says nothing about whether we receive the event.
+- **Keep webhook the default.** Rejected (Gary): it makes the special case the general one, and an endpoint gets built
+  without anyone deciding it.
+- **Don't mark `userSignedUp` external.** Rejected: it is Auth's event; the marker is what tells the board and the
+  builders so.
+
+**Consequences:**
+- **emcli** (`2d3fae2`): `--intake`, `inferSliceType`, `concernsOf`, the export, completeness, the card's wording
+  ("left in Auth (not recorded)", "recorded as it arrives (webhook)"), the pull, the schema; the `event-model` skill
+  (slicing: choosing the intake; the sign-up shape). 436 tests.
+- **Kit:** the loop's prompt and `build-automation` build the endpoint only for `intake: "webhook"`; `provider-paddle`
+  names it; `plan-change` says how a change of intake goes.
+- **Licensing:** `paddleNotificationReceived --intake webhook`; `userSignedUp --external Auth --intake none` in its own
+  slice, "user signed up", between "sign up" and "signed in user".
+- **Follow-up:** "start trial checkout" holds the "Choose How to Start" screen and Paddle's event in one slice; split
+  it to the same principle through `plan-change`.
