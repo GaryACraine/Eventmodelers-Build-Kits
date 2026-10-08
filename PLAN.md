@@ -373,8 +373,13 @@ model and build only what's ours.
           rebuilds, completeness and contract unchanged), built by the loop first time. Journey case 8 checks it
           (this checkout's notifications: `not needed`, nothing `failed`, none left on the to-do list): before the
           rebuild it failed at 8 as expected; after, **mock 8/8 and sandbox 8/8**.
-       2. **The sign-in provider ADR:** Sign Up, the four auth role sync slices, gap 2 (the user id in the session) and
-          ADR-052 point 5 wait on it. Mostly research, and Gary's decision.
+       2. **The platform ADR (ADR-054, Proposed): hosting, database, sign-in, web app.** Broadened from the sign-in
+          provider (Gary, 2026-10-08): the provider can't be chosen apart from where the containers and Postgres run
+          (Supabase runs no long-lived containers). The decision matrix compares eight whole stacks and ten
+          providers within each hosting (https://claude.ai/artifact/EArHLdWp3QLRFp7PPx2ufG). AWS compute leads
+          every other base. The AWS stacks are effectively tied, and the sign-in choice and the database's home
+          separate them. **Nothing is decided:** Gary's five open questions are in the ADR. Sign Up, the four auth
+          role-sync slices, gap 2 (the user id in the session), ADR-052 point 5 and deployment (14.8) wait on it.
        3. **Gap 4: the trial's length.** Before release: a check at start that Paddle's trial matches `trialDays`, or
           `trialDays` read from Paddle's price.
        4. **Split "start trial checkout"** (screen, then Paddle's event), replacing the built slice, when that area is
@@ -4253,6 +4258,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-08 | An external event says how it reaches us (`intake`: webhook or none); an endpoint is built only for a webhook (ADR-053, Proposed) | Gary: a webhook is the special case, not the general one; `userSignedUp` is Auth's event that we start but never record, and it feeds only the external session read model. The loop must not build an endpoint nobody decided on |
 | 2026-10-08 | A sandbox journey runs on its own database and Temporal namespace, with Paddle Sync's checkpoint set at the sandbox stream's newest event before each run; Playwright types Paddle's test card | Paddle Sync with no checkpoint fetches the whole sandbox stream, and every earlier trial's organisation is unknown to a fresh database: it would refuse and cancel them at Paddle (org-test-1 among them). Gary agreed the setup and the automated card entry |
 | 2026-10-08 | A Paddle `transaction.completed` that isn't a renewal (origin other than `subscription_recurring`) is skipped as `not needed`, with no alert; every other type without a translation still alerts | Later chapters act on every type we fetch (renewals and conversions in chapter 8, `subscription.activated` in 1b): a quiet skip of all untranslated types would lose a paid subscription after release. Only the checkout's own payment is never needed: the subscription's events carry it (Gary) |
+| 2026-10-08 | The sign-in provider ADR became the platform ADR (ADR-054, Proposed): hosting, database, sign-in, web app, DNS and email, compared as whole stacks, including AWS + Supabase hybrids | Gary: the provider can't be chosen apart from where the containers and Postgres run, and Supabase runs no long-lived containers. Nothing decided: the AWS lean is a weight in the matrix, not a choice |
 
 ## Progress
 

@@ -3305,3 +3305,83 @@ general case"; "we need this flexibility in our loop, whether we want an endpoin
   slice, "user signed up", between "sign up" and "signed in user".
 - **Follow-up:** "start trial checkout" holds the "Choose How to Start" screen and Paddle's event in one slice; split
   it to the same principle through `plan-change`.
+
+### ADR-054: Where the platform runs: hosting, database, sign-in, web app
+
+**Status:** Proposed, 2026-10-08. **Nothing is decided** (Gary: "we haven't made any hard decisions yet").
+**Date:** 2026-10-08
+**Builds on:** ADR-037 (sign-in: OIDC with PKCE, one JWKS check, our own `userId`), ADR-052 point 5 (whose Sign Up
+form it is).
+**Decision matrix:** https://claude.ai/artifact/EArHLdWp3QLRFp7PPx2ufG (adjustable weights, costs, sources).
+
+**Context:**
+- **It started as the sign-in provider ADR.** Scored alone, Supabase Auth led, mainly because users sit in our own
+  Postgres. That only holds when our database is Supabase. Supabase doesn't run long-running containers: its Edge
+  Functions are short-lived Deno functions. So the provider can't be chosen apart from where everything else runs
+  (Gary). This ADR covers the whole platform, and sign-in is one part of it.
+- **What has to run** (licensing, checked in the code; the current state, not a constraint):
+  - **The API and processors:** a Node/TypeScript container (Express). They need public HTTPS for Paddle's
+    webhooks.
+  - **The event store:** Postgres 16. `dcb-event-store` uses `LISTEN`/`pg_notify` (`PostgresEventStore.ts`) and
+    `pg_advisory_xact_lock` (`lockStrategy.ts`, `projectionLock.ts`). **It needs a direct or session-mode
+    connection:** a transaction-mode pooler drops LISTEN and session state. On Supabase, that's the direct
+    connection (IPv6, or the $4 IPv4 add-on) or the session pooler (IPv4 on every plan).
+  - **Temporal:** a 1.31 server and a TypeScript worker. Either Temporal Cloud (pay as you go, London region), or
+    the server run ourselves on its own Postgres database.
+  - **The web app:** a React + Vite SPA. It needs static hosting with a CDN, our domain and TLS.
+  - **Mobile, later:** iOS and Android, using OIDC with PKCE.
+  - **Around them:** DNS, certificates, email (sign-in and our own), secrets, logs, backups, CI/CD and
+    infrastructure as code.
+- **Gary's position:**
+  - TypeScript front and back, Postgres and containers.
+  - He knows AWS and CDK. That's a lean, and it counts as the matrix's familiarity weight, not a choice.
+  - He's open to other platforms with strong features, and to mixes (AWS with Supabase for the database and/or
+    sign-in).
+  - Supply Hub's AWS setup is legacy, and is no reference.
+- **Every option passes these gates:**
+  - an Isle of Man company can contract with it (to confirm at sign-up);
+  - every sign-in provider's tokens verify against a JWKS;
+  - Android and iOS can sign in.
+  UK/EU residency is an optional gate. US transfers are lawful under the UK extension to the Data Privacy
+  Framework, so it's a commercial choice.
+
+**The options, as whole stacks** (scores out of 100, default weights: familiarity 15, ops 15, cost 15, sign-in fit
+15, leaving 10, residency 10, backups 10, vendors 5, web/DNS/email 5):
+
+| Stack | Score | Monthly cost, 2k / 20k users | Main strength | Main cost |
+|---|---|---|---|---|
+| AWS + sign-in in our backend (Better Auth on RDS) | 85 | ≈$97 / ≈$165 | one vendor, users in our Postgres | sign-in security is ours |
+| AWS + Supabase Auth only | 83 | ≈$130 / ≈$195 | CDK for all we host | users in a database we don't otherwise use |
+| All AWS (Fargate, RDS, Cognito) | 82 | ≈$95 / ≈$310 | one account, all CDK, London | Cognito's password hashes can't be exported |
+| AWS compute + Supabase (database and sign-in) | 82 | ≈$105 / ≈$190 | managed database and sign-in in one, users beside the events | two vendors; point-in-time recovery $100/mo; outside CDK |
+| AWS + Auth0 | 80 | ≈$95 / ≈$160 | mature, UK region, free to 25k | steep price step after 25k; hosted page is the main path |
+| AWS + Clerk | 78 | ≈$120 / ≈$185 | best developer experience, native SDKs | users held in the US only |
+| Fly.io (London) + Clerk + Cloudflare | 65 | ≈$80 / ≈$130 | simplest deploys | new tools, three or four vendors |
+| Google Cloud (Cloud Run, Cloud SQL, Identity Platform) | 63 | ≈$90 / ≈$150 | one vendor, strong mobile sign-in | new cloud; Cloud Run needs CPU always on for LISTEN and the worker |
+
+Temporal is extra in every stack: Temporal Cloud at about $5–20 a month at our volume (to confirm), or about
+$30–40 run ourselves.
+
+**What the matrix shows** (it informs the decision, it doesn't make it):
+- **AWS for compute** leads every other base by about 15 points. It still leads by about 10 with the familiarity
+  weight at 0: CDK, ECS on Fargate (App Runner closed to new customers in April 2026; ECS Express Mode fills its
+  role), RDS, CloudFront, Route 53 and SES cover every part.
+- **The AWS stacks are within 7 points of each other: effectively tied.** What separates them is the sign-in choice
+  and where the database lives. With familiarity at 0, AWS compute with Supabase for the database and sign-in moves
+  to first (84).
+- **Sign-in within AWS hosting** (the matrix's second tab): Auth0 and Supabase Auth 82, Clerk, Zitadel and Better
+  Auth 80, Cognito 78. With a Supabase database, Supabase Auth goes to 88.
+
+**Decision:** to be made by Gary. Open questions:
+1. Where the database lives: RDS (all CDK, our own backups) or Supabase (managed, sign-in beside it, a second
+   vendor).
+2. Whether sign-in data held in the US is acceptable to our customers (this decides Clerk).
+3. Whether we carry sign-in security ourselves (Better Auth) or buy it.
+4. Whose Sign Up form it is (ADR-052 point 5): every leading option allows our own form; Auth0 prefers its hosted
+   page.
+5. Temporal Cloud or Temporal run ourselves.
+
+**Consequences, once decided:**
+- **Licensing:** the Sign Up form (ADR-052 point 5), the four auth role-sync slices, gap 2 (`userId` in the session),
+  and the deployment (14.8).
+- `mock-oauth2-server` stays the stand-in until then (ADR-037).
