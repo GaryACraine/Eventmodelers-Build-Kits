@@ -319,6 +319,17 @@ model and build only what's ours.
            the board). 425 tests.
     2. **16.3a: chapter 1 end to end through the UI,** first with the mock, then in the sandbox. It needs a stand-in
        for Sign Up until the sign-in provider is chosen.
+       - **Stand-in (Gary, 2026-10-08): the web app's session stub.** Playwright types `sub` and `email`. Real sign-in
+         (OIDC, the token check) is its own increment with an ADR; only the journey's first step changes then.
+       - **"Sign up" refined first (Gary, 2026-10-08):**
+         - the Sign Up mockup gets a confirm-password field and "Continue with Google / Apple";
+         - the session is shown as a read model held by the sign-in system: "Signed In User", marked `--external
+           Auth`, hydrated by `userSignedUp` and displayed on Get Started (**ADR-052, Proposed**).
+         - emcli (`95b8609`): an external read model has no route, no read model type and no contract entry; its
+           card says "held by …"; completeness warns when nothing reads one. `build-state-view` and `build-screen`
+           build nothing for it.
+         - **The board's mockups run no scripts** (sandboxed, 14.0). Toggles for the sign-up methods are CSS-only
+           (checkbox and `:has`), checked with one test push first.
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
        `plan-change` and `job-scope` count as proven once a change with users goes through expand, switch,
        contract in the loop.
@@ -4186,6 +4197,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-06 | Background processors share two connections per app (ADR-047 step 1: a shared listener, a lock holder per consumer); lease rows and polling only (step 2) only if the host forces a transaction-mode pooler | Each processor held two connections for good, so connections grew with the model (licensing's 11 hung startup on a pool of 20). Emmett and Axon own a processor by a lease row, but that is about a phase more work and only frees the app from session connections with polling only. A pooler comes from serverless compute, which this backend can't use, and mainstream hosts give direct connections. Choosing the host checks it (Gary) |
 | 2026-10-06 | ADR-046 and ADR-047 Accepted (Gary) | ADR-046 after its first use (the owner replacement) added expand, switch, contract and the `job-scope` check; ADR-047 after steps 1 and 1b were built and proven in licensing (pool 32 → 20, idle connections 33 → 6). Step 2 waits on a host that forces a transaction-mode pooler |
 | 2026-10-06 | An event's tags are part of its definition (its id fields); a tag change follows the compatibility rules, by who queries the tag (ADR-048, Accepted after it was proven in licensing) | "Untranslated notifications settled" couldn't find `trialWasStarted`, tagged only by organisation, though ADR-040 needs every Paddle outcome found by `paddleEventId`. Gary: a tag change should follow backwards-compatibility rules for the projections and deciders that use it. Reads match by any tag, append conditions by all: adding a tag is compatible unless a query already uses its key for that type; removing or renaming is breaking (expand, switch, contract). After release, a new version. Axon 5 declares tags on the event's fields too (`@EventTag`) |
+| 2026-10-08 | 16.3a's stand-in for Sign Up is the web app's session stub; the session is modelled as a read model held by the sign-in system, marked `--external` (ADR-052, Proposed) | Gary: an event reaches a screen through a read model, even one we don't store; the property (`externalSystem`), not prose, tells every builder to build nothing for it. Choosing the real sign-in is its own increment |
 
 ## Progress
 

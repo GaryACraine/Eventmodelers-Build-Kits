@@ -39,6 +39,11 @@ Each `screens[]` entry with a `mockup` is one screen card:
 `commands[]` / `readmodels[]`. A dependency on another slice's read model is the context around a part (in the
 mockup, a `data-slice="…"` region): that slice builds it, and the page shows it. Skip it.
 
+**An external read model** (`context: "EXTERNAL"`, with an `externalSystem`) is held by that system, not by our
+API (ADR-052). Never fetch it, and write no view, MSW handler or API type for it: it has no `apiEndpoint`. Its
+fields come from that system's client in the browser. For the sign-in provider (`Auth`), that's the session:
+`useSession()[field]`, the same values the command's `session:` mappings send.
+
 **Two kinds of route, never mixed:**
 - `page.route` (`/courses/:courseId`) is the URL people see. Only the page file uses it.
 - `apiEndpoint` (`/course-details/{courseId}`, `/subscribe-student`) is what the code calls, through
