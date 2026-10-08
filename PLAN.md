@@ -345,6 +345,23 @@ model and build only what's ours.
            nothing but Sign Up's screen; every built slice unchanged.
          - **Follow-up:** "start trial checkout" holds the screen and Paddle's event in one slice: split it to the
            same principle (`plan-change`).
+       - **The journey passes, mock and sandbox (2026-10-08; licensing `58973e4`, `b3d0f1a`).** `licensing/e2e/journey/`:
+         Playwright drives sign up (the stub), Get Started, activation, the trial's checkout and the dashboard against
+         the real backend; 7 cases.
+         - **Mock:** 7/7, three times (3.5s). The first run failed on the journey's own bug, and showed the backend
+           needs the mock's price ids (`mock_web_trial`) to tell the seats; the config gives it them.
+         - **Sandbox:** 7/7 (9.8s), through Paddle's real inline checkout with the test card, typed by Playwright; the
+           trial started from a real sandbox subscription. **No tunnel:** the backend fetches the events after the
+           report. **Made safe first (Gary):** Paddle Sync with no checkpoint fetches the sandbox's whole stream and
+           would refuse and cancel every earlier trial (org-test-1 included), so `sandbox-setup.mjs` gives the run its
+           own database and Temporal namespace, and sets the checkpoint at the stream's newest event before each run.
+         - **Found** (for Gary; the loop's code, not changed):
+           1. nothing leads from Get Started to Activate Organisation, or from the checkout to the dashboard;
+           2. the session never learns the user id registration returns: Activate asks for it (for the sign-in ADR);
+           3. every checkout raises a **critical** alert: `transaction.completed` has no translation. A type we don't
+              act on should be skipped quietly, or not fetched (`PADDLE_EVENT_TYPES`);
+           4. the page promises a 14-day trial; the sandbox's prices give 1 day. Nothing checks Paddle's trial
+              length against `trialDays`.
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
        `plan-change` and `job-scope` count as proven once a change with users goes through expand, switch,
        contract in the loop.
@@ -552,8 +569,10 @@ model and build only what's ours.
       Temporal Schedule, a draft on first use (ADR-042); invitation expiry is a workflow started with a delay.*
     - the "sign up" slice is never planned (it's the provider's page; noted on the slice);
     - [ ] emcli issues: event-copy drift, and same-named events across chapters can differ (`ISSUES.md`).
-  - [ ] **16.3a Chapter 1 end to end** (Gary, 2026-10-01): once chapter 1's slices are built and their tests pass,
-    prove the whole chapter as one journey, through the UI.
+  - [x] **16.3a Chapter 1 end to end** (Gary, 2026-10-01): once chapter 1's slices are built and their tests pass,
+    prove the whole chapter as one journey, through the UI. **Done 2026-10-08, mock and sandbox 7/7** (see "Where we
+    are"). As built: the session stub stands in for sign up and the OIDC mock (real sign-in is its own increment), and
+    no webhook replayer or tunnel was needed (the backend fetches Paddle's events).
     - **The harness,** `licensing/e2e/`, follows restaurant-orders' pattern:
       - Playwright;
       - containers: Postgres, `mock-oauth2-server` (OIDC with JWKS, standing in for Cognito or Supabase Auth), and a
@@ -4214,6 +4233,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-06 | An event's tags are part of its definition (its id fields); a tag change follows the compatibility rules, by who queries the tag (ADR-048, Accepted after it was proven in licensing) | "Untranslated notifications settled" couldn't find `trialWasStarted`, tagged only by organisation, though ADR-040 needs every Paddle outcome found by `paddleEventId`. Gary: a tag change should follow backwards-compatibility rules for the projections and deciders that use it. Reads match by any tag, append conditions by all: adding a tag is compatible unless a query already uses its key for that type; removing or renaming is breaking (expand, switch, contract). After release, a new version. Axon 5 declares tags on the event's fields too (`@EventTag`) |
 | 2026-10-08 | 16.3a's stand-in for Sign Up is the web app's session stub; the session is modelled as a read model held by the sign-in system, marked `--external` (ADR-052, Proposed) | Gary: an event reaches a screen through a read model, even one we don't store; the property (`externalSystem`), not prose, tells every builder to build nothing for it. Choosing the real sign-in is its own increment |
 | 2026-10-08 | An external event says how it reaches us (`intake`: webhook or none); an endpoint is built only for a webhook (ADR-053, Proposed) | Gary: a webhook is the special case, not the general one; `userSignedUp` is Auth's event that we start but never record, and it feeds only the external session read model. The loop must not build an endpoint nobody decided on |
+| 2026-10-08 | A sandbox journey runs on its own database and Temporal namespace, with Paddle Sync's checkpoint set at the sandbox stream's newest event before each run; Playwright types Paddle's test card | Paddle Sync with no checkpoint fetches the whole sandbox stream, and every earlier trial's organisation is unknown to a fresh database: it would refuse and cancel them at Paddle (org-test-1 among them). Gary agreed the setup and the automated card entry |
 
 ## Progress
 
