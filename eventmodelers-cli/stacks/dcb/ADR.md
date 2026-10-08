@@ -3220,9 +3220,16 @@ blocked them at event 26, and the owner chain passed (10/10), on that database a
    <System>`.** It's linked like any read model: what fills it (`userSignedUp` hydrates the session), and what reads
    it, a screen (`displays`) or an automation (`relates-to`, ADR-039).
 2. **Nothing of ours builds it.** emcli gives it no route (and leaves it out of `api/openapi.json`) and no read model
-   type. `build-state-view` builds no projection and no route for one; a slice that holds only one is a model
-   problem, so it blocks and says so. `build-screen` never fetches one from our API: a screen gets its fields from
+   type, and it makes **no job**: a slice holding nothing else of ours is exported Done, with nothing queued.
+   `build-state-view` skips one and builds the rest of the slice; it never blocks for it (a slice of another
+   system's things is a valid model). `build-screen` never fetches one from our API: a screen gets its fields from
    that system's client (for the sign-in provider, the session, as its command's `session:` mappings already do).
+5. **Open: whose Sign Up form it is** (Gary, 2026-10-08), decided by the sign-in provider ADR. With Cognito we'd
+   probably build the form ourselves against its auth endpoint (Amplify.js); with a hosted page it's the provider's.
+   So the Sign Up screen and `userSignedUp` stay unmarked. **If the form is ours,** "sign up" is planned, its screen
+   gets a ui job, the form calls the provider's browser library (as with Paddle.js, `build-screen`), and
+   `userSignedUp` is the provider's answer. **If the page is hosted,** the screen card is marked external then.
+   Either way the session read model stays external.
 3. **The card says so on the board:** "External: held by <System>, not projected (the screen reads it from
    <System>)", or for an automation's input, "(fetched by the automation, not projected)".
 4. **`emcli completeness` warns** about one in a planned slice that no screen or automation reads.
@@ -3235,7 +3242,7 @@ blocked them at event 26, and the owner chain passed (10/10), on that database a
   values come from.
 
 **Consequences:**
-- **emcli** (`95b8609`): `standardEndpoint` is undefined for it, so no route, in the card's enrichment or the
+- **emcli** (`95b8609`, `d439ba8`): no job for it (`concernsOf`); `standardEndpoint` is undefined for it, so no route, in the card's enrichment or the
   export; the contract skips it; the export gives it no `readModelType`; the card's held-by wording; the completeness
   warning; the `event-model` method says how to model the session. 429 tests.
 - **Kit:** one rule each in `build-state-view` and `build-screen`.

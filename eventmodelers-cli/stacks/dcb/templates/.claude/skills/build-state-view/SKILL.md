@@ -48,9 +48,9 @@ Read the slice.json first:
 - **A read model with `context: "EXTERNAL"`** (and an `externalSystem`, e.g. `Auth`) is **held by that system**:
   the sign-in session, a provider's customer (ADR-052). Build nothing for it: no `readModel.ts`, no projection, no
   route, no tests. It has no `apiEndpoint` and no `readModelType`. A screen reads it from that system's client
-  (`build-screen`), an automation fetches it in an activity (`build-automation`). If it's this slice's only read
-  model, there's nothing to build: **block** with "an external read model (<System>) is held by <System>: nothing
-  of ours builds it; the model should not have planned this slice".
+  (`build-screen`), an automation fetches it in an activity (`build-automation`). Skip it and build the rest of the
+  slice as usual. **Never block for it:** it's a valid model. emcli gives a slice holding nothing else no job, so
+  if one reaches you alone, build nothing, set it Done, and say in your report that emcli queued it.
 - **`retype` block present** (`{ "from": …, "to": … }`) → the model changed an already-built read model's
   type. Follow **"Changing a read model's type"** below. Nothing else changes.
 - **`addQueries` present** (`["availableCourses"]`) → an already-built slice whose specs now run queries its

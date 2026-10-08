@@ -327,7 +327,10 @@ model and build only what's ours.
            Auth`, hydrated by `userSignedUp` and displayed on Get Started (**ADR-052, Proposed**).
          - emcli (`95b8609`): an external read model has no route, no read model type and no contract entry; its
            card says "held by …"; completeness warns when nothing reads one. `build-state-view` and `build-screen`
-           build nothing for it.
+           build nothing for it; it makes no job, so it never blocks (`d439ba8`).
+         - **Open (Gary): whose Sign Up form it is,** for the sign-in provider ADR. With Cognito we'd probably build it
+           ourselves (Amplify.js); with a hosted page it's the provider's. The screen and `userSignedUp` stay
+           unmarked until then (ADR-052 point 5).
          - **The board's mockups run no scripts** (sandboxed, 14.0). Toggles for the sign-up methods are CSS-only
            (checkbox and `:has`), checked with one test push first.
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
