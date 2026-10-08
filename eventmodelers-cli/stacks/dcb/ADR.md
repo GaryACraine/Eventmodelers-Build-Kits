@@ -3345,43 +3345,100 @@ form it is).
   UK/EU residency is an optional gate. US transfers are lawful under the UK extension to the Data Privacy
   Framework, so it's a commercial choice.
 
-**The options, as whole stacks** (scores out of 100, default weights: familiarity 15, ops 15, cost 15, sign-in fit
-15, leaving 10, residency 10, backups 10, vendors 5, web/DNS/email 5):
+**The options, as whole stacks.**
+- **Scores** are out of 100, under the default weights: familiarity and CDK 15, little to run 15, total monthly cost
+  15, sign-in fit 15, leaving 10, residency 10, backups/recovery/exposure 10, local development 10, vendors 5,
+  web/DNS/email 5.
+- **The cost criterion counts the connections between the parts as well:** NAT, IPv4 addresses, and point-in-time
+  recovery.
+- **The exposure criterion asks** whether the database can be reached from the internet.
 
 | Stack | Score | Monthly cost, 2k / 20k users | Main strength | Main cost |
 |---|---|---|---|---|
-| AWS + sign-in in our backend (Better Auth on RDS) | 85 | ≈$97 / ≈$165 | one vendor, users in our Postgres | sign-in security is ours |
-| AWS + Supabase Auth only | 83 | ≈$130 / ≈$195 | CDK for all we host | users in a database we don't otherwise use |
-| All AWS (Fargate, RDS, Cognito) | 82 | ≈$95 / ≈$310 | one account, all CDK, London | Cognito's password hashes can't be exported |
-| AWS compute + Supabase (database and sign-in) | 82 | ≈$105 / ≈$190 | managed database and sign-in in one, users beside the events | two vendors; point-in-time recovery $100/mo; outside CDK |
-| AWS + Auth0 | 80 | ≈$95 / ≈$160 | mature, UK region, free to 25k | steep price step after 25k; hosted page is the main path |
-| AWS + Clerk | 78 | ≈$120 / ≈$185 | best developer experience, native SDKs | users held in the US only |
-| Fly.io (London) + Clerk + Cloudflare | 65 | ≈$80 / ≈$130 | simplest deploys | new tools, three or four vendors |
-| Google Cloud (Cloud Run, Cloud SQL, Identity Platform) | 63 | ≈$90 / ≈$150 | one vendor, strong mobile sign-in | new cloud; Cloud Run needs CPU always on for LISTEN and the worker |
+| AWS + sign-in in our backend (Better Auth on RDS) | 86 | ≈$100 / ≈$170 | one vendor, users in our Postgres, the real sign-in runs locally | sign-in security is ours |
+| AWS + Supabase Auth only | 85 | ≈$135 / ≈$200 | CDK for all we host; sign-in runs locally | users in a database we don't otherwise use |
+| AWS compute + Supabase (database and sign-in) | 83 | ≈$110 / ≈$195 | managed database and sign-in in one; users beside the events | two vendors; the database is on the internet; outside CDK; point-in-time recovery $100/mo |
+| All AWS (Fargate, RDS, Cognito) | 77 | ≈$100 / ≈$315 | one account, all CDK, database private | no real local Cognito; password hashes can't be exported |
+| AWS + Auth0 | 76 | ≈$100 / ≈$165 | mature, UK region, free to 25k | steep price step after 25k; cloud-only |
+| AWS + Clerk | 74 | ≈$125 / ≈$190 | best developer experience, native SDKs | users held in the US only; cloud-only |
+| Google Cloud (Cloud Run, Cloud SQL, Identity Platform) | 64 | ≈$90 / ≈$150 | one vendor, strong mobile sign-in | new cloud; Cloud Run needs CPU always on for LISTEN and the worker |
+| Fly.io (London) + Clerk + Cloudflare | 62 | ≈$80 / ≈$130 | simplest deploys | new tools, three or four vendors |
 
-Temporal is extra in every stack: Temporal Cloud at about $5–20 a month at our volume (to confirm), or about
-$30–40 run ourselves.
+- **AWS stacks need no NAT gateway.** Their tasks sit in public subnets, each with a public IP (about $3.60), and
+  RDS stays private.
+- **Temporal is extra in every stack:** Temporal Cloud at about $5–20 a month at our volume (to confirm), or about
+  $30–40 to run ourselves.
 
 **What the matrix shows** (it informs the decision, it doesn't make it):
-- **AWS for compute** leads every other base by about 15 points. It still leads by about 10 with the familiarity
-  weight at 0: CDK, ECS on Fargate (App Runner closed to new customers in April 2026; ECS Express Mode fills its
-  role), RDS, CloudFront, Route 53 and SES cover every part.
-- **The AWS stacks are within 7 points of each other: effectively tied.** What separates them is the sign-in choice
-  and where the database lives. With familiarity at 0, AWS compute with Supabase for the database and sign-in moves
-  to first (84).
-- **Sign-in within AWS hosting** (the matrix's second tab): Auth0 and Supabase Auth 82, Clerk, Zitadel and Better
-  Auth 80, Cognito 78. With a Supabase database, Supabase Auth goes to 88.
+- **AWS for compute** leads every other base by about 15 points, and still by about 10 with the familiarity weight
+  at 0:
+  - ECS on Fargate. App Runner closed to new customers in April 2026; ECS Express Mode fills its role.
+  - RDS, CloudFront, Route 53 and SES cover the other parts, all in CDK.
+- **Local development (added at Gary's request) separates the sign-in options.**
+  - **Run for real on a laptop, in the e2e journeys and in CI:** Better Auth (it is our backend), Supabase Auth
+    (`supabase start`), Zitadel and Keycloak.
+  - **Cloud-only:** Cognito, Clerk and Auth0. They need a stand-in locally (`mock-oauth2-server`, as now) plus a
+    second test run against the cloud, as with Paddle's mock and sandbox. LocalStack's Cognito emulation needs a
+    paid plan for commercial use since March 2026, and it isn't the real service.
+
+**Working assumption and shortlist** (Gary, 2026-10-08; not decisions):
+- **Our Postgres is Supabase's** (London), whichever sign-in we choose. The containers run on AWS (Fargate), and
+  the web app on CloudFront.
+- **The sign-in shortlist** is three, compared in the matrix's third tab. That tab uses the sign-in criteria plus
+  "Deploys with CDK" (weight 5); "Fits the hosting" is narrowed to where users live and how many vendors there are.
+
+  | | Supabase Auth | Better Auth | Cognito |
+  |---|---|---|---|
+  | Score | 88 | 83 | 72 |
+  | Users live | `auth` schema in our database | its tables in our database | Cognito |
+  | Runs locally, for real | yes (`supabase start`) | yes (it's our backend) | no (stand-in, plus a cloud run) |
+  | Token claims (`userId`, roles) | a Postgres hook that can read our tables | our TypeScript | a Lambda |
+  | Sign-in security (attacks, patching) | Supabase's | ours | AWS's |
+  | Deploys | CDK + `supabase config push`; the hook as a migration | CDK only | CDK only |
+  | Leaving | users and bcrypt hashes are ours | already ours | hashes can't be exported |
+  | Extra cost at 20k users | $0 (included in Pro) | ≈$5 email | $150 (Essentials) |
+  | Maturity | widely used | young; part of Vercel since July 2026; critical fixes in 2026 | long-running |
+
+- **Supabase Auth's lead over Better Auth rests almost entirely on one criterion: who carries sign-in security.**
+- **With either, the role-sync slices may shrink.** Supabase Auth's hook can read roles straight from our tables when
+  it issues a token, and Better Auth writes to its tables in our database. ADR-037's four role-sync slices might
+  then get smaller. This is to be worked out in its own ADR before we rely on it.
+
+**What Supabase as our Postgres involves** (any sign-in choice; not yet proven):
+1. **The connection.** The event store holds a `LISTEN` connection and advisory locks, so it needs the direct
+   connection (IPv6, or the $4 IPv4 add-on) or the session pooler (IPv4, port 5432). Never the transaction pooler
+   (port 6543).
+2. **The network path.** The connection runs over the public internet with verified TLS (`sslmode=verify-full`);
+   there's no private link below the Enterprise plan. To allow only our IP at Supabase, the tasks need a fixed
+   outbound IP:
+   - a NAT instance: CDK's `NatProvider.instanceV2`, about $4/mo, ours to patch, no failover;
+   - or a NAT gateway: about $35–70/mo.
+3. **The Data API.** Supabase publishes the `public` schema through its REST API. Our tables go in our own schema
+   (through `search_path`), or the Data API is switched off.
+4. **Connection limits.** Each compute size caps connections, so size each container's pool, plus its `LISTEN`
+   connection, to the plan. Temporal Cloud avoids a second database.
+5. **Deploys and migrations.**
+   - **Read-model changes need no migration:** the app rebuilds a changed read model from the events at startup
+     (`ensureProjectionsCurrent`), and the event store installs its own tables (`ensureInstalled`).
+   - **Everything else goes through one TypeScript migration tool** (node-pg-migrate is the candidate): grants, our
+     schema, the sign-in tables or hook. A CDK Trigger runs it as a one-off ECS task before the new version starts.
+   - **Supabase's project settings sit outside CDK:** `supabase config push` from `supabase/config.toml`, or
+     Supabase's Terraform provider. CDK for Terraform was deprecated in December 2025.
+6. **Proving it:** point licensing at a Supabase project from a laptop and run the journey. That settles 1, 3 and 4
+   before any AWS work. It needs Gary to create the Supabase account.
 
 **Decision:** to be made by Gary. Open questions:
-1. Where the database lives: RDS (all CDK, our own backups) or Supabase (managed, sign-in beside it, a second
-   vendor).
-2. Whether sign-in data held in the US is acceptable to our customers (this decides Clerk).
-3. Whether we carry sign-in security ourselves (Better Auth) or buy it.
-4. Whose Sign Up form it is (ADR-052 point 5): every leading option allows our own form; Auth0 prefers its hosted
-   page.
-5. Temporal Cloud or Temporal run ourselves.
+1. Is Supabase as our Postgres confirmed? It's the working assumption.
+2. Who carries sign-in security: Supabase (Supabase Auth) or us (Better Auth)? Cognito is the third option.
+3. A fixed IP, allow-listed at Supabase (a NAT instance or gateway), or password and TLS alone?
+4. Whose Sign Up form it is (ADR-052 point 5)? All three allow our own form.
+5. Temporal Cloud, or Temporal run ourselves?
 
 **Consequences, once decided:**
-- **Licensing:** the Sign Up form (ADR-052 point 5), the four auth role-sync slices, gap 2 (`userId` in the session),
-  and the deployment (14.8).
-- `mock-oauth2-server` stays the stand-in until then (ADR-037).
+- **Licensing:**
+  - the Sign Up form (ADR-052 point 5);
+  - the four auth role-sync slices (possibly fewer, see above);
+  - gap 2 (`userId` in the session);
+  - the deployment (14.8): CDK, the migration tool, and the Supabase connection.
+- **`mock-oauth2-server`** stays the stand-in until then (ADR-037). With Supabase Auth or Better Auth it's replaced by
+  the real thing locally.

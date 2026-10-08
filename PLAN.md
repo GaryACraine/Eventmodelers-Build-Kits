@@ -378,7 +378,15 @@ model and build only what's ours.
           (Supabase runs no long-lived containers). The decision matrix compares eight whole stacks and ten
           providers within each hosting (https://claude.ai/artifact/EArHLdWp3QLRFp7PPx2ufG). AWS compute leads
           every other base. The AWS stacks are effectively tied, and the sign-in choice and the database's home
-          separate them. **Nothing is decided:** Gary's five open questions are in the ADR. Sign Up, the four auth
+          separate them. Working assumption since (Gary): Supabase as our Postgres whatever the sign-in.
+          The sign-in shortlist is Supabase Auth 88, Better Auth 83 and Cognito 72, after three changes to the
+          criteria:
+          - local development added;
+          - "Deploys with CDK" added;
+          - the cost criterion now includes the connections between the parts (NAT, IPv4).
+          The ADR records what connecting AWS to Supabase involves: the connection mode, a fixed IP, the Data API,
+          connection limits, and migrations (none for read models). **Nothing is decided:** Gary's open questions are
+          in the ADR. Sign Up, the four auth
           role-sync slices, gap 2 (the user id in the session), ADR-052 point 5 and deployment (14.8) wait on it.
        3. **Gap 4: the trial's length.** Before release: a check at start that Paddle's trial matches `trialDays`, or
           `trialDays` read from Paddle's price.
@@ -4259,6 +4267,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-08 | A sandbox journey runs on its own database and Temporal namespace, with Paddle Sync's checkpoint set at the sandbox stream's newest event before each run; Playwright types Paddle's test card | Paddle Sync with no checkpoint fetches the whole sandbox stream, and every earlier trial's organisation is unknown to a fresh database: it would refuse and cancel them at Paddle (org-test-1 among them). Gary agreed the setup and the automated card entry |
 | 2026-10-08 | A Paddle `transaction.completed` that isn't a renewal (origin other than `subscription_recurring`) is skipped as `not needed`, with no alert; every other type without a translation still alerts | Later chapters act on every type we fetch (renewals and conversions in chapter 8, `subscription.activated` in 1b): a quiet skip of all untranslated types would lose a paid subscription after release. Only the checkout's own payment is never needed: the subscription's events carry it (Gary) |
 | 2026-10-08 | The sign-in provider ADR became the platform ADR (ADR-054, Proposed): hosting, database, sign-in, web app, DNS and email, compared as whole stacks, including AWS + Supabase hybrids | Gary: the provider can't be chosen apart from where the containers and Postgres run, and Supabase runs no long-lived containers. Nothing decided: the AWS lean is a weight in the matrix, not a choice |
+| 2026-10-08 | ADR-054 working assumption: Supabase as our Postgres whatever the sign-in; sign-in shortlist Supabase Auth, Better Auth, Cognito; criteria gain local development, deploys with CDK, and connection costs (NAT) | Gary: the real sign-in should run locally and in CI; CDK for AWS and one way to migrate Postgres; avoid paying for a NAT gateway. Read models need no migrations (rebuilt from events at startup) |
 
 ## Progress
 
