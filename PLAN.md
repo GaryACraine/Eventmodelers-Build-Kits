@@ -362,6 +362,18 @@ model and build only what's ours.
               act on should be skipped quietly, or not fetched (`PADDLE_EVENT_TYPES`);
            4. the page promises a 14-day trial; the sandbox's prices give 1 day. Nothing checks Paddle's trial
               length against `trialDays`.
+    2b. **Next, in this order (Gary, 2026-10-08), from 16.3a's findings:**
+       1. **Gap 3: a Paddle event type we don't act on is skipped quietly.** Still fetched and recorded (we'll need
+          `transaction.completed` for "Buy now" and billing), skipped with a reason like `not acted on` and no alert;
+          a type never seen still alerts. Not filtered out with `PADDLE_EVENT_TYPES`. Planned through `plan-change`,
+          built by the loop, then both journeys rerun (the mock one shows the alert gone). **Planning next.**
+       2. **The sign-in provider ADR:** Sign Up, the four auth role sync slices, gap 2 (the user id in the session) and
+          ADR-052 point 5 wait on it. Mostly research, and Gary's decision.
+       3. **Gap 4: the trial's length.** Before release: a check at start that Paddle's trial matches `trialDays`, or
+          `trialDays` read from Paddle's price.
+       4. **Split "start trial checkout"** (screen, then Paddle's event), replacing the built slice, when that area is
+          next touched.
+       5. **Gap 1: links between pages,** with the sign-in work (Get Started changes then).
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
        `plan-change` and `job-scope` count as proven once a change with users goes through expand, switch,
        contract in the loop.
