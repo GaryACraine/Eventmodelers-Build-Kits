@@ -45,6 +45,12 @@ serves them all, so the page is the same whichever type serves it.
 
 Read the slice.json first:
 
+- **A read model with `context: "EXTERNAL"`** (and an `externalSystem`, e.g. `Auth`) is **held by that system**:
+  the sign-in session, a provider's customer (ADR-052). Build nothing for it: no `readModel.ts`, no projection, no
+  route, no tests. It has no `apiEndpoint` and no `readModelType`. A screen reads it from that system's client
+  (`build-screen`), an automation fetches it in an activity (`build-automation`). If it's this slice's only read
+  model, there's nothing to build: **block** with "an external read model (<System>) is held by <System>: nothing
+  of ours builds it; the model should not have planned this slice".
 - **`retype` block present** (`{ "from": …, "to": … }`) → the model changed an already-built read model's
   type. Follow **"Changing a read model's type"** below. Nothing else changes.
 - **`addQueries` present** (`["availableCourses"]`) → an already-built slice whose specs now run queries its

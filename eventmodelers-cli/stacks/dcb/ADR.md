@@ -3194,3 +3194,52 @@ blocked them at event 26, and the owner chain passed (10/10), on that database a
 - **Licensing:** "owner admin role on trial" and "owner web seat on trial" replaced before release (`plan-change`):
   each also reacts to the owner's `userWasAssignedToRole`, and waits when there's no owner. The owner chain gets a
   case: a trial before its owner, then the owner, then the roles.
+
+### ADR-052: A read model held by another system is marked external, and nothing of ours builds it
+
+**Status:** Proposed, 2026-10-08 (Gary: the session as a read model, marked by a property, not by prose).
+**Date:** 2026-10-08
+**Builds on:** ADR-039 (an automation's outside data), ADR-045 (an external event).
+
+**Context:**
+- **The case:** licensing's chapter 1 starts with "sign up", the sign-in provider's page, recording `userSignedUp`
+  (`sub`, `email`) in the Auth lane. "Get Started" submits `registerUser`, whose `sub` and `email` are mapped
+  `session:`. On the board nothing joins the two: the information that flows from the event to the screen isn't
+  shown, against event modelling's own rule (an event reaches a screen through a read model).
+- **That read model isn't ours:** it's the session the provider returns (the ID token's claims). We never store or
+  project it. The web app reads it from the session (`useSession()`).
+- **emcli already has the property:** `externalSystem` (`--external <System>`), exported as `context: EXTERNAL`.
+  `build-automation` reads it as an outside system's data, fetched in an activity. Nothing else did. An external
+  read model in a planned slice would have had a GET route in the contract, the default type `database-projected`,
+  and a projection built by `build-state-view`.
+- **Prose is no build hint:** a description saying "not stored" reaches the loop only as text it may or may not
+  follow. A property is in `slice.json`, and every builder reads it the same way.
+
+**Decision:**
+1. **A read model another system holds is an information card in that system's lane, marked `--external
+   <System>`.** It's linked like any read model: what fills it (`userSignedUp` hydrates the session), and what reads
+   it, a screen (`displays`) or an automation (`relates-to`, ADR-039).
+2. **Nothing of ours builds it.** emcli gives it no route (and leaves it out of `api/openapi.json`) and no read model
+   type. `build-state-view` builds no projection and no route for one; a slice that holds only one is a model
+   problem, so it blocks and says so. `build-screen` never fetches one from our API: a screen gets its fields from
+   that system's client (for the sign-in provider, the session, as its command's `session:` mappings already do).
+3. **The card says so on the board:** "External: held by <System>, not projected (the screen reads it from
+   <System>)", or for an automation's input, "(fetched by the automation, not projected)".
+4. **`emcli completeness` warns** about one in a planned slice that no screen or automation reads.
+
+**Alternatives considered:**
+- **The description says "not stored".** Rejected (Gary): prose isn't a property the builders read.
+- **A new read model type** (`session`, `external`). Rejected: the type says how *we* keep a read model current; this
+  one we don't keep at all, which is what `externalSystem` already says.
+- **No read model** (the screen's command maps `session:` and that's all). Rejected: the board then hides where the
+  values come from.
+
+**Consequences:**
+- **emcli** (`95b8609`): `standardEndpoint` is undefined for it, so no route, in the card's enrichment or the
+  export; the contract skips it; the export gives it no `readModelType`; the card's held-by wording; the completeness
+  warning; the `event-model` method says how to model the session. 429 tests.
+- **Kit:** one rule each in `build-state-view` and `build-screen`.
+- **Licensing:** "Signed In User" (`sub`, `email`) in the "sign up" slice, `--external Auth`, hydrated by
+  `userSignedUp` and displayed on "Get Started". The slice is never planned, so no built slice changes.
+- **Proven when:** the card shows on the board with its held-by line, completeness is clean, and the export re-queues
+  no built slice.
