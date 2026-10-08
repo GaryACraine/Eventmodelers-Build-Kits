@@ -129,7 +129,7 @@ export function paddleInbox(config: Pick<PaddleConfig, "apiKey" | "webhookSecret
 }
 ```
 
-It's built by the slice of the external event `paddleNotificationReceived` (`sliceType: "EXTERNAL_EVENT"`,
+It's built by the slice of the external event `paddleNotificationReceived` (`intake: "webhook"`, `sliceType: "EXTERNAL_EVENT"`,
 `build-automation`'s section "An external event"): `inbox.ts` exports `paddleInbox(paddleConfig())`, wired as
 `configureWebhookInbox({ eventStore }, paddleNotificationInbox)` with `configureJsonBody()` in `apis` (the scaffold
 has it): the signature is checked against the raw body. Real deliveries passed this check through a tunnel

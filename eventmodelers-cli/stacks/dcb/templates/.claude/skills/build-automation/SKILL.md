@@ -442,11 +442,15 @@ The endpoint that records the notification is its own slice, an **external event
 > (`licensing/e2e/paddle/`), not yet by a slice the loop built. Where a slice doesn't fit, block the job with
 > `request-feedback` saying what didn't fit.
 
-`sliceType: "EXTERNAL_EVENT"`: the slice holds one event that **another system tells us** (its `context` is
-`EXTERNAL`, `externalSystem` names the system, e.g. `Paddle`), and nothing else of ours: no command, no decider, no
+`sliceType: "EXTERNAL_EVENT"`: the slice holds one event that **another system tells us by webhook** (its `context`
+is `EXTERNAL`, `externalSystem` names the system, e.g. `Paddle`, and `intake` is `"webhook"`), and nothing else of ours: no command, no decider, no
 route of its own. Its fields are mapped `webhook:<path in the payload>`. Building the slice means building the door
 that event comes in by: the webhook endpoint of ADR-040, recording the event as it arrived and answering at once.
 What we do with it is the translation, built by other slices.
+
+**Only for `intake: "webhook"`** (ADR-053). An external event with `intake: "none"` stays in its system: build
+nothing for it (no endpoint, no `Events.ts` entry), and nothing of ours reacts to it. If one reaches you, say so in
+your report.
 
 Read the system's provider skill first (`provider-paddle`): it has the system's signature check, the reader that
 turns a payload into this event (`toEvent`), the endpoint's path, the saved payloads and the mock.

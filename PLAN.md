@@ -336,6 +336,15 @@ model and build only what's ours.
          - **The session has its own state-view slice,** "signed in user", after "sign up" (Gary: in one slice it read
            as if Sign Up read the session). It exports Done with nothing queued (emcli `9e41dab`). Pushed; licensing
            `c69a4be`, `f783ad0`.
+         - **Then three slices (Gary, 2026-10-08):** "sign up" (the form only), "user signed up" (`userSignedUp`,
+           Auth's event: we start it, Auth records it), "signed in user" (the session). **ADR-053 (Proposed):** an
+           external event says how it reaches us, `--intake webhook` (the loop builds the endpoint, ADR-045) or `none`
+           (left in its system: nothing built, only an external read model shows it); unset builds nothing. emcli
+           `2d3fae2` (437 tests with `0a26626`: a backend concern a slice no longer has is dropped unless the loop
+           has it). Rehearsed: Paddle's slice stays Done with `--intake webhook`; the three sign-up slices queue
+           nothing but Sign Up's screen; every built slice unchanged.
+         - **Follow-up:** "start trial checkout" holds the screen and Paddle's event in one slice: split it to the
+           same principle (`plan-change`).
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
        `plan-change` and `job-scope` count as proven once a change with users goes through expand, switch,
        contract in the loop.
@@ -4204,6 +4213,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-06 | ADR-046 and ADR-047 Accepted (Gary) | ADR-046 after its first use (the owner replacement) added expand, switch, contract and the `job-scope` check; ADR-047 after steps 1 and 1b were built and proven in licensing (pool 32 → 20, idle connections 33 → 6). Step 2 waits on a host that forces a transaction-mode pooler |
 | 2026-10-06 | An event's tags are part of its definition (its id fields); a tag change follows the compatibility rules, by who queries the tag (ADR-048, Accepted after it was proven in licensing) | "Untranslated notifications settled" couldn't find `trialWasStarted`, tagged only by organisation, though ADR-040 needs every Paddle outcome found by `paddleEventId`. Gary: a tag change should follow backwards-compatibility rules for the projections and deciders that use it. Reads match by any tag, append conditions by all: adding a tag is compatible unless a query already uses its key for that type; removing or renaming is breaking (expand, switch, contract). After release, a new version. Axon 5 declares tags on the event's fields too (`@EventTag`) |
 | 2026-10-08 | 16.3a's stand-in for Sign Up is the web app's session stub; the session is modelled as a read model held by the sign-in system, marked `--external` (ADR-052, Proposed) | Gary: an event reaches a screen through a read model, even one we don't store; the property (`externalSystem`), not prose, tells every builder to build nothing for it. Choosing the real sign-in is its own increment |
+| 2026-10-08 | An external event says how it reaches us (`intake`: webhook or none); an endpoint is built only for a webhook (ADR-053, Proposed) | Gary: a webhook is the special case, not the general one; `userSignedUp` is Auth's event that we start but never record, and it feeds only the external session read model. The loop must not build an endpoint nobody decided on |
 
 ## Progress
 

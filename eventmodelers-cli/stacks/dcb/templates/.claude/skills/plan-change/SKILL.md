@@ -139,6 +139,9 @@ the tags exactly, so it fails until the producer's same-name replacement is buil
 - **An automation's data input that can arrive after its trigger** (the owner, after the trial) is a trigger too
   (ADR-051): link its event `reacts-to` the automation, and say in the description that the item waits without it.
   An automation built before ADR-051 that throws for it is replaced (a same-name replacement before release).
+- **An external event's intake** (ADR-053: `webhook` or `none`) decides whether an endpoint is built. `none` →
+  `webhook` adds the endpoint (its slice is queued); `webhook` → `none` removes it: before release, delete the
+  endpoint's code by hand; after release, deprecate the endpoint first (the other system may still call it).
 - **A read-model test depends on events, not on other slices.** Its *given* goes in with `app.given(...)`
   (`build-state-view` Step 6), never through another slice's route.
 - **What the change touches:** every slice that produces or reads the same event, and every automation that
@@ -196,3 +199,5 @@ The full text is in the kit repo (`eventmodelers-cli/stacks/dcb/ADR.md`):
 | 048 | An event's tags are its id fields; a tag change follows the compatibility rules, by who queries the tag. |
 | 049 | A decisive answer to our own call is recorded at once; the same change is recognised by its version. |
 | 050 | A command whose intent already holds decides nothing (`[]`, 200); a rejection only when it can't hold. |
+| 052 | A read model another system holds is marked external: nothing of ours builds it, and it makes no job. |
+| 053 | An external event says how it reaches us (`intake`): an endpoint is built only for `webhook`. |
