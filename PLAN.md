@@ -331,8 +331,11 @@ model and build only what's ours.
          - **Open (Gary): whose Sign Up form it is,** for the sign-in provider ADR. With Cognito we'd probably build it
            ourselves (Amplify.js); with a hosted page it's the provider's. The screen and `userSignedUp` stay
            unmarked until then (ADR-052 point 5).
-         - **The board's mockups run no scripts** (sandboxed, 14.0). Toggles for the sign-up methods are CSS-only
-           (checkbox and `:has`), checked with one test push first.
+         - **The board's mockups run no scripts** (sandboxed, 14.0). The sign-up methods' toggles are CSS-only
+           (checkboxes and `:has()`): **they work in the board's preview** (Gary, 2026-10-08).
+         - **The session has its own state-view slice,** "signed in user", after "sign up" (Gary: in one slice it read
+           as if Sign Up read the session). It exports Done with nothing queued (emcli `9e41dab`). Pushed; licensing
+           `c69a4be`, `f783ad0`.
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
        `plan-change` and `job-scope` count as proven once a change with users goes through expand, switch,
        contract in the loop.
