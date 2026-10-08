@@ -3246,7 +3246,11 @@ blocked them at event 26, and the owner chain passed (10/10), on that database a
   export; the contract skips it; the export gives it no `readModelType`; the card's held-by wording; the completeness
   warning; the `event-model` method says how to model the session. 429 tests.
 - **Kit:** one rule each in `build-state-view` and `build-screen`.
-- **Licensing:** "Signed In User" (`sub`, `email`) in the "sign up" slice, `--external Auth`, hydrated by
-  `userSignedUp` and displayed on "Get Started". The slice is never planned, so no built slice changes.
+- **Licensing:** "Signed In User" (`sub`, `email`), `--external Auth`, hydrated by `userSignedUp` and displayed on
+  "Get Started", in **its own state-view slice**, "signed in user", after "sign up" (Gary, 2026-10-08: in one slice
+  it read as if Sign Up read the session; the screen creates the event, the next slice shows it). emcli
+  (`9e41dab`): another slice's event makes no job on its own, so that slice exports Done with nothing queued.
+- **The board (2026-10-08):** the card shows its held-by line; the Sign Up mockup's method toggles (checkboxes and
+  CSS `:has()`, no script) work in the board's preview; the push re-queued no built slice.
 - **Proven when:** the card shows on the board with its held-by line, completeness is clean, and the export re-queues
   no built slice.
