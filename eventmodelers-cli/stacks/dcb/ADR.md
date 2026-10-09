@@ -3941,6 +3941,32 @@ These sit with the rest of the account lifecycle above (reset, change of email o
 
    How an endpoint checks permission (roles, claims, or roles mapped to permissions) is ADR-060.
 
+**Point 2 revised (Proposed, 2026-10-09):**
+- **Gary: the platform admin is a person, not a way for automations to call in.** They sign in like anyone, and may
+  do business operations and sign-ins for customers. So the platform admin answers "people who run the platform",
+  and callers that aren't people need something else.
+- **The platform admin, a person:**
+  - signs in through Better Auth like anyone, with the strongest second factor (ADR-056);
+  - holds platform permissions in the role map (ADR-060), for example `notification:list` and `organisation:support`;
+  - belongs to no organisation and uses no seat (ADR-037 stands there). They act in a customer's organisation by
+    naming it (ADR-060 (3)), and the check allows it because the role has the permission, not because they're a
+    member;
+  - acts as themselves, never by impersonating the customer. The events record it with the existing `actedAs`
+    (`platformAdmin`) and `assignedBy` / `activatedBy` their own `userId`, so the record shows who really did it;
+  - **revises ADR-037's "the platform admin is auth only":** the role is now ours, not only Auth's. Licensing's roles
+    are per organisation, so the platform admin's grant belongs to `identity`. The first is created by a setup
+    command (ADR-043), later ones by another platform admin.
+- **Callers that aren't people: API keys** (Better Auth's API key plugin):
+  - each key is named for its caller (`journey`, `ops-script`) and holds `resource:action` permissions, the same names
+    as the role map, checked with `verifyApiKey`;
+  - it has an expiry and a rate limit, and is sent in a header (not the bearer token, so the two never mix);
+  - events from it record `actedAs: system` and the key's name;
+  - the catalogue (ADR-060 point 5) lists each key with its permissions, beside the roles.
+  - Today nothing of ours calls over HTTP except the journey and ops scripts: our automations call commands
+    in-process. Keys owned by an organisation (the plugin supports it) would let customers integrate later.
+- **Internal-only routes** (the third option) are dropped: they hide a route rather than check it, and on-premises
+  has no public proxy to rely on.
+
 **Decision:** open.
 
 ### ADR-059: A context's events are its own; other contexts read its published read models or its published events
