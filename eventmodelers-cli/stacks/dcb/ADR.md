@@ -3636,7 +3636,7 @@ on the deployment type, cloud or on-premises").
 
 ### ADR-056: The account security lifecycle (open)
 
-**Status:** Proposed, open, 2026-10-09 (Gary: "we can defer these decisions until later … as long as we don't lose
+**Status:** Proposed, open; the second factor is settled in principle (2026-10-09, below). Proposed 2026-10-09 (Gary: "we can defer these decisions until later … as long as we don't lose
 record that we need to have these policies and decisions made in line with best practices and what configuration
 options are available within Better Auth"). It is decided after ADR-055 is built in the kit and licensing
 (PLAN 2b.2d).
@@ -3669,8 +3669,8 @@ options are available within Better Auth"). It is decided after ADR-055 is built
 | Changing the password | `changePassword({ currentPassword, newPassword, revokeOtherSessions })` | **The current password is required, and every other session ends.** A notice is emailed |
 | Changing the email | `user.changeEmail`, with `sendChangeEmailConfirmation` (confirmed at the current address first), then the new address verified | **Confirmed at the old address, verified at the new one, and the old one told.** Our `userWasRegistered.email` then goes stale, so our model needs an "email changed" follow-up |
 | Password rules | `minPasswordLength` (default 8), `maxPasswordLength` (default 128); the Have I Been Pwned plugin | **At least 12 characters, no composition rules, breached passwords refused** |
-| A second factor | the Two-Factor plugin: TOTP (an authenticator app); OTP through our own `sendOTP` (email or SMS); backup codes; trusted devices (30 days); lockout. Both methods can be on at once | **An emailed code as the standard for everyone; an authenticator app (or a passkey) for the owner** (Gary's leaning, 2026-10-09; see below). Backup codes with the app. SMS only if a customer insists: NIST restricts it, each message costs, and a provider must work for an Isle of Man company |
-| Who must use which | our policy, enforced in the sign-in service's hooks from the person's roles, which reach Auth through the role-sync slices (ADR-037) | **The owner: an authenticator app or a passkey, required** (billing). **Admins: an emailed code, with the app offered**; an organisation can require the app for its admins (a setting). **Engineers: an emailed code.** "Remember this device" for 30 days keeps the codes rare. SSO customers get MFA from their own provider |
+| A second factor | the Two-Factor plugin: TOTP (an authenticator app); OTP through our own `sendOTP` (email or SMS); backup codes; trusted devices (30 days); lockout. Both methods can be on at once; passkeys come from the Passkey plugin | **Every method is built, and the policy is set per role** (Gary, 2026-10-09; see below). Backup codes with the app. SMS only if a customer insists: NIST restricts it, each message costs, and a provider must work for an Isle of Man company |
+| Who must use which | our policy, enforced in the sign-in service's hooks from the person's roles, which reach Auth through the role-sync slices (ADR-037) | **The defaults: the owner uses a passkey (an app is allowed); admins and engineers use an emailed code.** Each customer can change the policy per role (below). SSO customers get MFA from their own provider |
 | Without a password | Magic Link, Email OTP, Passkey (WebAuthn; works with Expo) | **Passkeys in the long run:** they resist phishing and fit biometrics on web and mobile. Magic links only on the web, if at all |
 | Web and mobile | one server, one set of rules; mobile through the Expo client or the OAuth 2.1 Provider plugin (native apps: OIDC with PKCE, as ADR-054 assumed) | **The same policies, with different mechanics:** on mobile, codes instead of links, passkeys or biometric unlock, longer sessions that refresh |
 | Sessions | `session.expiresIn` (default 7 days), `updateAge` (default 1 day); Multi Session; ending all sessions | **Set per app** (web portal, mobile); "sign out everywhere" in the account settings |
@@ -3678,20 +3678,48 @@ options are available within Better Auth"). It is decided after ADR-055 is built
 | Abuse | `rateLimit` (stored in Postgres, ADR-055), the Captcha plugin, the 2FA lockout | **Rate limits on.** A captcha on sign-up only if bots appear |
 | Security notices | hooks on sign-in, reset and change | **Email on:** the password changed, the email changed, 2FA turned off, a sign-in from a new device |
 
-**The second factor: Gary's leaning and the reasoning** (2026-10-09, to confirm in 2b.2d):
-- **Gary:** people resist installing an authenticator app unless the data is sensitive (as with the NHS app). So
-  the standard is an emailed code, with the app as the stronger option, at least for owners and admins.
-- **An emailed code mainly stops a stolen or reused password,** the commonest attack (credential stuffing). It
-  doesn't help if the inbox itself is taken, because the same inbox can reset the password. That's an acceptable
-  trade for most people here.
-- **The owner is the exception:** billing and handing over ownership justify a factor that doesn't depend on the
-  inbox. A passkey (Face ID or Touch ID) gives that with less resistance than an app, so the owner gets a choice of
-  the two.
-- **Admins** invite people, who then see the organisation's data, but spend nothing (seats are already paid for).
-  So an emailed code is the default, and an organisation that wants more can require the app.
-- **Enforcing by role needs the roles in Auth,** so it follows the role-sync slices (PLAN 2b.2a C and after).
-- **"TOTP" strictly means the app's time-based codes;** an emailed code is an OTP. Both come from Better Auth's
-  Two-Factor plugin.
+**The second factor: settled in principle** (Gary, 2026-10-09; the details are confirmed in 2b.2d):
+- **Every method is built, and the policy is set per role.** The methods are:
+  - an emailed code;
+  - an authenticator app (TOTP) with backup codes;
+  - a passkey;
+  - SMS only if a customer insists (see the table).
+
+  What a role must use is configuration, not code.
+- **Each customer can change the policy for its own roles:**
+  - in our cloud, per organisation;
+  - on-premises, per install.
+- **The defaults** (agreed):
+
+  | Role | Default | Also allowed |
+  |---|---|---|
+  | owner | **a passkey** (Touch ID, Face ID, Windows Hello or a security key) | an authenticator app |
+  | admin | **an emailed code** | a passkey, an authenticator app |
+  | engineer | **an emailed code** | a passkey, an authenticator app |
+
+  "Remember this device" lasts 30 days for every role.
+- **Why:**
+  - **An emailed code is enough for most people.** It stops a stolen or reused password, the commonest attack. It
+    doesn't help if the inbox itself is taken, because the same inbox can reset the password; that's an acceptable
+    trade for this data.
+  - **People resist installing an authenticator app** unless the data is sensitive (Gary: as with the NHS app).
+  - **The owner controls billing and handing over ownership,** so they need a factor that doesn't depend on the
+    inbox. A passkey gives that with nothing to install, and it resists phishing.
+- **To settle in 2b.2d:**
+  - **Whether a customer may loosen a default, or only tighten it.** I recommend only tightening: the owner's
+    passkey is a floor the platform sets.
+  - **How a passkey fits the owner's sign-in.** In Better Auth a passkey is a way to sign in (Passkey plugin), not a
+    second factor inside the Two-Factor plugin. NIST counts a passkey as multi-factor on its own (the device plus
+    the biometric). So either the owner signs in with the passkey, or billing actions ask for a passkey again (step
+    up). Check how Better Auth records the sign-in method (for example, the Last Login Method plugin) when it's
+    built.
+  - **Where the policy lives:**
+    - per organisation in our cloud, as configured events projected to a read model (as the grace period is,
+      ADR-041);
+    - per install on-premises, as a setting.
+
+    The sign-in service enforces it, so it needs the person's roles, which arrive through the role-sync slices.
+- **Terms:** "TOTP" strictly means an authenticator app's time-based codes; an emailed code is an OTP.
 
 **Each decision also says whether it differs by deployment** (ADR-055's `DEPLOYMENT`). For example, an
 on-premises customer may turn password sign-in off in favour of their SSO.
