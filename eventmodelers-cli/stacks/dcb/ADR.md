@@ -3939,6 +3939,8 @@ These sit with the rest of the account lifecycle above (reset, change of email o
    - the API checks the role from the token or the lookup;
    - the roles reach Auth through the role-sync slices.
 
+   How an endpoint checks permission (roles, claims, or roles mapped to permissions) is ADR-060.
+
 **Decision:** open.
 
 ### ADR-059: A context's events are its own; other contexts read its published read models or its published events
@@ -4035,3 +4037,108 @@ says how it reaches us), ADR-055 part 2 (the session lookup).
   - the drafts "owner was registered" and "invitee was registered" go.
 - **PLAN:** the follow-up "chapters 1b and 2 copy identity's event" is superseded.
 - **ADR-055 part 2:** "Chapter 1 opens with copies of its events" is superseded by this ADR.
+
+### ADR-060: How an endpoint checks permission: roles, claims, or roles mapped to permissions (open)
+
+**Status:** Proposed, open, 2026-10-09. Gary decides. It settles ADR-058 point 3.
+**Date:** 2026-10-09
+**Builds on:**
+- ADR-037: licensing decides roles (owner, admin, engineer) and Auth follows; access = a role, a seat and a
+  subscription in good standing.
+- ADR-055 part 2: who is calling comes from the token or the session lookup, never the request.
+- ADR-058: secure by default.
+- ADR-059 (a): another context's published read model.
+
+**Context:**
+- **ADR-058 makes every route require sign-in, but not what else a route requires.**
+- **Gary's thoughts (2026-10-09, not yet refined):**
+  - simple role-based checks;
+  - a finer claims-based model;
+  - or a hybrid: the endpoint names the claim it needs, and the check asks whether the caller's group has it. Tests
+    then only need to check whether a group has a claim.
+  - There's a sweet spot between putting only the group in the token and listing every claim (one per endpoint).
+  - If the token carries only the group, the API needs a lookup from group to claim.
+- **The question is really three questions:**
+  1. What does an endpoint declare: roles, or a permission?
+  2. What does the token carry: nothing beyond `sub`, roles, or permissions?
+  3. In which organisation? A person is an admin of an organisation, not an admin everywhere.
+
+**What others do (2026-10-09):**
+- **Better Auth's access control** (organization plugin): `createAccessControl` takes statements, each a resource
+  and its actions (`project: ["create", "update"]`). `newRole` gives a role its permissions, and
+  `hasPermission` checks on the server against the member's role. A member can hold several roles, and roles are
+  per organisation. The token holds the role, not the permissions. "Dynamic access control" stores roles per
+  organisation in the database, so customers can define their own.
+- **ASP.NET Core's policy-based authorization** and **Spring's authorities:** the endpoint names a policy or an
+  authority, and code maps roles or claims to it. Endpoints never list roles.
+- **Auth0 RBAC:** roles hold permissions, and it can put the permissions in the access token. It warns that tokens
+  grow with them.
+- **Entra ID:** it caps the groups in a token (200 in a JWT) and sends an "overage" claim instead, so the API must
+  look the groups up. This is the size problem of listing everything in the token.
+- **OWASP:** deny by default, check on the server on every request, and check the object (the organisation) as
+  well as the function. Broken object-level authorization is OWASP API Security's top risk.
+- **emcli already has the hybrid's shape**, unused here: `cedarAction` (`order:create`) and `cedarRoles` (each role
+  and its scope, `Full access` or `Customer-scoped`), from another model.
+
+**Options for (1), what an endpoint declares:**
+- **A. Roles on the endpoint** ("owner, admin").
+  - For: simplest; it reads well on the board.
+  - Against:
+    - who may do what is spread over every endpoint;
+    - a new role means editing many endpoints;
+    - tests grow as endpoints times roles.
+- **B. A permission on the endpoint, and a role-to-permission map in one place (Gary's hybrid).**
+  - The permission is `resource:action`, for example `subscription:cancel` or `seat:assign`. Several endpoints may
+    share one, so the map stays short.
+  - For:
+    - the map is the single answer to "what may an admin do", and the place a new role is added;
+    - testing splits in two. Each endpoint refuses a caller without its permission (generated from the model), and
+      the map is checked as a table (role, permission, yes or no).
+  - It's what Better Auth, ASP.NET, Spring and Auth0 do.
+- **C. A policy language** (Cedar, attribute-based). For when rules depend on data ("only the engineer assigned to
+  this job"). More than we need now, but B's permission names map straight onto Cedar actions if it's ever needed.
+
+**Options for (2), what the token carries:**
+- **i. Permissions.**
+  - Against:
+    - the token grows with the API;
+    - it's stale until refreshed;
+    - it shows the API's shape to every client.
+- **ii. Roles per organisation** (Better Auth's `definePayload`), with the map in the API.
+  - For: a small token, and a change to the map applies at once.
+  - Against: a role removed stays in the token until it expires.
+- **iii. Nothing beyond `sub`.** The API reads the caller's roles from licensing's published read model through the
+  session lookup (ADR-059 (a)), already done on every signed-in request.
+  - For:
+    - always current: a removed admin is refused at once;
+    - no role reaches the token, so the API doesn't depend on the role sync.
+  - Against: a separate service that can't reach the lookup needs (ii).
+
+**(3), the organisation:**
+- **The check is "has permission P in organisation O".**
+  - O comes from the caller's membership (the lookup), never from the request, as ADR-055 part 2 requires.
+  - A request naming another organisation is refused: 404, so it doesn't reveal that the organisation exists.
+- **Choosing among several organisations** (an active organisation, Better Auth's `activeOrganizationId`) waits
+  until one person can belong to more than one.
+
+**What permission doesn't cover:** a seat and a subscription in good standing (ADR-037) are business rules. They're
+checked by the decider or a read model, and the person is told why. A missing permission is a plain 403.
+
+**Recommended:**
+1. **B with iii.**
+   - Each endpoint names a `resource:action` permission (or is `--public`, or needs only sign-in, as `/my-account`
+     does). Completeness errors on a planned endpoint with none of the three (ADR-058, secure by default).
+   - One role-to-permission map.
+   - The API reads the caller's roles through the session lookup.
+   - The token carries roles (ii) only when a service that can't reach the lookup appears.
+2. **The role sync still matters, but not for the API.** It carries roles to Better Auth for its own needs: the
+   per-role second factor (ADR-056), its admin plugin, and SSO group mapping (2b.2b).
+3. **Open for Gary:**
+   - **Where the map lives.** Either in the model (emcli roles with their permissions, exported, shown on the board),
+     or as a code file the kit owns. Leaning toward the model, so the export can list every permission and check
+     that each role's are real.
+   - **Permission naming:** `resource:action`, or the endpoint's own name (one permission per endpoint, which is
+     simplest but makes the map long).
+   - **Whether customers may define their own roles** (Better Auth's dynamic access control). Leaning toward later.
+
+**Decision:** open.
