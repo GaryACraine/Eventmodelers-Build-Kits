@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { MemoryRouter } from "react-router"
 import { RequireSession, SessionProvider, useSession, useSessionState } from "./session"
 import { signInService } from "./auth-client"
 
@@ -18,12 +19,14 @@ function SignOut() {
 }
 
 const page = (keys: string[]) => (
-    <SessionProvider mode="better-auth" remember={false}>
-        <SignOut />
-        <RequireSession keys={keys}>
-            <Greeting />
-        </RequireSession>
-    </SessionProvider>
+    <MemoryRouter initialEntries={["/get-started"]}>
+        <SessionProvider mode="better-auth" remember={false}>
+            <SignOut />
+            <RequireSession keys={keys}>
+                <Greeting />
+            </RequireSession>
+        </SessionProvider>
+    </MemoryRouter>
 )
 
 describe("the session with real sign-in (better-auth)", () => {
@@ -45,6 +48,7 @@ describe("the session with real sign-in (better-auth)", () => {
         await userEvent.click(screen.getByRole("button", { name: "Sign in" }))
         expect(signIn).toHaveBeenCalledWith("owner@contractor.example", "correct horse battery staple")
         expect(await screen.findByRole("alert")).toHaveTextContent("Verify your email address first")
+        expect(screen.getByRole("link", { name: "Sign up" })).toHaveAttribute("href", "/sign-up?next=%2Fget-started")
     })
 
     it("gives the page sub and email from the signed-in user", () => {

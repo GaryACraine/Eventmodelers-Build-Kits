@@ -10,8 +10,10 @@ export interface LayoutContext {
 
 /** The frame around every page: a header with the pages marked `nav` and who is signed in, and the page below it. */
 export function Layout({ nav }: { nav: PageInfo[] }) {
-    const { session, signOut } = useSessionState()
+    const { session, signOut, mode } = useSessionState()
     const signedIn = Object.entries(session)
+    // Real sign-in shows who is signed in by their email (emcli's account-header starter); the stub, its typed IDs
+    const who = mode === "better-auth" ? session.email : signedIn.map(([key, value]) => `${key} ${value}`).join(", ")
     const link = ({ isActive }: { isActive: boolean }) =>
         cn("text-sm text-muted-foreground hover:text-foreground", isActive && "text-foreground font-semibold")
     return (
@@ -26,7 +28,7 @@ export function Layout({ nav }: { nav: PageInfo[] }) {
                     ))}
                     {signedIn.length > 0 && (
                         <span className="ml-auto flex items-center gap-3 text-sm text-muted-foreground">
-                            {signedIn.map(([key, value]) => `${key} ${value}`).join(", ")}
+                            {who}
                             <button type="button" className="underline hover:text-foreground" onClick={signOut}>
                                 Sign out
                             </button>

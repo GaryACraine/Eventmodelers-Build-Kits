@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { forgetBearerToken, signInMode, signInService, type SignInMode } from "./auth-client"
+import { SignInForm, useHere } from "./sign-in"
 
 /**
  * The signed-in user, as the IDs the model maps to `session:` (slice.json `page.params` with `from: "session"`),
@@ -152,7 +153,7 @@ export function RequireSession({ keys, children }: { keys: string[]; children: R
     const missing = keys.filter((key) => !session[key])
     const [values, setValues] = useState<Session>({})
     if (pending) return <p role="status">Checking who is signed in…</p>
-    if (!signedIn) return <SignInForm />
+    if (!signedIn) return <SignInHere />
     if (missing.length === 0) return <>{children}</>
 
     const submit = (event: FormEvent) => {
@@ -184,57 +185,7 @@ export function RequireSession({ keys, children }: { keys: string[]; children: R
     )
 }
 
-/**
- * Signing in with an email and password (better-auth.com/docs/authentication/email-password). Better Auth refuses
- * an unverified email with 403 and sends the verification link again. Signing up is the project's own Sign Up
- * screen, built from the model (ADR-052 point 5, the provider-better-auth skill).
- */
-function SignInForm() {
-    const [email, setEmail] = useState("")
-    const [password, setPassword] = useState("")
-    const [error, setError] = useState<string>()
-    const [busy, setBusy] = useState(false)
-
-    const submit = async (event: FormEvent) => {
-        event.preventDefault()
-        setBusy(true)
-        setError(undefined)
-        const { error } = await signInService.signInWithEmail(email, password)
-        setBusy(false)
-        if (error) {
-            setError(
-                error.status === 403
-                    ? "Verify your email address first: we've sent you the link again."
-                    : (error.message ?? "Couldn't sign in. Try again.")
-            )
-        }
-    }
-    return (
-        <form className="mock-card" onSubmit={submit} aria-label="Sign in">
-            <h2>Sign in</h2>
-            <div>
-                <Label htmlFor="sign-in-email">Email</Label>
-                <Input id="sign-in-email" type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} />
-            </div>
-            <div>
-                <Label htmlFor="sign-in-password">Password</Label>
-                <Input
-                    id="sign-in-password"
-                    type="password"
-                    autoComplete="current-password"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                />
-            </div>
-            {error && (
-                <p role="alert" className="text-sm text-destructive">
-                    {error}
-                </p>
-            )}
-            <Button type="submit" disabled={busy}>
-                Sign in
-            </Button>
-        </form>
-    )
+/** The sign-in form in place of a protected page, returning to it once signed in (in the router: real sign-in only) */
+function SignInHere() {
+    return <SignInForm next={useHere()} />
 }
