@@ -442,8 +442,9 @@ model and build only what's ours.
              1. ✅ **How an endpoint's permission is checked (ADR-060, Accepted 2026-10-09):** a `resource:action`
                 permission per endpoint, one role map in the model, roles from the session lookup (the token carries
                 only `sub`), a generated catalogue. Customer-defined roles later.
-             2. **Callers that aren't people (ADR-058 point 2):** a platform-admin role, a service token, or internal
-                routes. Ops reads, scripts and the journey need one before (3).
+             2. **Who calls besides customers (ADR-058 point 2, revised and Proposed 2026-10-09):** the platform admin is a
+                person (signs in, acts in a named organisation as themselves, recorded by `actedAs`); callers that
+                aren't people use Better Auth API keys holding `resource:action` permissions. Gary confirms.
              3. **Secure by default (ADR-058 point 1):** every route requires sign-in, the model marks `--public`; in
                 emcli, the export and the build skills.
              4. **Permissions in the model (ADR-060):** in emcli, `permission` on commands and read models and the role
@@ -4393,6 +4394,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-09 | ADR-059 Accepted | Gary, after it was proven in licensing (2b.2e) |
 | 2026-10-09 | 2b.2f (ADR-058 and the role sync) is next, ahead of 2b.2b to 2b.2d; ADR-060 Proposed: how an endpoint's permission is checked (roles, claims, or roles mapped to permissions) | Gary: beyond requiring sign-in, how an endpoint checks permission isn't decided; a hybrid (the endpoint names a permission, the token names the group, a map between them) appeals because tests check a group has a permission. ADR-056 and ADR-059 point 4 both wait on roles |
 | 2026-10-09 | ADR-060 Accepted: `resource:action` permissions on endpoints; one role map, in the model; membership and roles from the session lookup, the token carries only `sub`; emcli's legacy Cognito and Cedar fields migrated then removed; a generated catalogue of every endpoint and its permission (`api/openapi.json` `x-permission`, `api/permissions.md`); customer-defined roles later | Gary: the legacy model's values seed the map; every API capability and its permission must be recorded |
+| 2026-10-09 | ADR-058 point 2 revised (Proposed): the platform admin is a person with platform permissions, acting in a named organisation as themselves (no impersonation); callers that aren't people use Better Auth API keys with `resource:action` permissions; internal-only routes dropped; ADR-037's "platform admin is auth only" revised (its grant belongs to identity) | Gary: the platform admin is user-based, not for automations, and may do business operations and sign-ins |
 
 ## Progress
 
