@@ -448,9 +448,15 @@ model and build only what's ours.
                 platform admin); API keys or STS wait for the first real one. ✅ Accepted 2026-10-09.
              3. **Endpoints by declaration (ADR-058 point 1, revised 2026-10-09):** no command or read model gets a
                 route unless the model says `--api <permission|self|anonymous>`; webhooks come from `--intake webhook`
-                and are checked by signature. emcli (property, contract, export, completeness), the build skills and
-                a `routes-declared` check; then licensing, where the automation-only commands and the processors'
-                to-do lists lose their routes.
+                and are checked by signature. **emcli and the kit done 2026-10-09:**
+                - emcli: `--api`, the contract (security, `x-permission`, webhook paths with `x-caller` and
+                  `x-records`), completeness, `workspace declare-endpoints`, 467 tests;
+                - kit: the build skills route only declared endpoints (`requirePermission`, sign-in until step 4);
+                  in-process tests otherwise (`DeciderSpecification`, `readModel.tests.ts`); the contract check leaves
+                  webhooks to the inbox. No `routes-declared` check: `api-contract` already rejects an undeclared
+                  route. Template tests pass in licensing.
+                - **Licensing next** (Gary's go-ahead): declare each endpoint, replace the slices that change, fix the
+                  journey's read of `/untranslated-notifications` (it now needs sign-in).
              4. **Permissions in the model (ADR-060):** in emcli, `permission` on commands and read models and the role
                 map, after migrating the legacy model's `cedarAction`, `cedarRoles` and `cognitoGroups`; the
                 catalogue (`x-permission`, `api/permissions.md`) and its checks; the API checks, tested both ways.

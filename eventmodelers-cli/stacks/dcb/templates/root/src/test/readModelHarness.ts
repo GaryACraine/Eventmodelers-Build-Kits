@@ -27,7 +27,8 @@ export interface ReadModelTestApp {
 export function readModelTestApp(options: {
     readModels: ReadModel<any, any>[]
     imperative?: StoredProjectionRegistration[]
-    routes: (deps: SliceDependencies) => WebApiSetup[]
+    /** The read model's route; leave it out when the model declares no endpoint, and read with runtime() */
+    routes?: (deps: SliceDependencies) => WebApiSetup[]
 }): ReadModelTestApp {
     let pool: Pool
     let runtime: ReadModelRuntime
@@ -38,7 +39,7 @@ export function readModelTestApp(options: {
         pool = await getTestPgDatabasePool({ max: 10 })
         runtime = await startReadModels(pool, options.readModels, options.imperative)
         deps = { store: runtime.eventStore, pool, readModels: runtime }
-        agent = supertest.agent(getApplication({ apis: options.routes(deps) }))
+        agent = supertest.agent(getApplication({ apis: options.routes?.(deps) ?? [] }))
     })
 
     afterEach(async () => {

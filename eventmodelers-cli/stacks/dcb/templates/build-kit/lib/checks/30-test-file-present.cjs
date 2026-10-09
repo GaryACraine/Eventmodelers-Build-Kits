@@ -4,9 +4,11 @@
 // must also include a *.tests.ts for that slice.
 //
 // DCB implementation files that require tests:
-//   decider.ts      → needs route.tests.ts (write slices tested via ApiSpecification)
-//   projection.ts   → needs route.tests.ts (read slices tested via integration tests)
-//   readModel.ts    → needs route.tests.ts (fold-form read slices: contract tests across types)
+//   decider.ts      → needs route.tests.ts (write slices tested via ApiSpecification), or decider.tests.ts when
+//                     the command has no endpoint (DeciderSpecification, in-process; ADR-058)
+//   projection.ts   → needs route.tests.ts (read slices tested via integration tests), or readModel.tests.ts
+//   readModel.ts    → needs route.tests.ts (fold-form read slices: contract tests across types), or
+//                     readModel.tests.ts when the read model has no endpoint (read in-process; ADR-058)
 //   processor.ts    → needs processor.tests.ts
 //   workflow.ts     → needs processor.tests.ts (an external automation's workflow, ADR-033)
 //   activities.ts   → needs processor.tests.ts
@@ -48,8 +50,9 @@ module.exports = {
         // processor.ts → processor.tests.ts
         hasTest = [...known].some((f) => f === `${dir}/processor.tests.ts`);
       } else {
-        // decider.ts or projection.ts → route.tests.ts
-        hasTest = [...known].some((f) => f === `${dir}/route.tests.ts`);
+        // decider.ts → route.tests.ts or decider.tests.ts; projection.ts / readModel.ts → route.tests.ts or readModel.tests.ts
+        const own = type === 'decider' ? 'decider.tests.ts' : 'readModel.tests.ts';
+        hasTest = [...known].some((f) => f === `${dir}/route.tests.ts` || f === `${dir}/${own}`);
       }
 
       if (!hasTest) {

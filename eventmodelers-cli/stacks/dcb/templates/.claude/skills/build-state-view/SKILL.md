@@ -242,7 +242,14 @@ has settled every choice here. Transcribe it and don't invent parameters, operat
 
 ---
 
-## Step 4 — Create `schema.ts` and `route.ts`
+## Step 4 — Create `schema.ts` and `route.ts` (only when the read model's `api` is set)
+
+**The read model's `api`** (ADR-058 point 1) says whether it has an endpoint and who may call it, as for a command
+(`build-state-change` Step 7): a permission → `requirePermission("<api>")` before the read, `self` → its session
+key, `anonymous` → no guard. Its queries take the same guard. **Absent: no endpoint.** Only automations read it,
+in-process, through `readModelRuntime.reader(…)` or `querier(…)`. Then skip this step and Step 5's route, and
+write Step 6's tests in-process.
+
 
 File: `src/contexts/{context}/slices/{slicename}/schema.ts`
 
@@ -349,6 +356,12 @@ start, and hands out the reader the route uses.
 ---
 
 ## Step 6 — Create `route.tests.ts`: one contract, all three types
+
+**No endpoint (`api` absent):** the same tests in `readModel.tests.ts`, reading in-process instead of over HTTP.
+Leave `routes` out of `readModelTestApp`, and read with the runtime:
+`expect(await app.runtime().reader({sliceName})("test-id")).toMatchObject({ … })`; a query with
+`(await app.runtime().querier({sliceName}, "{queryName}")({ /* params */ }, { limit: 50 })).data`. Everything else
+below holds.
 
 File: `src/contexts/{context}/slices/{slicename}/route.tests.ts`
 

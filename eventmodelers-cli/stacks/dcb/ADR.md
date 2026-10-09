@@ -3997,6 +3997,19 @@ Proposed until proven in licensing (2b.2f step 3). Point 3 is ADR-060 (Accepted)
     raw body against the system's signature (`verify` from its provider skill: Paddle's is an HMAC of a timestamp and
     the body with the destination's secret). A bad signature gets 401 and nothing is recorded, and the
     notification's id makes a replay record nothing new.
+  - **Why a webhook belongs to the event, not a command** (Gary asked, 2026-10-09): the webhook endpoint never calls a
+    command. It records the system's fact, and our automation then issues our command in-process (the translation,
+    ADR-040).
+    - **A system telling us a fact can't be refused; a person asking us to act can.** If the webhook called a
+      command, a refusal would make the system retry or lose the fact, and our rules would run inside its timeout.
+    - **Recording first** answers fast, absorbs a duplicate by the notification's id, and lets the same event arrive
+      by fetch too (ADR-041: one event, two intakes).
+
+    So there are two declarations, because two different things arrive:
+    - a fact: the external event's `--intake webhook`;
+    - a request to act: a command's `--api`.
+
+    A system that needs to *ask* us to act calls a command with `--api` (an API key then, deferred in point 2).
   - **Kit routes** that don't come from the model (`/health/*`, `/openapi.json`) are listed as such.
   - `--public` (the first draft) is dropped: "public" reads as anonymous, and most declared endpoints aren't.
 - **Completeness:**
@@ -4007,7 +4020,18 @@ Proposed until proven in licensing (2b.2f step 3). Point 3 is ADR-060 (Accepted)
 - **The contract and the catalogue** (ADR-060 point 5):
   - `api/openapi.json` holds only declared endpoints, with their `security` (bearer, or none for anonymous) and
     `x-permission`;
-  - each webhook path has a signature security scheme (its header, e.g. `paddle-signature`) and `x-caller`.
+  - each webhook path has a signature security scheme (its header, e.g. `paddle-signature`), `x-caller` and
+    `x-records` (the events it records). The kit's contract check leaves it to the inbox.
+- **Building it:**
+  - a command or read model without `api` gets no `schema.ts`, `route.ts` or wiring. It's tested in-process:
+    `decider.tests.ts` with the library's `DeciderSpecification`, or `readModel.tests.ts` reading through the
+    runtime;
+  - a permission route is guarded by `requirePermission("<resource:action>")`. It checks sign-in until the role map
+    exists (2b.2f step 4), so the routes don't change when it does;
+  - a route the model doesn't declare is already rejected by the `api-contract` check (served but not in the
+    contract), so no new check is needed;
+  - `emcli workspace declare-endpoints` declares what an older model was built with (`self` or `anonymous`). A built
+    slice whose only change is that stays Done.
 - **A built slice gaining or losing an endpoint is a replacement before release** (`plan-change`, ADR-046).
 
 **Decision:** points 2 and 3 settled (above, and ADR-060). Point 1 is decided when proven in licensing.

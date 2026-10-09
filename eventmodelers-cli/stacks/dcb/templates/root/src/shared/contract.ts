@@ -118,6 +118,9 @@ export function operations(doc: Json): Map<string, OperationView> {
         for (const method of METHODS) {
             const op = (item as Json)[method] as Json | undefined
             if (!op) continue
+            // Another system's webhook (`x-caller`, ADR-058): the kit's inbox serves it, checked by its signature, so
+            // no slice's route is compared with it
+            if (op["x-caller"]) continue
             const params = ((op.parameters ?? []) as Json[])
                 .filter(p => p.in === "path" || p.in === "query")
                 .map(p => ({ name: String(p.name), in: String(p.in), required: Boolean(p.required) }))

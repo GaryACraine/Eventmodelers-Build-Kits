@@ -10,8 +10,9 @@ type ApiResponse = Parameters<typeof sendProblem>[0]
  * verified email. This is the only code here that knows about sign-in; a route reads the result with
  * `signedInOf(res)`.
  *
- *   - no `Authorization` header → passes through: a route that needs the signed-in person says so with
- *     `requireSession` (ADR-055 part 2; whether every route requires sign-in is ADR-058, open);
+ *   - no `Authorization` header → passes through: a route says who may call it (ADR-058 point 1), with
+ *     `requirePermission` (a permission), `requireSession` (self: the signed-in person's own values), or nothing
+ *     (anonymous). A command or read model the model doesn't declare has no route at all;
  *   - a valid token → `signedInOf(res)` is `{ sub, email }`;
  *   - a token that fails any check, or sign-in isn't configured → 401, nothing else runs.
  *
@@ -107,6 +108,24 @@ export function requireSession(keys: string[]) {
         }
         sessions.set(req, session)
         next()
+    }
+}
+
+/**
+ * Route middleware for an endpoint the model declares with a permission (`--api <resource:action>`, ADR-058,
+ * ADR-060): the caller must be signed in, and their role in the organisation must hold the permission. Give it the
+ * session keys the route also uses, as for `requireSession`.
+ *
+ *   router.post("/assign-seat", requirePermission("seat:assign"), validateBody(Schema), on(async req => { … }))
+ *
+ * **Until the role map exists (Build-Kits PLAN 2b.2f step 4) it checks sign-in only.** The permission is named here,
+ * so step 4 changes this one function and no route. Nothing is released before then.
+ */
+export function requirePermission(permission: string, keys: string[] = []) {
+    const signedIn = requireSession(keys)
+    return async (req: object, res: ApiResponse, next: () => void): Promise<void> => {
+        res.locals["permission"] = permission
+        await signedIn(req, res, next)
     }
 }
 

@@ -147,6 +147,14 @@ describe("the API contract check (PLAN 14.10)", () => {
         expect(one).toEqual({ match: ["POST /rate-course"], pending: [], differ: [], extra: [], pendingFields: [] })
     })
 
+    test("another system's webhook (x-caller) is the inbox's, never pending or compared", () => {
+        const withWebhook = contract() as { paths: Record<string, unknown> }
+        withWebhook.paths["/webhooks/paddle"] = { post: { "x-caller": "Paddle", responses: { "200": { description: "Recorded" } } } }
+        const report = compareContract(served(), withWebhook)
+        expect(report.pending).not.toContain("POST /webhooks/paddle")
+        expect(report.extra).not.toContain("POST /webhooks/paddle")
+    })
+
     test("compares the component names the UI imports", () => {
         const doc = served()
         const post = (doc.paths["/rate-course"] as any).post

@@ -26,6 +26,11 @@ From the slice definition, extract:
 - **sliceName** — the slice title (used for directory name and type aliases)
 - **context** — the bounded context (used to find `Events.ts`)
 - **commands[]** — list of commands with their data fields
+- **commands[0].api** — the endpoint the model declares (ADR-058 point 1): a permission (`seat:assign`), `self` or
+  `anonymous`. **Absent: the command has no endpoint.** Only automations issue it, in-process, through its decider
+  (`import { …Decider } from "../<slice>/decider.js"`). Then skip Steps 6, 7, 8b and 9, and test it with Step 8's
+  in-process form. Never add a route the model didn't declare: the `api-contract` check rejects a route the contract
+  doesn't have.
 - **events[]** — list of events this slice interacts with. Entries whose `id` ends with `-ref` are cross-slice references (events defined by another slice); the slice consumes them in decision models but does not emit them. Only non-ref events are emitted by this slice.
 - **specifications[]** — test scenarios (given/when/then)
 - **storylines[]** (optional) — board walkthroughs; see "Storyline-derived tests" under Step 5
@@ -283,7 +288,7 @@ the job with `request-feedback`, don't guess.
 
 ---
 
-## Step 6 — Create `schema.ts`
+## Step 6 — Create `schema.ts` (only when `commands[0].api` is set)
 
 File: `src/contexts/{context}/slices/{slicename}/schema.ts`
 
@@ -349,9 +354,20 @@ The `openapi-registered` commit check rejects a route whose method and path aren
 
 ---
 
-## Step 7 — Create `route.ts`
+## Step 7 — Create `route.ts` (only when `commands[0].api` is set)
 
 File: `src/contexts/{context}/slices/{slicename}/route.ts`
+
+**Who may call it** is `commands[0].api`. Put its guard first, before `validateBody`:
+
+| `api` | Guard | Answers |
+|---|---|---|
+| a permission (`seat:assign`) | `requirePermission("seat:assign", [/* its session keys, if any */])` | 401 not signed in; 403 without the permission (ADR-060) |
+| `self` | `requireSession([/* its session keys */])` (below) | 401; 403 register first |
+| `anonymous` | none | — |
+
+`requirePermission` and `requireSession` come from `../../../../shared/signIn.js`. A permission route reads its
+session keys with `sessionOf(req)`, as `self` does. Never check a role yourself.
 
 Every command route has this shape (ADR-025): `POST {commands[0].apiEndpoint}`, all fields from the body,
 `Idempotency-Key` dedupe, the position in `ETag`.
@@ -456,9 +472,33 @@ import { requireSession, sessionOf } from "../../../../shared/signIn.js"
 
 ---
 
-## Step 8 — Create `route.tests.ts`
+## Step 8 — Create `route.tests.ts` (or `decider.tests.ts` when there's no endpoint)
+
+**No endpoint (`commands[0].api` absent):** test the decider in-process, in `decider.tests.ts`, with the library's
+`DeciderSpecification`. Name one test after each specification, its title verbatim:
+
+```typescript
+import { describe, test } from "vitest"
+import { DeciderSpecification } from "@dcb-es/event-store"
+import { {eventFactory} } from "../../Events.js"
+import { {commandHandlerFn} } from "./decider.js"
+
+describe("{slice title}", () => {
+    test("{specification title}", async () => {
+        await DeciderSpecification.for({commandHandlerFn})
+            .given({eventFactory}({ /* given's examples */ }))
+            .when({ type: "{commandName}", data: { /* when's examples */ } })
+            .then({eventFactory}({ /* then's examples */ }))   // or .thenThrows(…), .thenNothingHappened()
+    })
+})
+```
+
+**With an endpoint:**
 
 File: `src/contexts/{context}/slices/{slicename}/route.tests.ts`
+
+A permission route's tests sign in like a `self` route's (below), plus one test that a request without the header
+gets 401. Until the role map exists (2b.2f step 4) a signed-in person passes the permission.
 
 Uses `ApiSpecification` (in-memory store, no Docker needed for unit tests):
 
@@ -669,7 +709,7 @@ Put these in a separate `describe` block named after the storyline.
 
 ---
 
-## Step 9 — Wire up the route in `src/index.ts`
+## Step 9 — Wire up the route in `src/index.ts` (only when `commands[0].api` is set)
 
 ```typescript
 import { configure{SliceName}Route } from "./contexts/{context}/slices/{slicename}/route.js"
@@ -723,10 +763,11 @@ src/contexts/{context}/slices/{slicename}/
 ├── command.ts                   ← command type
 ├── decisionModels.ts            ← EventHandlerWithState factories
 ├── decider.ts                   ← decider() combining models + logic
-├── schema.ts                    ← Zod body schema + registerCommand (its /openapi.json entry)
-├── route.ts                     ← Express route
-├── route.tests.ts               ← ApiSpecification unit tests (no Docker)
-├── route.integration.tests.ts   ← Postgres integration tests (testcontainers)
+├── schema.ts                    ← Zod body schema + registerCommand (its /openapi.json entry)  ┐
+├── route.ts                     ← Express route, guarded by its api                          │ only with
+├── route.tests.ts               ← ApiSpecification unit tests (no Docker)                     │ commands[0].api
+├── route.integration.tests.ts   ← Postgres integration tests (testcontainers)                 ┘
+├── decider.tests.ts             ← DeciderSpecification, when the command has no endpoint
 └── setup.ts                     ← a setup command only (a `config:` field): defineSetup (draft, ADR-043)
 
 src/contexts/{context}/
