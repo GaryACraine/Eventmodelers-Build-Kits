@@ -1,0 +1,33 @@
+{
+    "name": "auth",
+    "version": "0.0.1",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "build": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.json",
+        "start": "node dist/server.js",
+        "migrate": "node-pg-migrate up --migrations-dir migrations --schema auth --create-schema --migrations-schema auth --create-migrations-schema --database-url-var DATABASE_URL",
+        "schema": "npx auth@1.7.7 generate --config src/cli.ts --output schema.sql --yes",
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "@aws-sdk/client-sesv2": "^3.1148.0",
+        "better-auth": "1.7.7",
+        "express": "^5.2.1",
+        "node-pg-migrate": "^9.0.0",
+        "nodemailer": "^10.0.16",
+        "pg": "^8.23.1",
+        "zod": "^4.6.5"
+    },
+    "devDependencies": {
+        "@testcontainers/postgresql": "^10.9.0",
+        "@types/express": "^5.0.0",
+        "@types/node": "^25.0.0",
+        "@types/nodemailer": "^8.0.2",
+        "@types/pg": "8.20.0",
+        "jose": "^6.2.12",
+        "testcontainers": "^10.9.0",
+        "typescript": "^5.0.0",
+        "vitest": "^3.0.0"
+    }
+}

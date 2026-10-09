@@ -12,6 +12,7 @@ import {
 } from "./contexts/enrollment/slices/student-details/projection.js"
 
 import { configureCors } from "./shared/cors.js"
+import { configureSignIn } from "./shared/signIn.js"
 import { configureJsonBody } from "./shared/inbox.js"
 import { poolSize, startReadModels, type ReadModel, type StoredProjectionRegistration } from "./shared/readModels.js"
 import { automationProcessors, type Automation, type ScheduleDefinition } from "./shared/automations.js"
@@ -106,6 +107,8 @@ const app = getApplication({
     disableJsonMiddleware: true,
     apis: [
         configureCors(),
+        // Who is signed in: the sign-in service's bearer token, checked against its JWKS (ADR-037, ADR-055)
+        configureSignIn(),
         configureJsonBody(),
         configureProcessorStatusRoute(() => readModelRuntime.consumer, {
             // With external automations, health also asks Temporal directly and reports this process's worker

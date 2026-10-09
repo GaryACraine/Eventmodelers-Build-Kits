@@ -385,7 +385,7 @@ model and build only what's ours.
           1. **2b.2a Sign-in in the kit, proven in licensing (ADR-055, Accepted 2026-10-09).** Gary: it ships with
              the kit, configured by deployment (`DEPLOYMENT=cloud | on-premises`). Licensing never had
              `mock-oauth2-server`: there's a typed session stub, and the API checks no token.
-             - **A.** Into the kit, then into licensing through `kit-drift`:
+             - ✅ **A. Done 2026-10-09** (licensing `af58e42`; mock 8/8, sandbox 8/8). Into the kit, then into licensing through `kit-drift`:
                - the `auth/` service (Better Auth, following its official docs) and Compose's `mailpit`,
                  `auth-migrate` and `auth`;
                - the API's JWKS check;
@@ -395,8 +395,17 @@ model and build only what's ours.
                The journey still passes 8/8, with case 1 on the stub.
              - **B.** "sign up" is planned with a ui job (`plan-change`); the loop builds it; journey case 1 signs up
                for real, with the verification email read from Mailpit.
+               - **Realistic sign-in mockups** (Gary, 2026-10-09): standard mockup snippets for Sign In, Sign Up,
+                 "Check your email", and the header with who is signed in and Sign out, which the `event-model`
+                 skill (emcli) uses when drafting a screen.
+               - **The scaffold's sign-in form and header, and the Sign Up screen the loop builds, match those
+                 snippets,** so the board shows what people get.
+               - **Licensing's Sign Up mockup is redrawn from the snippet.**
              - **C.** ADR-055 part 2, settled first: `session:` fields come from the token, `userId` is resolved
                from `sub` (gap 2), and `registerUser` and `activateOrganisation` are replaced.
+               - **Proposed (Gary asked, 2026-10-09):** an `identity` context for our user, the `sub` link, role sync
+                 and account follow-ups, moved there in the same replacement.
+               - **One chapter per sign-in flow.**
           2. **2b.2b SSO for on-premises customers:** check Better Auth's SSO plugin against Entra ID or Okta.
           3. **2b.2c Security releases:** advisory alerts on `better-auth`, pinned versions, a patch path for
              on-premises installs.
@@ -4305,6 +4314,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-09 | ADR-056 Proposed, open: the account security lifecycle (reset, change password/email, 2FA, passkeys, web vs mobile, sessions, deletion) with Better Auth's options and recommendations; PLAN 2b.2d | Gary: defer the decisions until the kit and licensing are updated, but keep the record that they must be made to best practice |
 | 2026-10-09 | ADR-056: the second factor is settled in principle. Every method is built (emailed code, authenticator app, passkey), the policy is per role and configurable per customer. Defaults: the owner uses a passkey (Touch ID), admins and engineers use an emailed code | Gary: an emailed code is enough for most people, and people resist authenticator apps unless the data is sensitive. The owner's billing needs a factor that doesn't depend on the inbox, and a passkey gives that with nothing to install. Open for 2b.2d: whether customers may loosen a default, and how a passkey fits the owner's sign-in |
 | 2026-10-09 | ADR-055 Accepted (part 2 still to settle). ADR-056: one opinionated default for the second factor for now (the role table, no per-customer configuration yet); the owner signs in with a passkey, which counts as two factors | Gary: the simplest possible default approach for now; per-customer configuration and where it's stored come later |
+| 2026-10-09 | ADR-055 phase A built and proven: `auth/` (Better Auth 1.7.7 pinned, the JWT plugin, rate limits in Postgres, the origin check forced on even under NODE_ENV=test), Compose's auth, auth-migrate and mailpit, the API's JWKS check, the web app's `signInService` and live session behind `VITE_SIGN_IN=better-auth`, `provider-better-auth` (draft), manual §22 | Every file starts from Better Auth's docs. Licensing: auth tests 7/7, the API's check 10/10, web 59/59, backend 387, journey mock and sandbox 8/8 (case 1 still the stub); a smoke run through Vite's proxy signed up, verified from Mailpit, got a token, and the API accepted it and refused a tampered one |
 
 ## Progress
 

@@ -83,3 +83,46 @@ services:
       - TEMPORAL_ADDRESS=temporal:7233
     ports:
       - "8080:8080"
+
+  # Sign-in (ADR-055): Better Auth as its own service, its tables in the `auth` schema of this Postgres. Run as an
+  # on-premises install (DEPLOYMENT), which is what local and CI are. The browser reaches it through the web app's own
+  # origin (Vite proxies /api/auth here), so BETTER_AUTH_URL is the web app's address.
+  auth:
+    build: ./auth
+    depends_on:
+      auth-migrate:
+        condition: service_completed_successfully
+      mailpit:
+        condition: service_started
+    environment:
+      DEPLOYMENT: on-premises
+      BETTER_AUTH_URL: http://localhost:5173
+      BETTER_AUTH_SECRET: local-development-only-never-for-a-deployment
+      DATABASE_URL: postgresql://dcb:dcb@postgres:5432/dcb
+      EMAIL_FROM: "App <no-reply@localhost>"
+      SMTP_URL: smtp://mailpit:1025
+    ports:
+      - "3001:3001"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Better Auth's tables, migrated once before the service starts (ADR-054's init container): the same image.
+  auth-migrate:
+    build: ./auth
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://dcb:dcb@postgres:5432/dcb
+    command: ["npm", "run", "migrate"]
+
+  # Every email the sign-in service sends lands here instead of being delivered: http://localhost:8025 (and its API,
+  # which the journey reads the verification link from).
+  mailpit:
+    image: axllent/mailpit:v1.31.4
+    ports:
+      - "1025:1025"
+      - "8025:8025"

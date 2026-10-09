@@ -1,5 +1,6 @@
 import createClient, { type Middleware } from "openapi-fetch"
 import type { paths } from "./api-types"
+import { bearerToken, forgetBearerToken, signInMode } from "./auth-client"
 
 /**
  * The only place that talks to the backend. Components never call `fetch`: they call `api` (typed from the API
@@ -29,9 +30,26 @@ const idempotency: Middleware = {
     }
 }
 
+/**
+ * With real sign-in, every request carries the signed-in person's bearer token, which the API checks (ADR-037,
+ * ADR-055). A 401 drops the kept token, so the next request fetches a fresh one.
+ */
+const signedIn: Middleware = {
+    async onRequest({ request }) {
+        if (signInMode !== "better-auth" || request.headers.has("Authorization")) return request
+        const token = await bearerToken()
+        if (token) request.headers.set("Authorization", `Bearer ${token}`)
+        return request
+    },
+    onResponse({ response }) {
+        if (response.status === 401) forgetBearerToken()
+        return response
+    }
+}
+
 // `fetch` is looked up per request, so MSW (mock mode, tests) can intercept it after the client is created.
 export const api = createClient<paths>({ baseUrl: API_BASE, fetch: (request) => globalThis.fetch(request) })
-api.use(idempotency)
+api.use(idempotency, signedIn)
 
 /** A rejected request: the backend's Problem-JSON (`title`, `detail`: a rejection's message) and the status. */
 export class ApiError extends Error {

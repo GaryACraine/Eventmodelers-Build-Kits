@@ -10,7 +10,7 @@ export default defineConfig({
     test: {
         globals: true,
         include: ["**/*.tests.ts"],
-        exclude: [...configDefaults.exclude, "web/**"], // the frontend has its own tests (cd web && npm test)
+        exclude: [...configDefaults.exclude, "web/**", "auth/**"], // the frontend and sign-in have their own tests (cd web && npm test; cd auth && npm test)
         testTimeout: 60000,
         globalSetup: "./src/test/vitest.globalSetup.ts",
         pool: "forks",
