@@ -4040,8 +4040,7 @@ says how it reaches us), ADR-055 part 2 (the session lookup).
 
 ### ADR-060: How an endpoint checks permission: roles, claims, or roles mapped to permissions (open)
 
-**Status:** Proposed, 2026-10-09; partly agreed the same day (Gary): the token carries no organisation, and permissions
-are named `resource:action`. Still open: where the map lives, and customer-defined roles. It settles ADR-058 point 3.
+**Status:** **Accepted, 2026-10-09 (Gary)**, to be proven in licensing (2b.2f). It settles ADR-058 point 3.
 **Date:** 2026-10-09
 **Builds on:**
 - ADR-037: licensing decides roles (owner, admin, engineer) and Auth follows; access = a role, a seat and a
@@ -4146,11 +4145,11 @@ checked by the decider or a read model, and the person is told why. A missing pe
 2. **The role sync still matters, but not for the API.** It carries roles to Better Auth for its own needs: the
    per-role second factor (ADR-056), its admin plugin, and SSO group mapping (2b.2b).
 3. **Open for Gary:**
-   - **Where the map lives.** Either in the model (emcli roles with their permissions, exported, shown on the board),
-     or as a code file the kit owns. Leaning toward the model, so the export can list every permission and check
-     that each role's are real.
+   - ✅ **The map lives in the model** (Gary, 2026-10-09): emcli holds the roles and their permissions, the export
+     writes them, and the board shows them.
    - ✅ **Permission naming: `resource:action`** (Gary, 2026-10-09). Several endpoints may share one.
-   - **Whether customers may define their own roles** (Better Auth's dynamic access control). Leaning toward later.
+   - ✅ **Customer-defined roles: later** (Gary, 2026-10-09; Better Auth's dynamic access control is the likely
+     route).
 4. **emcli's legacy authorization fields go** (proposed 2026-10-09). They came from the earlier Supply Hub model
    (on Cognito and Cedar), and their 25 chapters are the only place they're set (412 values):
    - `cognitoGroups` lists roles on the endpoint (option A);
@@ -4163,4 +4162,24 @@ checked by the decider or a read model, and the person is told why. A missing pe
    into `permission`, and gathers `cedarRoles` and `cognitoGroups` into a draft map for review. The fields are
    removed only after it.
 
-**Decision:** open.
+5. **A catalogue of every API capability and its permission** (Gary, 2026-10-09). It's generated from the model at
+   every export, never written by hand:
+   - `api/openapi.json` (ADR-029) gives each operation its `security` (sign-in, or none when `--public`) and an
+     `x-permission` (`resource:action`);
+   - `api/permissions.md` lists every endpoint (method, path, the slice and context), its permission, and the roles
+     that hold it, then each role with its permissions. Endpoints that only need sign-in, and public ones, are
+     listed too, so nothing is left out.
+
+   Checks keep it true:
+   - completeness errors on a planned endpoint with no permission, sign-in-only or `--public` marking, and on a role
+     granted a permission no endpoint uses (a warning) or that doesn't exist (an error);
+   - a test in the project compares the running API's routes with `api/openapi.json`, so a route the model doesn't
+     know about fails.
+
+**Decision:** Accepted as recommended, with the points marked ✅ and 5:
+- each endpoint names a `resource:action` permission, is sign-in only, or is `--public`;
+- one role-to-permission map, in the model;
+- the API reads the caller's membership and roles through the session lookup, and the token carries only `sub`;
+- emcli's `cognitoGroups`, `cedarAction` and `cedarRoles` are migrated, then removed;
+- the catalogue is generated and checked.
+
