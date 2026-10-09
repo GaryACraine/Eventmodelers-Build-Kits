@@ -57,12 +57,11 @@ describe("the session with real sign-in (better-auth)", () => {
         expect(screen.getByText("u-1 owner@contractor.example")).toBeInTheDocument()
     })
 
-    it("asks for a key sign-in doesn't hold yet (userId, ADR-055 part 2)", async () => {
+    it("asks for nothing more once signed in: the API looks up keys the token doesn't hold (userId, ADR-055 part 2)", () => {
         answer = { data: { user: { id: "u-1", email: "owner@contractor.example" } }, isPending: false }
         render(page(["sub", "userId"]))
-        await userEvent.type(screen.getByLabelText("User ID"), "user-9")
-        await userEvent.click(screen.getByRole("button", { name: "Continue" }))
-        expect(screen.getByText("u-1 owner@contractor.example user-9")).toBeInTheDocument()
+        expect(screen.getByText("u-1 owner@contractor.example")).toBeInTheDocument()
+        expect(screen.queryByLabelText("User ID")).toBeNull()
     })
 
     it("signs out of the sign-in service", async () => {

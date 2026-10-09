@@ -3504,7 +3504,7 @@ form it is).
 
 ### ADR-055: Sign-in ships with the kit, configured by deployment
 
-**Status:** **Accepted, 2026-10-09 (Gary).** Part 2 is still to settle before it's built. Proposed 2026-10-09 (Gary: "this will be deployed with the kit as well and should be configurable based
+**Status:** **Accepted, 2026-10-09 (Gary).** Part 2 Accepted the same day. Proposed 2026-10-09 (Gary: "this will be deployed with the kit as well and should be configurable based
 on the deployment type, cloud or on-premises").
 **Date:** 2026-10-09
 **Builds on:** ADR-037 (one JWKS check, our own `userId`), ADR-052 (the session is an external read model), ADR-053
@@ -3595,27 +3595,54 @@ on the deployment type, cloud or on-premises").
      marked `--external Auth`, and the loop builds none of them.
    - **Signing in is scaffold:** it records nothing in our model.
 
-**Part 2, to settle before it's built (gap 2):**
-- **A command's or query's `session:` fields come from the verified token, not the request body,** and a route with
-  any of them requires sign-in.
-- **`userId` is resolved by the API from the verified `sub` (recommended),** through the read model that the model
-  marks as the session's user lookup (a property, not prose). Better Auth then knows nothing of our ids.
-- **What changes:**
-  - `build-command` and `plan-change`, in the same PR;
-  - licensing's `registerUser` and `activateOrganisation` are replaced (replace before release).
-- **Our own sign-in concerns get their own context, `identity`** (proposed 2026-10-09, after Gary asked).
+**Part 2: Accepted 2026-10-09 (Gary).** The signed-in person's values come from the token; gap 2 is closed; an
+`identity` context.
+- **The rule: a value the model maps `session:<key>` comes from the verified token or the lookup, never from a body,
+  a path or a query string.** It applies everywhere the mapping is used:
+  - a command's field;
+  - a read model's key (Gary: `GET /my-account`, with `sub` from the JWT, never `/my-account/{sub}`);
+  - a query parameter, when a case needs one. emcli's query parameters map document fields today, so a
+    session-sourced one needs its own marking then.
+
+  **A route with any such value requires sign-in:** 401 without a valid token. The `session:` mapping is the marker:
+  the model already says "the signed-in person's own", and the kit enforces it everywhere (Gary asked whether this
+  generalises; it does).
+- **Which keys come from where:**
+  - **from the token:** `sub` (Better Auth's user id) and `email`;
+  - **from the lookup:** any other key (`userId`). The API resolves it from the verified `sub` through **one read
+    model the model marks `--session-lookup`.** That read model is keyed by `sub`, and its other fields are session
+    keys (licensing: My Account gives `userId`).
+
+  Better Auth knows nothing of our ids (ADR-037). A signed-in person the lookup doesn't know (signed up, not yet
+  registered) gets **403, "register first"** from a route that needs such a key.
+- **emcli:**
+  - the API contract leaves `session:` fields out of bodies and paths, and marks those operations `bearerAuth` with
+    their 401 and 403;
+  - a read model keyed by a `session:` key is `GET /<read-model>`;
+  - `--session-lookup`;
+  - completeness errors at hand-off when a key has no lookup holding it.
+- **Kit:**
+  - `src/shared/signIn.ts` gains `requireSession(keys)` and `sessionOf(res)`, and `configureSignIn({ lookup })`;
+  - `build-state-change`, `build-state-view` and `build-screen` follow the rule;
+  - `plan-change`: moving a field onto or off `session:` changes the command's body, so it's "a change other slices
+    use" when another slice issues the command.
+- **Our own sign-in concerns get their own context, `identity`** (Gary, 2026-10-09).
   - **`identity` holds:**
-    - our user (`registerUser`, My Account);
-    - the link from `sub` to `userId` (gap 2);
-    - the automations that copy roles to Auth (ADR-037);
-    - the follow-ups to account changes (ADR-056, for example an email changed).
+    - our user (`registerUser`, My Account, the lookup);
+    - later, the automations that copy roles to Auth (ADR-037);
+    - the follow-ups to account changes (ADR-056).
   - **`licensing` keeps** organisations, seats, roles and billing, and refers to people only by `userId`.
   - **Better Auth's own data stays in its service** (the Auth lane, not a context of ours).
-  - **Each sign-in flow gets its own chapter** (ADR-038): signing in and out, recovering a password, changing the
-    email, a second factor. Sign Up stays where it opens a flow (chapter 1; the invitation chapter later), the same
-    `userSignedUp` in each.
-  - **The move happens with part 2,** because `registerUser` is replaced then anyway: one replacement instead of two.
-    "sign up" (phase B; no backend) can be planned under `identity` from the start.
+  - **A context is a chapter's** (emcli), so `identity` is its own chapter, "0. A person signs up and registers".
+    Chapter 1 opens with copies of its events (ADR-038). The export's `originContext` tells the builder where an
+    event comes from.
+  - **Each later sign-in flow gets its own chapter:** signing in and out, recovering a password, changing the email,
+    a second factor, and sign-up's unhappy paths (ADR-056).
+- **Licensing:**
+  - "register user" and "my account" are rebuilt in `identity`, and the old ones deleted (only the UI called them, so
+    this is safe before release);
+  - "activate organisation" is replaced, with `activatedBy` from the lookup;
+  - the journey no longer types a user id.
 
 **Alternatives considered:**
 - **Better Auth inside the API process.** Rejected in ADR-054, because it blurs ADR-037's boundary.
@@ -3770,6 +3797,22 @@ source), and what each chapter has to decide:
 These sit with the rest of the account lifecycle above (reset, change of email or password, a second factor) in PLAN
 2b.2d.
 
+**Social sign-in (Google, Apple): later** (Gary asked, 2026-10-09: will this flow still work?).
+- **Yes.** Better Auth stays the only issuer of the tokens our API accepts. Google or Apple are ways to sign in to
+  Better Auth (`signIn.social`), and `sub` stays Better Auth's user id. So the JWKS check, the `session:` rule, the
+  lookup and `/my-account` don't change.
+- **A first social sign-in creates the account,** with the email already verified by the provider: there's no "check
+  your email" step.
+- **To decide when it's built:**
+  - **account linking:** the same email through a password and through Google is one person; Better Auth links for
+    trusted providers;
+  - **Apple:** its private relay email, and the name sent only the first time;
+  - **deployment:** an app registration per provider, with redirect URLs on the install's domain. On-premises
+    customers need their own, and the client ids and secrets become per-deployment settings;
+  - **mobile:** native Google and Apple sign-in hands Better Auth the provider's id token.
+- **What would break it:** our API accepting Google's or Apple's tokens directly (several issuers). The design never
+  does that.
+
 **Decision:** open. Settled in PLAN 2b.2d, after ADR-055 is built and proven in licensing.
 
 **Consequences, once decided:**
@@ -3855,4 +3898,42 @@ These sit with the rest of the account lifecycle above (reset, change of email o
 - **Licensing:**
   - the Sign Up card is marked `--external Auth`, with the starter's mockup and the `account-header` snippet;
   - journey case 1 signs up for real at `/sign-up`, through Mailpit.
+
+### ADR-058: Secure by default, callers that aren't people, and roles (open)
+
+**Status:** Proposed, open, 2026-10-09 (Gary: "a good principle going forward"). Settled with the role-sync work.
+**Date:** 2026-10-09
+**Builds on:** ADR-037 (roles: licensing decides, Auth follows), ADR-055 part 2 (the `session:` rule).
+
+**Context:**
+- **ADR-055 part 2 secures every route that uses the signed-in person's values.** A route without them (most reads,
+  every command that takes only ids) still answers anyone.
+- **Gary asked whether "this is a secure route" can be a marking in the model.**
+
+**Proposed:**
+1. **Secure by default:**
+   - every route requires sign-in;
+   - the model marks the exceptions `--public`:
+     - another system's webhooks (they carry their own signature);
+     - health;
+     - the API document;
+     - genuinely public reads (a price list).
+
+   It's deny by default, as OWASP recommends.
+2. **Callers that aren't people need an identity before (1) can be switched on:**
+   - ops reads (`/untranslated-notifications`, which support and the journey use);
+   - scripts;
+   - any automation that calls a route over HTTP.
+
+   Options:
+   - a platform-admin role (ADR-037: "the platform admin is auth only");
+   - a service token per caller;
+   - internal routes that the public proxy never exposes.
+3. **Roles in the model:**
+   - "only the owner may cancel" is a property of the command (emcli already has unused Auth Groups and Cedar role
+     properties on elements);
+   - the API checks the role from the token or the lookup;
+   - the roles reach Auth through the role-sync slices.
+
+**Decision:** open.
 

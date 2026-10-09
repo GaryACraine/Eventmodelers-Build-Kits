@@ -42,7 +42,8 @@ mockup, a `data-slice="…"` region): that slice builds it, and the page shows i
 **An external read model** (`context: "EXTERNAL"`, with an `externalSystem`) is held by that system, not by our
 API (ADR-052). Never fetch it, and write no view, MSW handler or API type for it: it has no `apiEndpoint`. Its
 fields come from that system's client in the browser. For the sign-in provider (`Auth`), that's the session:
-`useSession()[field]`, the same values the command's `session:` mappings send.
+`useSession()[field]`. A command never sends its `session:` fields, and a read model keyed by the signed-in person
+(`/my-account`, no key in its `apiEndpoint`) is fetched with no key: the API takes both from the token (ADR-055 part 2).
 
 **A screen another system serves** (`externalSystem` on the screen, ADR-057), such as the sign-in screens, is never
 yours to build: emcli makes no job for it, and the kit's scaffold provides Sign In, Sign Up and "check your email"
@@ -103,7 +104,7 @@ Where each field of the command comes from:
 |---|---|
 | bound by a visible `data-field` input in the mockup | typed: a React Hook Form input, validated by Zod |
 | bound by `<input type="hidden" data-field="…">` | a prop: the page has it (a route param, `page.params` `from: "route"`) |
-| `mapping: "session:<key>"` | `useSession()[key]` (the page is behind `RequireSession`) |
+| `mapping: "session:<key>"` | **not sent:** the API takes it from the token (ADR-055 part 2); it isn't in the contract's body. The page is still behind `RequireSession` (it needs someone signed in), and may show `useSession()[key]` |
 | `generated: true` | not sent: the backend makes it, and a 201 returns it |
 | `mapping: "derived:<another system's browser library> …"` (e.g. `derived:Paddle.js checkout.completed data.transaction_id`) | what that library gave back, through the provider's module: see "A value from another system's browser library" below |
 

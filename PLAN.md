@@ -404,8 +404,11 @@ model and build only what's ours.
                - **The scaffold's sign-in form and header, and the Sign Up screen the loop builds, match those
                  snippets,** so the board shows what people get.
                - **Licensing's Sign Up mockup is redrawn from the snippet.**
-             - **C.** ADR-055 part 2, settled first: `session:` fields come from the token, `userId` is resolved
-               from `sub` (gap 2), and `registerUser` and `activateOrganisation` are replaced.
+             - **C.** ADR-055 part 2, **Accepted 2026-10-09:** `session:` values come from the token or the lookup,
+               never a body, path or query string; `GET /my-account`; `--session-lookup`; an `identity` context (its
+               own chapter). The kit and emcli are done (emcli `5328776`, `8438af7`). Licensing: the identity chapter,
+               the replacements and the journey with no typed ids. ADR-058 (secure by default, non-person callers,
+               roles) is open.
                - **Proposed (Gary asked, 2026-10-09):** an `identity` context for our user, the `sub` link, role sync
                  and account follow-ups, moved there in the same replacement.
                - **One chapter per sign-in flow.**
@@ -435,6 +438,9 @@ model and build only what's ours.
                - verified but never onboarded (licensing's own chapters).
 
                What Better Auth does today is recorded in ADR-056.
+             - **Social sign-in (Google, Apple), later:** the flow still works (Better Auth stays the only issuer).
+               Account linking, Apple's relay email, per-deployment app registrations and mobile id tokens are
+               recorded in ADR-056.
           5. **The four auth role-sync slices,** after 2b.2a. Whether Better Auth's tables in our own database
              simplify them gets its own ADR.
        3. **Gap 4: the trial's length.** Before release: a check at start that Paddle's trial matches `trialDays`, or
@@ -4337,6 +4343,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-09 | ADR-055 phase A built and proven: `auth/` (Better Auth 1.7.7 pinned, the JWT plugin, rate limits in Postgres, the origin check forced on even under NODE_ENV=test), Compose's auth, auth-migrate and mailpit, the API's JWKS check, the web app's `signInService` and live session behind `VITE_SIGN_IN=better-auth`, `provider-better-auth` (draft), manual §22 | Every file starts from Better Auth's docs. Licensing: auth tests 7/7, the API's check 10/10, web 59/59, backend 387, journey mock and sandbox 8/8 (case 1 still the stub); a smoke run through Vite's proxy signed up, verified from Mailpit, got a token, and the API accepted it and refused a tampered one |
 | 2026-10-09 | ADR-057 Accepted and built: a screen another system serves is marked `--external` (no ui job, mockup checked only as a document); the sign-in screens (Sign In, Sign Up, check your email) and the header come with the kit; emcli's `--starter sign-up \| sign-in \| check-email` and the `account-header` snippet draw them on the board | Gary: a command to another system usually sits behind a processor (true when our system tells it), but here the person acts on Auth directly, and the password must never pass through our API. The kit builds these screens once, rather than each project's loop. Licensing: Sign Up external with the starter mockup, pushed (--safe); journey mock and sandbox 8/8 with a real sign-up through Mailpit |
 | 2026-10-09 | Sign-up's unhappy paths recorded in ADR-056 as later chapters; `emailVerification.sendOnSignIn: true` in the kit | Gary: keep chapter 1 the happy path, don't lose the failure paths. Checking Better Auth's source showed the sign-in form claimed the link was resent when it wasn't (sendOnSignIn unset), and that signing up again with the same email sends nothing |
+| 2026-10-09 | ADR-055 part 2 Accepted and built in the kit and emcli: `session:` values come from the token (`sub`, `email`) or the session lookup (`userId`), never a body, path or query string; such routes require sign-in (401, 403 register first); self reads are `GET /<read-model>`; `--session-lookup` (inline-projected); an `identity` context; ADR-058 (secure by default, non-person callers, roles) open | Gary: `/my-account` with `sub` from the JWT is more secure than `/my-account/{sub}`, and generalises: the `session:` mapping is the marker. Secure-by-default needs an identity for ops callers first, so it waits for the role work |
 
 ## Progress
 

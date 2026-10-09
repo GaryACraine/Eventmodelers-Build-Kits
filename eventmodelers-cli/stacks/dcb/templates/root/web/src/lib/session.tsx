@@ -11,8 +11,9 @@ import { SignInForm, useHere } from "./sign-in"
  *
  * Two modes (auth-client.ts):
  *   - **better-auth** (`VITE_SIGN_IN=better-auth`, live data): the sign-in service's session gives `sub` (its user
- *     id) and `email` (ADR-055). `RequireSession` shows the sign-in form until someone is signed in. Any other key a
- *     page needs, which sign-in doesn't hold yet (e.g. `userId`, ADR-055 part 2), is asked for as in the stub;
+ *     id) and `email` (ADR-055). `RequireSession` shows the sign-in form until someone is signed in, then the page.
+ *     The API takes every `session:` value from the token itself, and any other key (`userId`) through its session
+ *     lookup (ADR-055 part 2), so nothing is asked for and nothing is sent;
  *   - **stub** (the default, mock mode, tests): the person types their IDs once, and this browser remembers them.
  *
  * Pages don't change between the two.
@@ -145,8 +146,8 @@ function labelOf(key: string): string {
 }
 
 /**
- * Shows its children once the session has every key in `keys`. Until then: with better-auth, the sign-in form while
- * no one is signed in; then (and with the stub) a form asking for the keys still missing.
+ * Shows its children once someone is signed in. With better-auth, the sign-in form until then; with the stub, a form
+ * asking for the keys in `keys` still missing.
  */
 export function RequireSession({ keys, children }: { keys: string[]; children: ReactNode }) {
     const { session, signIn, mode, signedIn, pending } = useSessionState()
@@ -154,7 +155,8 @@ export function RequireSession({ keys, children }: { keys: string[]; children: R
     const [values, setValues] = useState<Session>({})
     if (pending) return <p role="status">Checking who is signed in…</p>
     if (!signedIn) return <SignInHere />
-    if (missing.length === 0) return <>{children}</>
+    // Real sign-in: the API has the rest from the token and its session lookup (ADR-055 part 2)
+    if (missing.length === 0 || mode === "better-auth") return <>{children}</>
 
     const submit = (event: FormEvent) => {
         event.preventDefault()
@@ -164,11 +166,7 @@ export function RequireSession({ keys, children }: { keys: string[]; children: R
     return (
         <form className="mock-card" onSubmit={submit} aria-label="Sign in">
             <h2>Who are you?</h2>
-            <p className="text-sm text-muted-foreground">
-                {mode === "stub"
-                    ? "Sign-in isn't built yet: enter your ID to continue."
-                    : "Sign-in doesn't hold this yet: enter it to continue."}
-            </p>
+            <p className="text-sm text-muted-foreground">Sign-in isn't switched on: enter your ID to continue.</p>
             {missing.map((key) => (
                 <div key={key}>
                     <Label htmlFor={`session-${key}`}>{labelOf(key)}</Label>

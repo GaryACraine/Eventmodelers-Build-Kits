@@ -2982,15 +2982,26 @@ and gives it the kit's mockup (`emcli element mockup "<slice>/Sign Up" --starter
 own pages, add the `account-header` snippet once (`emcli snippet add account-header --starter account-header`): new
 page drafts import it.
 
-### 22.3 What the API sees
+### 22.3 What the API sees: who's asking comes from the token
 
 Each request carries `Authorization: Bearer <token>`. The API checks it against the sign-in service's public key
 (`src/shared/signIn.ts`): who issued it, who it's for, that it hasn't expired, and that the email is confirmed.
 
-- **A good token:** the route can read who's calling with `signedInOf(res)`, as `{ sub, email }`.
-- **A bad or expired token:** 401, and the route doesn't run.
-- **No token:** for now the request goes through as before. Which routes require sign-in is the next step
-  (ADR-055 part 2).
+**Anything the model maps `session:` is the signed-in person's own, and the API takes it from the token** (ADR-055
+part 2). It never comes from the request body, the URL or the query string, so nobody can act or read as someone
+else by changing what they send.
+- **`sub` and `email` are in the token.**
+- **Our own user id comes from the session lookup:** the read model keyed by `sub` that you mark
+  `--session-lookup` (licensing: My Account gives `userId`).
+- **A read of the person's own** has no id in its address: `GET /my-account`, not `/my-account/<id>`.
+- **Such a route answers:**
+  - 401 without a valid token;
+  - 403 "register first" when someone signed in isn't registered yet.
+
+To model it, say to Claude, for example: *"activated by is the signed-in user's id"*. It maps the field
+`session:userId`, and if no read model gives `userId` yet, `emcli completeness` asks for the session lookup. A
+route that uses none of these values still answers without a token for now: "secure by default" is decided later
+(ADR-058).
 
 ### 22.4 Our cloud or on-premises
 
