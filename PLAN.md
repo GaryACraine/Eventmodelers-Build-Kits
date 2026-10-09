@@ -2977,6 +2977,12 @@ routes and queries, the examples, and the scenarios. Use it to:
       Route 53; SES; migrations as a CDK Trigger. Temporal Cloud or self-hosted.
     - **On-premises:** a container package (Docker Compose, later Helm) holding the API, the worker, the Better Auth
       service, the web app, Postgres and Temporal. SMTP for email; migrations in an init container.
+  - **Sign-in's client IP behind proxies (ADR-055, found 2026-10-09).** Better Auth trusts a single-value IP header,
+    but walks a forwarded chain only for proxies named in `trustedProxies`.
+    - **Our cloud:** a CloudFront Function sets `x-client-ip` from the viewer's address, overwriting any value the
+      client sent. That's the cloud default in `auth/src/config.ts`; without it, rate limits share one bucket.
+    - **On-premises:** the install's guide names the customer's reverse proxy in `AUTH_TRUSTED_PROXIES`, or the
+      proxy sends a single `x-forwarded-for`.
 - [ ] **14.9 Prove and document (increment t14 on course-enrollment).**
   - One increment end to end on a real project: the dependencies and a mockup → a board wireframe → the loop builds
     backend and UI → the app works against the live backend.

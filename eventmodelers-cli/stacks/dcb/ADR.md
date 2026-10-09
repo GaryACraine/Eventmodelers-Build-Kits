@@ -3646,6 +3646,22 @@ on the deployment type, cloud or on-premises").
   - the API accepts the token and refuses a tampered one;
   - the journey passes 8/8 on the mock and the sandbox.
 - **The cloud configuration is covered by tests only** until 14.8 deploys it.
+- **Found while building (2026-10-09):**
+  - **Better Auth skips its origin check when `NODE_ENV=test`** (`skipOriginCheck` defaults to `isTest()` in
+    1.7.7).
+    - That check is its CSRF protection, so a deployment configured with `NODE_ENV=test` would run without it.
+    - `auth/src/auth.ts` sets `advanced.disableOriginCheck: false`, so the check always runs, and
+      `server.tests.ts` proves it: a request with cookies from an untrusted origin gets a 403, and so does a
+      redirect to one.
+    - Recheck after every Better Auth upgrade (2b.2c).
+  - **The client IP behind proxies.**
+    - **The rule:** Better Auth trusts a single-value IP header, and walks a forwarded chain (`x-forwarded-for`)
+      only for proxies named in `advanced.ipAddress.trustedProxies`. Otherwise every request shares one rate-limit
+      bucket, and it logs a warning.
+    - **Locally,** Vite's proxy sends a single `x-forwarded-for` (`xfwd`).
+    - **On-premises,** the customer's reverse proxy goes in `AUTH_TRUSTED_PROXIES`.
+    - **In our cloud,** a CloudFront Function must set `x-client-ip` from the viewer's address, overwriting any value
+      the client sent (PLAN 14.8).
 
 ### ADR-056: The account security lifecycle (open)
 
