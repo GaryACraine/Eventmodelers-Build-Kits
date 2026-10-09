@@ -2964,16 +2964,23 @@ the public key your API checks tokens with.
 
 ### 22.2 Turning real sign-in on
 
-Until your Sign Up screen exists, the web app keeps its stand-in: it asks for the IDs a page needs. To switch:
+The sign-in screens come with the kit: Sign In (`/sign-in`), Sign Up (`/sign-up`) and "check your email", and the
+header with who is signed in and Sign out (ADR-057). Your loop never builds them.
 
-1. Model the Sign Up screen and let the loop build it. Say to Claude, for example: *"Plan the sign up slice: our own
-   form with name, email and password, leading to Auth's user signed up."* The loop builds it with the
-   `provider-better-auth` skill.
-2. In `web/.env`, set `VITE_SIGN_IN=better-auth`. In `.env`, `AUTH_ISSUER` and `AUTH_JWKS_URL` are already set for
+1. In `web/.env`, set `VITE_SIGN_IN=better-auth`. In `.env`, `AUTH_ISSUER` and `AUTH_JWKS_URL` are already set for
    local use (see `.env.example`).
-3. Open the web app, sign up, and open the email in Mailpit. The link confirms the address and signs you in.
+2. Open the web app at a page that needs someone signed in. It shows the sign-in form; "Sign up" opens Sign Up.
+3. Sign up, then open the email in Mailpit. The link confirms the address, signs you in, and takes you back to the
+   page you started from.
 
-A page that needs someone signed in shows the sign-in form until they are. **Sign out** is in the header.
+Until you switch it on (and always in mock mode and the tests), the web app keeps its stand-in, which asks for the
+IDs a page needs.
+
+**Show them on the board.** Say to Claude, for example: *"Add the Sign Up screen for the owner, before user signed
+up."* It adds the card, marks it `--external Auth` (served by the sign-in system, so the loop makes no job for it),
+and gives it the kit's mockup (`emcli element mockup "<slice>/Sign Up" --starter sign-up`). For the header on your
+own pages, add the `account-header` snippet once (`emcli snippet add account-header --starter account-header`): new
+page drafts import it.
 
 ### 22.3 What the API sees
 

@@ -393,8 +393,11 @@ model and build only what's ours.
                - `provider-better-auth`.
 
                The journey still passes 8/8, with case 1 on the stub.
-             - **B.** "sign up" is planned with a ui job (`plan-change`); the loop builds it; journey case 1 signs up
-               for real, with the verification email read from Mailpit.
+             - ✅ **B. Done 2026-10-09** (ADR-057; emcli `42bf5ff`; licensing `4120a94`; mock and sandbox 8/8 with
+               a real sign-up).
+               - **Revised (Gary: "scaffold it"):** the sign-in screens come with the kit, and Sign Up's card is marked
+                 `--external Auth`, so the loop builds nothing for it (it was to be planned with a ui job).
+               - Journey case 1 signs up for real, with the verification email read from Mailpit.
                - **Realistic sign-in mockups** (Gary, 2026-10-09): standard mockup snippets for Sign In, Sign Up,
                  "Check your email", and the header with who is signed in and Sign out, which the `event-model`
                  skill (emcli) uses when drafting a screen.
@@ -4322,6 +4325,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-09 | ADR-056: the second factor is settled in principle. Every method is built (emailed code, authenticator app, passkey), the policy is per role and configurable per customer. Defaults: the owner uses a passkey (Touch ID), admins and engineers use an emailed code | Gary: an emailed code is enough for most people, and people resist authenticator apps unless the data is sensitive. The owner's billing needs a factor that doesn't depend on the inbox, and a passkey gives that with nothing to install. Open for 2b.2d: whether customers may loosen a default, and how a passkey fits the owner's sign-in |
 | 2026-10-09 | ADR-055 Accepted (part 2 still to settle). ADR-056: one opinionated default for the second factor for now (the role table, no per-customer configuration yet); the owner signs in with a passkey, which counts as two factors | Gary: the simplest possible default approach for now; per-customer configuration and where it's stored come later |
 | 2026-10-09 | ADR-055 phase A built and proven: `auth/` (Better Auth 1.7.7 pinned, the JWT plugin, rate limits in Postgres, the origin check forced on even under NODE_ENV=test), Compose's auth, auth-migrate and mailpit, the API's JWKS check, the web app's `signInService` and live session behind `VITE_SIGN_IN=better-auth`, `provider-better-auth` (draft), manual §22 | Every file starts from Better Auth's docs. Licensing: auth tests 7/7, the API's check 10/10, web 59/59, backend 387, journey mock and sandbox 8/8 (case 1 still the stub); a smoke run through Vite's proxy signed up, verified from Mailpit, got a token, and the API accepted it and refused a tampered one |
+| 2026-10-09 | ADR-057 Accepted and built: a screen another system serves is marked `--external` (no ui job, mockup checked only as a document); the sign-in screens (Sign In, Sign Up, check your email) and the header come with the kit; emcli's `--starter sign-up \| sign-in \| check-email` and the `account-header` snippet draw them on the board | Gary: a command to another system usually sits behind a processor (true when our system tells it), but here the person acts on Auth directly, and the password must never pass through our API. The kit builds these screens once, rather than each project's loop. Licensing: Sign Up external with the starter mockup, pushed (--safe); journey mock and sandbox 8/8 with a real sign-up through Mailpit |
 
 ## Progress
 

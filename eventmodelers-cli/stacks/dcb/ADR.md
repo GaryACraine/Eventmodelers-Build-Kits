@@ -3230,7 +3230,8 @@ blocked them at event 26, and the owner chain passed (10/10), on that database a
    gets a ui job, the form calls the provider's browser library (as with Paddle.js, `build-screen`), and
    `userSignedUp` is the provider's answer. **If the page is hosted,** the screen card is marked external then.
    Either way the session read model stays external. **Closed by ADR-054 (2026-10-09): the form is ours,** built on
-   Better Auth's client; "sign up" is planned with a ui job.
+   Better Auth's client; "sign up" is planned with a ui job. **Revised by ADR-057 (2026-10-09):** the form is the
+   kit's (scaffolded), and its card is marked `--external Auth`, so the loop makes no job for it.
 3. **The card says so on the board:** "External: held by <System>, not projected (the screen reads it from
    <System>)", or for an automation's input, "(fetched by the automation, not projected)".
 4. **`emcli completeness` warns** about one in a planned slice that no screen or automation reads.
@@ -3449,7 +3450,8 @@ form it is).
      (the Auth lane) and stays swappable.
    - **The same sign-in runs in our cloud, on-premises, on a laptop and in CI.** Locally it replaces
      `mock-oauth2-server`.
-4. **The Sign Up form is ours** (ADR-052 point 5), built on Better Auth's client.
+4. **The Sign Up form is ours** (ADR-052 point 5), built on Better Auth's client. (ADR-057: provided by the kit's
+   scaffold, not built by the loop.)
 5. **Around it:**
    - **Email:** SES in our cloud; any SMTP server on-premises, with Mailpit locally.
    - **Temporal:** Temporal Cloud or self-hosted in our cloud; always self-hosted on-premises.
@@ -3589,6 +3591,8 @@ on the deployment type, cloud or on-premises").
 8. **What stays in the model:**
    - **Sign Up is our form** (ADR-052 point 5, ADR-054). "sign up" is planned with a ui job, and the loop builds it
      with a new provider skill, `provider-better-auth` (a draft until its first slice and the journey pass).
+     **Revised by ADR-057:** the kit's scaffold provides Sign Up, Sign In and "check your email"; their cards are
+     marked `--external Auth`, and the loop builds none of them.
    - **Signing in is scaffold:** it records nothing in our model.
 
 **Part 2, to settle before it's built (gap 2):**
@@ -3759,3 +3763,78 @@ on-premises customer may turn password sign-in off in favour of their SSO.
   - "set up two-factor".
 - **What a flow changes in our model** (for example, an email change) is modelled like `userSignedUp`, as Auth's
   event.
+
+### ADR-057: A screen another system serves is marked external; the sign-in screens come with the kit
+
+**Status:** **Accepted, 2026-10-09 (Gary: "scaffold it").**
+**Date:** 2026-10-09
+**Revises:** ADR-052 point 5, ADR-054 point 4, ADR-055 point 8 (Sign Up was to be planned with a ui job).
+**Builds on:** ADR-039, ADR-044, ADR-052, ADR-053 (the other ways another system meets our model).
+
+**Context:**
+- **Planning licensing's "sign up" showed a gap.** Its Sign Up card has no contract: emcli's mockup check said "the
+  mockup has nothing to bind to", because the screen sends no command of ours. The person acts on Auth directly from
+  the browser, and the password must never pass through our API (ADR-037).
+- **Gary asked whether a command to another system belongs behind a processor,** as event modelling usually has
+  it. It does when *our system* tells another system to act. The ways another system meets our model, and where the
+  kit covers each:
+
+  | Interaction | Shape in the model | Kit | Example |
+  |---|---|---|---|
+  | We tell another system to act | to-do list → **processor** → the other system's API → our event recording the outcome | `build-automation`, provider skills, a Temporal activity | cancel the refused trial at Paddle; sync the owner's role to Auth |
+  | We read another system | an **external read model** → processor (ADR-039, ADR-052) | the automation fetches it in an activity | Paddle Sync |
+  | Another system tells us | an **external event**, by webhook or fetched (ADR-053) | the webhook inbox, a sync | `paddleNotificationReceived` |
+  | A person uses another system's part of our page, then we record it | our screen → our command (`derived:`), the other system's widget in between (ADR-044) | `build-screen` + the provider skill | Paddle's checkout → `reportCheckoutCompleted` |
+  | **A person acts on another system directly, with no command of ours** | **that system's screen → its event** | **this ADR** | **Sign Up → `userSignedUp`** |
+
+- **A processor doesn't fit the last case:** our command plus a processor calling Better Auth's server API would send
+  the password through our API, and it would rebuild what Better Auth's client already does.
+
+**Decision:**
+1. **A screen card can be marked `--external <System>`: that system serves it.**
+   - **emcli:**
+     - the export carries `externalSystem` on the screen;
+     - an external screen makes **no ui job** (a slice holding only external things exports Done);
+     - its mockup is **checked only as a document:** no contract, no "nothing to bind to";
+     - it gets no page route;
+     - its card says "served by <System> (the kit provides its screens), not built by the loop".
+   - **The board still draws it, in the lane of the person who uses it** (screens sit in actor lanes), so the flow
+     reads end to end: Sign Up → `userSignedUp` (Auth's lane) → Signed In User → Get Started.
+2. **The sign-in screens come with the kit.** The scaffold provides:
+   - Sign In, Sign Up and "check your email" (`web/src/lib/sign-in.tsx`, at `/sign-in` and `/sign-up` with real
+     sign-in on);
+   - the header with who is signed in and Sign out (`Layout.tsx`).
+
+   They follow Better Auth's docs, through `signInService`. `next` carries the page that asked for sign-in through
+   Sign Up into the verification link's `callbackURL`, and it only ever names a path on this site.
+3. **Their mockups come from emcli's starters,** with the same headings, labels, buttons and links the scaffold
+   renders (Gary: realistic sign-in mockups):
+   - `element mockup <card> --starter sign-up | sign-in | check-email`;
+   - `snippet add account-header --starter account-header`, which `--draft` imports at the top of a page.
+4. **Extra things to ask at sign-up** (an organisation's name) belong on our own screen after it (Get Started), with
+   our command.
+5. **"External" here means "not this project's loop's to build".** The kit builds these screens once, as tested
+   scaffold code. If a project needs a different sign-in screen, that's a change to the kit's scaffold (or the
+   project's copy of it), never a loop job.
+
+**Alternatives considered:**
+- **An external command in Auth's lane** (`signUp`, marked external; the loop builds only the screen). It's the
+  textbook state-change shape, but each project's loop would rebuild the same security-sensitive code. Kept in
+  reserve for a project-specific screen that acts on another system directly.
+- **Our command plus a processor.** Rejected: the password would pass through our API, and it rebuilds Better Auth's
+  client.
+
+**Consequences:**
+- **emcli** (`42bf5ff`):
+  - `concernsOf` and `screenFingerprint` skip external screens, and `checkScreen` skips their contract;
+  - the card wording;
+  - `--starter` on `element mockup`, and the `account-header` snippet starter;
+  - `--draft` imports the header;
+  - the `event-model` skill: "A screen another system serves".
+  - 431 tests.
+- **Kit:** the scaffold's sign-in screens and header; `provider-better-auth` says they're the scaffold's;
+  `build-screen` says an external screen is never yours; manual §22.
+- **Licensing:**
+  - the Sign Up card is marked `--external Auth`, with the starter's mockup and the `account-header` snippet;
+  - journey case 1 signs up for real at `/sign-up`, through Mailpit.
+

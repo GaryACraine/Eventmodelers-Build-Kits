@@ -3,6 +3,8 @@ import type { RouteObject } from "react-router"
 import { Layout } from "./Layout"
 import type { PageInfo } from "./lib/page"
 import { RequireSession } from "./lib/session"
+import { signInMode } from "./lib/auth-client"
+import { SignInPage, SignUpPage } from "./lib/sign-in"
 
 /**
  * Every page of the app, found in `src/pages/`: one file per page, each exporting `page` (its route and title,
@@ -30,7 +32,15 @@ export const routes: RouteObject[] = [
     {
         path: "/",
         element: <Layout nav={pages.filter((p) => p.nav)} />,
-        children: pages.map(({ path, session, Component }) => ({
+        children: [
+            // With real sign-in, the kit's sign-in screens (ADR-057): not pages of the model, never built by the loop
+            ...(signInMode === "better-auth"
+                ? [
+                      { path: "sign-in", element: <SignInPage /> },
+                      { path: "sign-up", element: <SignUpPage /> }
+                  ]
+                : []),
+            ...pages.map(({ path, session, Component }) => ({
             ...(path === "/" ? { index: true } : { path: path.slice(1) }),
             element: session?.length ? (
                 <RequireSession keys={session}>
@@ -40,5 +50,6 @@ export const routes: RouteObject[] = [
                 <Component />
             )
         }))
+        ]
     }
 ]
