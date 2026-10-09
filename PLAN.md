@@ -382,7 +382,13 @@ model and build only what's ours.
           - **Migrations:** none for read models; node-pg-migrate for the rest.
           - **Supabase was dropped:** the database on the internet, and its sign-in server needed on-premises.
           - **Cognito was dropped:** AWS-only, no local version.
-          1. **2b.2a Sign-in in the kit, proven in licensing (ADR-055, Accepted 2026-10-09).** Gary: it ships with
+          1. ✅ **2b.2a Sign-in in the kit, proven in licensing (ADR-055, Accepted 2026-10-09; A, B and C done
+             2026-10-09).** Follow-ups:
+             - emcli can't reorder chapters (chapter 0 shows last);
+             - chapters 1b and 2 should copy identity's `userWasRegistered` rather than define their own;
+             - the export should name planned work in another context;
+             - the board still has the replaced "start options" slice's empty shell (a deleting push, with Gary's
+               go-ahead). Gary: it ships with
              the kit, configured by deployment (`DEPLOYMENT=cloud | on-premises`). Licensing never had
              `mock-oauth2-server`: there's a typed session stub, and the API checks no token.
              - ✅ **A. Done 2026-10-09** (licensing `af58e42`; mock 8/8, sandbox 8/8). Into the kit, then into licensing through `kit-drift`:
@@ -404,7 +410,18 @@ model and build only what's ours.
                - **The scaffold's sign-in form and header, and the Sign Up screen the loop builds, match those
                  snippets,** so the board shows what people get.
                - **Licensing's Sign Up mockup is redrawn from the snippet.**
-             - **C.** ADR-055 part 2, **Accepted 2026-10-09:** `session:` values come from the token or the lookup,
+             - ✅ **C. Done 2026-10-09** (licensing `b488826`; journeys mock and sandbox 8/8 with no typed ids;
+               401/403 checked by hand). Found on the way:
+               - **The event's module moves first:** the loop built identity's slices under `contexts/licensing`,
+                 because `userWasRegistered`'s factory was still there. Moved by hand; licensing re-exports it.
+               - **The loop works one context at a time:** switched with `current_context.json`.
+                 **Follow-up:** the export should say when planned work waits in another context.
+               - **"start options" seeded its tests** through `/activate-organisation`, which now needs sign-in.
+                 Replaced; the loop seeds with the event now.
+               - **A usage limit** paused the loop for 90 minutes; it resumed by itself (15.9).
+               - `plan-change` records all three lessons.
+
+               ADR-055 part 2, **Accepted 2026-10-09:** `session:` values come from the token or the lookup,
                never a body, path or query string; `GET /my-account`; `--session-lookup`; an `identity` context (its
                own chapter). The kit and emcli are done (emcli `5328776`, `8438af7`). Licensing: the identity chapter,
                the replacements and the journey with no typed ids. ADR-058 (secure by default, non-person callers,
@@ -4344,6 +4361,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-09 | ADR-057 Accepted and built: a screen another system serves is marked `--external` (no ui job, mockup checked only as a document); the sign-in screens (Sign In, Sign Up, check your email) and the header come with the kit; emcli's `--starter sign-up \| sign-in \| check-email` and the `account-header` snippet draw them on the board | Gary: a command to another system usually sits behind a processor (true when our system tells it), but here the person acts on Auth directly, and the password must never pass through our API. The kit builds these screens once, rather than each project's loop. Licensing: Sign Up external with the starter mockup, pushed (--safe); journey mock and sandbox 8/8 with a real sign-up through Mailpit |
 | 2026-10-09 | Sign-up's unhappy paths recorded in ADR-056 as later chapters; `emailVerification.sendOnSignIn: true` in the kit | Gary: keep chapter 1 the happy path, don't lose the failure paths. Checking Better Auth's source showed the sign-in form claimed the link was resent when it wasn't (sendOnSignIn unset), and that signing up again with the same email sends nothing |
 | 2026-10-09 | ADR-055 part 2 Accepted and built in the kit and emcli: `session:` values come from the token (`sub`, `email`) or the session lookup (`userId`), never a body, path or query string; such routes require sign-in (401, 403 register first); self reads are `GET /<read-model>`; `--session-lookup` (inline-projected); an `identity` context; ADR-058 (secure by default, non-person callers, roles) open | Gary: `/my-account` with `sub` from the JWT is more secure than `/my-account/{sub}`, and generalises: the `session:` mapping is the marker. Secure-by-default needs an identity for ops callers first, so it waits for the role work |
+| 2026-10-09 | 2b.2a done: ADR-055 part 2 proven in licensing (identity context: register user and my account rebuilt there; activate organisation and start options replaced); journeys 8/8 mock and sandbox with no typed ids | Lessons in plan-change: move an event's factory before moving its slices to another context (the loop follows the event); the loop builds one context at a time; a route gaining sign-in breaks other slices' tests that seed through it |
 
 ## Progress
 
