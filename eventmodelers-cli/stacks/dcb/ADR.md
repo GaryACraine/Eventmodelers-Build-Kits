@@ -4040,7 +4040,8 @@ says how it reaches us), ADR-055 part 2 (the session lookup).
 
 ### ADR-060: How an endpoint checks permission: roles, claims, or roles mapped to permissions (open)
 
-**Status:** Proposed, open, 2026-10-09. Gary decides. It settles ADR-058 point 3.
+**Status:** Proposed, 2026-10-09; partly agreed the same day (Gary): the token carries no organisation, and permissions
+are named `resource:action`. Still open: where the map lives, and customer-defined roles. It settles ADR-058 point 3.
 **Date:** 2026-10-09
 **Builds on:**
 - ADR-037: licensing decides roles (owner, admin, engineer) and Auth follows; access = a role, a seat and a
@@ -4118,8 +4119,19 @@ says how it reaches us), ADR-055 part 2 (the session lookup).
 - **The check is "has permission P in organisation O".**
   - O comes from the caller's membership (the lookup), never from the request, as ADR-055 part 2 requires.
   - A request naming another organisation is refused: 404, so it doesn't reveal that the organisation exists.
-- **Choosing among several organisations** (an active organisation, Better Auth's `activeOrganizationId`) waits
-  until one person can belong to more than one.
+- **Agreed (Gary, 2026-10-09): the token carries no organisation.** It says who the caller is (`sub`). Membership and
+  roles come from the lookup, so:
+  - a removed member is refused at once, with no stale token;
+  - licensing stays the one source (ADR-037), and the API doesn't wait on the role sync;
+  - on-premises serves one customer, so its organisation is implicit.
+- **Several organisations per person, when it comes** (a contractor engineer working for two customers): the client
+  names the organisation it acts in, in the path or a header, and the API checks membership and permission there
+  through the lookup (404 if not a member). There's no active organisation in the token (Better Auth's
+  `activeOrganizationId`), because switching would need a new token and the value goes stale.
+  - This doesn't break ADR-055 part 2. That rule stops a request from saying *who* the caller is. Naming *which*
+    organisation, checked on the server, is the object check.
+- **The exception:** a service that can't reach the lookup would need a short-lived token with the organisation and
+  its roles. It's a deployment choice for later.
 
 **What permission doesn't cover:** a seat and a subscription in good standing (ADR-037) are business rules. They're
 checked by the decider or a read model, and the person is told why. A missing permission is a plain 403.
@@ -4137,8 +4149,18 @@ checked by the decider or a read model, and the person is told why. A missing pe
    - **Where the map lives.** Either in the model (emcli roles with their permissions, exported, shown on the board),
      or as a code file the kit owns. Leaning toward the model, so the export can list every permission and check
      that each role's are real.
-   - **Permission naming:** `resource:action`, or the endpoint's own name (one permission per endpoint, which is
-     simplest but makes the map long).
+   - ✅ **Permission naming: `resource:action`** (Gary, 2026-10-09). Several endpoints may share one.
    - **Whether customers may define their own roles** (Better Auth's dynamic access control). Leaning toward later.
+4. **emcli's legacy authorization fields go** (proposed 2026-10-09). They came from the earlier Supply Hub model
+   (on Cognito and Cedar), and their 25 chapters are the only place they're set (412 values):
+   - `cognitoGroups` lists roles on the endpoint (option A);
+   - `cedarRoles` lists each role and its scope on the endpoint (option A, plus the organisation check that (3) now
+     makes for every endpoint);
+   - `cedarAction` is a permission in all but name.
+
+   They become one neutral property, `permission` (`resource:action`), and the roles' permissions are held in one
+   place (the map). Nothing names a vendor. The legacy values aren't lost: a one-off migration turns `cedarAction`
+   into `permission`, and gathers `cedarRoles` and `cognitoGroups` into a draft map for review. The fields are
+   removed only after it.
 
 **Decision:** open.
