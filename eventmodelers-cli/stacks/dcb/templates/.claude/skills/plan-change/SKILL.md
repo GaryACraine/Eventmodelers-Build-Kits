@@ -184,6 +184,12 @@ the tags exactly, so it fails until the producer's same-name replacement is buil
 - **An external event's intake** (ADR-053: `webhook` or `none`) decides whether an endpoint is built. `none` →
   `webhook` adds the endpoint (its slice is queued); `webhook` → `none` removes it: before release, delete the
   endpoint's code by hand; after release, deprecate the endpoint first (the other system may still call it).
+- **A command's or read model's `api`** (ADR-058 point 1: unset, `<resource:action>`, `self` or `anonymous`) decides
+  whether it has an endpoint and who may call it. Adding or removing it on a built slice is a replacement before
+  release, and the route's code goes with it. After release, deprecate the endpoint first. A removed route breaks
+  every test and script that set up data through it: find them (`grep -rlE '"/<route>"' src e2e`) and seed with
+  `app.given(...)` or drive through the automation instead. Changing only the permission keeps the route, but it is
+  still a model change to a built slice.
 - **A read-model test depends on events, not on other slices.** Its *given* goes in with `app.given(...)`
   (`build-state-view` Step 6), never through another slice's route.
 - **What the change touches:** every slice that produces or reads the same event, and every automation that
@@ -243,4 +249,5 @@ The full text is in the kit repo (`eventmodelers-cli/stacks/dcb/ADR.md`):
 | 050 | A command whose intent already holds decides nothing (`[]`, 200); a rejection only when it can't hold. |
 | 052 | A read model another system holds is marked external: nothing of ours builds it, and it makes no job. |
 | 053 | An external event says how it reaches us (`intake`): an endpoint is built only for `webhook`. |
+| 058 | No endpoint unless declared: `api` is a permission, `self` or `anonymous`; a webhook comes from its intake. |
 | 059 | A context's events are its own: other contexts read its published read models or translate its published events. |

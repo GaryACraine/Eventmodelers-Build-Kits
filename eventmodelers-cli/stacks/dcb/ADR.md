@@ -3903,9 +3903,10 @@ These sit with the rest of the account lifecycle above (reset, change of email o
   - the Sign Up card is marked `--external Auth`, with the starter's mockup and the `account-header` snippet;
   - journey case 1 signs up for real at `/sign-up`, through Mailpit.
 
-### ADR-058: Secure by default, callers that aren't people, and roles (open)
+### ADR-058: Secure by default, callers that aren't people, and roles
 
-**Status:** Proposed, open, 2026-10-09 (Gary: "a good principle going forward"). Settled with the role-sync work.
+**Status:** Point 2 **Accepted, 2026-10-09 (Gary)**. Point 1, revised the same day (endpoints by declaration), is
+Proposed until proven in licensing (2b.2f step 3). Point 3 is ADR-060 (Accepted).
 **Date:** 2026-10-09
 **Builds on:** ADR-037 (roles: licensing decides, Auth follows), ADR-055 part 2 (the `session:` rule).
 
@@ -3960,7 +3961,7 @@ These sit with the rest of the account lifecycle above (reset, change of email o
   licensing:
   - our automations call commands in-process, so they never meet the HTTP check. The permission check is at the
     API's edge, for people; an automation records `actedAs: system`;
-  - Paddle's webhook is `--public` and carries its own signature;
+  - Paddle's webhook is declared by its intake (point 1 revised) and carries its own signature;
   - our code calls Paddle, never our own API;
   - the only callers over HTTP that aren't people are the e2e scripts polling `/untranslated-notifications`. They're
     tests, so they sign in as a seeded test platform admin, as the journey already signs up for real.
@@ -3972,7 +3973,44 @@ These sit with the rest of the account lifecycle above (reset, change of email o
 - **Internal-only routes** (the third option) are dropped: they hide a route rather than check it, and on-premises
   has no public proxy to rely on.
 
-**Decision:** open.
+**Point 1 revised (Proposed, 2026-10-09): endpoints by declaration.**
+- **Found:** emcli's contract gives every command a `POST` route and every read model (unless external) a `GET`
+  route, and `build-state-change` always writes `route.ts`. So commands only automations issue (`/start-trial`,
+  `/assign-role`, `/refuse-trial`, …) are open routes taking `actedAs` from the body: anyone can start a trial or
+  become owner. Sign-in alone wouldn't close it, since any signed-in customer could still call them.
+- **Gary:** control the endpoint per element, for commands and read models alike; automations call commands
+  in-process. "Anonymous" is the well-known term for a caller who isn't authenticated. Webhooks are endpoints too, so
+  they're controlled the same way.
+- **No element gets an endpoint unless the model declares one, and the declaration says who may call it.** One
+  property per element:
+
+  | Element | Property | Endpoint | Who may call |
+  |---|---|---|---|
+  | command, read model | none (the default) | none: automations call it in-process | — |
+  | command, read model | `--api <resource:action>` | yes | a signed-in person whose role (or the platform admin) holds the permission in that organisation (ADR-060) |
+  | command, read model | `--api self` | yes | any signed-in person, acting only on their own data through session values (ADR-055 part 2: `/my-account`, `/register-user`) |
+  | command, read model | `--api anonymous` | yes | anyone, not signed in (no case yet) |
+  | external event | `--intake webhook` (ADR-053) | `POST /webhooks/<system>` | the other system, proven by its signature |
+
+  - A read model's `--api` covers its queries.
+  - **A webhook's caller is authenticated, as a system, not a person.** The kit's `configureWebhookInbox` checks the
+    raw body against the system's signature (`verify` from its provider skill: Paddle's is an HMAC of a timestamp and
+    the body with the destination's secret). A bad signature gets 401 and nothing is recorded, and the
+    notification's id makes a replay record nothing new.
+  - **Kit routes** that don't come from the model (`/health/*`, `/openapi.json`) are listed as such.
+  - `--public` (the first draft) is dropped: "public" reads as anonymous, and most declared endpoints aren't.
+- **Completeness:**
+  - errors when a screen triggers a command, or reads a read model, that has no `--api`;
+  - errors on `--api self` for an endpoint whose body or path takes an organisation id (self acts on the caller's own
+    data only);
+  - once the role map exists (ADR-060), errors on a permission it lacks, and warns on one no endpoint uses.
+- **The contract and the catalogue** (ADR-060 point 5):
+  - `api/openapi.json` holds only declared endpoints, with their `security` (bearer, or none for anonymous) and
+    `x-permission`;
+  - each webhook path has a signature security scheme (its header, e.g. `paddle-signature`) and `x-caller`.
+- **A built slice gaining or losing an endpoint is a replacement before release** (`plan-change`, ADR-046).
+
+**Decision:** points 2 and 3 settled (above, and ADR-060). Point 1 is decided when proven in licensing.
 
 ### ADR-059: A context's events are its own; other contexts read its published read models or its published events
 
