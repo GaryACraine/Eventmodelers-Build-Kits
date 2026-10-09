@@ -3662,6 +3662,7 @@ on the deployment type, cloud or on-premises").
     - **On-premises,** the customer's reverse proxy goes in `AUTH_TRUSTED_PROXIES`.
     - **In our cloud,** a CloudFront Function must set `x-client-ip` from the viewer's address, overwriting any value
       the client sent (PLAN 14.8).
+    - **Explained** in `docs/case-studies/reverse-proxies-and-client-ip.md`.
 
 ### ADR-056: The account security lifecycle (open)
 
