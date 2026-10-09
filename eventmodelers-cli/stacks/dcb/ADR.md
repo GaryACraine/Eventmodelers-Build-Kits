@@ -3502,7 +3502,7 @@ form it is).
 
 ### ADR-055: Sign-in ships with the kit, configured by deployment
 
-**Status:** Proposed, 2026-10-09 (Gary: "this will be deployed with the kit as well and should be configurable based
+**Status:** **Accepted, 2026-10-09 (Gary).** Part 2 is still to settle before it's built. Proposed 2026-10-09 (Gary: "this will be deployed with the kit as well and should be configurable based
 on the deployment type, cloud or on-premises").
 **Date:** 2026-10-09
 **Builds on:** ADR-037 (one JWKS check, our own `userId`), ADR-052 (the session is an external read model), ADR-053
@@ -3636,7 +3636,7 @@ on the deployment type, cloud or on-premises").
 
 ### ADR-056: The account security lifecycle (open)
 
-**Status:** Proposed, open; the second factor is settled in principle (2026-10-09, below). Proposed 2026-10-09 (Gary: "we can defer these decisions until later … as long as we don't lose
+**Status:** Proposed, open; the second factor is settled: one opinionated default for now (2026-10-09, below). Proposed 2026-10-09 (Gary: "we can defer these decisions until later … as long as we don't lose
 record that we need to have these policies and decisions made in line with best practices and what configuration
 options are available within Better Auth"). It is decided after ADR-055 is built in the kit and licensing
 (PLAN 2b.2d).
@@ -3705,20 +3705,14 @@ options are available within Better Auth"). It is decided after ADR-055 is built
   - **People resist installing an authenticator app** unless the data is sensitive (Gary: as with the NHS app).
   - **The owner controls billing and handing over ownership,** so they need a factor that doesn't depend on the
     inbox. A passkey gives that with nothing to install, and it resists phishing.
-- **To settle in 2b.2d:**
-  - **Whether a customer may loosen a default, or only tighten it.** I recommend only tightening: the owner's
-    passkey is a floor the platform sets.
-  - **How a passkey fits the owner's sign-in.** In Better Auth a passkey is a way to sign in (Passkey plugin), not a
-    second factor inside the Two-Factor plugin. NIST counts a passkey as multi-factor on its own (the device plus
-    the biometric). So either the owner signs in with the passkey, or billing actions ask for a passkey again (step
-    up). Check how Better Auth records the sign-in method (for example, the Last Login Method plugin) when it's
-    built.
-  - **Where the policy lives:**
-    - per organisation in our cloud, as configured events projected to a read model (as the grace period is,
-      ADR-041);
-    - per install on-premises, as a setting.
-
-    The sign-in service enforces it, so it needs the person's roles, which arrive through the role-sync slices.
+- **Settled (Gary, 2026-10-09): start with the simplest default.**
+  - **One opinionated default configuration,** the table above, set in the sign-in service. There's no per-customer
+    policy for now: how a customer changes it, and where that's stored, come later. When they do, I recommend that
+    customers may only tighten a default.
+  - **The owner signs in with a passkey.** NIST counts a passkey as multi-factor on its own (the device plus the
+    biometric), so the owner's passkey sign-in is their two factors. Better Auth's Passkey plugin provides it. Check
+    how Better Auth records the sign-in method (for example, the Last Login Method plugin) when it's built.
+  - **Enforcing by role still needs the roles in Auth,** which arrive through the role-sync slices.
 - **Terms:** "TOTP" strictly means an authenticator app's time-based codes; an emailed code is an OTP.
 
 **Each decision also says whether it differs by deployment** (ADR-055's `DEPLOYMENT`). For example, an

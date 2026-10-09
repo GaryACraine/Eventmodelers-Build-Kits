@@ -382,7 +382,7 @@ model and build only what's ours.
           - **Migrations:** none for read models; node-pg-migrate for the rest.
           - **Supabase was dropped:** the database on the internet, and its sign-in server needed on-premises.
           - **Cognito was dropped:** AWS-only, no local version.
-          1. **2b.2a Sign-in in the kit, proven in licensing (ADR-055, Proposed 2026-10-09).** Gary: it ships with
+          1. **2b.2a Sign-in in the kit, proven in licensing (ADR-055, Accepted 2026-10-09).** Gary: it ships with
              the kit, configured by deployment (`DEPLOYMENT=cloud | on-premises`). Licensing never had
              `mock-oauth2-server`: there's a typed session stub, and the API checks no token.
              - **A.** Into the kit, then into licensing through `kit-drift`:
@@ -4304,6 +4304,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-09 | ADR-055 Proposed: sign-in ships with the kit (`auth/` service, JWKS check, live session), configured by `DEPLOYMENT=cloud \| on-premises`; 2b.2a split into A (kit), B (Sign Up built), C (session fields from the token, gap 2) | Gary: it's deployed with the kit and configurable by deployment type. Licensing had no `mock-oauth2-server` and no token check, so the kit gains both. Code follows Better Auth's official docs |
 | 2026-10-09 | ADR-056 Proposed, open: the account security lifecycle (reset, change password/email, 2FA, passkeys, web vs mobile, sessions, deletion) with Better Auth's options and recommendations; PLAN 2b.2d | Gary: defer the decisions until the kit and licensing are updated, but keep the record that they must be made to best practice |
 | 2026-10-09 | ADR-056: the second factor is settled in principle. Every method is built (emailed code, authenticator app, passkey), the policy is per role and configurable per customer. Defaults: the owner uses a passkey (Touch ID), admins and engineers use an emailed code | Gary: an emailed code is enough for most people, and people resist authenticator apps unless the data is sensitive. The owner's billing needs a factor that doesn't depend on the inbox, and a passkey gives that with nothing to install. Open for 2b.2d: whether customers may loosen a default, and how a passkey fits the owner's sign-in |
+| 2026-10-09 | ADR-055 Accepted (part 2 still to settle). ADR-056: one opinionated default for the second factor for now (the role table, no per-customer configuration yet); the owner signs in with a passkey, which counts as two factors | Gary: the simplest possible default approach for now; per-customer configuration and where it's stored come later |
 
 ## Progress
 
