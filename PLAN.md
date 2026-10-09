@@ -2983,6 +2983,7 @@ routes and queries, the examples, and the scenarios. Use it to:
       client sent. That's the cloud default in `auth/src/config.ts`; without it, rate limits share one bucket.
     - **On-premises:** the install's guide names the customer's reverse proxy in `AUTH_TRUSTED_PROXIES`, or the
       proxy sends a single `x-forwarded-for`.
+    - The background, and a check after any install: `docs/case-studies/reverse-proxies-and-client-ip.md`.
 - [ ] **14.9 Prove and document (increment t14 on course-enrollment).**
   - One increment end to end on a real project: the dependencies and a mockup → a board wireframe → the loop builds
     backend and UI → the app works against the live backend.
