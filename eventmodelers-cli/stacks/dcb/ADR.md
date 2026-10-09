@@ -3943,7 +3943,8 @@ These sit with the rest of the account lifecycle above (reset, change of email o
 
 ### ADR-059: A context's events are its own; other contexts read its published read models or its published events
 
-**Status:** Proposed, 2026-10-09 (Gary: "I don't think we should be copying events").
+**Status:** Proposed, 2026-10-09 (Gary: "I don't think we should be copying events"). Amended the same day (Gary:
+a read model may be copied across, marked external, as a placeholder for another context's published API).
 **Date:** 2026-10-09
 **Builds on:** ADR-038 (point 5: events are scoped by context), ADR-040 (translations), ADR-053 (an external event
 says how it reaches us), ADR-055 part 2 (the session lookup).
@@ -3988,6 +3989,18 @@ says how it reaches us), ADR-055 part 2 (the session lookup).
    - **(a) The owner's published read model (the default).** The owner exports a query, in-process (as
      `readModelLookup` does for the session lookup), or over HTTP when it's a separate service. The reader observes
      the effects of the events, never the events themselves.
+     - **On the board, the reader's chapter may show it as a copy of the owner's read model, marked
+       `--external <owner context>`** (ADR-052's marking: nothing of ours builds it, and it makes no job). It's a
+       placeholder for the owner's published API.
+       - emcli marks it when the copy is made.
+       - It shows only what the owner publishes: no field or event the origin lacks. To get more, the owner publishes
+         more.
+       - It never becomes an extension slice of the owner's projection.
+
+       Completeness errors on either break.
+     - **How the reader reads it** is settled at its first build:
+       - a screen calls the owner's endpoint;
+       - a decision or an automation calls a query the owner exports (as the session lookup does).
    - **(b) The owner's published external event, consumed by a translation**, when the other context must react to
      the fact or keep its own copy. The owner publishes an external event, designed and versioned as an API
      (ADR-017/018). The consumer translates it: a to-do list, an automation, its own command, its own event.
@@ -4000,8 +4013,10 @@ says how it reaches us), ADR-055 part 2 (the session lookup).
    Compare Emmett, Axon 5 and Marten first. The likely first use is the role sync: licensing's role assignments
    reaching identity's automations that tell Auth (ADR-037, ADR-058).
 5. **Enforced:**
-   - **emcli** refuses `element copy` across contexts. Completeness gives an error at hand-off for an existing
-     cross-context copy, or for an event of the same name defined in two contexts.
+   - **emcli** refuses `element copy` of an event or a command across contexts, and marks a read model copied across
+     as external to its owner. Completeness gives an error at hand-off for an existing cross-context event copy, for
+     an event of the same name defined in two contexts, and for a read model copy that isn't external to its owner or
+     adds to it.
    - **The commit-scope guard** rejects a file under `src/contexts/<a>/` importing `src/contexts/<b>/Events`.
    - **The build skills** never import another context's events.
 
