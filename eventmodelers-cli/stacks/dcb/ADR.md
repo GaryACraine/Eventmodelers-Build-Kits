@@ -3499,3 +3499,196 @@ form it is).
   - then the Sign Up form (ours), gap 2 (`userId` in the session) and the four auth role-sync slices. Whether
     Better Auth's tables in our own database simplify those slices gets its own ADR.
 - **The matrix** (https://claude.ai/artifact/EArHLdWp3QLRFp7PPx2ufG) keeps the comparison, with the decision shown.
+
+### ADR-055: Sign-in ships with the kit, configured by deployment
+
+**Status:** Proposed, 2026-10-09 (Gary: "this will be deployed with the kit as well and should be configurable based
+on the deployment type, cloud or on-premises").
+**Date:** 2026-10-09
+**Builds on:** ADR-037 (one JWKS check, our own `userId`), ADR-052 (the session is an external read model), ADR-053
+(`userSignedUp` stays in Auth), ADR-054 (Better Auth everywhere, as its own service; two deployment shapes).
+
+**Context:**
+- **ADR-054 chose Better Auth for every deployment.** Every project the kit scaffolds needs it, so it belongs in
+  the scaffold (`templates/root`), not only in licensing.
+- **Licensing today** (checked 2026-10-09; PLAN's wording was ahead of the code):
+  - **there is no `mock-oauth2-server`:** the web app's session stub (`web/src/lib/session.tsx`, `RequireSession`)
+    asks the person to type `sub`, `email` and `userId`, and keeps them in the browser;
+  - **the API checks no token:** `registerUser` takes `sub` and `email` from the request body;
+  - **the model's session mappings:** `sub`, `email` (registerUser) and `userId` (activateOrganisation's
+    `activatedBy`; gap 2).
+- **Better Auth's official docs are the starting point for every file:**
+  - installation;
+  - the client;
+  - the JWT plugin;
+  - email;
+  - email and password;
+  - Express;
+  - the PostgreSQL adapter;
+  - cookies;
+  - the CLI.
+
+**Decision:**
+1. **The sign-in service is part of the scaffold:** `auth/`, its own package, Dockerfile and container, in the same
+   repo.
+   - **Express 5,** with `app.all("/api/auth/*splat", toNodeHandler(auth))` mounted before any body parser, as the
+     Express docs say, and `GET /health`.
+   - **Its tables go in an `auth` schema in our Postgres:** `new Pool({ connectionString, options: "-c
+     search_path=auth" })`, as the PostgreSQL adapter docs show.
+   - **Email and password, with the email verified at sign-up:**
+     - `requireEmailVerification`;
+     - `sendOnSignUp` and `autoSignInAfterVerification`;
+     - the email is sent without being awaited (the docs' timing-attack warning).
+   - **The JWT plugin issues the token the API checks:**
+     - its payload is `email` and `email_verified` (`definePayload`);
+     - `sub` is Better Auth's user id;
+     - the issuer and audience are `BETTER_AUTH_URL`;
+     - tokens last 15 minutes and are signed with EdDSA keys;
+     - the JWKS is at `/api/auth/jwks`.
+   - **Rate limits are stored in Postgres,** so they hold across instances, and telemetry is off.
+   - **`better-auth` is pinned to an exact version:** security releases are ours (ADR-054, PLAN 2b.2c).
+2. **One setting chooses the deployment: `DEPLOYMENT=cloud | on-premises`.** Locally and in CI it's on-premises
+   (ADR-054). `auth/src/config.ts` reads the environment, applies the deployment's defaults, and refuses to start
+   if a required setting is missing.
+
+   | Setting | cloud (AWS) | on-premises (also local and CI) |
+   |---|---|---|
+   | Email | SES, through nodemailer's SES transport with the task's IAM role | SMTP, `SMTP_URL` (Mailpit locally) |
+   | Secure cookies | always | when `BETTER_AUTH_URL` is https |
+   | Client IP for rate limits | the header CloudFront sets | `AUTH_IP_HEADER`, default `x-forwarded-for` |
+   | How `/api/auth` reaches the service | a CloudFront behaviour (14.8) | the web container's reverse proxy (14.8); Vite's proxy locally |
+   | Secrets | Secrets Manager, injected as environment variables | environment variables or `.env` |
+
+   **The API's settings are the same in both:** `AUTH_ISSUER`, `AUTH_AUDIENCE` and `AUTH_JWKS_URL`.
+3. **The sign-in cookie is first-party; the API takes a bearer token.**
+   - **Sign-in is served under the web app's origin at `/api/auth`.** The cookie docs warn that Safari blocks
+     cookies from another domain and recommend a reverse proxy.
+   - **The API stays on its own origin.** The web app sends `Authorization: Bearer <jwt>`, taken from
+     `authClient.token()` (the JWT docs' recommended way) and cached until shortly before it expires.
+4. **The API's token check is ADR-037's single piece of sign-in-aware code** (`src/shared/signIn.ts`).
+   - It uses `createRemoteJWKSet` and `jwtVerify` from `jose`, as the JWT docs show.
+   - It checks the issuer, the audience, expiry and `email_verified`.
+   - The verified claims go on the request for routes to read.
+   - An invalid or expired token gets a 401.
+   - CORS allows the `Authorization` header.
+   - **For now a request without a token passes, as before.** Which routes require one is part 2 below.
+5. **The web app's session comes from Better Auth in live mode.**
+   - `authClient.useSession()` gives `{ sub: user.id, email }`.
+   - `RequireSession` shows a sign-in form (`authClient.signIn.email`), and signing out calls
+     `authClient.signOut()`.
+   - **Mock mode and the tests keep the stub,** so screens that are already built don't change.
+6. **Migrations follow ADR-054 point 6.**
+   - **Better Auth's tables** come from its CLI (`npx auth@latest generate`). They're committed as a node-pg-migrate
+     migration in `auth/migrations/`, with its tracking table in the `auth` schema.
+   - **Compose runs them as a one-off `auth-migrate` service** before `auth` starts (the init container). In our
+     cloud the same image runs as the CDK Trigger's task (14.8).
+7. **Compose adds three services:**
+   - `mailpit` (SMTP on 1025; its UI and API on 8025);
+   - `auth-migrate`;
+   - `auth` (port 3001).
+8. **What stays in the model:**
+   - **Sign Up is our form** (ADR-052 point 5, ADR-054). "sign up" is planned with a ui job, and the loop builds it
+     with a new provider skill, `provider-better-auth` (a draft until its first slice and the journey pass).
+   - **Signing in is scaffold:** it records nothing in our model.
+
+**Part 2, to settle before it's built (gap 2):**
+- **A command's or query's `session:` fields come from the verified token, not the request body,** and a route with
+  any of them requires sign-in.
+- **`userId` is resolved by the API from the verified `sub` (recommended),** through the read model that the model
+  marks as the session's user lookup (a property, not prose). Better Auth then knows nothing of our ids.
+- **What changes:**
+  - `build-command` and `plan-change`, in the same PR;
+  - licensing's `registerUser` and `activateOrganisation` are replaced (replace before release).
+
+**Alternatives considered:**
+- **Better Auth inside the API process.** Rejected in ADR-054, because it blurs ADR-037's boundary.
+- **The sign-in cookie sent straight to the API** (the API reading Better Auth's session with `getSession`). Rejected:
+  - every service would then depend on Better Auth's cookie;
+  - the mobile apps can't use it;
+  - the JWKS check is what ADR-037 decided.
+- **`npx auth migrate` at the service's startup.** Rejected: ADR-054 chose one migration tool, run before the new
+  version starts.
+- **A separate flag for each difference** (`EMAIL_TRANSPORT`, `SECURE_COOKIES`, …) with no deployment type.
+  Rejected: a deployment type sets them together, so an install can't end up half one shape and half the other.
+  Each can still be overridden on its own.
+
+**Consequences:**
+- **Kit:**
+  - the scaffold gains:
+    - `auth/`;
+    - `src/shared/signIn.ts`;
+    - the web app's `auth-client.ts`, live session, bearer middleware and Vite proxy;
+    - three Compose services;
+  - the instructions gain:
+    - the `provider-better-auth` skill;
+    - a rule in `build-screen`;
+    - a section in the manual.
+- **Licensing** takes it through `kit-drift`.
+  - Journey case 1 signs up for real once "sign up" is built: it reads the verification email from Mailpit, and
+    waits on state with a deadline.
+  - Case 3 types the user id until part 2.
+- **Proven when:**
+  - the services start;
+  - a sign-up puts a verification email in Mailpit;
+  - the API accepts the token and refuses a tampered one;
+  - the journey passes 8/8 on the mock and the sandbox.
+- **The cloud configuration is covered by tests only** until 14.8 deploys it.
+
+### ADR-056: The account security lifecycle (open)
+
+**Status:** Proposed, open, 2026-10-09 (Gary: "we can defer these decisions until later … as long as we don't lose
+record that we need to have these policies and decisions made in line with best practices and what configuration
+options are available within Better Auth"). It is decided after ADR-055 is built in the kit and licensing
+(PLAN 2b.2d).
+**Date:** 2026-10-09
+**Builds on:** ADR-054 (Better Auth everywhere), ADR-055 (sign-in in the kit).
+
+**Context:**
+- **ADR-055 builds only email verification at sign-up.** Everything else a person does with their account stays
+  off until this is decided:
+  - recovering a forgotten password;
+  - changing the password or the email;
+  - a second factor;
+  - signing in without a password;
+  - sessions;
+  - deleting the account;
+  - security notices.
+- **The policy is the same for every customer; how it applies differs by app and by deployment.** Web and mobile
+  need different mechanics. On-premises customers may sign in through their own SSO (PLAN 2b.2b), which brings its
+  own MFA.
+- **Recommendations follow NIST SP 800-63B and OWASP's authentication cheat sheets.** The options are Better Auth's,
+  from its docs (options reference; email and password; email; users and accounts; the Two-Factor, Magic Link,
+  Email OTP, Phone Number, Passkey, Have I Been Pwned, Captcha, Multi Session and OAuth 2.1 Provider plugins).
+
+**The questions, Better Auth's options, and a recommendation for each:**
+
+| Concern | Better Auth | Recommendation |
+|---|---|---|
+| Email verification at sign-up | `requireEmailVerification`, `sendOnSignUp`, `emailVerification.expiresIn` (default 1h) | **On** (ADR-055); `autoSignInAfterVerification` |
+| Forgotten password | `sendResetPassword` (an emailed link), `resetPasswordTokenExpiresIn` (default 1h), `revokeSessionsOnPasswordReset` (default false), `onPasswordReset`; Email OTP can send a code instead | **An emailed single-use link, valid 1h, that ends every session.** The same answer whether or not the account exists. No reset by SMS (SIM swap) and no security questions. **Mobile gets an emailed code** (Email OTP), because a link opens the browser, not the app |
+| Changing the password | `changePassword({ currentPassword, newPassword, revokeOtherSessions })` | **The current password is required, and every other session ends.** A notice is emailed |
+| Changing the email | `user.changeEmail`, with `sendChangeEmailConfirmation` (confirmed at the current address first), then the new address verified | **Confirmed at the old address, verified at the new one, and the old one told.** Our `userWasRegistered.email` then goes stale, so our model needs an "email changed" follow-up |
+| Password rules | `minPasswordLength` (default 8), `maxPasswordLength` (default 128); the Have I Been Pwned plugin | **At least 12 characters, no composition rules, breached passwords refused** |
+| A second factor | the Two-Factor plugin: TOTP (an authenticator app); OTP through our own `sendOTP` (email or SMS); backup codes; trusted devices (30 days); lockout | **TOTP with backup codes as the standard.** An emailed code as the fallback. SMS only if a customer insists: NIST restricts it, each message costs, and a provider must work for an Isle of Man company |
+| Who must use it | our policy (hooks, token claims) | **Required for the owner and admins** (billing, invitations); optional for engineers. SSO customers get MFA from their own provider |
+| Without a password | Magic Link, Email OTP, Passkey (WebAuthn; works with Expo) | **Passkeys in the long run:** they resist phishing and fit biometrics on web and mobile. Magic links only on the web, if at all |
+| Web and mobile | one server, one set of rules; mobile through the Expo client or the OAuth 2.1 Provider plugin (native apps: OIDC with PKCE, as ADR-054 assumed) | **The same policies, with different mechanics:** on mobile, codes instead of links, passkeys or biometric unlock, longer sessions that refresh |
+| Sessions | `session.expiresIn` (default 7 days), `updateAge` (default 1 day); Multi Session; ending all sessions | **Set per app** (web portal, mobile); "sign out everywhere" in the account settings |
+| Deleting the account | `user.deleteUser`, with `sendDeleteAccountVerification`, `beforeDelete`, `afterDelete` | **Its own ADR:** our events hold personal data (the email), so this needs a GDPR answer (crypto-shredding or redaction) |
+| Abuse | `rateLimit` (stored in Postgres, ADR-055), the Captcha plugin, the 2FA lockout | **Rate limits on.** A captcha on sign-up only if bots appear |
+| Security notices | hooks on sign-in, reset and change | **Email on:** the password changed, the email changed, 2FA turned off, a sign-in from a new device |
+
+**Each decision also says whether it differs by deployment** (ADR-055's `DEPLOYMENT`). For example, an
+on-premises customer may turn password sign-in off in favour of their SSO.
+
+**Decision:** open. Settled in PLAN 2b.2d, after ADR-055 is built and proven in licensing.
+
+**Consequences, once decided:**
+- **Each choice becomes a setting:** in `auth/src/config.ts` where it differs by deployment, otherwise in
+  `auth/src/auth.ts`.
+- **Each person-facing flow becomes a modelled screen,** for example:
+  - "forgot password";
+  - "change email";
+  - "set up two-factor".
+- **What a flow changes in our model** (for example, an email change) is modelled like `userSignedUp`, as Auth's
+  event.
