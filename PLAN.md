@@ -385,7 +385,9 @@ model and build only what's ours.
           1. ✅ **2b.2a Sign-in in the kit, proven in licensing (ADR-055, Accepted 2026-10-09; A, B and C done
              2026-10-09).** Follow-ups:
              - emcli can't reorder chapters (chapter 0 shows last);
-             - chapters 1b and 2 should copy identity's `userWasRegistered` rather than define their own;
+             - ~~chapters 1b and 2 should copy identity's `userWasRegistered`~~ superseded by ADR-059 (Proposed
+               2026-10-09): a context's events are its own, so no copies. Licensing drops chapter 1's copy, its
+               spec `given` and re-export, and the drafts in 1b and 2 (**2b.2e**);
              - the export should name planned work in another context;
              - the board still has the replaced "start options" slice's empty shell (a deleting push, with Gary's
                go-ahead). Gary: it ships with
@@ -4362,6 +4364,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-09 | Sign-up's unhappy paths recorded in ADR-056 as later chapters; `emailVerification.sendOnSignIn: true` in the kit | Gary: keep chapter 1 the happy path, don't lose the failure paths. Checking Better Auth's source showed the sign-in form claimed the link was resent when it wasn't (sendOnSignIn unset), and that signing up again with the same email sends nothing |
 | 2026-10-09 | ADR-055 part 2 Accepted and built in the kit and emcli: `session:` values come from the token (`sub`, `email`) or the session lookup (`userId`), never a body, path or query string; such routes require sign-in (401, 403 register first); self reads are `GET /<read-model>`; `--session-lookup` (inline-projected); an `identity` context; ADR-058 (secure by default, non-person callers, roles) open | Gary: `/my-account` with `sub` from the JWT is more secure than `/my-account/{sub}`, and generalises: the `session:` mapping is the marker. Secure-by-default needs an identity for ops callers first, so it waits for the role work |
 | 2026-10-09 | 2b.2a done: ADR-055 part 2 proven in licensing (identity context: register user and my account rebuilt there; activate organisation and start options replaced); journeys 8/8 mock and sandbox with no typed ids | Lessons in plan-change: move an event's factory before moving its slices to another context (the loop follows the event); the loop builds one context at a time; a route gaining sign-in breaks other slices' tests that seed through it |
+| 2026-10-09 | ADR-059 Proposed: a context's events are its own. Other contexts read its published read model (the default) or translate its published event; no cross-context copies (emcli refuses them, the commit guard rejects importing another context's `Events.ts`) | Gary: events are a context's system of record, and copying raw domain events across contexts isn't best practice. The research agrees (Dudycz's internal and external events, Event Modeling's translation, DCB's boundary inside one context). Licensing never decided on the copy; the session lookup already answers "is this person registered?" |
 
 ## Progress
 

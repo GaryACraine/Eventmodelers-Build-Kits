@@ -158,6 +158,9 @@ It loads every check under `.build-kit/lib/checks/` and rejects the commit if an
   `addQueries` too, the queries follow as their own commit, which query-additive checks.
 - **events-append-only** — `src/contexts/{context}/Events.ts` only gains lines: no event is removed or changed
   (ADR-017). A released event changes only by a new version (ADR-018)
+- **context-events-private** — no file under `src/contexts/<a>/` imports `src/contexts/<b>/Events`: a context's
+  events are its own (ADR-059). Another context's facts come from its published read model, or its published event
+  translated into ours
 - **test-file-present** — a changed `decider.ts`, `projection.ts`, `readModel.ts`, or `processor.ts` needs a sibling `*.tests.ts`
 - **no-invented-fields** — heuristic: flags a field used in code that isn't declared anywhere in
   `.build-kit/.slices/{context}/{slice}/slice.json`

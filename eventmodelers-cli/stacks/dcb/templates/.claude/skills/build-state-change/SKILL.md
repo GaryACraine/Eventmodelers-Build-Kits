@@ -37,6 +37,9 @@ From the slice definition, extract:
 ## Step 2 — Ensure the shared Events.ts exists
 
 Each context has one `Events.ts` at `src/contexts/{context}/Events.ts` that exports tagged event factories.
+**Only your own context's.** Never import another context's `Events.ts`, not even in tests (ADR-059, and the
+`context-events-private` check). A fact another context owns reaches you through its published read model (the
+signed-in person's `userId` comes from the session lookup) or a translation of its published event.
 
 ### Event shape
 
