@@ -439,14 +439,16 @@ model and build only what's ours.
              ahead of 2b.2b to 2b.2d: ADR-056's second factor is set per role, ADR-059 point 4 (how a context
              publishes an event) waits on the role sync, and most routes still answer anyone. Better Auth (ADR-054)
              lifts the 2026-10-05 reason the role-sync slices stayed draft.
-             1. **How an endpoint's permission is checked (ADR-060, Proposed):** roles, claims, or a role-to-permission
-                map; what the token carries; the tenancy check. Gary decides.
+             1. ✅ **How an endpoint's permission is checked (ADR-060, Accepted 2026-10-09):** a `resource:action`
+                permission per endpoint, one role map in the model, roles from the session lookup (the token carries
+                only `sub`), a generated catalogue. Customer-defined roles later.
              2. **Callers that aren't people (ADR-058 point 2):** a platform-admin role, a service token, or internal
                 routes. Ops reads, scripts and the journey need one before (3).
              3. **Secure by default (ADR-058 point 1):** every route requires sign-in, the model marks `--public`; in
                 emcli, the export and the build skills.
-             4. **Permissions in the model (ADR-058 point 3, as ADR-060 decides):** marked on commands and read models,
-                checked by the API, tested both ways.
+             4. **Permissions in the model (ADR-060):** in emcli, `permission` on commands and read models and the role
+                map, after migrating the legacy model's `cedarAction`, `cedarRoles` and `cognitoGroups`; the
+                catalogue (`x-permission`, `api/permissions.md`) and its checks; the API checks, tested both ways.
              5. **The role sync:** licensing's role assignments reach identity and Better Auth. The first published
                 event and translation (ADR-059 point 4): compare Emmett, Axon 5 and Marten first. Replaces the four
                 draft auth role-sync slices (item 6).
@@ -4390,6 +4392,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-09 | ADR-059 proven in licensing (2b.2e): no licensing file imports identity, journeys 8/8 on mock and sandbox. emcli's push now moves elements before creating new ones | The board holds one element per cell, and a move can free the cell a new element needs |
 | 2026-10-09 | ADR-059 Accepted | Gary, after it was proven in licensing (2b.2e) |
 | 2026-10-09 | 2b.2f (ADR-058 and the role sync) is next, ahead of 2b.2b to 2b.2d; ADR-060 Proposed: how an endpoint's permission is checked (roles, claims, or roles mapped to permissions) | Gary: beyond requiring sign-in, how an endpoint checks permission isn't decided; a hybrid (the endpoint names a permission, the token names the group, a map between them) appeals because tests check a group has a permission. ADR-056 and ADR-059 point 4 both wait on roles |
+| 2026-10-09 | ADR-060 Accepted: `resource:action` permissions on endpoints; one role map, in the model; membership and roles from the session lookup, the token carries only `sub`; emcli's legacy Cognito and Cedar fields migrated then removed; a generated catalogue of every endpoint and its permission (`api/openapi.json` `x-permission`, `api/permissions.md`); customer-defined roles later | Gary: the legacy model's values seed the map; every API capability and its permission must be recorded |
 
 ## Progress
 
