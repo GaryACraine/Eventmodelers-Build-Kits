@@ -25,7 +25,7 @@ export function configureCors(origins = process.env["CORS_ORIGIN"]): WebApiSetup
             res.setHeader("Access-Control-Expose-Headers", "ETag, Location")
             if (req.method !== "OPTIONS") return next()
             res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE")
-            res.setHeader("Access-Control-Allow-Headers", "Content-Type, Idempotency-Key, If-None-Match, Prefer, Last-Event-ID")
+            res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, Idempotency-Key, If-None-Match, Prefer, Last-Event-ID")
             res.setHeader("Access-Control-Max-Age", "600")
             res.status(204).end()
         })

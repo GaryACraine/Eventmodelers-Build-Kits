@@ -58,6 +58,14 @@ The example app has a frontend too: Course Form (`/courses/new`), Courses (`/cou
 (`/courses/:courseId`) and My Courses (`/my-courses`), in `web/src/pages/` and `web/src/slices/`. It's the pattern
 the `build-screen` skill copies. `scripts/start-empty.sh` removes it with the example backend.
 
+## Sign-in (`auth/`)
+
+Better Auth as its own service and container (ADR-055), with its tables in the `auth` schema of the same Postgres.
+`docker compose up -d` runs it (port 3001), its migrations (`auth-migrate`) and Mailpit, which catches its emails
+(http://localhost:8025). The web app reaches it at its own origin, `/api/auth` (Vite proxies it). The API checks
+its tokens in `src/shared/signIn.ts` (`AUTH_ISSUER`, `AUTH_JWKS_URL`). `DEPLOYMENT=cloud | on-premises` picks the
+email transport, cookie security and client-IP header (`auth/src/config.ts`). Its own tests: `cd auth && npm test`.
+
 ## API
 
 Once running, visit `http://localhost:3000/openapi.json` for the full OpenAPI document. Each slice registers its

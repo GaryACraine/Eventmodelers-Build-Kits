@@ -40,6 +40,7 @@ data already in your database when you do.
 19. [Command reference](#19-command-reference)
 20. [Known limits](#20-known-limits)
 21. [Automations in depth: restaurant orders and card payments](#21-automations-in-depth-restaurant-orders-and-card-payments)
+22. [Sign-in: who someone is, in every deployment](#22-sign-in-who-someone-is-in-every-deployment)
 
 ---
 
@@ -2940,3 +2941,70 @@ The restaurant's `e2e/` folder is a harness to copy for any automation:
 - **The Temporal server image has no `temporal` command.** Use `workflow.mjs` or the web UI on port 8080.
 - **The app can die too fast to catch.** A whole payment takes well under a second, so to kill the app between an
   order and its payment's start, stop Temporal first.
+
+## 22. Sign-in: who someone is, in every deployment
+
+Every project the kit scaffolds comes with sign-in (ADR-055). It's Better Auth, run as its own small service beside
+your API, with its tables in your Postgres. People sign up with an email and password and confirm their email
+address; then every request the web app makes carries a token your API checks. The same service runs on your laptop,
+in CI, in our cloud and on a customer's own servers (ADR-054). One setting says which.
+
+### 22.1 What's running
+
+`npm run infra:start` starts, besides Postgres and Temporal:
+
+| Service | What it is | Where |
+|---|---|---|
+| `auth` | the sign-in service | port 3001; the browser reaches it at the web app's own address, `/api/auth` (Vite passes it on) |
+| `auth-migrate` | creates or updates sign-in's tables (the `auth` schema), then stops | runs once, before `auth` starts |
+| `mailpit` | catches every email the sign-in service sends, instead of delivering it | http://localhost:8025 |
+
+Check it's up: `curl localhost:3001/health` says `{"status":"ok"}`, and `curl localhost:3001/api/auth/jwks` shows
+the public key your API checks tokens with.
+
+### 22.2 Turning real sign-in on
+
+Until your Sign Up screen exists, the web app keeps its stand-in: it asks for the IDs a page needs. To switch:
+
+1. Model the Sign Up screen and let the loop build it. Say to Claude, for example: *"Plan the sign up slice: our own
+   form with name, email and password, leading to Auth's user signed up."* The loop builds it with the
+   `provider-better-auth` skill.
+2. In `web/.env`, set `VITE_SIGN_IN=better-auth`. In `.env`, `AUTH_ISSUER` and `AUTH_JWKS_URL` are already set for
+   local use (see `.env.example`).
+3. Open the web app, sign up, and open the email in Mailpit. The link confirms the address and signs you in.
+
+A page that needs someone signed in shows the sign-in form until they are. **Sign out** is in the header.
+
+### 22.3 What the API sees
+
+Each request carries `Authorization: Bearer <token>`. The API checks it against the sign-in service's public key
+(`src/shared/signIn.ts`): who issued it, who it's for, that it hasn't expired, and that the email is confirmed.
+
+- **A good token:** the route can read who's calling with `signedInOf(res)`, as `{ sub, email }`.
+- **A bad or expired token:** 401, and the route doesn't run.
+- **No token:** for now the request goes through as before. Which routes require sign-in is the next step
+  (ADR-055 part 2).
+
+### 22.4 Our cloud or on-premises
+
+The sign-in service reads `DEPLOYMENT` (`cloud` or `on-premises`). Locally and in CI it's `on-premises`, because
+that's what a laptop is.
+
+| | `cloud` (our AWS) | `on-premises` (a customer's servers, and yours) |
+|---|---|---|
+| Email | Amazon SES, using the service's AWS role | any SMTP server (`SMTP_URL`); Mailpit locally |
+| Secure cookies | always | when the address is https |
+| The person's IP address (for rate limits) | a header our CDN sets, `x-client-ip` | `x-forwarded-for` from the customer's reverse proxy (`AUTH_TRUSTED_PROXIES` names it) |
+
+Every default can be changed on its own (`EMAIL_TRANSPORT`, `AUTH_SECURE_COOKIES`, `AUTH_IP_HEADERS`). A missing
+setting stops the service at startup, with every problem listed.
+
+### 22.5 What isn't switched on yet
+
+Only signing up, confirming the email, signing in and signing out are on. The rest of looking after an account is
+recorded in ADR-056 and decided next (PLAN 2b.2d):
+- forgotten passwords;
+- changing a password or email;
+- a second factor (an emailed code by default; a passkey for the owner);
+- deleting an account.
+

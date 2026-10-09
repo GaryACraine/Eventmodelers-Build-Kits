@@ -44,6 +44,11 @@ API (ADR-052). Never fetch it, and write no view, MSW handler or API type for it
 fields come from that system's client in the browser. For the sign-in provider (`Auth`), that's the session:
 `useSession()[field]`, the same values the command's `session:` mappings send.
 
+**A screen that leads to the sign-in provider's event** (an event in the `Auth` lane, `--intake none`, such as
+`userSignedUp`) submits to the sign-in service, not our API (ADR-055): there's no command of ours to send. Read
+`provider-better-auth` first. The Sign Up form calls `signInService.signUpWithEmail` from `web/src/lib/auth-client.ts`,
+and signing in is already the scaffold's (`RequireSession`).
+
 **Two kinds of route, never mixed:**
 - `page.route` (`/courses/:courseId`) is the URL people see. Only the page file uses it.
 - `apiEndpoint` (`/course-details/{courseId}`, `/subscribe-student`) is what the code calls, through

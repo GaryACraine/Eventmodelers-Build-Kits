@@ -3599,6 +3599,19 @@ on the deployment type, cloud or on-premises").
 - **What changes:**
   - `build-command` and `plan-change`, in the same PR;
   - licensing's `registerUser` and `activateOrganisation` are replaced (replace before release).
+- **Our own sign-in concerns get their own context, `identity`** (proposed 2026-10-09, after Gary asked).
+  - **`identity` holds:**
+    - our user (`registerUser`, My Account);
+    - the link from `sub` to `userId` (gap 2);
+    - the automations that copy roles to Auth (ADR-037);
+    - the follow-ups to account changes (ADR-056, for example an email changed).
+  - **`licensing` keeps** organisations, seats, roles and billing, and refers to people only by `userId`.
+  - **Better Auth's own data stays in its service** (the Auth lane, not a context of ours).
+  - **Each sign-in flow gets its own chapter** (ADR-038): signing in and out, recovering a password, changing the
+    email, a second factor. Sign Up stays where it opens a flow (chapter 1; the invitation chapter later), the same
+    `userSignedUp` in each.
+  - **The move happens with part 2,** because `registerUser` is replaced then anyway: one replacement instead of two.
+    "sign up" (phase B; no backend) can be planned under `identity` from the start.
 
 **Alternatives considered:**
 - **Better Auth inside the API process.** Rejected in ADR-054, because it blurs ADR-037's boundary.
