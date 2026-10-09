@@ -442,12 +442,15 @@ model and build only what's ours.
              1. ✅ **How an endpoint's permission is checked (ADR-060, Accepted 2026-10-09):** a `resource:action`
                 permission per endpoint, one role map in the model, roles from the session lookup (the token carries
                 only `sub`), a generated catalogue. Customer-defined roles later.
-             2. **Who calls besides customers (ADR-058 point 2, revised and Proposed 2026-10-09):** the platform admin is a
+             2. ✅ **Who calls besides customers (ADR-058 point 2, revised and Proposed 2026-10-09):** the platform admin is a
                 person (signs in, acts in a named organisation as themselves, recorded by `actedAs`). No caller that
                 isn't a person is needed now (automations run in-process; the e2e scripts sign in as a test
-                platform admin); API keys or STS wait for the first real one. Gary confirms.
-             3. **Secure by default (ADR-058 point 1):** every route requires sign-in, the model marks `--public`; in
-                emcli, the export and the build skills.
+                platform admin); API keys or STS wait for the first real one. ✅ Accepted 2026-10-09.
+             3. **Endpoints by declaration (ADR-058 point 1, revised 2026-10-09):** no command or read model gets a
+                route unless the model says `--api <permission|self|anonymous>`; webhooks come from `--intake webhook`
+                and are checked by signature. emcli (property, contract, export, completeness), the build skills and
+                a `routes-declared` check; then licensing, where the automation-only commands and the processors'
+                to-do lists lose their routes.
              4. **Permissions in the model (ADR-060):** in emcli, `permission` on commands and read models and the role
                 map, after migrating the legacy model's `cedarAction`, `cedarRoles` and `cognitoGroups`; the
                 catalogue (`x-permission`, `api/permissions.md`) and its checks; the API checks, tested both ways.
@@ -4397,6 +4400,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-09 | ADR-060 Accepted: `resource:action` permissions on endpoints; one role map, in the model; membership and roles from the session lookup, the token carries only `sub`; emcli's legacy Cognito and Cedar fields migrated then removed; a generated catalogue of every endpoint and its permission (`api/openapi.json` `x-permission`, `api/permissions.md`); customer-defined roles later | Gary: the legacy model's values seed the map; every API capability and its permission must be recorded |
 | 2026-10-09 | ADR-058 point 2 revised (Proposed): the platform admin is a person with platform permissions, acting in a named organisation as themselves (no impersonation); callers that aren't people use Better Auth API keys with `resource:action` permissions; internal-only routes dropped; ADR-037's "platform admin is auth only" revised (its grant belongs to identity) | Gary: the platform admin is user-based, not for automations, and may do business operations and sign-ins |
 | 2026-10-09 | ADR-058 point 2: no identity for callers that aren't people yet; API keys (customer integrations) and STS (AWS rights) deferred to their first real use | Gary: API keys only make sense for public APIs, STS may be over-engineering; is there a requirement? Checked: automations run in-process, Paddle's webhook is public and signed, and the only machine callers are e2e scripts, which can sign in |
+| 2026-10-09 | ADR-058 point 2 Accepted. Point 1 revised (Proposed): endpoints by declaration. No command or read model gets a route unless marked `--api <resource:action>`, `self` or `anonymous`; webhooks come from `--intake webhook` and are checked by signature; `--public` dropped | Found: every command got a route, so automation-only commands (`/start-trial`, `/assign-role`) were open and took `actedAs` from the body. Gary: control the endpoint per element, read models too; anonymous is the known term; webhooks controlled the same way |
 
 ## Progress
 
