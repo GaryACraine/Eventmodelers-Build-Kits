@@ -2,7 +2,7 @@ import { describe, test, expect, beforeAll } from "vitest"
 import supertest from "supertest"
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT, type CryptoKey } from "jose"
 import { getApplication } from "@dcb-es/event-store-express"
-import { configureSignIn, readModelLookup, requireSession, sessionOf, signedInOf, signInSettings, type SignInSettings } from "./signIn.js"
+import { configureSignIn, readModelLookup, requirePermission, requireSession, sessionOf, signedInOf, signInSettings, type SignInSettings } from "./signIn.js"
 
 // Tokens as the sign-in service issues them (Better Auth's JWT plugin: EdDSA, `sub`, `email`, `email_verified`),
 // signed here with a key of our own and checked against a JWKS holding it
@@ -40,7 +40,8 @@ describe("the API's sign-in check (ADR-037, ADR-055)", () => {
                     configureSignIn({ settings: configured ?? undefined, lookup }),
                     router => router.get("/who", (_req, res) => void res.json(signedInOf(res) ?? null)),
                     router => router.get("/mine", requireSession(["sub", "email"]), (req, res) => void res.json(sessionOf(req))),
-                    router => router.post("/act", requireSession(["userId"]), (req, res) => void res.json(sessionOf(req)))
+                    router => router.post("/act", requireSession(["userId"]), (req, res) => void res.json(sessionOf(req))),
+                    router => router.post("/assign", requirePermission("seat:assign", ["userId"]), (req, res) => void res.json(sessionOf(req)))
                 ]
             })
         )
@@ -103,6 +104,14 @@ describe("the API's sign-in check (ADR-037, ADR-055)", () => {
         const res = await agent().post("/act").set("Authorization", `Bearer ${await token()}`).send({ userId: "forged" })
         expect(res.status).toBe(200)
         expect(res.body).toMatchObject({ sub: "sub-7f3a", userId: "user-1" })
+    })
+
+    test("a route with a permission refuses a request without a token (401), and runs for a signed-in person", async () => {
+        expect((await agent().post("/assign")).status).toBe(401)
+        // ADR-060: the role check joins in 2b.2f step 4; until then a permission route needs sign-in (and its keys)
+        const res = await agent().post("/assign").set("Authorization", `Bearer ${await token()}`)
+        expect(res.status).toBe(200)
+        expect(res.body).toMatchObject({ userId: "user-1" })
     })
 
     test("signed in but not registered: 403, register first", async () => {
