@@ -385,12 +385,16 @@ model and build only what's ours.
           1. ✅ **2b.2a Sign-in in the kit, proven in licensing (ADR-055, Accepted 2026-10-09; A, B and C done
              2026-10-09).** Follow-ups:
              - emcli can't reorder chapters (chapter 0 shows last);
-             - ~~chapters 1b and 2 should copy identity's `userWasRegistered`~~ superseded by ADR-059 (Proposed
-               2026-10-09): a context's events are its own, so no copies. Licensing drops chapter 1's copy, its
-               spec `given` and re-export, and the drafts in 1b and 2 (**2b.2e**);
+             - ✅ ~~chapters 1b and 2 should copy identity's `userWasRegistered`~~ superseded by ADR-059 (Proposed
+               2026-10-09): a context's events are its own, so no copies. **2b.2e done 2026-10-09:**
+               - licensing drops chapter 1's copy and lane, the re-export, and the drafts in 1b and 2;
+               - activate organisation is rebuilt with its tests seeded through the sign-in lookup (`842b8b0`);
+               - identity's My Account is shown in chapter 1 as an external copy, in a slice of its own;
+               - backend 398, web 62; journeys 8/8 on mock and sandbox (licensing `a573f4b`, `bea0202`);
              - the export should name planned work in another context;
-             - the board still has the replaced "start options" slice's empty shell (a deleting push, with Gary's
-               go-ahead). Gary: it ships with
+             - ✅ the replaced "start options" slice's empty shell, removed by the ADR-059 push (2026-10-09). That push
+               failed partway, because the board allows one element per cell and one read model lane per chapter. It
+               was recovered without touching the other model's 25 chapters on the same board (emcli `ISSUES.md`). Gary: it ships with
              the kit, configured by deployment (`DEPLOYMENT=cloud | on-premises`). Licensing never had
              `mock-oauth2-server`: there's a typed session stub, and the API checks no token.
              - ✅ **A. Done 2026-10-09** (licensing `af58e42`; mock 8/8, sandbox 8/8). Into the kit, then into licensing through `kit-drift`:
@@ -4366,6 +4370,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-09 | 2b.2a done: ADR-055 part 2 proven in licensing (identity context: register user and my account rebuilt there; activate organisation and start options replaced); journeys 8/8 mock and sandbox with no typed ids | Lessons in plan-change: move an event's factory before moving its slices to another context (the loop follows the event); the loop builds one context at a time; a route gaining sign-in breaks other slices' tests that seed through it |
 | 2026-10-09 | ADR-059 Proposed: a context's events are its own. Other contexts read its published read model (the default) or translate its published event; no cross-context copies (emcli refuses them, the commit guard rejects importing another context's `Events.ts`) | Gary: events are a context's system of record, and copying raw domain events across contexts isn't best practice. The research agrees (Dudycz's internal and external events, Event Modeling's translation, DCB's boundary inside one context). Licensing never decided on the copy; the session lookup already answers "is this person registered?" |
 | 2026-10-09 | ADR-059 amended: a read model may be copied across contexts, marked `--external <owner context>` (emcli marks it on copy), as a placeholder for the owner's published API; it shows only what the owner publishes and never extends its projection. Events and commands stay refused | Gary: a read model copy can stand for another context's published API; marking it external says it belongs to the other context. ADR-052's external marking already means "nothing of ours builds it" |
+| 2026-10-09 | ADR-059 proven in licensing (2b.2e): no licensing file imports identity, journeys 8/8 on mock and sandbox. emcli's push now moves elements before creating new ones | The board holds one element per cell, and a move can free the cell a new element needs |
 
 ## Progress
 
