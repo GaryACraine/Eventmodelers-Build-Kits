@@ -3943,8 +3943,9 @@ These sit with the rest of the account lifecycle above (reset, change of email o
 
 ### ADR-059: A context's events are its own; other contexts read its published read models or its published events
 
-**Status:** Proposed, 2026-10-09 (Gary: "I don't think we should be copying events"). Amended the same day (Gary:
-a read model may be copied across, marked external, as a placeholder for another context's published API).
+**Status:** **Accepted, 2026-10-09 (Gary).** Proposed the same day (Gary: "I don't think we should be copying
+events"), then amended (Gary: a read model may be copied across, marked external, as a placeholder for another
+context's published API). Proven in licensing (2b.2e): journeys 8/8 on mock and sandbox.
 **Date:** 2026-10-09
 **Builds on:** ADR-038 (point 5: events are scoped by context), ADR-040 (translations), ADR-053 (an external event
 says how it reaches us), ADR-055 part 2 (the session lookup).
@@ -3977,7 +3978,7 @@ says how it reaches us), ADR-055 part 2 (the session lookup).
   - the copy survived only as a spec's `given`, a re-export in licensing's `Events.ts` for test seeding, and two
     draft slices (chapters 1b and 2) that define their own `userWasRegistered`.
 
-**Proposed:**
+**Decision:**
 1. **A context's events are private to it.** No slice of another context:
    - decides on them;
    - projects them;
