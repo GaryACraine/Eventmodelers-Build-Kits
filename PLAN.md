@@ -425,6 +425,16 @@ model and build only what's ours.
 
              ADR-056 lists Better Auth's options and a recommendation for each (Gary, 2026-10-09: "as long as we
              don't lose record").
+             - **Sign-up's unhappy paths, each its own chapter (no branching in chapter 1, ADR-038):**
+               - the email never verified (stale accounts);
+               - an expired link (our screens don't show the error yet);
+               - signing up again with the same email (no email is sent today);
+               - a mistyped address;
+               - an email that can't be sent;
+               - rate limits;
+               - verified but never onboarded (licensing's own chapters).
+
+               What Better Auth does today is recorded in ADR-056.
           5. **The four auth role-sync slices,** after 2b.2a. Whether Better Auth's tables in our own database
              simplify them gets its own ADR.
        3. **Gap 4: the trial's length.** Before release: a check at start that Paddle's trial matches `trialDays`, or
@@ -4326,6 +4336,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-09 | ADR-055 Accepted (part 2 still to settle). ADR-056: one opinionated default for the second factor for now (the role table, no per-customer configuration yet); the owner signs in with a passkey, which counts as two factors | Gary: the simplest possible default approach for now; per-customer configuration and where it's stored come later |
 | 2026-10-09 | ADR-055 phase A built and proven: `auth/` (Better Auth 1.7.7 pinned, the JWT plugin, rate limits in Postgres, the origin check forced on even under NODE_ENV=test), Compose's auth, auth-migrate and mailpit, the API's JWKS check, the web app's `signInService` and live session behind `VITE_SIGN_IN=better-auth`, `provider-better-auth` (draft), manual §22 | Every file starts from Better Auth's docs. Licensing: auth tests 7/7, the API's check 10/10, web 59/59, backend 387, journey mock and sandbox 8/8 (case 1 still the stub); a smoke run through Vite's proxy signed up, verified from Mailpit, got a token, and the API accepted it and refused a tampered one |
 | 2026-10-09 | ADR-057 Accepted and built: a screen another system serves is marked `--external` (no ui job, mockup checked only as a document); the sign-in screens (Sign In, Sign Up, check your email) and the header come with the kit; emcli's `--starter sign-up \| sign-in \| check-email` and the `account-header` snippet draw them on the board | Gary: a command to another system usually sits behind a processor (true when our system tells it), but here the person acts on Auth directly, and the password must never pass through our API. The kit builds these screens once, rather than each project's loop. Licensing: Sign Up external with the starter mockup, pushed (--safe); journey mock and sandbox 8/8 with a real sign-up through Mailpit |
+| 2026-10-09 | Sign-up's unhappy paths recorded in ADR-056 as later chapters; `emailVerification.sendOnSignIn: true` in the kit | Gary: keep chapter 1 the happy path, don't lose the failure paths. Checking Better Auth's source showed the sign-in form claimed the link was resent when it wasn't (sendOnSignIn unset), and that signing up again with the same email sends nothing |
 
 ## Progress
 

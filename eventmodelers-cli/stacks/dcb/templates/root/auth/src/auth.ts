@@ -42,6 +42,8 @@ export function createAuth(
         },
         emailVerification: {
             sendOnSignUp: true,
+            // Signing in unverified is refused (403) and sends the link again: the sign-in form says so
+            sendOnSignIn: true,
             autoSignInAfterVerification: true,
             sendVerificationEmail: async ({ user, url }) => {
                 send({ to: user.email, subject: "Verify your email address", text: `Open this link to verify your email address: ${url}` })

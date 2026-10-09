@@ -3752,6 +3752,24 @@ options are available within Better Auth"). It is decided after ADR-055 is built
 **Each decision also says whether it differs by deployment** (ADR-055's `DEPLOYMENT`). For example, an
 on-premises customer may turn password sign-in off in favour of their SSO.
 
+**Sign-up's unhappy paths: each its own chapter, later** (Gary, 2026-10-09: "we do not model branching on a
+chapter", ADR-038). Chapter 1 stays the happy path. What Better Auth 1.7.7 does today, as configured (checked in its
+source), and what each chapter has to decide:
+
+| Path | What happens now | To decide in its chapter |
+|---|---|---|
+| The email is never verified | The account sits in `auth.user` with `emailVerified = false`. Sign-in is refused (403). Nothing reaches our model or Paddle: there's no `userId`, no organisation, no checkout. It's never cleaned up | Remind them? Remove stale unverified accounts after N days (a scheduled job in the sign-in service)? |
+| They try to sign in unverified | 403, and the link is sent again (`sendOnSignIn`, set 2026-10-09 so the sign-in form's message is true) | A "send the link again" button without signing in? |
+| The link has expired (1 h, `emailVerification.expiresIn`) | Redirected to the `callbackURL` with `?error=TOKEN_EXPIRED`; **our screens don't show it yet** | A page that explains it and offers a new link |
+| They sign up again with the same email | **The same "check your email" answer, with no email sent** (Better Auth's generic duplicate response, so addresses can't be probed). Someone who lost the first email is stuck until they try to sign in | `onExistingUserSignUp`: email "you already have an account" (with a sign-in or reset link), or resend the verification if unverified |
+| They mistyped their address | "Sign up again" on the check-your-email screen; the mistyped account is left unverified | Covered by stale-account cleanup? |
+| The email can't be sent (SMTP or SES down) | The send isn't awaited (timing attacks); the failure is only logged in the sign-in service | An alert (ADR-043's alerting?) and a resend path |
+| Too many attempts | 429 from the rate limiter (stored in Postgres) | The message our screens show |
+| Verified, but never registers, activates or starts a trial | A Better Auth user with no `userWasRegistered`, or a registered user with no organisation | Licensing's own onboarding chapters (reminders, an abandoned trial), not sign-in |
+
+These sit with the rest of the account lifecycle above (reset, change of email or password, a second factor) in PLAN
+2b.2d.
+
 **Decision:** open. Settled in PLAN 2b.2d, after ADR-055 is built and proven in licensing.
 
 **Consequences, once decided:**

@@ -87,11 +87,16 @@ describe("the sign-in service", () => {
         const signUp = await post("/api/auth/sign-up/email", { name: "Owner", email, password })
         expect(signUp.status).toBe(200)
 
-        // Not verified yet: signing in is refused, with the email sent again
+        const verification = await emailTo(email)
+
+        // Not verified yet: signing in is refused, and the link is sent again
         const early = await post("/api/auth/sign-in/email", { email, password })
         expect(early.status).toBe(403)
-
-        const verification = await emailTo(email)
+        const deadline = Date.now() + 5_000
+        while (sent.filter(e => e.to === email).length < 2) {
+            if (Date.now() > deadline) throw new Error("the link wasn't sent again within 5s")
+            await new Promise(resolve => setTimeout(resolve, 50))
+        }
         expect(verification.subject).toBe("Verify your email address")
         const link = verification.text.match(/https?:\/\/\S+/)![0]
 
