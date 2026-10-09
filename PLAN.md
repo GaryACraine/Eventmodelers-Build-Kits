@@ -373,21 +373,24 @@ model and build only what's ours.
           rebuilds, completeness and contract unchanged), built by the loop first time. Journey case 8 checks it
           (this checkout's notifications: `not needed`, nothing `failed`, none left on the to-do list): before the
           rebuild it failed at 8 as expected; after, **mock 8/8 and sandbox 8/8**.
-       2. **The platform ADR (ADR-054, Proposed): hosting, database, sign-in, web app.** Broadened from the sign-in
-          provider (Gary, 2026-10-08): the provider can't be chosen apart from where the containers and Postgres run
-          (Supabase runs no long-lived containers). The decision matrix compares eight whole stacks and ten
-          providers within each hosting (https://claude.ai/artifact/EArHLdWp3QLRFp7PPx2ufG). AWS compute leads
-          every other base. The AWS stacks are effectively tied, and the sign-in choice and the database's home
-          separate them. Working assumption since (Gary): Supabase as our Postgres whatever the sign-in.
-          The sign-in shortlist is Supabase Auth 88, Better Auth 83 and Cognito 72, after three changes to the
-          criteria:
-          - local development added;
-          - "Deploys with CDK" added;
-          - the cost criterion now includes the connections between the parts (NAT, IPv4).
-          The ADR records what connecting AWS to Supabase involves: the connection mode, a fixed IP, the Data API,
-          connection limits, and migrations (none for read models). **Nothing is decided:** Gary's open questions are
-          in the ADR. Sign Up, the four auth
-          role-sync slices, gap 2 (the user id in the session), ADR-052 point 5 and deployment (14.8) wait on it.
+       2. ✅ **The platform ADR (ADR-054, Accepted 2026-10-09).** Broadened from the sign-in provider, compared as whole
+          stacks (https://claude.ai/artifact/EArHLdWp3QLRFp7PPx2ufG).
+          - **Decided (Gary):** our cloud on AWS (CDK, RDS private, no NAT gateway) for customers who want it, and
+            on-premises from a container package for customers who run it themselves.
+          - **Better Auth everywhere,** as its own sign-in service behind ADR-037's JWKS check.
+          - **The Sign Up form is ours** (closes ADR-052 point 5).
+          - **Migrations:** none for read models; node-pg-migrate for the rest.
+          - **Supabase was dropped:** the database on the internet, and its sign-in server needed on-premises.
+          - **Cognito was dropped:** AWS-only, no local version.
+          1. **2b.2a Prove sign-in locally.** Better Auth (its own container) replaces `mock-oauth2-server` in
+             licensing's `docker-compose.yml`, with Mailpit for email. Journey case 1 signs up for real. Then model
+             the Sign Up form as ours and settle gap 2 (the user id in the session), through `plan-change`; its own
+             plan.
+          2. **2b.2b SSO for on-premises customers:** check Better Auth's SSO plugin against Entra ID or Okta.
+          3. **2b.2c Security releases:** advisory alerts on `better-auth`, pinned versions, a patch path for
+             on-premises installs.
+          4. **The four auth role-sync slices,** after 2b.2a. Whether Better Auth's tables in our own database
+             simplify them gets its own ADR.
        3. **Gap 4: the trial's length.** Before release: a check at start that Paddle's trial matches `trialDays`, or
           `trialDays` read from Paddle's price.
        4. **Split "start trial checkout"** (screen, then Paddle's event), replacing the built slice, when that area is
@@ -2936,6 +2939,11 @@ routes and queries, the examples, and the scenarios. Use it to:
     what the loop did from commit bodies (`handoff.md` §4).
 - [ ] **14.8 Deploy.** The `web/` build goes to S3 + CloudFront (SPA fallback to `index.html`), with `VITE_API_BASE`
   per environment. A script first; CDK later if wanted.
+  - **Split by ADR-054 (2026-10-09):**
+    - **Our cloud:** CDK covers ECS on Fargate in public subnets with no NAT gateway; RDS private; S3 + CloudFront;
+      Route 53; SES; migrations as a CDK Trigger. Temporal Cloud or self-hosted.
+    - **On-premises:** a container package (Docker Compose, later Helm) holding the API, the worker, the Better Auth
+      service, the web app, Postgres and Temporal. SMTP for email; migrations in an init container.
 - [ ] **14.9 Prove and document (increment t14 on course-enrollment).**
   - One increment end to end on a real project: the dependencies and a mockup → a board wireframe → the loop builds
     backend and UI → the app works against the live backend.
@@ -4268,6 +4276,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-08 | A Paddle `transaction.completed` that isn't a renewal (origin other than `subscription_recurring`) is skipped as `not needed`, with no alert; every other type without a translation still alerts | Later chapters act on every type we fetch (renewals and conversions in chapter 8, `subscription.activated` in 1b): a quiet skip of all untranslated types would lose a paid subscription after release. Only the checkout's own payment is never needed: the subscription's events carry it (Gary) |
 | 2026-10-08 | The sign-in provider ADR became the platform ADR (ADR-054, Proposed): hosting, database, sign-in, web app, DNS and email, compared as whole stacks, including AWS + Supabase hybrids | Gary: the provider can't be chosen apart from where the containers and Postgres run, and Supabase runs no long-lived containers. Nothing decided: the AWS lean is a weight in the matrix, not a choice |
 | 2026-10-08 | ADR-054 working assumption: Supabase as our Postgres whatever the sign-in; sign-in shortlist Supabase Auth, Better Auth, Cognito; criteria gain local development, deploys with CDK, and connection costs (NAT) | Gary: the real sign-in should run locally and in CI; CDK for AWS and one way to migrate Postgres; avoid paying for a NAT gateway. Read models need no migrations (rebuilt from events at startup) |
+| 2026-10-09 | ADR-054 Accepted: our cloud on AWS (RDS, CDK) and on-premises from a container package; Better Auth everywhere as its own sign-in service; Supabase and Cognito dropped | Gary: some customers will run the platform in-house, and only Better Auth runs the same in our cloud, on-premises, locally and in CI; RDS keeps the database private (no NAT, no allow-list). Caveats: patching is ours across every install, SSO plugin to check, on-premises shapes 14.8 |
 
 ## Progress
 
