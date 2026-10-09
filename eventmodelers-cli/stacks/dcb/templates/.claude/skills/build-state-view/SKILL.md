@@ -298,6 +298,28 @@ for an async read model the optional `Prefer: wait` / ETag extras. It also serve
 definition** at that query's `path`, so a query needs no route code of its own. The route file is the same with
 or without queries.
 
+**A read model keyed by the signed-in person** (its key field `mapping: "session:<key>"`, ADR-055 part 2): its
+`apiEndpoint` has no key (`/my-account`). Pass `sessionKey`, and the route requires sign-in and reads the key from the
+token (or the session lookup), never the path:
+
+```typescript
+    return readModelRoute(myAccount, deps.readModels!, "/my-account", { schema: MyAccountSchema, pool: deps.pool, sessionKey: "sub", notFound: "No account yet" })
+```
+
+Its tests sign in with `testSignIn` (`src/test/signIn.ts`): `signIn.configure()` first in `apis`, and
+`.set("Authorization", await signIn.bearer({ sub }))`. Test that a request without the header gets 401, and that each
+person sees only their own document.
+
+**The session lookup** (`sessionLookup: true` on the read model): the read model keyed by `sub` whose other fields
+(`userId`) are the signed-in person's session keys. Give it `type: "inline-projected"`, so it's current when the
+registration returns. Then in `index.ts` (Step 5) hand its reader to sign-in:
+
+```typescript
+import { configureSignIn, readModelLookup } from "./shared/signIn.js"
+// …
+configureSignIn({ lookup: readModelLookup(readModelRuntime.reader(myAccount)) }),
+```
+
 `readModelRoute` also puts the keyed GET and every query into `/openapi.json`, documented with `schema`. The
 `openapi-registered` commit check rejects a `readModelRoute` call without `schema`, and tsc checks the schema
 against the Doc interface: a field missing from it, or with another type, fails the build. (An optional Doc

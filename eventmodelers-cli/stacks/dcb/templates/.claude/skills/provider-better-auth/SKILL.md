@@ -35,8 +35,11 @@ reaches you. If one does, block with `request-feedback`: the model needs `--exte
 
 ## A page that needs someone signed in
 
-- **Its `session:` fields come from `useSession()`:** `sub` (Better Auth's user id) and `email`. A key sign-in
-  doesn't hold yet (`userId`, ADR-055 part 2) is asked for by `RequireSession`, as in the stub.
+- **The API takes every `session:` value from the token** (ADR-055 part 2): `sub` (Better Auth's user id) and
+  `email` directly, any other key (`userId`) through the session lookup (the read model marked `--session-lookup`).
+  A form never sends them, and a self read (`/my-account`) takes no key.
+- **In the browser,** `useSession()` gives `sub` and `email` for display. A key sign-in doesn't hold (`userId`) is
+  asked for by `RequireSession` only in the stub.
 - **Never import `better-auth` in a slice,** and never call `authClient` directly: use `signInService`, so tests can
   replace it.
 - **Tests:** render with `renderWithProviders(ui, { session: { sub: "u1", email: "owner@contractor.example" } })`;

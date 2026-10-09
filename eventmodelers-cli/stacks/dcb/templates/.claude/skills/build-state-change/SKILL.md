@@ -295,7 +295,7 @@ extendZodWithOpenApi(z)
 
 export const {CommandName}Schema = z
     .object({
-        // Every field from slice.json commands[].fields, except generated ones
+        // Every field from slice.json commands[].fields, except generated ones and those mapped `session:`
         {field1}: z.string().min(1).openapi({ example: "{example}", description: "{description}" }),
         {field2}: z.number().int().min(1).openapi({ example: 30, description: "{description}" })
     })
@@ -338,6 +338,11 @@ The `openapi-registered` commit check rejects a route whose method and path aren
 `route.ts` that doesn't import `./schema.js`.
 
 > **Generated fields**: Fields marked `generated: true` (in commands[] or events[]) must NOT appear in the Zod schema — they are not user-supplied input. A generated *command* field is made by the route (`crypto.randomUUID()`) and returned in the 201 body.
+
+> **The signed-in person's fields** (`mapping: "session:<key>"`, ADR-055 part 2) must NOT appear in the Zod schema
+> either: they come from the token, never the body. The contract leaves them out of `{CommandName}Body` too. A
+> command whose every field is generated or `session:` has no body: leave out the Zod object and `body`, as for "No
+> fields".
 
 ---
 
@@ -406,6 +411,33 @@ import { NoContent, withETag /* … */ } from "@dcb-es/event-store-express"
                     else NoContent()(res)
                 }
 ```
+
+### The signed-in person's values (`session:`, ADR-055 part 2)
+
+A field mapped `session:<key>` is the signed-in person's own: **never read it from the body, the path or the query
+string.** List the route's session keys in `requireSession`, before `validateBody`, and read them with `sessionOf`:
+
+```typescript
+import { requireSession, sessionOf } from "../../../../shared/signIn.js"
+// …
+        router.post(
+            "{commands[0].apiEndpoint}",
+            requireSession(["{key1}", "{key2}"]),          // every session:<key> of the command's fields
+            validateBody({CommandName}Schema),
+            on(async req => {
+                const { {field1} } = req.body                // the typed fields only
+                const { {key1}: {sessionField1} } = sessionOf(req)   // e.g. activatedBy ← session:userId
+```
+
+- **`sub` and `email` are the token's;** any other key (`userId`) comes from the session lookup. `requireSession`
+  answers **401** without a valid token and **403** "register first" when the lookup has nobody. Don't write either
+  yourself.
+- **The field keeps its own name in the command** (`activatedBy`); the session key is what the mapping names
+  (`userId`).
+- **Tests sign in** with `testSignIn` (`src/test/signIn.ts`). Put `signIn.configure()` first in `apis`, and send
+  `.set("Authorization", await signIn.bearer({ sub: "sub-7f3a" }))`. Give it a lookup when the route needs a key the
+  token doesn't hold. Add one test that a request without the header gets 401. If the route needs a looked-up key,
+  add another that someone the lookup doesn't know gets 403.
 
 ### Responses (ADR-025, ADR-050): the status says what the request did
 - **204** `NoContent()`: the normal answer, something was recorded. The client reads the position from `ETag`.

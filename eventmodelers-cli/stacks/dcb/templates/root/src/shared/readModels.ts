@@ -17,6 +17,7 @@ import {
 import { on, OK, preferWait, withETag, type WaitFunction, type WebApiSetup } from "@dcb-es/event-store-express"
 import { ensureProjectionsCurrent } from "./ensureProjectionsCurrent.js"
 import { registerReadModel } from "./openapi.js"
+import { requireSession, sessionOf } from "./signIn.js"
 import type { ZodType, ZodTypeDef } from "zod"
 import {
     buildQuerySql,
@@ -616,12 +617,15 @@ export async function startReadModels(
  * every query in `/openapi.json`, at the paths served here, and tsc checks it covers the document's fields.
  * The build skills always pass it (the openapi-registered check requires it); without one the paths are
  * still listed, with an untyped body.
+ *
+ * `sessionKey`: a read model keyed by the signed-in person (its key mapped `session:` in the model, ADR-055 part 2).
+ * The path has no key ("/my-account"): it requires sign-in, and the key comes from the token or the session lookup.
  */
 export function readModelRoute<TDoc extends ReadModelDoc>(
     readModel: ReadModel<TDoc, any>,
     runtime: Pick<ReadModelRuntime, "reader" | "querier" | "waitFn">,
     path: string,
-    options: { schema?: ZodType<TDoc, ZodTypeDef, unknown>; pool?: Pool; notFound?: string; summary?: string } = {}
+    options: { schema?: ZodType<TDoc, ZodTypeDef, unknown>; pool?: Pool; notFound?: string; summary?: string; sessionKey?: string } = {}
 ): WebApiSetup {
     const read = runtime.reader(readModel)
     const waitFn = runtime.waitFn(readModel)
@@ -641,11 +645,14 @@ export function readModelRoute<TDoc extends ReadModelDoc>(
 
     return router => {
         for (const queryRoute of queryRoutes) queryRoute(router)
-        if (waitFn) router.get(path, preferWait({ waitFn }))
+        const signedIn = options.sessionKey ? [requireSession([options.sessionKey])] : []
+        if (waitFn) router.get(path, ...signedIn, preferWait({ waitFn }))
         router.get(
             path,
+            ...signedIn,
             on(async req => {
-                const doc = await read(req.params[param] as string)
+                const key = options.sessionKey ? sessionOf(req)[options.sessionKey] : (req.params[param] as string)
+                const doc = await read(key)
                 if (doc === null) {
                     const detail = options.notFound ?? `${readModel.name} not found`
                     return res => res.status(404).json({ status: 404, title: "Not Found", detail })

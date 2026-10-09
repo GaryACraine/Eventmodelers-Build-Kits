@@ -70,6 +70,15 @@ activation" issues that command, so it broke, and the loop edited it (licensing 
 The plan should have been: add `assignOrganisationOwner`, replace "owner on activation" to issue it, then delete the
 old slice.
 
+### Moving a field onto or off `session:` (ADR-055 part 2)
+A field mapped `session:<key>` comes from the signed-in person's token, not the body. So mapping a command's field to
+`session:`, or away from it, changes the command's body. Treat it as a change to the command's fields:
+- **a same-name replacement** when only the UI sends the command;
+- **expand, switch and contract** (above) when another slice issues it.
+
+The same goes for a read model whose key moves onto `session:`: its route loses the key (`/my-account`), so the
+screens that read it are re-queued with it.
+
 ### Changing an event's tags (ADR-048)
 An event's tags are its id fields (`emcli element field set … --id`). An event recorded from another system also
 carries that system's ids (Paddle: `paddleEventId`, `subscriptionId`). A read finds an event with **any** of a query
