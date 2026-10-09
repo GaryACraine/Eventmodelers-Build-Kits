@@ -94,7 +94,8 @@ grep -rn "<eventName>" src/contexts/<old-context>
 
 What it needs instead:
 - **(a) The new context's published read model,** queried in-process (as the session lookup is) or over HTTP. This is
-  the default.
+  the default. On the board, the old context's chapter may show it as a copy, which emcli marks `--external <new
+  context>`: nothing of ours builds it.
 - **(b) A published external event, which the old context translates** into its own command and event. Use this when
   it must react to the fact or keep its own copy. How events are published is still open (ADR-059 point 4), so
   stop and ask before planning one.
