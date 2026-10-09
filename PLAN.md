@@ -435,10 +435,27 @@ model and build only what's ours.
                - **Proposed (Gary asked, 2026-10-09):** an `identity` context for our user, the `sub` link, role sync
                  and account follow-ups, moved there in the same replacement.
                - **One chapter per sign-in flow.**
-          2. **2b.2b SSO for on-premises customers:** check Better Auth's SSO plugin against Entra ID or Okta.
-          3. **2b.2c Security releases:** advisory alerts on `better-auth`, pinned versions, a patch path for
+          2. **2b.2f NEXT: secure by default, roles and the role sync (ADR-058, ADR-060).** Chosen 2026-10-09 (Gary)
+             ahead of 2b.2b to 2b.2d: ADR-056's second factor is set per role, ADR-059 point 4 (how a context
+             publishes an event) waits on the role sync, and most routes still answer anyone. Better Auth (ADR-054)
+             lifts the 2026-10-05 reason the role-sync slices stayed draft.
+             1. **How an endpoint's permission is checked (ADR-060, Proposed):** roles, claims, or a role-to-permission
+                map; what the token carries; the tenancy check. Gary decides.
+             2. **Callers that aren't people (ADR-058 point 2):** a platform-admin role, a service token, or internal
+                routes. Ops reads, scripts and the journey need one before (3).
+             3. **Secure by default (ADR-058 point 1):** every route requires sign-in, the model marks `--public`; in
+                emcli, the export and the build skills.
+             4. **Permissions in the model (ADR-058 point 3, as ADR-060 decides):** marked on commands and read models,
+                checked by the API, tested both ways.
+             5. **The role sync:** licensing's role assignments reach identity and Better Auth. The first published
+                event and translation (ADR-059 point 4): compare Emmett, Axon 5 and Marten first. Replaces the four
+                draft auth role-sync slices (item 6).
+             6. **Proven in licensing:** journeys on mock and sandbox, a refused role checked.
+          3. **2b.2b SSO for on-premises customers:** check Better Auth's SSO plugin against Entra ID or Okta.
+          4. **2b.2c Security releases:** advisory alerts on `better-auth`, pinned versions, a patch path for
              on-premises installs.
-          4. **2b.2d The account security lifecycle (ADR-056, open).** Decide after 2b.2a:
+          5. **2b.2d The account security lifecycle (ADR-056, open).** Decide after 2b.2f (its second factor is set
+             per role):
              - recovering a forgotten password;
              - changing the password or the email;
              - a second factor (TOTP, email or SMS codes, backup codes), and who must use it;
@@ -464,8 +481,8 @@ model and build only what's ours.
              - **Social sign-in (Google, Apple), later:** the flow still works (Better Auth stays the only issuer).
                Account linking, Apple's relay email, per-deployment app registrations and mobile id tokens are
                recorded in ADR-056.
-          5. **The four auth role-sync slices,** after 2b.2a. Whether Better Auth's tables in our own database
-             simplify them gets its own ADR.
+          6. **The four auth role-sync slices:** now part of 2b.2f step 5. Whether Better Auth's tables in our own
+             database simplify them is part of that step's design.
        3. **Gap 4: the trial's length.** Before release: a check at start that Paddle's trial matches `trialDays`, or
           `trialDays` read from Paddle's price.
        4. **Split "start trial checkout"** (screen, then Paddle's event), replacing the built slice, when that area is
@@ -495,7 +512,7 @@ model and build only what's ours.
       - the code Paddle gives a declined card on a seat increase;
       - chapter 24's two hotspots: what the owner sees after a refusal, and whether the same rule applies to
         "Buy now".
-    - **The sign-in provider,** which Sign Up and the four auth role sync slices wait on.
+    - ✅ **The sign-in provider:** Better Auth (ADR-054). Sign Up is built (2b.2a); the role sync is 2b.2f.
     - **The backend's host, and its Postgres.** It must give direct, session-mode connections (ADR-047's deployment
       constraint). Check the connection cap on the tier, IPv4, and that idle sessions aren't ended (scale-to-zero).
       If it can't give direct connections, ADR-047 step 2 (lease rows, polling only) comes before release.
@@ -4372,6 +4389,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-09 | ADR-059 amended: a read model may be copied across contexts, marked `--external <owner context>` (emcli marks it on copy), as a placeholder for the owner's published API; it shows only what the owner publishes and never extends its projection. Events and commands stay refused | Gary: a read model copy can stand for another context's published API; marking it external says it belongs to the other context. ADR-052's external marking already means "nothing of ours builds it" |
 | 2026-10-09 | ADR-059 proven in licensing (2b.2e): no licensing file imports identity, journeys 8/8 on mock and sandbox. emcli's push now moves elements before creating new ones | The board holds one element per cell, and a move can free the cell a new element needs |
 | 2026-10-09 | ADR-059 Accepted | Gary, after it was proven in licensing (2b.2e) |
+| 2026-10-09 | 2b.2f (ADR-058 and the role sync) is next, ahead of 2b.2b to 2b.2d; ADR-060 Proposed: how an endpoint's permission is checked (roles, claims, or roles mapped to permissions) | Gary: beyond requiring sign-in, how an endpoint checks permission isn't decided; a hybrid (the endpoint names a permission, the token names the group, a map between them) appeals because tests check a group has a permission. ADR-056 and ADR-059 point 4 both wait on roles |
 
 ## Progress
 
