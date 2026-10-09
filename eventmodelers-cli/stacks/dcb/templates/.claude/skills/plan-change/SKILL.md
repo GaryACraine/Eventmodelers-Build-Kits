@@ -82,9 +82,22 @@ screens that read it are re-queued with it.
 ### Moving slices to another context (ADR-055 part 2)
 A context is a chapter's (emcli), so moving slices to another context means new slices in that context's chapter, and
 the old ones removed. **Before the export, move the event factories they produce** to the new context's
-`src/contexts/<context>/Events.ts`. Leave a re-export in the old one if other contexts' slices still use the event.
-Otherwise the loop follows the event to its old folder: licensing's identity slices were first built under
-`contexts/licensing`.
+`src/contexts/<context>/Events.ts`. Otherwise the loop follows the event to its old folder: licensing's identity
+slices were first built under `contexts/licensing`.
+
+**Nothing in the old context may keep using the moved events** (ADR-059): no re-export, no copy on its chapters, no
+`given` in its specs, no test seeding. Find what still does before planning:
+
+```bash
+grep -rn "<eventName>" src/contexts/<old-context>
+```
+
+What it needs instead:
+- **(a) The new context's published read model,** queried in-process (as the session lookup is) or over HTTP. This is
+  the default.
+- **(b) A published external event, which the old context translates** into its own command and event. Use this when
+  it must react to the fact or keep its own copy. How events are published is still open (ADR-059 point 4), so
+  stop and ask before planning one.
 
 **The loop works one context at a time** (`.build-kit/.slices/current_context.json`). After the export, switch it with
 `eventmodelers activate-context` to build the other context's slices, then switch back.
@@ -221,7 +234,7 @@ The full text is in the kit repo (`eventmodelers-cli/stacks/dcb/ADR.md`):
 | 022 | A read model's type (async, inline, live) is switchable; its tests are the same for every type. |
 | 025 | API routes are named after the model, 1:1: a new command is a new route. |
 | 029 | The API contract comes from the model (`api/openapi.json`). |
-| 038 | One flow per chapter; an event has the same fields in every chapter. |
+| 038 | One flow per chapter; an event has the same fields in every chapter of its context. |
 | 039 | An automation has a trigger, a to-do list and data inputs. |
 | 046 | Replace a slice before release, supersede it after; released = `deployed`. |
 | 048 | An event's tags are its id fields; a tag change follows the compatibility rules, by who queries the tag. |
@@ -229,3 +242,4 @@ The full text is in the kit repo (`eventmodelers-cli/stacks/dcb/ADR.md`):
 | 050 | A command whose intent already holds decides nothing (`[]`, 200); a rejection only when it can't hold. |
 | 052 | A read model another system holds is marked external: nothing of ours builds it, and it makes no job. |
 | 053 | An external event says how it reaches us (`intake`): an endpoint is built only for `webhook`. |
+| 059 | A context's events are its own: other contexts read its published read models or translate its published events. |

@@ -96,7 +96,8 @@ From the slice definition, extract:
 ## Step 2 — Choose the form
 
 **Fold form** (`readModel.ts`, Steps 3–6) is the default. It needs all of this, which you check in
-`src/contexts/{context}/Events.ts`, where each event's `tags: Tags.fromObj({ … })` is declared:
+`src/contexts/{context}/Events.ts`, where each event's `tags: Tags.fromObj({ … })` is declared. A projection reads
+only its own context's events, never another context's `Events.ts` (ADR-059, the `context-events-private` check):
 
 1. **Keyed GET:** the `path` has the key as its parameter, and the read model is not a list
    (`listElement` is not true).

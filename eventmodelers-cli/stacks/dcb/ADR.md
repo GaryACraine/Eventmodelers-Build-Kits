@@ -1976,6 +1976,8 @@ modelling), not to storming.
    `element copy`, but only when the fact happens again (a second assignment). An automation's trigger is a
    `reacts-to` link to the original, not a copy (emcli exports the trigger from the link). Across chapters it's a separately added element with the same name, and it must keep exactly the
    same fields. (In 16.3 one field catalogue was used for every chapter. emcli doesn't check this yet: `ISSUES.md`.)
+   *(ADR-059, 2026-10-09: this holds within a context only. Another context never copies or redefines the event; it
+   reads the owner's published read model, or translates its published event.)*
 
 **Alternatives considered:**
 - **Alternative outcomes beside the decision, in one chapter,** kept into process modelling: fewer chapters, but
@@ -3636,6 +3638,8 @@ on the deployment type, cloud or on-premises").
   - **A context is a chapter's** (emcli), so `identity` is its own chapter, "0. A person signs up and registers".
     Chapter 1 opens with copies of its events (ADR-038). The export's `originContext` tells the builder where an
     event comes from.
+    *(Superseded by ADR-059, 2026-10-09: a context's events stay in it. Chapter 1 keeps no copy, and licensing learns
+    who is registered from the session lookup.)*
   - **Each later sign-in flow gets its own chapter:** signing in and out, recovering a password, changing the email,
     a second factor, and sign-up's unhappy paths (ADR-056).
 - **Licensing:**
@@ -3937,3 +3941,81 @@ These sit with the rest of the account lifecycle above (reset, change of email o
 
 **Decision:** open.
 
+### ADR-059: A context's events are its own; other contexts read its published read models or its published events
+
+**Status:** Proposed, 2026-10-09 (Gary: "I don't think we should be copying events").
+**Date:** 2026-10-09
+**Builds on:** ADR-038 (point 5: events are scoped by context), ADR-040 (translations), ADR-053 (an external event
+says how it reaches us), ADR-055 part 2 (the session lookup).
+
+**Context:**
+- **2b.2a put `userWasRegistered` in `identity`,** then copied it into chapter 1 (context `licensing`). emcli was
+  changed to allow cross-context copies, and the export's `originContext` tells the builder to import the event from
+  identity's `Events.ts`.
+- **Gary objected:**
+  - events are a context's system of record (domain events);
+  - to share, a context should publish integration events that others subscribe to, or expose read models that
+    others observe through an API;
+  - copying raw domain events is not best practice.
+- **Research (2026-10-09):**
+  - **Oskar Dudycz** (Emmett's author, [Internal and external events](https://event-driven.io/en/internal_external_events/)):
+    - splits events into internal (private to a module) and external (public);
+    - exposing internal events leaks the abstraction, couples teams, and is "the first step to the distributed
+      monolith";
+    - external events are designed on purpose: enriched so readers don't rebuild state, versioned, and published
+      (with an outbox);
+    - he prefers "internal and external" to "domain and integration", since both are business facts.
+  - **Event Modeling** (Dymitruk; Dilger, *Understanding Eventsourcing*): another system's events reach us through
+    the translation pattern (their event, a view or to-do list, an automation, our command, our event).
+  - **DCB** (Axoniq, dcb.events): a consistency boundary is confined within a single context. DCB widens consistency
+    across entities inside one context, never across contexts.
+- **What licensing actually used (checked 2026-10-09):**
+  - none of licensing's decisions read `userWasRegistered`;
+  - "is this person registered?" is answered by identity's My Account through the session lookup (403 "Register
+    first");
+  - the copy survived only as a spec's `given`, a re-export in licensing's `Events.ts` for test seeding, and two
+    draft slices (chapters 1b and 2) that define their own `userWasRegistered`.
+
+**Proposed:**
+1. **A context's events are private to it.** No slice of another context:
+   - decides on them;
+   - projects them;
+   - seeds its tests with them;
+   - imports its `Events.ts`.
+2. **Within a context, nothing changes (ADR-038).** An event shown again in a later chapter of the same context is
+   the same system of record, so the copy is fine.
+3. **Across contexts, one of two ways.**
+   - **(a) The owner's published read model (the default).** The owner exports a query, in-process (as
+     `readModelLookup` does for the session lookup), or over HTTP when it's a separate service. The reader observes
+     the effects of the events, never the events themselves.
+   - **(b) The owner's published external event, consumed by a translation**, when the other context must react to
+     the fact or keep its own copy. The owner publishes an external event, designed and versioned as an API
+     (ADR-017/018). The consumer translates it: a to-do list, an automation, its own command, its own event.
+4. **How (b) is published is decided at its first real use:**
+   - a public events module per context;
+   - an outbox, even inside one event store;
+   - versioning;
+   - how the board draws the published event.
+
+   Compare Emmett, Axon 5 and Marten first. The likely first use is the role sync: licensing's role assignments
+   reaching identity's automations that tell Auth (ADR-037, ADR-058).
+5. **Enforced:**
+   - **emcli** refuses `element copy` across contexts. Completeness gives an error at hand-off for an existing
+     cross-context copy, or for an event of the same name defined in two contexts.
+   - **The commit-scope guard** rejects a file under `src/contexts/<a>/` importing `src/contexts/<b>/Events`.
+   - **The build skills** never import another context's events.
+
+**Alternatives considered:**
+- **Cross-context copies with `originContext`** (2b.2a). Rejected: it's the shared-internal-event coupling the
+  research warns against, and DCB's boundary would quietly span two contexts.
+- **One context for everything to do with people and organisations.** Rejected: ADR-055 part 2 separated identity
+  for good reasons (Auth's boundary, the account lifecycle).
+
+**Consequences:**
+- **Licensing:**
+  - chapter 1 loses its "registered" slice and "Identity Events" lane;
+  - Activate Organisation's spec loses its `given` (through `plan-change`, since the slice is built);
+  - the re-export goes, and the tests seed the person through `testSignIn(lookup)`;
+  - the drafts "owner was registered" and "invitee was registered" go.
+- **PLAN:** the follow-up "chapters 1b and 2 copy identity's event" is superseded.
+- **ADR-055 part 2:** "Chapter 1 opens with copies of its events" is superseded by this ADR.
