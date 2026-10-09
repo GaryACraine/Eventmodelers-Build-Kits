@@ -382,14 +382,38 @@ model and build only what's ours.
           - **Migrations:** none for read models; node-pg-migrate for the rest.
           - **Supabase was dropped:** the database on the internet, and its sign-in server needed on-premises.
           - **Cognito was dropped:** AWS-only, no local version.
-          1. **2b.2a Prove sign-in locally.** Better Auth (its own container) replaces `mock-oauth2-server` in
-             licensing's `docker-compose.yml`, with Mailpit for email. Journey case 1 signs up for real. Then model
-             the Sign Up form as ours and settle gap 2 (the user id in the session), through `plan-change`; its own
-             plan.
+          1. **2b.2a Sign-in in the kit, proven in licensing (ADR-055, Accepted 2026-10-09).** Gary: it ships with
+             the kit, configured by deployment (`DEPLOYMENT=cloud | on-premises`). Licensing never had
+             `mock-oauth2-server`: there's a typed session stub, and the API checks no token.
+             - **A.** Into the kit, then into licensing through `kit-drift`:
+               - the `auth/` service (Better Auth, following its official docs) and Compose's `mailpit`,
+                 `auth-migrate` and `auth`;
+               - the API's JWKS check;
+               - the web app's live session and bearer token;
+               - `provider-better-auth`.
+
+               The journey still passes 8/8, with case 1 on the stub.
+             - **B.** "sign up" is planned with a ui job (`plan-change`); the loop builds it; journey case 1 signs up
+               for real, with the verification email read from Mailpit.
+             - **C.** ADR-055 part 2, settled first: `session:` fields come from the token, `userId` is resolved
+               from `sub` (gap 2), and `registerUser` and `activateOrganisation` are replaced.
           2. **2b.2b SSO for on-premises customers:** check Better Auth's SSO plugin against Entra ID or Okta.
           3. **2b.2c Security releases:** advisory alerts on `better-auth`, pinned versions, a patch path for
              on-premises installs.
-          4. **The four auth role-sync slices,** after 2b.2a. Whether Better Auth's tables in our own database
+          4. **2b.2d The account security lifecycle (ADR-056, open).** Decide after 2b.2a:
+             - recovering a forgotten password;
+             - changing the password or the email;
+             - a second factor (TOTP, email or SMS codes, backup codes), and who must use it;
+             - passkeys and magic links;
+             - web vs mobile;
+             - sessions;
+             - deleting an account (GDPR);
+             - abuse;
+             - security notices.
+
+             ADR-056 lists Better Auth's options and a recommendation for each (Gary, 2026-10-09: "as long as we
+             don't lose record").
+          5. **The four auth role-sync slices,** after 2b.2a. Whether Better Auth's tables in our own database
              simplify them gets its own ADR.
        3. **Gap 4: the trial's length.** Before release: a check at start that Paddle's trial matches `trialDays`, or
           `trialDays` read from Paddle's price.
@@ -4277,6 +4301,10 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-08 | The sign-in provider ADR became the platform ADR (ADR-054, Proposed): hosting, database, sign-in, web app, DNS and email, compared as whole stacks, including AWS + Supabase hybrids | Gary: the provider can't be chosen apart from where the containers and Postgres run, and Supabase runs no long-lived containers. Nothing decided: the AWS lean is a weight in the matrix, not a choice |
 | 2026-10-08 | ADR-054 working assumption: Supabase as our Postgres whatever the sign-in; sign-in shortlist Supabase Auth, Better Auth, Cognito; criteria gain local development, deploys with CDK, and connection costs (NAT) | Gary: the real sign-in should run locally and in CI; CDK for AWS and one way to migrate Postgres; avoid paying for a NAT gateway. Read models need no migrations (rebuilt from events at startup) |
 | 2026-10-09 | ADR-054 Accepted: our cloud on AWS (RDS, CDK) and on-premises from a container package; Better Auth everywhere as its own sign-in service; Supabase and Cognito dropped | Gary: some customers will run the platform in-house, and only Better Auth runs the same in our cloud, on-premises, locally and in CI; RDS keeps the database private (no NAT, no allow-list). Caveats: patching is ours across every install, SSO plugin to check, on-premises shapes 14.8 |
+| 2026-10-09 | ADR-055 Proposed: sign-in ships with the kit (`auth/` service, JWKS check, live session), configured by `DEPLOYMENT=cloud \| on-premises`; 2b.2a split into A (kit), B (Sign Up built), C (session fields from the token, gap 2) | Gary: it's deployed with the kit and configurable by deployment type. Licensing had no `mock-oauth2-server` and no token check, so the kit gains both. Code follows Better Auth's official docs |
+| 2026-10-09 | ADR-056 Proposed, open: the account security lifecycle (reset, change password/email, 2FA, passkeys, web vs mobile, sessions, deletion) with Better Auth's options and recommendations; PLAN 2b.2d | Gary: defer the decisions until the kit and licensing are updated, but keep the record that they must be made to best practice |
+| 2026-10-09 | ADR-056: the second factor is settled in principle. Every method is built (emailed code, authenticator app, passkey), the policy is per role and configurable per customer. Defaults: the owner uses a passkey (Touch ID), admins and engineers use an emailed code | Gary: an emailed code is enough for most people, and people resist authenticator apps unless the data is sensitive. The owner's billing needs a factor that doesn't depend on the inbox, and a passkey gives that with nothing to install. Open for 2b.2d: whether customers may loosen a default, and how a passkey fits the owner's sign-in |
+| 2026-10-09 | ADR-055 Accepted (part 2 still to settle). ADR-056: one opinionated default for the second factor for now (the role table, no per-customer configuration yet); the owner signs in with a passkey, which counts as two factors | Gary: the simplest possible default approach for now; per-customer configuration and where it's stored come later |
 
 ## Progress
 
