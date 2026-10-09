@@ -79,6 +79,25 @@ A field mapped `session:<key>` comes from the signed-in person's token, not the 
 The same goes for a read model whose key moves onto `session:`: its route loses the key (`/my-account`), so the
 screens that read it are re-queued with it.
 
+### Moving slices to another context (ADR-055 part 2)
+A context is a chapter's (emcli), so moving slices to another context means new slices in that context's chapter, and
+the old ones removed. **Before the export, move the event factories they produce** to the new context's
+`src/contexts/<context>/Events.ts`. Leave a re-export in the old one if other contexts' slices still use the event.
+Otherwise the loop follows the event to its old folder: licensing's identity slices were first built under
+`contexts/licensing`.
+
+**The loop works one context at a time** (`.build-kit/.slices/current_context.json`). After the export, switch it with
+`eventmodelers activate-context` to build the other context's slices, then switch back.
+
+**A route that gains sign-in breaks other slices' tests that call it** to set up their data. In licensing, start
+options posted to `/activate-organisation`. Find them first:
+
+```bash
+grep -rlE '"/<route>"' src
+```
+
+Replace each (same name), so the loop seeds their tests with the event instead.
+
 ### Changing an event's tags (ADR-048)
 An event's tags are its id fields (`emcli element field set … --id`). An event recorded from another system also
 carries that system's ids (Paddle: `paddleEventId`, `subscriptionId`). A read finds an event with **any** of a query
