@@ -3956,14 +3956,19 @@ These sit with the rest of the account lifecycle above (reset, change of email o
   - **revises ADR-037's "the platform admin is auth only":** the role is now ours, not only Auth's. Licensing's roles
     are per organisation, so the platform admin's grant belongs to `identity`. The first is created by a setup
     command (ADR-043), later ones by another platform admin.
-- **Callers that aren't people: API keys** (Better Auth's API key plugin):
-  - each key is named for its caller (`journey`, `ops-script`) and holds `resource:action` permissions, the same names
-    as the role map, checked with `verifyApiKey`;
-  - it has an expiry and a rate limit, and is sent in a header (not the bearer token, so the two never mix);
-  - events from it record `actedAs: system` and the key's name;
-  - the catalogue (ADR-060 point 5) lists each key with its permissions, beside the roles.
-  - Today nothing of ours calls over HTTP except the journey and ops scripts: our automations call commands
-    in-process. Keys owned by an organisation (the plugin supports it) would let customers integrate later.
+- **Callers that aren't people: none needed now** (Gary, 2026-10-09: "do we actually have a requirement?"). Checked in
+  licensing:
+  - our automations call commands in-process, so they never meet the HTTP check. The permission check is at the
+    API's edge, for people; an automation records `actedAs: system`;
+  - Paddle's webhook is `--public` and carries its own signature;
+  - our code calls Paddle, never our own API;
+  - the only callers over HTTP that aren't people are the e2e scripts polling `/untranslated-notifications`. They're
+    tests, so they sign in as a seeded test platform admin, as the journey already signs up for real.
+- **Deferred, with its trigger:** the first caller that isn't a person and isn't a test.
+  - For a customer's integration with our public API, Better Auth's API keys (permissions per key, named as in the
+    role map, expiry, rate limits; a key may belong to an organisation).
+  - For our own code needing elevated rights in AWS, IAM roles assumed through STS. That's AWS's permission model for
+    AWS resources, not our app's, and on-premises has no STS, so it isn't a fit for our API.
 - **Internal-only routes** (the third option) are dropped: they hide a route rather than check it, and on-premises
   has no public proxy to rely on.
 
