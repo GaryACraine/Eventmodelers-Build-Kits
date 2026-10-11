@@ -3284,7 +3284,7 @@ general case"; "we need this flexibility in our loop, whether we want an endpoin
    - **`none`:** it stays in its system. Nothing is built or recorded for it (no endpoint, no `Events.ts` entry); only
      an external read model may show it. Auth's `userSignedUp`.
    - **`fetched`** is left until a case needs it (Paddle Sync records the same event the webhook does).
-   - ADR-061 (Proposed) adds `subscribed` (another context's published event, read in-process) and gives `fetched`
+   - ADR-061 (Accepted) adds `subscribed` (another context's published event, read in-process) and gives `fetched`
      its cross-context use.
 2. **Unset builds nothing.** emcli's completeness warns until the model says; the event makes no job.
 3. **Completeness errors** when an event left in its system feeds one of our read models, triggers our automation or
@@ -4116,7 +4116,7 @@ says how it reaches us), ADR-055 part 2 (the session lookup).
    Compare Emmett, Axon 5 and Marten first. The likely first use is the role sync: licensing's role assignments
    reaching identity's automations that tell Auth (ADR-037, ADR-058).
 
-   **Now ADR-061 (Proposed, 2026-10-11):** the patterns between contexts, how each is drawn, and what each builds.
+   **Now ADR-061 (Accepted, 2026-10-11):** the patterns between contexts, how each is drawn, and what each builds.
 5. **Enforced:**
    - **emcli** refuses `element copy` of an event or a command across contexts, and marks a read model copied across
      as external to its owner. Completeness gives an error at hand-off for an existing cross-context event copy, for
@@ -4319,8 +4319,9 @@ checked by the decider or a read model, and the person is told why. A missing pe
 
 ### ADR-061: How contexts integrate: pull a published event, push a fact, push a request, ask synchronously
 
-**Status:** Proposed, 2026-10-11 (Gary: "high level integration patterns between different contexts… these patterns
-will repeat"). Recorded now; built at the first real use, which proves it.
+**Status:** **Accepted, 2026-10-11 (Gary).** Proposed the same day (Gary: "high level integration patterns between
+different contexts… these patterns will repeat"). Accepted as the way contexts integrate. What it builds comes at the
+first real use, which proves it; until then the skills carry it as drafts.
 **Date:** 2026-10-11
 **Builds on:**
 - ADR-040, ADR-041: the inbox, and the fetch behind a webhook;
@@ -4424,6 +4425,12 @@ will repeat"). Recorded now; built at the first real use, which proves it.
      consumers that would (a second factor per role, ADR-056; SSO groups, 2b.2b) aren't built. As with API keys, the
      first real consumer triggers the build.
 
-**Decision:** open (Proposed). The skills carry it as draft guidance: emcli's `event-model` ("Between contexts"),
-and the kit's `build-automation` and `plan-change`.
+**Decision:** Accepted (2026-10-11):
+- the four patterns, with pull as the default;
+- published events as API;
+- the intakes `subscribed`, `fetched` and `webhook`;
+- the role sync deferred until a consumer needs roles in Better Auth.
+
+The skills carry it as draft guidance until its first use is built and proven: emcli's `event-model` ("Between
+contexts"), and the kit's `build-automation` and `plan-change`.
 

@@ -190,7 +190,7 @@ the tags exactly, so it fails until the producer's same-name replacement is buil
   every test and script that set up data through it: find them (`grep -rlE '"/<route>"' src e2e`) and seed with
   `app.given(...)` or drive through the automation instead. Changing only the permission keeps the route, but it is
   still a model change to a built slice.
-- **A published event** (ADR-061, Proposed: `--published`, read by other contexts) is part of its context's API.
+- **A published event** (ADR-061: `--published`, read by other contexts; not in emcli until its first use) is part of its context's API.
   Any change is a new version (ADR-017/018), released or not, if another context's slice reads it. Retire it as
   ADR-046 supersedes an endpoint. Making a private event published, or changing how a subscriber receives it
   (`subscribed`, `fetched`, `webhook`), is a model change: plan the subscriber's slices with it.
@@ -259,4 +259,4 @@ The full text is in the kit repo (`eventmodelers-cli/stacks/dcb/ADR.md`):
 | 053 | An external event says how it reaches us (`intake`): an endpoint is built only for `webhook`. |
 | 058 | No endpoint unless declared: `api` is a permission, `self` or `anonymous`; a webhook comes from its intake. |
 | 059 | A context's events are its own: other contexts read its published read models or translate its published events. |
-| 061 | Between contexts: pull a published event (default), push a fact, push a request to act, ask synchronously (Proposed). |
+| 061 | Between contexts: pull a published event (default), push a fact, push a request to act, ask synchronously. |
