@@ -4274,6 +4274,35 @@ checked by the decider or a read model, and the person is told why. A missing pe
    - a test in the project compares the running API's routes with `api/openapi.json`, so a route the model doesn't
      know about fails.
 
+**How it's built (2b.2f step 4, 2026-10-11; Gary's choices):**
+- **The map in the model.** `workspace.json` holds `authorization`: the tenant key (`organisationId`) and each role
+  with its scope (`organisation` or `platform`) and permissions. emcli edits it (`emcli role …`), and the export
+  writes:
+  - `api/roles.json`, which the API reads at start;
+  - `api/permissions.md`, the catalogue (point 5).
+
+  The board shows it later.
+- **The caller's roles** come from the project's own read models, through a `RoleLookup` wired in `index.ts` beside
+  the session lookup: `{ platform: [...], organisations: { <id>: [...] } }`.
+  - In licensing, `Memberships` (licensing, by `userId`) gives the organisation roles. It's a published read model
+    queried in-process (ADR-059 (a)).
+  - `PlatformAdmins` (identity, by the token's email) gives the platform role.
+- **The check** is `requirePermission(permission)`:
+  - allowed if a platform role holds the permission;
+  - otherwise the organisation is the tenant key in the path, else the body:
+    - 404 when the caller holds no role there;
+    - 403 when they hold one without the permission;
+  - 403 for everyone when the map or the lookup is missing (deny by default).
+
+  A read model's guard is `readModelRoute`'s `guard` option, so the path's parameters are known.
+- **The first platform admin** is a setup command (ADR-043) reading `PLATFORM_ADMIN_EMAILS`. Whoever signs in with a
+  granted email holds `platformAdmin`.
+- **The starting map** (licensing):
+  - owner: `organisation:read`, `checkout:report`;
+  - admin: `organisation:read`;
+  - engineer: nothing yet;
+  - platformAdmin (platform): `notification:list`, `settings:configure`, `organisation:read`.
+
 **Decision:** Accepted as recommended, with the points marked ✅ and 5:
 - each endpoint names a `resource:action` permission, is sign-in only, or is `--public`;
 - one role-to-permission map, in the model;

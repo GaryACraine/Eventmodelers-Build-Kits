@@ -362,7 +362,7 @@ File: `src/contexts/{context}/slices/{slicename}/route.ts`
 
 | `api` | Guard | Answers |
 |---|---|---|
-| a permission (`seat:assign`) | `requirePermission("seat:assign", [/* its session keys, if any */])` | 401 not signed in; 403 without the permission (ADR-060) |
+| a permission (`seat:assign`) | `requirePermission("seat:assign", [/* its session keys, if any */])` | 401 not signed in; 404 in an organisation the caller has no role in; 403 a member without the permission (ADR-060). The organisation is the role map's tenant key (`organisationId`) in the path or body |
 | `self` | `requireSession([/* its session keys */])` (below) | 401; 403 register first |
 | `anonymous` | none | — |
 
@@ -497,8 +497,17 @@ describe("{slice title}", () => {
 
 File: `src/contexts/{context}/slices/{slicename}/route.tests.ts`
 
-A permission route's tests sign in like a `self` route's (below), plus one test that a request without the header
-gets 401. Until the role map exists (2b.2f step 4) a signed-in person passes the permission.
+A permission route's tests sign in like a `self` route's (below), and say what the caller holds (ADR-060). The
+project's role map, `api/roles.json`, decides:
+
+```typescript
+const signIn = await testSignIn(lookup, { roles: { platform: [], organisations: { "org-1": ["owner"] } } })
+```
+
+Use a role the map gives the permission, and the specifications' organisation. Add three tests:
+- a request without the header gets 401;
+- the same caller in another organisation gets 404;
+- a member whose roles lack the permission gets 403 (`{ "org-1": ["engineer"] }`, or any role without it).
 
 Uses `ApiSpecification` (in-memory store, no Docker needed for unit tests):
 

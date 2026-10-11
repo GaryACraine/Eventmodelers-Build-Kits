@@ -190,6 +190,10 @@ the tags exactly, so it fails until the producer's same-name replacement is buil
   every test and script that set up data through it: find them (`grep -rlE '"/<route>"' src e2e`) and seed with
   `app.given(...)` or drive through the automation instead. Changing only the permission keeps the route, but it is
   still a model change to a built slice.
+- **The role map** (ADR-060: `emcli role …`, written to `api/roles.json`) is the model too, but changing what a role
+  holds rebuilds no slice: the API reads the map when it starts. A route whose permission no role holds can't be
+  called by anyone (completeness errors). Give the permission before the route is built, so its tests can sign in as
+  a role that holds it.
 - **A read-model test depends on events, not on other slices.** Its *given* goes in with `app.given(...)`
   (`build-state-view` Step 6), never through another slice's route.
 - **What the change touches:** every slice that produces or reads the same event, and every automation that

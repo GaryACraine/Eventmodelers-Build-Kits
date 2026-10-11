@@ -18,6 +18,7 @@ import { on, OK, preferWait, withETag, type WaitFunction, type WebApiSetup } fro
 import { ensureProjectionsCurrent } from "./ensureProjectionsCurrent.js"
 import { registerReadModel } from "./openapi.js"
 import { requireSession, sessionOf } from "./signIn.js"
+
 import type { ZodType, ZodTypeDef } from "zod"
 import {
     buildQuerySql,
@@ -35,6 +36,9 @@ import {
     type QueryParams,
     type QueryValue
 } from "./readModelQueries.js"
+
+/** Route middleware run before a read: `requirePermission(…)` (ADR-058, ADR-060) */
+type Guard = ReturnType<typeof requireSession>
 
 /**
  * Read models with a stable data shape, whichever type serves them (ADR-022).
@@ -625,7 +629,15 @@ export function readModelRoute<TDoc extends ReadModelDoc>(
     readModel: ReadModel<TDoc, any>,
     runtime: Pick<ReadModelRuntime, "reader" | "querier" | "waitFn">,
     path: string,
-    options: { schema?: ZodType<TDoc, ZodTypeDef, unknown>; pool?: Pool; notFound?: string; summary?: string; sessionKey?: string } = {}
+    options: {
+        schema?: ZodType<TDoc, ZodTypeDef, unknown>
+        pool?: Pool
+        notFound?: string
+        summary?: string
+        sessionKey?: string
+        /** Who may read it (ADR-058): `requirePermission("<resource:action>")`, run before the keyed GET and every query */
+        guard?: Guard
+    } = {}
 ): WebApiSetup {
     const read = runtime.reader(readModel)
     const waitFn = runtime.waitFn(readModel)
@@ -641,11 +653,11 @@ export function readModelRoute<TDoc extends ReadModelDoc>(
     // "/course-seats/available-courses" must not be read as the keyed GET's ":courseId" (ADR-025).
     const queryRoutes = Object.entries(readModel.queries ?? {})
         .filter(([, query]) => query.path)
-        .map(([name]) => readQueryRoute(readModel, runtime, name))
+        .map(([name]) => readQueryRoute(readModel, runtime, name, undefined, options.guard))
 
     return router => {
         for (const queryRoute of queryRoutes) queryRoute(router)
-        const signedIn = options.sessionKey ? [requireSession([options.sessionKey])] : []
+        const signedIn = [...(options.guard ? [options.guard] : []), ...(options.sessionKey ? [requireSession([options.sessionKey])] : [])]
         if (waitFn) router.get(path, ...signedIn, preferWait({ waitFn }))
         router.get(
             path,
@@ -684,7 +696,8 @@ export function readQueryRoute(
     readModel: ReadModel<any, any>,
     runtime: Pick<ReadModelRuntime, "querier" | "waitFn">,
     queryName: string,
-    path = readModel.queries?.[queryName]?.path
+    path = readModel.queries?.[queryName]?.path,
+    guard?: Guard
 ): WebApiSetup {
     const query = readModel.queries?.[queryName]
     if (!query) throw new Error(`${readModel.name} has no query "${queryName}"`)
@@ -693,9 +706,11 @@ export function readQueryRoute(
     const waitFn = runtime.waitFn(readModel)
 
     return router => {
-        if (waitFn) router.get(path, preferWait({ waitFn }))
+        const guarded = guard ? [guard] : []
+        if (waitFn) router.get(path, ...guarded, preferWait({ waitFn }))
         router.get(
             path,
+            ...guarded,
             on(async req => {
                 const parsed = parseQueryRequest(query, req.params as Record<string, string>, req.query as Record<string, unknown>)
                 if ("error" in parsed) {
