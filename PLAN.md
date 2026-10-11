@@ -467,14 +467,25 @@ model and build only what's ours.
                     - 7 `readModel.tests.ts` through the runtime; two setups that posted to another slice's route now
                       append the events;
                   - six built slices that gain a permission are replaced under the same name, so the loop rebuilds
-                    them with `requirePermission`. **The export waits for Gary**; the preview re-queues exactly those
-                    six (three with their screens);
+                    them with `requirePermission`. Exported 2026-10-11 (Gary): the loop rebuilt them in about six
+                    minutes, for $2.62. It marked **configure grace period** Done with no commit, so that change was
+                    made by hand (`aea94df`, as its sibling got it in `73d85c8`). The kit's "rebuild marked Done with no
+                    commit" warning (runner.js, 2026-10-07) didn't fire. `runs.jsonl` has no warnings at all, so the
+                    running loop predates it: **restart the loop** (Gary) to load the current `ralph.js`;
                   - results: backend 384 passed (3 skipped); web 62; contract 9 match; journey mock 8/8 and sandbox
                     8/8;
                   - the four e2e scripts sign up for real (`e2e/lib/signin.mjs`) and read routeless to-do lists from
                     their tables (Gary: keep e2e coverage). settled-chain 14/14, trial-cancellation PASS,
                     paddle-sync 33/33, owner-chain 11/12: the trial now comes by signed webhook, and its new check that
                     the overview needs sign-in passes once the loop rebuilds that slice.
+                  - ✅ **After the rebuild (2026-10-11, `1f5ab34`):**
+                    - backend 397 passed (two timing flakes on a first full run passed on their own, and on a re-run);
+                    - contract 9 match;
+                    - journeys mock 8/8 and sandbox 8/8;
+                    - owner-chain 12/12 (the overview refuses a caller who isn't signed in), settled-chain 14/14,
+                      trial-cancellation 49/49, paddle-sync 33/33.
+
+                  Step 3 is done. ADR-058 point 1 waits for Gary's Accepted.
              4. **Permissions in the model (ADR-060):** in emcli, `permission` on commands and read models and the role
                 map, after migrating the legacy model's `cedarAction`, `cedarRoles` and `cognitoGroups`; the
                 catalogue (`x-permission`, `api/permissions.md`) and its checks; the API checks, tested both ways.
@@ -4425,6 +4436,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-09 | ADR-058 point 2 revised (Proposed): the platform admin is a person with platform permissions, acting in a named organisation as themselves (no impersonation); callers that aren't people use Better Auth API keys with `resource:action` permissions; internal-only routes dropped; ADR-037's "platform admin is auth only" revised (its grant belongs to identity) | Gary: the platform admin is user-based, not for automations, and may do business operations and sign-ins |
 | 2026-10-09 | ADR-058 point 2: no identity for callers that aren't people yet; API keys (customer integrations) and STS (AWS rights) deferred to their first real use | Gary: API keys only make sense for public APIs, STS may be over-engineering; is there a requirement? Checked: automations run in-process, Paddle's webhook is public and signed, and the only machine callers are e2e scripts, which can sign in |
 | 2026-10-09 | ADR-058 point 2 Accepted. Point 1 revised (Proposed): endpoints by declaration. No command or read model gets a route unless marked `--api <resource:action>`, `self` or `anonymous`; webhooks come from `--intake webhook` and are checked by signature; `--public` dropped | Found: every command got a route, so automation-only commands (`/start-trial`, `/assign-role`) were open and took `actedAs` from the body. Gary: control the endpoint per element, read models too; anonymous is the known term; webhooks controlled the same way |
+| 2026-10-11 | 2b.2f step 3 proven in licensing: 10 declared operations, 15 routes removed by hand, six permission routes rebuilt by the loop, all e2e green; the e2e scripts sign in for real | Gary: keep end-to-end coverage, so the shell scripts sign in with a bearer token rather than being retired; routes removed by hand rather than through the loop |
 
 ## Progress
 
