@@ -3905,8 +3905,10 @@ These sit with the rest of the account lifecycle above (reset, change of email o
 
 ### ADR-058: Secure by default, callers that aren't people, and roles
 
-**Status:** Point 2 **Accepted, 2026-10-09 (Gary)**. Point 1, revised the same day (endpoints by declaration), is
-Proposed until proven in licensing (2b.2f step 3). Point 3 is ADR-060 (Accepted).
+**Status:** **Accepted, 2026-10-11 (Gary).**
+- Point 2 was Accepted on 2026-10-09.
+- Point 1 (endpoints by declaration) was proven in licensing (2b.2f step 3): 10 declared operations, all e2e green.
+- Point 3 is ADR-060 (Accepted).
 **Date:** 2026-10-09
 **Builds on:** ADR-037 (roles: licensing decides, Auth follows), ADR-055 part 2 (the `session:` rule).
 
@@ -4034,7 +4036,10 @@ Proposed until proven in licensing (2b.2f step 3). Point 3 is ADR-060 (Accepted)
     slice whose only change is that stays Done.
 - **A built slice gaining or losing an endpoint is a replacement before release** (`plan-change`, ADR-046).
 
-**Decision:** points 2 and 3 settled (above, and ADR-060). Point 1 is decided when proven in licensing.
+**Decision:** Accepted (2026-10-11):
+- point 1 as revised (endpoints by declaration);
+- point 2 as revised (the platform admin is a person; no machine callers yet);
+- point 3 is ADR-060.
 
 ### ADR-059: A context's events are its own; other contexts read its published read models or its published events
 
