@@ -757,6 +757,10 @@ export const configureGracePeriodSetup = defineSetup<ConfigureGracePeriod>({
 - `name` is the command's name: it's issued once under `setup:<name>`.
 - **Each `config:<NAME>` field** reads that environment variable, and its default is the field's example in
   slice.json (`configInt` for a whole number, `configText` for text). Never invent a default.
+  - **The exception: a setting that grants access** (who is a platform admin) defaults to nobody (`""`), never the
+    example. A deployment that forgot the variable must not make a stranger an admin. With nothing to grant, the
+    decider returns `[]`, nothing is recorded, and the setup is issued again at the next start (licensing,
+    2026-10-11).
 - **Each `derived:` field** is the value its mapping gives (`derived:"setup"` → `"setup"`).
 - A value the decider refuses stops the app from starting: that's intended, don't catch it.
 - **Wiring** (`src/index.ts`, the wiring commit): add it to `setup`, beside the route.

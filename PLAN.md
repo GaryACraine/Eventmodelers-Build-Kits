@@ -486,7 +486,31 @@ model and build only what's ours.
                       trial-cancellation 49/49, paddle-sync 33/33.
 
                   Step 3 is done. ADR-058 Accepted 2026-10-11 (Gary).
-             4. 🚧 **Started 2026-10-11 (plan approved by Gary): the role map and the real check.**
+             4. ✅ **Done 2026-10-11: the role map and the real check** (kit PRs #236 and #237; emcli `5208cea`; licensing
+                `f632fd5`…`cc2d2cf`).
+                - **Licensing:**
+                  - roles: owner, admin, engineer, platformAdmin;
+                  - identity's `0b. A platform admin is granted`: `grantPlatformAdmins` reads `PLATFORM_ADMIN_EMAILS`,
+                    and `PlatformAdmins` is keyed by email;
+                  - licensing's `Memberships`, keyed by `organisationId`;
+                  - the loop built all three ($1.01), and the `RoleLookup` was wired by hand;
+                  - the six permission slices updated by hand: tests sign in with a role; read guards use
+                    `readModelRoute`'s `guard`.
+                - **Findings:**
+                  - `Memberships` is keyed by organisation, not person: `userWasAssignedToRole` is tagged by
+                    `organisationId` only (ADR-048). So the `RoleLookup` takes the requested organisation (PR #237);
+                  - the loop defaulted `PLATFORM_ADMIN_EMAILS` to the model's example, which would have made a stranger
+                    an admin. Fixed (`f3b1ca2`), and the setup rule in `build-state-change` now says an access setting
+                    defaults to nobody.
+                - **Results:**
+                  - backend 416 passed (3 skipped); contract 9 match;
+                  - journeys mock and sandbox 8/8;
+                  - owner-chain 15/15 (404 for another organisation, 403 on notifications, the platform admin's 200);
+                  - settled-chain 14/14, trial-cancellation 49/49, paddle-sync 33/33.
+                - **Next:** the role sync to Better Auth (step 5: the first published event and translation, ADR-059
+                  point 4).
+
+                **Was:**
                 - kit: `permissions.ts`, `RoleLookup`, `requirePermission` (404 and 403), `readModelRoute`'s
                   `guard`;
                 - emcli: `role` commands, `api/roles.json`, `api/permissions.md`, completeness;
@@ -4448,6 +4472,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-09 | ADR-058 point 2 Accepted. Point 1 revised (Proposed): endpoints by declaration. No command or read model gets a route unless marked `--api <resource:action>`, `self` or `anonymous`; webhooks come from `--intake webhook` and are checked by signature; `--public` dropped | Found: every command got a route, so automation-only commands (`/start-trial`, `/assign-role`) were open and took `actedAs` from the body. Gary: control the endpoint per element, read models too; anonymous is the known term; webhooks controlled the same way |
 | 2026-10-11 | 2b.2f step 3 proven in licensing: 10 declared operations, 15 routes removed by hand, six permission routes rebuilt by the loop, all e2e green; the e2e scripts sign in for real | Gary: keep end-to-end coverage, so the shell scripts sign in with a bearer token rather than being retired; routes removed by hand rather than through the loop |
 | 2026-10-11 | ADR-058 Accepted (endpoints by declaration; the platform admin is a person; roles per ADR-060); step 4 (the role map) started | Gary, after step 3 was proven in licensing. The loop was restarted to load the current ralph.js (it predated the rebuild warning) |
+| 2026-10-11 | 2b.2f step 4 done: the role map in the model (emcli `role`, `api/roles.json`, `api/permissions.md`); `requirePermission` checks it (a platform role anywhere; otherwise roles in the named organisation: 404 for a non-member, 403 without the permission); `RoleLookup` per organisation; licensing's Memberships (by organisation) and identity's PlatformAdmins (by email, setup from `PLATFORM_ADMIN_EMAILS`) | Gary's choices: setup by email; the proposed map; the catalogue now, the board later. Keyed by organisation to avoid re-tagging a built event (ADR-048). An access setting defaults to nobody (found when the loop used the model's example) |
 
 ## Progress
 
