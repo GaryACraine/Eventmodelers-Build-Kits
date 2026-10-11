@@ -12,6 +12,7 @@
     },
     "dependencies": {
         "@aws-sdk/client-sesv2": "^3.1148.0",
+        "@better-auth/passkey": "1.7.7",
         "better-auth": "1.7.7",
         "express": "^5.2.1",
         "node-pg-migrate": "^9.0.0",
