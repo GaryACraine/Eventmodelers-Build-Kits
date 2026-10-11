@@ -52,13 +52,18 @@ describe("how a session signed in (amr)", () => {
         const email = "app@example.com"
         await verifiedPerson(email)
         const b = await signInWithEmailedCode(email)
+        // What the web app reads to offer a step-up: only the signed-in person's own
+        expect((await browser().request("/sign-in-method/factors")).status).toBe(401)
+        expect((await b.request("/sign-in-method/factors")).body).toEqual({ app: false, passkeys: 0 })
         const enabled = await b.request("/two-factor/enable", { body: { password } })
         expect(enabled.status).toBe(200)
         const secret = new URL(enabled.body.totpURI).searchParams.get("secret")!
+        expect((await b.request("/sign-in-method/factors")).body).toEqual({ app: false, passkeys: 0 })
 
         // Proving the code that sets the app up
         expect((await b.request("/two-factor/verify-totp", { body: { code: totpCode(secret) } })).status).toBe(200)
         expect(await b.amr()).toEqual(["pwd", "email-otp"])
+        expect((await b.request("/sign-in-method/factors")).body).toEqual({ app: true, passkeys: 0 })
 
         // The app, now set up, steps this session up
         expect((await b.request("/two-factor/verify-totp", { body: { code: totpCode(secret) } })).status).toBe(200)

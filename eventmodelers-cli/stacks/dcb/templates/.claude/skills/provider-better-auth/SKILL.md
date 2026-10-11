@@ -1,13 +1,14 @@
 ---
 name: provider-better-auth
-description: Better Auth, the sign-in service (ADR-054, ADR-055, ADR-057). What the scaffold already provides (the service, the sign-in screens, the session, the bearer token, the API's check), which screens are never yours to build (Sign Up, Sign In, check your email: marked --external Auth), how a page reads who is signed in, how to test against it, and how an end-to-end journey signs up for real through Mailpit. Read it when a slice touches the Auth lane or sign-in. A draft on first use.
+description: Better Auth, the sign-in service (ADR-054, ADR-055, ADR-056, ADR-057). What the scaffold already provides (the service, the sign-in and account screens, the step-up prompt, the session, the bearer token, the API's check), which screens are never yours to build (Sign Up, Sign In, the code, password reset, the account page: marked --external Auth), how a page reads who is signed in, how to test against it, and how an end-to-end journey signs up for real through Mailpit. Read it when a slice touches the Auth lane or sign-in. A draft on first use.
 ---
 
 # Better Auth: sign-in, which the kit provides
 
 > **Draft, on first use** (ADR-042's rule: distil on solid ground). The scaffold's sign-in (the `auth/` service, the
 > sign-in screens, `web/src/lib/auth-client.ts`, `session.tsx`, the API's `src/shared/signIn.ts`) is proven by its
-> own tests and in licensing (2026-10-09). Follow it; where a slice doesn't fit, block the job with
+> own tests and in licensing (2026-10-09); the account screens and step-up (ADR-056) by their own tests only, until
+> PLAN 2b.2d step 8. Follow it; where a slice doesn't fit, block the job with
 > `request-feedback` saying what didn't fit.
 
 The sign-in service is its own system, **Auth** in the model (ADR-037, ADR-055). Its events (`userSignedUp`) sit in
@@ -23,15 +24,21 @@ password (`authentication/email-password`), email verification (`concepts/email`
 | What | Where |
 |---|---|
 | The sign-in service: email and password, the email verified at sign-up, JWTs | `auth/` (its own container) |
-| **The sign-in screens:** Sign In, Sign Up, "check your email" (`/sign-in`, `/sign-up`) | `web/src/lib/sign-in.tsx`, routed in `routes.tsx` |
-| The header: who is signed in, and Sign out | `web/src/Layout.tsx` |
+| **The sign-in screens:** Sign In with its second factor (the emailed code, the app's code, a backup code, a passkey), Sign Up, "check your email" with "send it again", forgotten and reset password, an expired link (`/sign-in`, `/sign-up`, `/forgot-password`, `/reset-password`) | `web/src/lib/sign-in.tsx`, routed in `routes.tsx` |
+| **The account page** (`/account`): email, password, the authenticator app and backup codes, passkeys, sessions | `web/src/lib/account.tsx` |
+| **The step-up prompt:** "Confirm it's you" over any page whose action needs the app or a passkey, with setting one up | `web/src/lib/step-up.tsx` (`StepUpProvider` in `App.tsx`) |
+| The header: who is signed in (a link to the account page), and Sign out | `web/src/Layout.tsx` |
 | The client, and every call to it | `web/src/lib/auth-client.ts`: **`signInService`** |
 | The session; the sign-in form in place of a protected page | `web/src/lib/session.tsx` (`RequireSession`) |
-| The bearer token on every API request | `web/src/lib/api.ts` |
+| The bearer token on every API request; a step-up's 401 shows the prompt, then sends the request again | `web/src/lib/api.ts` |
 | Checking the token in the API | `src/shared/signIn.ts` (`signedInOf(res)`) |
 
 **A screen card marked `--external Auth` is the sign-in system's** (ADR-057). emcli gives it no job, so it never
 reaches you. If one does, block with `request-feedback`: the model needs `--external Auth` on it.
+
+**A step-up is never yours to handle in a slice's screen.** The API client shows the prompt and sends the request
+again; a form just awaits `command(...)` as usual. Only if the person puts it off does the call throw `ApiError` with
+`status` 401 and `stepUp` set: show its message like any other refusal.
 
 ## A page that needs someone signed in
 
@@ -59,12 +66,14 @@ reaches you. If one does, block with `request-feedback`: the model needs `--exte
   const message = await (await fetch(`http://localhost:8025/api/v1/message/${found.messages[0].ID}`)).json()
   const link = message.Text.match(/https?:\/\/\S+/)[0]   // opening it verifies the email, signs in, and lands on <page>
   ```
+- **Signing in again needs the second factor** (ADR-056 D2): after the password, the journey reads the "Your
+  sign-in code" email from Mailpit the same way and enters the 6-digit code.
 
-## Decided, being built (ADR-056, Accepted 2026-10-11; PLAN 2b.2d)
+## Decided, built (ADR-056, Accepted 2026-10-11; PLAN 2b.2d)
 
-**The sign-in service has all of it** (`auth/src`: `signInMethod.ts`, `accountChanges.ts`, `unverified.ts`). The
-screens and the API's step-up check come next (PLAN 2b.2d steps 4 and 6). Until they're in the scaffold, a slice that
-needs them blocks with `request-feedback`.
+**The sign-in service has all of it** (`auth/src`: `signInMethod.ts`, `accountChanges.ts`, `unverified.ts`), the API
+checks each role's sign-in level (`src/shared/permissions.ts`, `signIn.ts`), and the screens are in `web/src/lib`.
+Proving it end to end in a project is PLAN 2b.2d steps 7 and 8.
 - **Every password sign-in needs an emailed code** (D2), and "remember this device" lasts 30 days.
 - **A role may need more** (D1, D3). The role map's sign-in level (`second-factor` or `not-by-email`) is checked by
   the API, not by Better Auth. The token's `amr` says how the session signed in. A weaker session gets **401

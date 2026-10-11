@@ -4,6 +4,7 @@ import { createBrowserRouter, createMemoryRouter, RouterProvider } from "react-r
 import { routes } from "./routes"
 import { ApiError } from "./lib/api"
 import { SessionProvider, type Session } from "./lib/session"
+import { StepUpProvider } from "./lib/step-up"
 import { WritesProvider } from "./lib/writes"
 
 /** A read the backend refused (4xx: not found, a bad parameter) fails the same way again: only a network error or a 5xx is retried, once. */
@@ -23,9 +24,11 @@ export function App({ initialPath, session }: { initialPath?: string; session?: 
     return (
         <QueryClientProvider client={queryClient}>
             <SessionProvider initial={session} remember={!initialPath}>
-                <WritesProvider>
-                    <RouterProvider router={router} />
-                </WritesProvider>
+                <StepUpProvider>
+                    <WritesProvider>
+                        <RouterProvider router={router} />
+                    </WritesProvider>
+                </StepUpProvider>
             </SessionProvider>
         </QueryClientProvider>
     )

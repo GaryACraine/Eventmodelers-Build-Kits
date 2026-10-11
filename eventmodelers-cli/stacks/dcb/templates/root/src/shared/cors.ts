@@ -21,8 +21,9 @@ export function configureCors(origins = process.env["CORS_ORIGIN"]): WebApiSetup
             if (!origin || !(any || allowed.includes(origin))) return next()
             res.setHeader("Access-Control-Allow-Origin", any ? "*" : origin)
             if (!any) res.vary("Origin")
-            // ETag carries the write's position (read-your-writes); Location a created resource
-            res.setHeader("Access-Control-Expose-Headers", "ETag, Location")
+            // ETag carries the write's position (read-your-writes); Location a created resource; WWW-Authenticate a
+            // request to sign in more strongly (step-up, ADR-056 D1)
+            res.setHeader("Access-Control-Expose-Headers", "ETag, Location, WWW-Authenticate")
             if (req.method !== "OPTIONS") return next()
             res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE")
             res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, Idempotency-Key, If-None-Match, Prefer, Last-Event-ID")
