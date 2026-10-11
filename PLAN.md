@@ -609,8 +609,17 @@ model and build only what's ours.
                   the kit calling the command silently; kit PR #250). `changeUserEmail` (`self`) records
                   `userEmailWasChanged`, and MyAccount gets an extension slice. Two slices are planned; completeness
                   finds no errors in the identity chapters;
-                - **the export waits for Gary's go-ahead.** It hands the loop "change user email" and "my account email
-                  changed", and writes `api/roles.json` with the levels.
+                - ✅ **exported 2026-10-11 (Gary's go-ahead), built:**
+                  - the loop blocked on "my account email changed": `userEmailWasChanged` carried only `userId`, but
+                    MyAccount is keyed by `sub`. The event now carries `sub` too (`278bb80`), and "change user email"
+                    was replaced under the same name (`2cde8d6`); both slices are Done;
+                  - the levels in `api/roles.json` broke 9 built slices' tests (owner and platform admin callers). Kit
+                    PR #253 changed `testSignIn`'s default to meet every level, so a role's level stays out of built
+                    slices' tests;
+                  - the high-effort review of step 6 (`/code-review high 249`) was fixed in kit PR #252. It included a
+                    passkey step-up that never worked and could switch accounts (ADR-056 "Step 6, reviewed");
+                  - licensing `a3c6d06`: auth 4 files, web 95 tests, backend 64 files pass; `kit-drift` 0; the loop's
+                    context back to licensing.
              8. **Proof:**
                 - `e2e/lib/signin.mjs` completes the emailed code;
                 - e2e scripts for reset, change of password and email, and step-up (refused, then allowed after a
