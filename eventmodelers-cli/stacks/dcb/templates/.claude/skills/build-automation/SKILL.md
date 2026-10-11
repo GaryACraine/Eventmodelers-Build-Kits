@@ -488,6 +488,28 @@ export const paddleNotificationInbox = paddleInbox(paddleConfig())
 - **A copy of the event in another chapter** shows the same fact; only the original's slice is
   `EXTERNAL_EVENT`, so the endpoint is built once.
 
+## Between contexts (ADR-061): what each pattern builds. A draft, on first use
+
+> **Draft (ADR-061 Proposed).** No slice has been built this way yet. When a slice.json names another context's
+> published event, or another context's command, follow this. If something it needs is missing (the published-events
+> module, the check's exception), block the job with `request-feedback` naming what's missing; don't improvise. A
+> context never imports another context's `Events.ts` (ADR-059, the `context-events-private` check).
+
+How the other context's fact or command reaches this slice decides what you build:
+
+| In slice.json | Pattern | Build |
+|---|---|---|
+| a trigger event with `externalSystem` = another **context**, intake `subscribed` | 1, pull (same deployment) | an **internal automation** (above), exactly as for our own trigger: its to-do list, `act`, and our command through `issue(…)`. The trigger's type and factory come from the owner's **published-events module**, never its `Events.ts` |
+| the same, intake `fetched` | 1, pull (another deployment) | a **Schedule** (Timed work, below) that reads the owner's feed after our checkpoint, records each event through the inbox (`recordInboxed`), and records the checkpoint from the reply: the Paddle Sync's shape (ADR-041) |
+| the same, intake `webhook` | 2, a pushed fact | the **inbox endpoint** (An external event, above), checked by the owner's signature; the owner's outbox delivers it |
+| a command with `externalSystem` = another context, issued by our automation | 3, a request to act | an **automation** whose `act` issues that context's command: through its decider, in-process, in one deployment (`issue(theirDecider, …)`); otherwise an **external automation** calling its declared endpoint (a machine identity: API keys, ADR-058, deferred) |
+| a read model copy with `externalSystem` = another context | 4, ask synchronously | nothing of ours builds it (ADR-052). Call the query the owner **exports** (as `readModelLookup` does), in-process, where the slice needs it |
+
+- **Name the slice's events by the owner's published name.** Our reaction is our own event: never record the
+  owner's event in our context.
+- **Tests:** give the trigger with the owner's published factory. For 3, assert the other context's command was
+  issued (its decider's events in the store).
+
 ## An automation with no to-do list
 
 An event-driven automation may keep no to-do list: **the trigger event is the item**, and the work is done at once
