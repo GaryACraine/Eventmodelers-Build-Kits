@@ -547,7 +547,8 @@ model and build only what's ours.
              - passkeys and magic links;
              - web vs mobile;
              - sessions;
-             - deleting an account (GDPR);
+             - deleting an account (GDPR): waits on ADR-062 (Proposed 2026-10-11: personal data encrypted per
+               person, the key thrown away; Gary's Kotlin code to port);
              - abuse;
              - security notices.
 
@@ -4484,6 +4485,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-11 | 2b.2f step 4 done: the role map in the model (emcli `role`, `api/roles.json`, `api/permissions.md`); `requirePermission` checks it (a platform role anywhere; otherwise roles in the named organisation: 404 for a non-member, 403 without the permission); `RoleLookup` per organisation; licensing's Memberships (by organisation) and identity's PlatformAdmins (by email, setup from `PLATFORM_ADMIN_EMAILS`) | Gary's choices: setup by email; the proposed map; the catalogue now, the board later. Keyed by organisation to avoid re-tagging a built event (ADR-048). An access setting defaults to nobody (found when the loop used the model's example) |
 | 2026-10-11 | ADR-061 Proposed: four patterns between contexts by what crosses (pull a published event, the default; push a fact; push a request to act; ask synchronously); published events are API; intakes `subscribed` (new), `fetched`, `webhook`; carried into the skills as drafts; the role sync deferred until something needs roles in Better Auth | Gary: model the push/pull/synchronous patterns as ADRs and in the skills, since they'll repeat. The kit's reactors already cover one deployment. The role sync has no consumer since ADR-060 |
 | 2026-10-11 | ADR-061 Accepted | Gary, after review. The skills keep it as drafts until its first use is built and proven |
+| 2026-10-11 | ADR-062 Proposed: forgetting a person (GDPR erasure) by crypto-shredding: personal data marked in the model, encrypted per person on append, the key destroyed to forget; Gary's Kotlin code ported to TypeScript. Recorded only | Gary: events are never deleted, so erasure needs its own design. Not worked on yet; taken up before an account can be deleted and before release |
 
 ## Progress
 
