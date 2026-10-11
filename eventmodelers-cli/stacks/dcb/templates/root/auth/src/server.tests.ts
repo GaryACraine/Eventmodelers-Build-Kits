@@ -45,7 +45,9 @@ describe("the sign-in service", () => {
             BETTER_AUTH_SECRET: "a-secret-of-at-least-32-characters-long",
             DATABASE_URL: postgres.getConnectionUri(),
             EMAIL_FROM: "no-reply@example.com",
-            SMTP_URL: "smtp://unused:1025"
+            SMTP_URL: "smtp://unused:1025",
+            // Have I Been Pwned is an internet call: off here, its setting is tested in config.tests.ts
+            AUTH_BREACHED_PASSWORDS: "false"
         })
         pool = new Pool({ connectionString: config.databaseUrl, options: "-c search_path=auth" })
         http.on("request", createServer(createAuth(config, async email => void sent.push(email), pool)))

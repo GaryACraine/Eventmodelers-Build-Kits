@@ -9,6 +9,13 @@ import { z } from "zod"
  *   email                SES (the task's IAM role)     SMTP (`SMTP_URL`; Mailpit locally)
  *   secure cookies       always                        when BETTER_AUTH_URL is https
  *   client IP header     x-client-ip (set at the edge) x-forwarded-for (from the install's reverse proxy)
+ *
+ * The account security settings (ADR-056) are the same for both, each with its own variable:
+ *
+ *   AUTH_BREACHED_PASSWORDS          true   refuse passwords found in breaches (Have I Been Pwned; turn off where an
+ *                                           install has no internet)
+ *   AUTH_STEP_UP_HOURS               12     how long the app, a backup code or a passkey counts once proved (D15)
+ *   AUTH_UNVERIFIED_RETENTION_DAYS   7      when an account whose email was never verified is removed (D12)
  */
 export type Deployment = "cloud" | "on-premises"
 
@@ -29,6 +36,12 @@ export interface AuthConfig {
     ipAddressHeaders: string[]
     /** The reverse proxies in front of the service (IPs or CIDR ranges), so a forwarded chain can be walked */
     trustedProxies: string[] | undefined
+    /** Refuse passwords found in breaches (D7) */
+    breachedPasswords: boolean
+    /** How long a factor that doesn't depend on the inbox counts once proved (D15) */
+    stepUpHours: number
+    /** When an account whose email was never verified is removed (D12) */
+    unverifiedRetentionDays: number
 }
 
 const list = (value: string | undefined) =>
@@ -50,7 +63,10 @@ const Env = z.object({
     AUTH_TRUSTED_ORIGINS: z.string().optional(),
     AUTH_SECURE_COOKIES: z.enum(["true", "false"]).optional(),
     AUTH_IP_HEADERS: z.string().optional(),
-    AUTH_TRUSTED_PROXIES: z.string().optional()
+    AUTH_TRUSTED_PROXIES: z.string().optional(),
+    AUTH_BREACHED_PASSWORDS: z.enum(["true", "false"]).default("true"),
+    AUTH_STEP_UP_HOURS: z.coerce.number().positive().default(12),
+    AUTH_UNVERIFIED_RETENTION_DAYS: z.coerce.number().positive().default(7)
 })
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): AuthConfig {
@@ -82,6 +98,9 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         email: { from: e.EMAIL_FROM, transport },
         secureCookies: e.AUTH_SECURE_COOKIES ? e.AUTH_SECURE_COOKIES === "true" : cloud || e.BETTER_AUTH_URL.startsWith("https://"),
         ipAddressHeaders: list(e.AUTH_IP_HEADERS) ?? [cloud ? "x-client-ip" : "x-forwarded-for"],
-        trustedProxies: list(e.AUTH_TRUSTED_PROXIES)
+        trustedProxies: list(e.AUTH_TRUSTED_PROXIES),
+        breachedPasswords: e.AUTH_BREACHED_PASSWORDS === "true",
+        stepUpHours: e.AUTH_STEP_UP_HOURS,
+        unverifiedRetentionDays: e.AUTH_UNVERIFIED_RETENTION_DAYS
     }
 }
