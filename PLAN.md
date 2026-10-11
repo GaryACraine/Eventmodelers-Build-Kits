@@ -573,7 +573,7 @@ model and build only what's ours.
                 - **D15:** a step-up lasts 12 hours (`AUTH_STEP_UP_HOURS`).
 
                 Both are built in step 3.
-             3. **Kit, the sign-in service:**
+             3. ✅ **Kit, the sign-in service** (done 2026-10-11; ADR-056 "Step 3"; 30 tests, mutation-checked):
                 - `twoFactor` (OTP and TOTP, backup codes), the passkey, reset, change of password and email;
                 - password rules and HIBP, sessions, notices, rate limits;
                 - sign-up's unhappy paths and the 7-day cleanup;

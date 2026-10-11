@@ -3837,7 +3837,7 @@ recommendations, accepted with the plan. Account deletion is ADR-062's.
 | D9 | **Sessions** | **Web:** 7 days, refreshed daily; the API token lasts 15 minutes. The account page lists sessions, and "sign out everywhere" ends them. **Mobile:** recorded only until there's an app (codes instead of links, passkeys or biometric unlock, longer refreshing sessions) | `session.expiresIn` 604800; `updateAge` 86400 |
 | D10 | **Security notices** | An email when: the password changes or is reset; the email changes (to the old address); a second factor or passkey is added or removed; a backup code is used; someone signs in from a new device | hooks in `auth.ts`; senders in `email.ts` |
 | D11 | **Abuse** | Rate limits stay on, with stricter limits on sign-in, reset, codes and verification. 2FA lockout after 10 failures, for 15 minutes. No captcha until bots appear | `rateLimit.customRules`; `accountLockout` defaults |
-| D12 | **Sign-up's unhappy paths** | - **Expired or used link:** a page explains it and sends a new link.<br>- **"Send the link again"** on check-your-email, without signing in.<br>- **Signing up again with the same email:** emails "you already have an account" (sign-in and reset links), or resends the verification if the account is unverified; the screen's answer is unchanged.<br>- **Unverified accounts:** removed after **7 days** (Gary) by a scheduled job in the sign-in service. This covers mistyped addresses, and they never reach our events.<br>- **An email that can't be sent:** logged and alerted (ADR-043); the resend path covers the person.<br>- **Too many attempts (429):** "try again in N".<br>- **Verified but never onboarded:** licensing's own chapters, later | `onExistingUserSignUp`; `AUTH_UNVERIFIED_RETENTION_DAYS` 7 |
+| D12 | **Sign-up's unhappy paths** | - **Expired or used link:** a page explains it and sends a new link.<br>- **"Send the link again"** on check-your-email, without signing in.<br>- **Signing up again with the same email:** emails "you already have an account" (sign-in and reset links), or resends the verification if the account is unverified; the screen's answer is unchanged.<br>- **Unverified accounts:** removed after **7 days** (Gary) by a scheduled job in the sign-in service. This covers mistyped addresses, and they never reach our events.<br>- **An email that can't be sent:** an alert line in the log (ADR-032's format, without the address); the resend path covers the person.<br>- **Too many attempts (429):** "try again in N".<br>- **Verified but never onboarded:** licensing's own chapters, later | `onExistingUserSignUp`; `AUTH_UNVERIFIED_RETENTION_DAYS` 7 |
 | D13 | **Where the screens come from** | **The kit**, like Sign In and Sign Up (ADR-057): forgot and reset password, enter a code, set up the app and backup codes, passkeys, and an account page (password, email, second factors, sessions). The model draws them in identity chapters (one flow each, ADR-038) as screens marked `--external Auth`, so the loop builds nothing for them. The loop builds D6's slice | — |
 | D14 | **Security evidence, easy to find** | Every project scaffolds:<br>- **`SECURITY.md`** at the root, pointing to `security/`;<br>- **`security/README.md`**: the index;<br>- **`security/POLICY.md`**: each policy in plain terms, with its setting and ADR;<br>- **`security/EVIDENCE.md`**: each policy, the tests that prove it (unit, contract, e2e), and the last run's date and result;<br>- **`security/results/`**: dated e2e logs.<br><br>The access catalogue stays where the export writes it (`api/permissions.md`, `api/roles.json`), linked from the index. **A kit check warns** when a policy names no test, or a test it names doesn't exist. Each security step adds its rows as it lands | — |
 
@@ -3893,6 +3893,22 @@ Postgres, each checked by removing the protection it covers).
     - **D15, a step-up lasts 12 hours** (Gary: "12 hours"; NIST asks again every 12 hours at this level). The session
       records when the app, a backup code or a passkey was last proved. After 12 hours the token no longer lists that
       factor, so the API asks again. The setting is `AUTH_STEP_UP_HOURS`, default 12.
+
+**Step 3, the sign-in service, built 2026-10-11** (`auth/src`; 30 tests on a real Postgres, each new protection
+checked by removing it):
+- **Where each decision is built:**
+  - `auth.ts`: D4, D5, D6, D7, D9, D11 and D12's emails;
+  - `signInMethod.ts`: D1, D2's baseline kept when the app is removed, D4a, D15;
+  - `accountChanges.ts`: D5's forced sign-out, D10's notices, D6's notice to the old address;
+  - `unverified.ts`: D12's removal, hourly;
+  - `config.ts`: `AUTH_BREACHED_PASSWORDS`, `AUTH_STEP_UP_HOURS`, `AUTH_UNVERIFIED_RETENTION_DAYS`.
+- **Found while building:**
+  - **A change of email's links went through the same endpoint as sign-up's**, and the second one signs the clicking
+    browser in. Such a session now carries no factors: only a sign-up's verification counts as `email-link`.
+  - **D4a leaves someone who only has a passkey with no way back if they lose it,** since the emailed code isn't
+    offered and backup codes come only with the app. Passkeys are usually synced (iCloud Keychain, Google Password
+    Manager), so it's rare. Recovery by a platform admin is to be decided with the account screens.
+  - **A second sign-up already answered exactly like a new one,** plugin fields included, with no option set.
 
 **Consequences, once decided:**
 - **Each choice becomes a setting:** in `auth/src/config.ts` where it differs by deployment, otherwise in

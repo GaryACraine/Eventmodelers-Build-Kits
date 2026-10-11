@@ -12,7 +12,8 @@ export const auth = createAuth(
         BETTER_AUTH_SECRET: "schema-generation-only-schema-generation-only",
         DATABASE_URL: process.env["DATABASE_URL"] ?? "postgresql://dcb:dcb@localhost:5432/dcb",
         EMAIL_FROM: "unused@localhost",
-        SMTP_URL: "smtp://localhost:1025"
+        SMTP_URL: "smtp://localhost:1025",
+        AUTH_BREACHED_PASSWORDS: "false"
     }),
     async () => {}
 )

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest"
+import { createAuth } from "./auth.js"
 import { loadConfig } from "./config.js"
 
 const common = {
@@ -49,5 +50,22 @@ describe("the sign-in service's settings, by deployment (ADR-055)", () => {
         )
         expect(() => loadConfig({ ...onPremises, SMTP_URL: undefined })).toThrow(/SMTP_URL: required/)
         expect(() => loadConfig({ ...cloud, AWS_REGION: undefined })).toThrow(/AWS_REGION: required/)
+    })
+
+    test("the account security settings (ADR-056): breached passwords refused, a 12-hour step-up, 7 days to verify", () => {
+        const config = loadConfig(onPremises)
+        expect(config.breachedPasswords).toBe(true)
+        expect(config.stepUpHours).toBe(12)
+        expect(config.unverifiedRetentionDays).toBe(7)
+        const offline = loadConfig({ ...onPremises, AUTH_BREACHED_PASSWORDS: "false", AUTH_STEP_UP_HOURS: "8", AUTH_UNVERIFIED_RETENTION_DAYS: "14" })
+        expect([offline.breachedPasswords, offline.stepUpHours, offline.unverifiedRetentionDays]).toEqual([false, 8, 14])
+        expect(() => loadConfig({ ...onPremises, AUTH_STEP_UP_HOURS: "0" })).toThrow(/AUTH_STEP_UP_HOURS/)
+    })
+
+    test("refusing breached passwords is Better Auth's Have I Been Pwned plugin, on unless turned off", () => {
+        const plugins = (config: ReturnType<typeof loadConfig>) =>
+            (createAuth(config, async () => {}).options.plugins ?? []).map(p => p.id)
+        expect(plugins(loadConfig(onPremises))).toContain("have-i-been-pwned")
+        expect(plugins(loadConfig({ ...onPremises, AUTH_BREACHED_PASSWORDS: "false" }))).not.toContain("have-i-been-pwned")
     })
 })

@@ -62,7 +62,9 @@ reaches you. If one does, block with `request-feedback`: the model needs `--exte
 
 ## Decided, being built (ADR-056, Accepted 2026-10-11; PLAN 2b.2d)
 
-Not in the scaffold yet. Until it is, a slice that needs any of this blocks with `request-feedback`:
+**The sign-in service has all of it** (`auth/src`: `signInMethod.ts`, `accountChanges.ts`, `unverified.ts`). The
+screens and the API's step-up check come next (PLAN 2b.2d steps 4 and 6). Until they're in the scaffold, a slice that
+needs them blocks with `request-feedback`.
 - **Every password sign-in needs an emailed code** (D2), and "remember this device" lasts 30 days.
 - **A role may need more** (D1, D3). The role map's sign-in level (`second-factor` or `not-by-email`) is checked by
   the API, not by Better Auth. The token's `amr` says how the session signed in. A weaker session gets **401
