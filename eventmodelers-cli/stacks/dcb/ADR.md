@@ -3923,6 +3923,53 @@ checked by removing it):
   says more than a 404 or 403 would.
 - **`testSignIn`'s token** says a password and an emailed code unless a test says otherwise.
 
+**Step 5, emcli, built 2026-10-11** (emcli 6921619): `emcli role sign-in <role> second-factor|not-by-email`.
+- `api/roles.json` writes every role's `signIn`, the default included.
+- `permissions.md` shows each role's level.
+- **The levels stay out of the API contract.** Every signed-in operation's 401 says a stronger sign-in may be needed,
+  but which role needs which level is only in `api/roles.json`. So changing a role's level changes no operation, as
+  with what a role holds.
+
+**Step 6, the screens, built 2026-10-11** (`web/src/lib`: `sign-in.tsx`, `account.tsx`, `step-up.tsx`, `api.ts`,
+`auth-client.ts`; emcli a6b0d28's starters match them):
+- **Sign-in asks for the second factor after the password.**
+  - The emailed code is sent at once, with "send a new code" and "trust this device".
+  - Someone with the app is asked for its code, with a backup code or a passkey as the alternatives.
+  - Someone with only a passkey is offered just the passkey (D4a leaves them no other method).
+  - "Sign in with a passkey" is on the first screen too.
+- **Forgotten and reset password; "send it again" on check-your-email; an expired verification link** (D4, D12).
+  Better Auth lands an expired link on its page with `?error=TOKEN_EXPIRED` or `INVALID_TOKEN`; the layout then shows
+  "This link has expired" above that page, with a form that sends a new link.
+- **"Too many attempts: try again in N minutes"** (D11). The client reads the service's `X-Retry-After` on any 429.
+- **The account page** (`/account`, reached from the email in the header) covers:
+  - email: confirmed at the old address, then the new; both links land on `/account?email=changing`, where step 7's
+    D6 slice calls its `self` command;
+  - password;
+  - the app and backup codes;
+  - passkeys;
+  - sessions, with "sign out everywhere else".
+- **A step-up shows a prompt, and the request goes again.**
+  - The API client clones each request. On a step-up 401, it shows "Confirm it's you" (the app's code or a passkey).
+    Once the person has given one, it sends the copy again with a fresh token, under the same Idempotency-Key.
+  - Someone with neither is helped to set one up first (D3). Setting up the app proves nothing; its next code does,
+    which is what the prompt then asks for.
+  - If the person puts it off, the call throws `ApiError` with `stepUp` set. A slice's screen never handles step-up
+    itself.
+  - The account page uses the same prompt when the sign-in service refuses a factor change with
+    `STRONGER_FACTOR_REQUIRED`, then tries the change once more.
+- **A new read-only endpoint, `GET /api/auth/sign-in-method/factors`,** returns `{ app, passkeys }` for the signed-in
+  person, so the prompt offers what they have. It is their own account only (401 otherwise) and changes nothing.
+- **CORS exposes `WWW-Authenticate`,** so a web app on another origin can read the step-up.
+- **New web dependencies:** `@better-auth/passkey` 1.7.7 (the passkey client) and `uqr` (the QR code, rendered in
+  the browser; the secret never leaves it).
+- **Proven by:**
+  - 83 web tests in a scratch copy of licensing's web app (21 new). A mutation check shows the retry test and the
+    factor-change test each fail without their code;
+  - the auth service's tests (30, the factors endpoint added to one);
+  - a type check and a build.
+
+  End to end in a browser is step 8.
+
 **Consequences, once decided:**
 - **Each choice becomes a setting:** in `auth/src/config.ts` where it differs by deployment, otherwise in
   `auth/src/auth.ts`.

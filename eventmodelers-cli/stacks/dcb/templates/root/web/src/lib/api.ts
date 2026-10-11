@@ -30,20 +30,64 @@ const idempotency: Middleware = {
     }
 }
 
+/** How strongly the API asked the caller to sign in (ADR-056 D3): its `acr_values` */
+export type StepUpLevel = "second-factor" | "not-by-email"
+
+/**
+ * The level a 401 asks for, when it's a step-up (RFC 9470: `WWW-Authenticate: Bearer
+ * error="insufficient_user_authentication", acr_values="…"`), or undefined when it's a plain "not signed in".
+ */
+export function stepUpLevelOf(response: Response): StepUpLevel | undefined {
+    if (response.status !== 401) return undefined
+    const challenge = response.headers.get("WWW-Authenticate") ?? ""
+    if (!challenge.includes('error="insufficient_user_authentication"')) return undefined
+    return challenge.includes('acr_values="not-by-email"') ? "not-by-email" : "second-factor"
+}
+
+/** Asks the person to sign in more strongly, resolving true once they have (`StepUpProvider`, step-up.tsx) */
+export type StepUpPrompt = (level: StepUpLevel) => Promise<boolean>
+let stepUpPrompt: StepUpPrompt | undefined
+
+/** Set the prompt the API client shows on a step-up; returns the way to take it away again */
+export function onStepUp(prompt: StepUpPrompt): () => void {
+    stepUpPrompt = prompt
+    return () => {
+        if (stepUpPrompt === prompt) stepUpPrompt = undefined
+    }
+}
+
+/** A copy of each request as it was sent, to send again after a step-up (fetch reads the body of the original) */
+const sent = new WeakMap<Request, Request>()
+
 /**
  * With real sign-in, every request carries the signed-in person's bearer token, which the API checks (ADR-037,
  * ADR-055). A 401 drops the kept token, so the next request fetches a fresh one.
+ *
+ * A 401 that asks for a stronger sign-in (step-up, ADR-056 D1) shows the prompt; once the person has proved the app or
+ * a passkey, the same request goes again with a fresh token, its Idempotency-Key unchanged. If they don't, the 401
+ * stands (`ApiError.stepUp` says why).
  */
 const signedIn: Middleware = {
     async onRequest({ request }) {
-        if (signInMode !== "better-auth" || request.headers.has("Authorization")) return request
-        const token = await bearerToken()
-        if (token) request.headers.set("Authorization", `Bearer ${token}`)
+        if (signInMode === "better-auth" && !request.headers.has("Authorization")) {
+            const token = await bearerToken()
+            if (token) request.headers.set("Authorization", `Bearer ${token}`)
+        }
+        // Only with a prompt to show (StepUpProvider sets one with real sign-in)
+        if (stepUpPrompt) sent.set(request, request.clone())
         return request
     },
-    onResponse({ response }) {
-        if (response.status === 401) forgetBearerToken()
-        return response
+    async onResponse({ request, response }) {
+        if (response.status !== 401) return response
+        forgetBearerToken()
+        const level = stepUpLevelOf(response)
+        const again = sent.get(request)
+        if (!level || !again || !stepUpPrompt || !(await stepUpPrompt(level))) return response
+        if (signInMode === "better-auth") {
+            const token = await bearerToken()
+            if (token) again.headers.set("Authorization", `Bearer ${token}`)
+        }
+        return globalThis.fetch(again)
     }
 }
 
@@ -55,12 +99,15 @@ api.use(idempotency, signedIn)
 export class ApiError extends Error {
     readonly status: number
     readonly problem: Problem | undefined
+    /** A 401 asking for a stronger sign-in that the person didn't give: the level it asked for */
+    readonly stepUp: StepUpLevel | undefined
 
-    constructor(status: number, problem: Problem | undefined) {
+    constructor(status: number, problem: Problem | undefined, stepUp?: StepUpLevel) {
         super(problem?.detail ?? problem?.title ?? `Request failed with status ${status}`)
         this.name = "ApiError"
         this.status = status
         this.problem = problem
+        this.stepUp = stepUp
     }
 }
 
@@ -90,14 +137,14 @@ export function positionOf(response: Response): string | undefined {
 /** Send a command. Resolves with its response body and the position it reached; throws `ApiError` if rejected. */
 export async function command<T>(request: Promise<Result<T>>): Promise<{ data: T | undefined; position: string | undefined }> {
     const { data, error, response } = await request
-    if (!response.ok) throw new ApiError(response.status, error as Problem | undefined)
+    if (!response.ok) throw new ApiError(response.status, error as Problem | undefined, stepUpLevelOf(response))
     return { data, position: positionOf(response) }
 }
 
 /** Read a view or query. Resolves with its body; throws `ApiError` on any non-2xx status (404 included). */
 export async function read<T>(request: Promise<Result<T>>): Promise<T> {
     const { data, error, response } = await request
-    if (!response.ok) throw new ApiError(response.status, error as Problem | undefined)
+    if (!response.ok) throw new ApiError(response.status, error as Problem | undefined, stepUpLevelOf(response))
     return data as T
 }
 

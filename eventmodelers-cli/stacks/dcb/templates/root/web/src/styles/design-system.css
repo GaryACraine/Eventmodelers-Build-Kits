@@ -106,6 +106,21 @@
         font-size: 15px;
         font-weight: 600;
     }
+    /* A secondary action in a card ("Send it again", "Use a backup code"): a button that looks like a link */
+    :where(.mock-card) button.mock-link {
+        margin: 0;
+        width: auto;
+        padding: 0;
+        background: none;
+        color: var(--primary);
+        font-size: inherit;
+        font-weight: 400;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+    }
+    :where(.mock-card) button.mock-secondary { background: var(--secondary); color: var(--secondary-foreground); }
+    :where(.mock-card) pre.mock-codes { font-size: 15px; columns: 2; margin: 8px 0; }
+    :where(.mock-card) section + section { border-top: 1px solid var(--secondary); margin-top: 16px; padding-top: 16px; }
     :where(.mock-card) fieldset.mock-list { border: 1px dashed var(--input); border-radius: 6px; margin: 10px 0; padding: 6px 10px; }
     .mock-row { display: flex; gap: 6px; margin: 4px 0; }
     :where(.mock-card) dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }

@@ -4,7 +4,8 @@ import { Layout } from "./Layout"
 import type { PageInfo } from "./lib/page"
 import { RequireSession } from "./lib/session"
 import { signInMode } from "./lib/auth-client"
-import { SignInPage, SignUpPage } from "./lib/sign-in"
+import { ForgotPasswordPage, ResetPasswordPage, SignInPage, SignUpPage } from "./lib/sign-in"
+import { AccountPage } from "./lib/account"
 
 /**
  * Every page of the app, found in `src/pages/`: one file per page, each exporting `page` (its route and title,
@@ -33,11 +34,21 @@ export const routes: RouteObject[] = [
         path: "/",
         element: <Layout nav={pages.filter((p) => p.nav)} />,
         children: [
-            // With real sign-in, the kit's sign-in screens (ADR-057): not pages of the model, never built by the loop
+            // With real sign-in, the kit's sign-in screens (ADR-056, ADR-057): not pages of the model, never built by the loop
             ...(signInMode === "better-auth"
                 ? [
                       { path: "sign-in", element: <SignInPage /> },
-                      { path: "sign-up", element: <SignUpPage /> }
+                      { path: "sign-up", element: <SignUpPage /> },
+                      { path: "forgot-password", element: <ForgotPasswordPage /> },
+                      { path: "reset-password", element: <ResetPasswordPage /> },
+                      {
+                          path: "account",
+                          element: (
+                              <RequireSession keys={["sub"]}>
+                                  <AccountPage />
+                              </RequireSession>
+                          )
+                      }
                   ]
                 : []),
             ...pages.map(({ path, session, Component }) => ({

@@ -589,8 +589,14 @@ model and build only what's ours.
                 - `permissions.md` shows the level beside each holder, and a Sign-in column under Roles;
                 - the contract's 401 notes step-up on every signed-in operation. The levels stay out of the contract,
                   so changing a role changes no operation (tested), as with what a role holds.
-             6. **Kit, the screens:** forgot and reset, enter a code, set up the app and backup codes, passkeys, and
-                the account page, with the step-up prompt in `api.ts`; mockup starters in emcli.
+             6. ✅ **Kit, the screens:** forgot and reset, enter a code, set up the app and backup codes, passkeys, and
+                the account page, with the step-up prompt in `api.ts`; mockup starters in emcli (done 2026-10-11;
+                ADR-056 "Step 6"; emcli a6b0d28):
+                - 83 web tests pass in a scratch copy of licensing's web app (21 new), with a type check and a build;
+                - the auth service's 30 tests pass;
+                - new: `GET /api/auth/sign-in-method/factors`; CORS exposes `WWW-Authenticate`; web dependencies
+                  `@better-auth/passkey` and `uqr`;
+                - `/account?email=changing` is where step 7's D6 slice calls its `self` command.
              7. **Licensing:**
                 - `kit-drift`;
                 - sign-in levels in the role map;

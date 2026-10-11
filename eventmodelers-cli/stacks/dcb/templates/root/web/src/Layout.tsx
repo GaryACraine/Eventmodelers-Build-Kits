@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from "react-router"
 import type { PageInfo } from "@/lib/page"
 import { useSessionState } from "@/lib/session"
+import { LinkExpired } from "@/lib/sign-in"
 import { cn } from "@/lib/utils"
 
 /** What the pages can read from the layout: `useOutletContext<LayoutContext>()` */
@@ -28,7 +29,13 @@ export function Layout({ nav }: { nav: PageInfo[] }) {
                     ))}
                     {signedIn.length > 0 && (
                         <span className="ml-auto flex items-center gap-3 text-sm text-muted-foreground">
-                            {who}
+                            {mode === "better-auth" ? (
+                                <NavLink to="/account" className={link} title="Your account">
+                                    {who}
+                                </NavLink>
+                            ) : (
+                                who
+                            )}
                             <button type="button" className="underline hover:text-foreground" onClick={signOut}>
                                 Sign out
                             </button>
@@ -37,6 +44,7 @@ export function Layout({ nav }: { nav: PageInfo[] }) {
                 </nav>
             </header>
             <main className="mx-auto max-w-5xl px-6 py-8">
+                {mode === "better-auth" && <LinkExpired />}
                 <Outlet context={{ nav } satisfies LayoutContext} />
             </main>
         </div>

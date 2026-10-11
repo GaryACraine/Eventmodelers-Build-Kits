@@ -1,5 +1,5 @@
 import type { BetterAuthPlugin, GenericEndpointContext } from "@better-auth/core"
-import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api"
+import { APIError, createAuthEndpoint, createAuthMiddleware, getSessionFromCtx, sessionMiddleware } from "better-auth/api"
 
 /**
  * How a session signed in (ADR-056 D1): the factors it proved, recorded on the session when it's created and carried
@@ -228,7 +228,19 @@ const after = createAuthMiddleware(async ctx => {
 })
 
 /**
- * The plugin: the session's factors and when a stronger one was last proved, and the hooks above. It goes after
+ * `GET /sign-in-method/factors`: what the signed-in person can prove beyond the inbox, so the web app offers the right
+ * step-up (the app code, a passkey, or setting one up). Their own account only; it changes nothing.
+ */
+const factors = createAuthEndpoint("/sign-in-method/factors", { method: "GET", use: [sessionMiddleware] }, async ctx => {
+    const userId = ctx.context.session.user.id
+    return ctx.json({
+        app: (await twoFactorOf(ctx, userId))?.verified === true,
+        passkeys: await ctx.context.adapter.count({ model: "passkey", where: [{ field: "userId", value: userId }] })
+    })
+})
+
+/**
+ * The plugin: the session's factors and when a stronger one was last proved, the hooks above, and `factors`. It goes after
  * `twoFactor` in the plugin list, so its after-hooks see the plugin's answer to the sign-in.
  */
 export const signInMethod = () =>
@@ -242,6 +254,7 @@ export const signInMethod = () =>
                 }
             }
         },
+        endpoints: { signInFactors: factors },
         hooks: {
             before: [{ matcher: () => true, handler: before }],
             after: [{ matcher: () => true, handler: after }]
