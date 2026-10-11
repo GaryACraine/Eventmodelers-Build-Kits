@@ -583,7 +583,12 @@ model and build only what's ours.
                 - `permissions.ts` (`signIn` per role, `decide` → step-up) and `requirePermission`'s 401;
                 - `testSignIn` with `amr`;
                 - the build skills.
-             5. **emcli:** `role sign-in <role> <level>`, `api/roles.json`, the contract and catalogue.
+             5. ✅ **emcli:** `role sign-in <role> <level>`, `api/roles.json`, the contract and catalogue (done
+                2026-10-11, emcli 6921619; its 488 tests pass):
+                - stored on the role, unset meaning `second-factor`; `api/roles.json` always writes `signIn`;
+                - `permissions.md` shows the level beside each holder, and a Sign-in column under Roles;
+                - the contract's 401 notes step-up on every signed-in operation. The levels stay out of the contract,
+                  so changing a role changes no operation (tested), as with what a role holds.
              6. **Kit, the screens:** forgot and reset, enter a code, set up the app and backup codes, passkeys, and
                 the account page, with the step-up prompt in `api.ts`; mockup starters in emcli.
              7. **Licensing:**
