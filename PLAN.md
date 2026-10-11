@@ -540,7 +540,7 @@ model and build only what's ours.
           3. **2b.2b SSO for on-premises customers:** check Better Auth's SSO plugin against Entra ID or Okta.
           4. **2b.2c Security releases:** advisory alerts on `better-auth`, pinned versions, a patch path for
              on-premises installs.
-          5. **2b.2d NEXT: the account security lifecycle (ADR-056, Accepted 2026-10-11).** Steps 1 to 9 done (2026-10-11); the owner chain and journeys to be recorded again with the trial prices.
+          5. **2b.2d NEXT: the account security lifecycle (ADR-056, Accepted 2026-10-11).** Steps 1 to 9 done (2026-10-11).
              - **The decisions** (D1–D14, in ADR-056 "Decided"):
                - **D1:** a role's sign-in requirement is enforced in our API by step-up (`amr` in the token; 401
                  `insufficient_user_authentication`), so the role sync stays deferred;
@@ -653,9 +653,12 @@ model and build only what's ours.
                   test rows. 26 policies, 0 warnings. Recorded: auth 32, web 96, API 436 (an earlier run's one
                   failure kept beside it), and the passkey check by hand;
                 - **open:**
-                  - record the owner chain and the journeys again with the backend started with the mock's trial
-                    prices. The run against Gary's backend passed every access and step-up line, but failed two
-                    trial checks;
+                  - ✅ recorded since (licensing `6e6f78c`): owner chain 17/17, journeys 2/2 on the mock. The two
+                    need different prices: the chain uses Paddle's fixture prices (`pri_…`) on a backend you start,
+                    while the trial journey uses `mock_web_trial` on the backend Playwright starts when port 3000 is
+                    free. So run them with the backend stopped in between. A sandbox run also needs port 5173 free.
+                    The failed runs are kept;
+                  - a sandbox recording, when convenient (step 8's sandbox pass is in the journey README);
                   - the intermittent 301 in activate organisation's "already owns" integration test (1 in 4 full
                     runs).
              - **Deferred (Gary, 2026-10-11): recovering a lost passkey.** Someone with only a passkey who loses it
