@@ -5,7 +5,7 @@ import type { PageInfo } from "./lib/page"
 import { RequireSession } from "./lib/session"
 import { signInMode } from "./lib/auth-client"
 import { ForgotPasswordPage, ResetPasswordPage, SignInPage, SignUpPage } from "./lib/sign-in"
-import { AccountPage } from "./lib/account"
+import { AccountPage, EMAIL_CHANGED_PAGE } from "./lib/account"
 
 /**
  * Every page of the app, found in `src/pages/`: one file per page, each exporting `page` (its route and title,
@@ -45,7 +45,9 @@ export const routes: RouteObject[] = [
                           path: "account",
                           element: (
                               <RequireSession keys={["sub"]}>
-                                  <AccountPage />
+                                  <AccountPage
+                                      emailChangedPage={pages.some((p) => p.path === EMAIL_CHANGED_PAGE) ? EMAIL_CHANGED_PAGE : undefined}
+                                  />
                               </RequireSession>
                           )
                       }

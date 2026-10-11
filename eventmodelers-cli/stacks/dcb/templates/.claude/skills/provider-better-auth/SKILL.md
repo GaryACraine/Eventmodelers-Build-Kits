@@ -83,6 +83,9 @@ Proving it end to end in a project is PLAN 2b.2d steps 7 and 8.
   app and backup codes, passkeys, and the account page (password, email, second factors, sessions). In the model
   they're `--external Auth`.
 - **A change of email** is recorded by identity's `self` command, which takes the new email from the token (D6).
+  Its screen is the project's own, at **`/email-changed`**: the change's links land there whenever the app has a page
+  with that route (Gary, 2026-10-11). It shows the new address (`SignedInUser`) and one button, "Use this address",
+  that submits the command. It's an ordinary screen of ours, built by the loop.
 - **The rest**, each a setting in `auth/src/auth.ts` or `config.ts` (see the ADR):
   - reset (D4);
   - password rules and breached passwords (D7);

@@ -3942,8 +3942,10 @@ checked by removing it):
   "This link has expired" above that page, with a form that sends a new link.
 - **"Too many attempts: try again in N minutes"** (D11). The client reads the service's `X-Retry-After` on any 429.
 - **The account page** (`/account`, reached from the email in the header) covers:
-  - email: confirmed at the old address, then the new; both links land on `/account?email=changing`, where step 7's
-    D6 slice calls its `self` command;
+  - email: confirmed at the old address, then the new. Both links land on the project's own page at `/email-changed`
+    when it has one, otherwise on `/account?email=changing`. Gary chose this on 2026-10-11, over the kit calling the
+    command silently: that page is a screen of ours, modelled and built by the loop. It shows the new address and
+    one button, "Use this address", which sends D6's `self` command;
   - password;
   - the app and backup codes;
   - passkeys;
