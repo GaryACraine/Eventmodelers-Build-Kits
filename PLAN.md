@@ -599,6 +599,9 @@ model and build only what's ours.
                 - a passkey checked by hand.
              9. **Security evidence (D14):** the kit scaffolds `SECURITY.md` and `security/` (`POLICY.md`,
                 `EVIDENCE.md`, `results/`), with a check. Licensing's covers 2b.2f's access control and 2b.2d.
+             - **Deferred (Gary, 2026-10-11): recovering a lost passkey.** Someone with only a passkey who loses it
+               can't sign in, because D4a doesn't offer the emailed code. The recommendation is recovery by a platform
+               admin. It's designed when taken up, after 2b.2d (ADR-056, step 3's findings).
              - **Sign-up's unhappy paths** (D12; each its own chapter, no branching in chapter 1, ADR-038):
                - the email never verified (removed after 7 days);
                - an expired or used link (a page that sends a new one);
@@ -4536,6 +4539,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-11 | ADR-056 sign-up's unhappy paths: unverified accounts removed after 7 days; an expired-link page with a new link; "send the link again"; an email to someone signing up again with the same address; alerts on emails that can't be sent; a 429 message | Gary: "7 days". It covers mistyped addresses, and those accounts never reach our events |
 | 2026-10-11 | ADR-056 D14: every project keeps its security policies and evidence in `security/` (`POLICY.md`, `EVIDENCE.md`, `results/`), pointed to by `SECURITY.md`, with a check that each policy names tests that exist | Gary: "ensure the tests and our policies are easily discoverable" (Cyber Essentials). Certification and customers' questionnaires ask for both |
 | 2026-10-11 | ADR-056 spike: D1 holds; D4a (no emailed code once there's the app or a passkey) and D15 (a step-up lasts 12 hours) | Gary: "Stop offering it", "12 hours". The spike found that the emailed code is offered to everyone, so a taken inbox reached admin level even for someone with the app; a step-up otherwise lasted the session's 7 days (NIST: 12 hours) |
+| 2026-10-11 | Recovering a lost passkey deferred; recovery by a platform admin recommended | Gary: "Happy with your recommendation … defer this". It's rare, since passkeys usually sync, and it isn't needed for 2b.2d |
 
 ## Progress
 
