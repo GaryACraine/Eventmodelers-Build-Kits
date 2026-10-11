@@ -4040,6 +4040,56 @@ left, the new passkey one. The check found one more gap (kit PR #256):
   lapsed factor. `mfa` meets `second-factor` but not `not-by-email`, so the owner is asked for the passkey or the
   app again, as D15 meant. The old test had expected the empty list.
 
+**Step 9, the security evidence (D14), 2026-10-11.** Every project gets:
+- `SECURITY.md`, which points to `security/`;
+- `security/README.md`, the index;
+- `security/POLICY.md`, with the kit's 24 policies filled in: access control AC-1 to AC-8 (ADR-055, ADR-058,
+  ADR-060) and account security AS-1 to AS-16 (this ADR);
+- `security/EVIDENCE.md`, which names each policy's tests;
+- `security/results/`.
+
+Each policy has an id, its plain terms, its setting and its decision. A project adds its own policies after the
+kit's.
+- **Evidence is checkable.** Each EVIDENCE.md row is a policy id, then what proves it, then the last run:
+  - **what proves it:** `paths` from the project root, each followed by test names in quotes. A test name must
+    appear in its file, so a renamed test is caught. A script's printed line counts as a test name, and so does a
+    by-hand record in `results/`;
+  - **the last run:** links to recorded runs.
+- **The check** is `.build-kit/lib/security-evidence.cjs` (`npm run security:check`). It warns, never blocks
+  (`--strict` for CI). It warns when:
+  - a policy has no row, or a row names no file;
+  - a file, a test name or a linked run doesn't exist;
+  - a row names an id that isn't a policy.
+- **`security:record <name> -- <command>`** runs a command and keeps its output in `results/<date>-<name>.log`,
+  with the date, the commit, the command and the exit code at the top. The commit is marked "with uncommitted
+  changes" when what was tested had them; earlier logs don't count.
+  - **No run is ever replaced.** A repeat the same day is `-2`, then `-3`, so a failed run stays beside the run
+    that passed after it. The first design replaced that day's log, which would have hidden the failed API run
+    below.
+- **A loop job can't edit `security/`.** Slice-scope and web-scope already reject anything outside a slice's
+  folder.
+- **Kit tests:** 10 (`tests/checks/security-evidence.test.cjs`). Each was checked by breaking what it covers:
+  - the test-name match;
+  - the unknown-id warning;
+  - the uncommitted-changes mark;
+  - the numbering.
+
+  The scaffold's own evidence passes `--strict`.
+- **Licensing** (`af7bca4`):
+  - **AC-9:** the role map (owner and platform admin `not-by-email`);
+  - **AC-10:** the platform admin, granted only from `PLATFORM_ADMIN_EMAILS`;
+  - **its own rows:** owner-chain lines, the journeys, Paddle's signature tests, change-user-email, and the passkey
+    check by hand (`results/2026-10-11-passkey-by-hand.md`).
+
+  The check finds 26 policies, all proved by tests that exist, with 0 warnings. The recorded runs:
+  - **auth:** 32 passed;
+  - **web:** 96 passed;
+  - **API, first run:** 1 failed. The "already owns an organisation" integration test answered 301, not 422. It
+    passed alone 5 times and in 3 more full runs, so it's open, not fixed;
+  - **API, second run:** 436 passed;
+  - **owner chain:** every access and step-up line passed. Two trial checks failed because the running backend
+    hadn't been started with the mock's trial prices that the script needs. It is to be recorded again.
+
 **Consequences, once decided:**
 - **Each choice becomes a setting:** in `auth/src/config.ts` where it differs by deployment, otherwise in
   `auth/src/auth.ts`.

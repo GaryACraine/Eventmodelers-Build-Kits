@@ -6,6 +6,8 @@
     "scripts": {
         "prepare": "test -d .githooks && git config core.hooksPath .githooks || true",
         "run:checks": "node .build-kit/lib/check-commit-scope.cjs",
+        "security:check": "node .build-kit/lib/security-evidence.cjs",
+        "security:record": "node .build-kit/lib/security-evidence.cjs record",
         "db:start": "docker compose up -d postgres",
         "db:stop": "docker compose down",
         "infra:start": "docker compose up -d",

@@ -540,7 +540,7 @@ model and build only what's ours.
           3. **2b.2b SSO for on-premises customers:** check Better Auth's SSO plugin against Entra ID or Okta.
           4. **2b.2c Security releases:** advisory alerts on `better-auth`, pinned versions, a patch path for
              on-premises installs.
-          5. **2b.2d NEXT: the account security lifecycle (ADR-056, Accepted 2026-10-11).** Steps 1 to 8 done; step 9 next.
+          5. **2b.2d NEXT: the account security lifecycle (ADR-056, Accepted 2026-10-11).** Steps 1 to 9 done (2026-10-11); the owner chain and journeys to be recorded again with the trial prices.
              - **The decisions** (D1–D14, in ADR-056 "Decided"):
                - **D1:** a role's sign-in requirement is enforced in our API by step-up (`amr` in the token; 401
                  `insufficient_user_authentication`), so the role sync stays deferred;
@@ -641,8 +641,23 @@ model and build only what's ours.
                   signed in from signed out, and confirmed an owner action on the step-up prompt ("Use your passkey"
                   only). It found that D15 left a passkey-only session with no factor after 12 hours; the token now
                   keeps `mfa` (kit PR #256).
-             9. **Security evidence (D14):** the kit scaffolds `SECURITY.md` and `security/` (`POLICY.md`,
-                `EVIDENCE.md`, `results/`), with a check. Licensing's covers 2b.2f's access control and 2b.2d.
+             9. **Security evidence (D14)** (done 2026-10-11; ADR-056 "Step 9"; licensing `af7bca4`):
+                - ✅ the kit scaffolds `SECURITY.md` and `security/`:
+                  - `POLICY.md` holds the kit's 24 policies: access control AC-1 to 8, account security AS-1 to 16;
+                  - `EVIDENCE.md` names each policy's tests by file and name;
+                  - `results/` holds the recorded runs;
+                - ✅ the check: `.build-kit/lib/security-evidence.cjs` (`npm run security:check`, warns only;
+                  `--strict` for CI). `security:record` keeps a run with its date, commit and exit code, and never
+                  replaces one. 10 kit tests, mutation-checked; manual §22.4, 22.6 and 22.7;
+                - ✅ licensing adds AC-9 (its role map) and AC-10 (the platform admin), with its e2e, by-hand and own
+                  test rows. 26 policies, 0 warnings. Recorded: auth 32, web 96, API 436 (an earlier run's one
+                  failure kept beside it), and the passkey check by hand;
+                - **open:**
+                  - record the owner chain and the journeys again with the backend started with the mock's trial
+                    prices. The run against Gary's backend passed every access and step-up line, but failed two
+                    trial checks;
+                  - the intermittent 301 in activate organisation's "already owns" integration test (1 in 4 full
+                    runs).
              - **Deferred (Gary, 2026-10-11): recovering a lost passkey.** Someone with only a passkey who loses it
                can't sign in, because D4a doesn't offer the emailed code. The recommendation is recovery by a platform
                admin. It's designed when taken up, after 2b.2d (ADR-056, step 3's findings).
@@ -4584,6 +4599,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-11 | ADR-056 D14: every project keeps its security policies and evidence in `security/` (`POLICY.md`, `EVIDENCE.md`, `results/`), pointed to by `SECURITY.md`, with a check that each policy names tests that exist | Gary: "ensure the tests and our policies are easily discoverable" (Cyber Essentials). Certification and customers' questionnaires ask for both |
 | 2026-10-11 | ADR-056 spike: D1 holds; D4a (no emailed code once there's the app or a passkey) and D15 (a step-up lasts 12 hours) | Gary: "Stop offering it", "12 hours". The spike found that the emailed code is offered to everyone, so a taken inbox reached admin level even for someone with the app; a step-up otherwise lasted the session's 7 days (NIST: 12 hours) |
 | 2026-10-11 | Recovering a lost passkey deferred; recovery by a platform admin recommended | Gary: "Happy with your recommendation … defer this". It's rare, since passkeys usually sync, and it isn't needed for 2b.2d |
+| 2026-10-11 | ADR-056 step 9: evidence rows name tests by file and test name, checked to exist (warn only); a recorded run is never replaced (repeats numbered) | D14 asks for evidence that is easy to find and current. Checking names, not only files, catches a renamed test. Keeping every run, failures included, is what makes the record trustworthy: the first design replaced the day's log, which would have hidden a failed API run behind the passing one |
 
 ## Progress
 
