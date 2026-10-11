@@ -1,5 +1,6 @@
 import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose"
 import { sendProblem, type WebApiSetup } from "@dcb-es/event-store-express"
+import { decide, roleMap as roleMapFromFile, type RoleLookup, type RoleMap } from "./permissions.js"
 
 /** Express's response, as the library's router types it (the project may resolve another copy of express's types) */
 type ApiResponse = Parameters<typeof sendProblem>[0]
@@ -20,6 +21,9 @@ type ApiResponse = Parameters<typeof sendProblem>[0]
  * body, the path or the query string. A route lists the keys it needs, `requireSession(["sub", "email"])`, and reads
  * them with `sessionOf(req)`. `sub` and `email` are the token's; any other key (`userId`) comes from the **session
  * lookup**, the read model the model marks `--session-lookup`, which `index.ts` passes to `configureSignIn`.
+ *
+ * **Permissions** (ADR-060): `roles` is the project's `RoleLookup` (the caller's roles, from its read models), and the
+ * role map is `api/roles.json` (tests pass `roleMap`). Without either, every permission route answers 403.
  *
  * Configured by `AUTH_ISSUER`, `AUTH_AUDIENCE` (both the sign-in service's BETTER_AUTH_URL by default) and
  * `AUTH_JWKS_URL` (where this service reaches its JWKS, e.g. http://auth:3001/api/auth/jwks inside Compose). The same
@@ -53,11 +57,15 @@ export function signInSettings(env: Record<string, string | undefined> = process
 
 export function configureSignIn({
     settings = signInSettings(),
-    lookup
-}: { settings?: SignInSettings; lookup?: SessionLookup } = {}): WebApiSetup {
+    lookup,
+    roles,
+    roleMap
+}: { settings?: SignInSettings; lookup?: SessionLookup; roles?: RoleLookup; roleMap?: RoleMap } = {}): WebApiSetup {
     return router => {
         router.use(async (req, res, next) => {
             if (lookup) res.locals["sessionLookup"] = lookup
+            if (roles) res.locals["roleLookup"] = roles
+            if (roleMap) res.locals["roleMap"] = roleMap
             const header = req.headers.authorization
             if (!header) return next()
             const token = /^Bearer (\S+)$/i.exec(header)?.[1]
@@ -113,19 +121,50 @@ export function requireSession(keys: string[]) {
 
 /**
  * Route middleware for an endpoint the model declares with a permission (`--api <resource:action>`, ADR-058,
- * ADR-060): the caller must be signed in, and their role in the organisation must hold the permission. Give it the
- * session keys the route also uses, as for `requireSession`.
+ * ADR-060). Give it the session keys the route also uses, as for `requireSession`.
  *
  *   router.post("/assign-seat", requirePermission("seat:assign"), validateBody(Schema), on(async req => { … }))
+ *   readModelRoute(seatList, deps.readModels!, "/seat-list/:organisationId", { schema, guard: requirePermission("seat:read") })
  *
- * **Until the role map exists (Build-Kits PLAN 2b.2f step 4) it checks sign-in only.** The permission is named here,
- * so step 4 changes this one function and no route. Nothing is released before then.
+ * - 401 when nobody is signed in (and 403 "register first" for a missing session key, as `requireSession`);
+ * - allowed when a platform role the caller holds has the permission;
+ * - otherwise the organisation is the role map's tenant key (`organisationId`) in the path, else the body:
+ *   **404** when the caller holds no role there (it doesn't reveal that the organisation exists), **403** when they
+ *   hold one without the permission.
+ * Put it where the path's parameters are known (on the route, or readModelRoute's `guard`), never `router.use`.
  */
 export function requirePermission(permission: string, keys: string[] = []) {
     const signedIn = requireSession(keys)
     return async (req: object, res: ApiResponse, next: () => void): Promise<void> => {
-        res.locals["permission"] = permission
-        await signedIn(req, res, next)
+        await signedIn(req, res, async () => {
+            const who = signedInOf(res)!
+            const map = (res.locals["roleMap"] as RoleMap | undefined) ?? roleMapFromFile()
+            const rolesOf = res.locals["roleLookup"] as RoleLookup | undefined
+            if (!map || !rolesOf) {
+                return sendProblem(res, 403, {
+                    type: "about:blank",
+                    title: "Forbidden",
+                    status: 403,
+                    detail: "Permissions aren't configured on this service (the role map and the caller's roles)."
+                })
+            }
+            const lookup = res.locals["sessionLookup"] as SessionLookup | undefined
+            const session: Session = { sub: who.sub, email: who.email, ...((lookup && (await lookup(who.sub))) ?? {}) }
+            const request = req as { params?: Record<string, unknown>; body?: Record<string, unknown> }
+            const named = request.params?.[map.tenantKey] ?? request.body?.[map.tenantKey]
+            const tenant = typeof named === "string" ? named : undefined
+            const decision = decide(map, await rolesOf({ sub: who.sub, email: who.email, session }), permission, tenant)
+            if (decision === "allow") return next()
+            if (decision === "not-found") {
+                return sendProblem(res, 404, { type: "about:blank", title: "Not Found", status: 404, detail: "Not found." })
+            }
+            sendProblem(res, 403, {
+                type: "about:blank",
+                title: "Forbidden",
+                status: 403,
+                detail: `You don't have the permission ${permission}${tenant ? " in this organisation" : ""}.`
+            })
+        })
     }
 }
 

@@ -486,7 +486,17 @@ model and build only what's ours.
                       trial-cancellation 49/49, paddle-sync 33/33.
 
                   Step 3 is done. ADR-058 Accepted 2026-10-11 (Gary).
-             4. **Permissions in the model (ADR-060):** in emcli, `permission` on commands and read models and the role
+             4. 🚧 **Started 2026-10-11 (plan approved by Gary): the role map and the real check.**
+                - kit: `permissions.ts`, `RoleLookup`, `requirePermission` (404 and 403), `readModelRoute`'s
+                  `guard`;
+                - emcli: `role` commands, `api/roles.json`, `api/permissions.md`, completeness;
+                - licensing:
+                  - identity's platform admins (a setup command by email);
+                  - licensing's `Memberships`;
+                  - the map;
+                  - e2e with a seeded platform admin.
+
+                **Permissions in the model (ADR-060):** in emcli, `permission` on commands and read models and the role
                 map, after migrating the legacy model's `cedarAction`, `cedarRoles` and `cognitoGroups`; the
                 catalogue (`x-permission`, `api/permissions.md`) and its checks; the API checks, tested both ways.
              5. **The role sync:** licensing's role assignments reach identity and Better Auth. The first published

@@ -245,8 +245,14 @@ has settled every choice here. Transcribe it and don't invent parameters, operat
 ## Step 4 — Create `schema.ts` and `route.ts` (only when the read model's `api` is set)
 
 **The read model's `api`** (ADR-058 point 1) says whether it has an endpoint and who may call it, as for a command
-(`build-state-change` Step 7): a permission → `requirePermission("<api>")` before the read, `self` → its session
-key, `anonymous` → no guard. Its queries take the same guard. **Absent: no endpoint.** Only automations read it,
+(`build-state-change` Step 7):
+- a permission: `readModelRoute(…, { schema, guard: requirePermission("<api>") })`. The guard runs before the keyed
+  GET and every query, where the path's `:organisationId` is known. Never `router.use(…)`: it runs before the path
+  is matched, so the guard can't see the organisation;
+- `self`: its session key;
+- `anonymous`: no guard.
+
+Its tests sign in with the caller's roles, as `build-state-change` Step 8 says. **Absent: no endpoint.** Only automations read it,
 in-process, through `readModelRuntime.reader(…)` or `querier(…)`. Then skip this step and Step 5's route, and
 write Step 6's tests in-process.
 

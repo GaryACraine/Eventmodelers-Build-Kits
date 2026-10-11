@@ -2,6 +2,7 @@ import { describe, test, expect, beforeAll } from "vitest"
 import supertest from "supertest"
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT, type CryptoKey } from "jose"
 import { getApplication } from "@dcb-es/event-store-express"
+import type { RoleLookup, RoleMap } from "./permissions.js"
 import { configureSignIn, readModelLookup, requirePermission, requireSession, sessionOf, signedInOf, signInSettings, type SignInSettings } from "./signIn.js"
 
 // Tokens as the sign-in service issues them (Better Auth's JWT plugin: EdDSA, `sub`, `email`, `email_verified`),
@@ -33,15 +34,32 @@ describe("the API's sign-in check (ADR-037, ADR-055)", () => {
     // The session lookup: our userId for a registered sub (licensing: My Account)
     const lookup = readModelLookup(async sub => (sub === "sub-7f3a" ? { sub, userId: "user-1", email: "owner@contractor.example" } : null))
 
-    const agent = (configured: SignInSettings | null = settings) =>
+    // ADR-060: the role map, and the roles each caller holds (an owner of org-1, an engineer of org-3, a platform admin)
+    const roleMap: RoleMap = {
+        tenantKey: "organisationId",
+        roles: {
+            owner: { scope: "organisation", permissions: ["seat:assign", "seat:read"] },
+            engineer: { scope: "organisation", permissions: [] },
+            platformAdmin: { scope: "platform", permissions: ["seat:read", "notification:list"] }
+        }
+    }
+    const roles: RoleLookup = async ({ sub, session }) => {
+        if (sub === "sub-ops") return { platform: ["platformAdmin"], organisations: {} }
+        const organisations: Record<string, string[]> = session.userId === "user-1" ? { "org-1": ["owner"], "org-3": ["engineer"] } : {}
+        return { platform: [], organisations }
+    }
+
+    const agent = (configured: SignInSettings | null = settings, access: { roles?: RoleLookup; roleMap?: RoleMap } = { roles, roleMap }) =>
         supertest(
             getApplication({
                 apis: [
-                    configureSignIn({ settings: configured ?? undefined, lookup }),
+                    configureSignIn({ settings: configured ?? undefined, lookup, ...access }),
                     router => router.get("/who", (_req, res) => void res.json(signedInOf(res) ?? null)),
                     router => router.get("/mine", requireSession(["sub", "email"]), (req, res) => void res.json(sessionOf(req))),
                     router => router.post("/act", requireSession(["userId"]), (req, res) => void res.json(sessionOf(req))),
-                    router => router.post("/assign", requirePermission("seat:assign", ["userId"]), (req, res) => void res.json(sessionOf(req)))
+                    router => router.post("/assign", requirePermission("seat:assign", ["userId"]), (req, res) => void res.json(sessionOf(req))),
+                    router => router.get("/seats/:organisationId", requirePermission("seat:read"), (_req, res) => void res.json({ ok: true })),
+                    router => router.get("/notifications", requirePermission("notification:list"), (_req, res) => void res.json({ ok: true }))
                 ]
             })
         )
@@ -106,12 +124,56 @@ describe("the API's sign-in check (ADR-037, ADR-055)", () => {
         expect(res.body).toMatchObject({ sub: "sub-7f3a", userId: "user-1" })
     })
 
-    test("a route with a permission refuses a request without a token (401), and runs for a signed-in person", async () => {
-        expect((await agent().post("/assign")).status).toBe(401)
-        // ADR-060: the role check joins in 2b.2f step 4; until then a permission route needs sign-in (and its keys)
-        const res = await agent().post("/assign").set("Authorization", `Bearer ${await token()}`)
-        expect(res.status).toBe(200)
-        expect(res.body).toMatchObject({ userId: "user-1" })
+    describe("a route with a permission (ADR-058, ADR-060)", () => {
+        const as = async (sub: string) =>
+            `Bearer ${await new SignJWT({ email: `${sub}@example.com`, email_verified: true })
+                .setProtectedHeader({ alg: "EdDSA", kid: "k1" })
+                .setSubject(sub)
+                .setIssuer(issuer)
+                .setAudience(issuer)
+                .setIssuedAt()
+                .setExpirationTime("15m")
+                .sign(key)}`
+
+        test("refuses a request without a token (401)", async () => {
+            expect((await agent().post("/assign")).status).toBe(401)
+        })
+
+        test("runs for a member whose role holds it, in the organisation the body names", async () => {
+            const res = await agent().post("/assign").set("Authorization", await as("sub-7f3a")).send({ organisationId: "org-1" })
+            expect(res.status).toBe(200)
+            expect(res.body).toMatchObject({ userId: "user-1" })
+        })
+
+        test("runs in the organisation the path names", async () => {
+            expect((await agent().get("/seats/org-1").set("Authorization", await as("sub-7f3a"))).status).toBe(200)
+        })
+
+        test("answers 404 in an organisation the caller has no role in: it doesn't say whether it exists", async () => {
+            const res = await agent().get("/seats/org-2").set("Authorization", await as("sub-7f3a"))
+            expect(res.status).toBe(404)
+        })
+
+        test("answers 403 to a member whose roles don't hold it", async () => {
+            const res = await agent().get("/seats/org-3").set("Authorization", await as("sub-7f3a"))
+            expect(res.status).toBe(403)
+            expect(res.body.detail).toMatch(/seat:read in this organisation/)
+        })
+
+        test("answers 403 when the request names no organisation and no platform role holds it", async () => {
+            expect((await agent().get("/notifications").set("Authorization", await as("sub-7f3a"))).status).toBe(403)
+        })
+
+        test("runs for a platform role in any organisation, and where none is named", async () => {
+            expect((await agent().get("/seats/org-2").set("Authorization", await as("sub-ops"))).status).toBe(200)
+            expect((await agent().get("/notifications").set("Authorization", await as("sub-ops"))).status).toBe(200)
+        })
+
+        test("denies everyone when the roles aren't configured", async () => {
+            const res = await agent(settings, {}).get("/seats/org-1").set("Authorization", await as("sub-7f3a"))
+            expect(res.status).toBe(403)
+            expect(res.body.detail).toMatch(/aren't configured/)
+        })
     })
 
     test("signed in but not registered: 403, register first", async () => {
