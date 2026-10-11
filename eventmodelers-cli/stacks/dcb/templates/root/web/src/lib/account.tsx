@@ -12,15 +12,19 @@ import { AppSetup, useStepUp } from "./step-up"
  * `/account` (ADR-056 D5, D6, D8, D9, D13): the signed-in person's own sign-in, all of it the sign-in service's, so the
  * kit provides it and the loop never builds it. Its headings, labels and buttons match emcli's `account` starter.
  *
- *   - **Email:** a change is confirmed at the current address, then verified at the new one (D6). Both links land
- *     here (`?email=changing`). A project that keeps its own copy of the address records the change from this page
- *     (its own `self` command, which takes the new address from the token).
+ *   - **Email:** a change is confirmed at the current address, then verified at the new one (D6). Both links land on
+ *     the project's page at `/email-changed` when it has one (`EMAIL_CHANGED_PAGE`): a screen of its own, which
+ *     records the change in its own copy of the address (a `self` command that takes the new address from the
+ *     token). Without one, they land here (`?email=changing`).
  *   - **Password:** the current one is needed; every other session is signed out (D5).
  *   - **The authenticator app and its backup codes, and passkeys** (D8). Changing them needs the strongest factor the
  *     person already has: a refusal (`STRONGER_FACTOR_REQUIRED`) asks for it, then the change can be tried again.
  *   - **Sessions** (D9): where the person is signed in, and "sign out everywhere else".
  */
 export const ACCOUNT_PAGE = "/account"
+
+/** The project's page an email change lands on, if it has one (routes.tsx passes it when a page has this path) */
+export const EMAIL_CHANGED_PAGE = "/email-changed"
 
 /** The sign-in service's answer, and a refusal read out */
 type Answer = { error?: ServiceError | null }
@@ -55,12 +59,12 @@ function useFactorChange() {
     )
 }
 
-export function AccountPage() {
+export function AccountPage({ emailChangedPage }: { emailChangedPage?: string }) {
     const { email } = useSession()
     return (
         <>
             <h1>Your account</h1>
-            <EmailSection email={email ?? ""} />
+            <EmailSection email={email ?? ""} landing={emailChangedPage ?? `${ACCOUNT_PAGE}?email=changing`} />
             <PasswordSection />
             <AppSection />
             <PasskeySection />
@@ -69,7 +73,7 @@ export function AccountPage() {
     )
 }
 
-function EmailSection({ email }: { email: string }) {
+function EmailSection({ email, landing }: { email: string; landing: string }) {
     const [newEmail, setNewEmail] = useState("")
     const [done, setDone] = useState<string>()
     const [error, setError] = useState<string>()
@@ -79,7 +83,7 @@ function EmailSection({ email }: { email: string }) {
     const submit = async (event: FormEvent) => {
         event.preventDefault()
         setError(undefined)
-        const { error } = await signInService.changeEmail(newEmail, `${ACCOUNT_PAGE}?email=changing`)
+        const { error } = await signInService.changeEmail(newEmail, landing)
         if (error) setError(messageOf(error as ServiceError, "Couldn't change your email. Try again."))
         else setDone(`We've emailed ${email} to confirm. Then open the link we send to ${newEmail}.`)
     }

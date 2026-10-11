@@ -163,6 +163,14 @@ describe("the account page", () => {
         expect(await screen.findByText(/We've emailed owner@contractor.example to confirm/)).toBeInTheDocument()
     })
 
+    it("lands the change on the project's own page when it has one", async () => {
+        const change = vi.spyOn(signInService, "changeEmail").mockResolvedValue(ok())
+        inApp(<AccountPage emailChangedPage="/email-changed" />)
+        await userEvent.type(screen.getByLabelText("New email"), "new@contractor.example")
+        await userEvent.click(screen.getByRole("button", { name: "Change my email" }))
+        expect(change).toHaveBeenCalledWith("new@contractor.example", "/email-changed")
+    })
+
     it("adding a passkey when the service wants the strongest factor first: asks for it, then adds it", async () => {
         const add = vi
             .spyOn(signInService, "addPasskey")

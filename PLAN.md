@@ -596,7 +596,8 @@ model and build only what's ours.
                 - the auth service's 30 tests pass;
                 - new: `GET /api/auth/sign-in-method/factors`; CORS exposes `WWW-Authenticate`; web dependencies
                   `@better-auth/passkey` and `uqr`;
-                - `/account?email=changing` is where step 7's D6 slice calls its `self` command.
+                - an email change lands on the project's `/email-changed` page when it has one (Gary, 2026-10-11: our own
+                  screen, one click), where D6's `self` command is sent.
              7. **Licensing:**
                 - `kit-drift`;
                 - sign-in levels in the role map;
