@@ -485,7 +485,7 @@ model and build only what's ours.
                     - owner-chain 12/12 (the overview refuses a caller who isn't signed in), settled-chain 14/14,
                       trial-cancellation 49/49, paddle-sync 33/33.
 
-                  Step 3 is done. ADR-058 point 1 waits for Gary's Accepted.
+                  Step 3 is done. ADR-058 Accepted 2026-10-11 (Gary).
              4. **Permissions in the model (ADR-060):** in emcli, `permission` on commands and read models and the role
                 map, after migrating the legacy model's `cedarAction`, `cedarRoles` and `cognitoGroups`; the
                 catalogue (`x-permission`, `api/permissions.md`) and its checks; the API checks, tested both ways.
@@ -4437,6 +4437,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-09 | ADR-058 point 2: no identity for callers that aren't people yet; API keys (customer integrations) and STS (AWS rights) deferred to their first real use | Gary: API keys only make sense for public APIs, STS may be over-engineering; is there a requirement? Checked: automations run in-process, Paddle's webhook is public and signed, and the only machine callers are e2e scripts, which can sign in |
 | 2026-10-09 | ADR-058 point 2 Accepted. Point 1 revised (Proposed): endpoints by declaration. No command or read model gets a route unless marked `--api <resource:action>`, `self` or `anonymous`; webhooks come from `--intake webhook` and are checked by signature; `--public` dropped | Found: every command got a route, so automation-only commands (`/start-trial`, `/assign-role`) were open and took `actedAs` from the body. Gary: control the endpoint per element, read models too; anonymous is the known term; webhooks controlled the same way |
 | 2026-10-11 | 2b.2f step 3 proven in licensing: 10 declared operations, 15 routes removed by hand, six permission routes rebuilt by the loop, all e2e green; the e2e scripts sign in for real | Gary: keep end-to-end coverage, so the shell scripts sign in with a bearer token rather than being retired; routes removed by hand rather than through the loop |
+| 2026-10-11 | ADR-058 Accepted (endpoints by declaration; the platform admin is a person; roles per ADR-060); step 4 (the role map) started | Gary, after step 3 was proven in licensing. The loop was restarted to load the current ralph.js (it predated the rebuild warning) |
 
 ## Progress
 
