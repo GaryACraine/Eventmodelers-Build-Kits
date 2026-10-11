@@ -598,11 +598,19 @@ model and build only what's ours.
                   `@better-auth/passkey` and `uqr`;
                 - an email change lands on the project's `/email-changed` page when it has one (Gary, 2026-10-11: our own
                   screen, one click), where D6's `self` command is sent.
-             7. **Licensing:**
-                - `kit-drift`;
-                - sign-in levels in the role map;
-                - identity chapters per flow (external Auth screens);
-                - D6's slice, exported with Gary's go-ahead.
+             7. **Licensing** (all but the export done 2026-10-11; licensing e118b6c, 215f90c):
+                - ✅ `kit-drift` before and after (exit 0); the scaffold copied by hand, keeping licensing's Paddle
+                  additions; auth 4 files, web 84 tests, backend 62 files pass; no lessons superseded;
+                - ✅ sign-in levels in the role map: owner and platformAdmin `not-by-email`
+                  (`model/adr-056-account-security.sh`);
+                - ✅ identity chapters per flow, with the kit's screens (`--external Auth`, starters) and Auth's events
+                  (`--intake none`): 0c signs in, 0d forgotten password, 0e secures the account;
+                - ✅ 0f, D6. The change lands on our own Email Changed screen at `/email-changed` (Gary, 2026-10-11, over
+                  the kit calling the command silently; kit PR #250). `changeUserEmail` (`self`) records
+                  `userEmailWasChanged`, and MyAccount gets an extension slice. Two slices are planned; completeness
+                  finds no errors in the identity chapters;
+                - **the export waits for Gary's go-ahead.** It hands the loop "change user email" and "my account email
+                  changed", and writes `api/roles.json` with the levels.
              8. **Proof:**
                 - `e2e/lib/signin.mjs` completes the emailed code;
                 - e2e scripts for reset, change of password and email, and step-up (refused, then allowed after a
