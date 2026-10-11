@@ -123,7 +123,9 @@ export function requireSession(keys: string[]) {
                     detail: `Register first: there's no ${missing.join(", ")} for the signed-in person yet.`
                 })
             }
-            Object.assign(session, found)
+            // Only what the token doesn't say: the token's `sub` and `email` are the sign-in service's now, and the
+            // lookup's copy can be older (an email just changed, not yet recorded here)
+            for (const [key, value] of Object.entries(found ?? {})) if (!(key in session)) session[key] = value
         }
         sessions.set(req, session)
         next()

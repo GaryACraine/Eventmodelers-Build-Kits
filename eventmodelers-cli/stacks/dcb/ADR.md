@@ -4005,6 +4005,30 @@ found ten problems, and fixing them uncovered one more, from the spike:
 - **One copy each** of the alert, the factors check and the factor-change helper, where there had been several.
 - **Proven by:** 95 web tests in a scratch copy of licensing (8 new, 1 changed) and the auth service's 30, all passing.
 
+**Step 8, end to end in licensing, 2026-10-11** (kit PR #255). The scripts sign in as a browser does
+(`e2e/lib/auth.mjs`): the emailed code for everyone, and the authenticator app for owners and the platform admin,
+its codes worked out from the key (RFC 6238). A new browser journey, `account-security.journey.ts`, covers the
+account page, Email Changed, the forgotten password and the code screen. The owner chain checks the step-up answer
+itself, and the trial journey's owner sets the app up on the step-up prompt. Everything passes on the mock and the
+sandbox. The first runs found four kit bugs, none of which a unit test had shown:
+- **An email change recorded nothing.** `requireSession` merged the session lookup (My Account: `userId`, `sub`,
+  `email`) over the token's own values, so My Account's old email replaced the token's new one, and
+  `changeUserEmail` saw no change. The lookup now only adds keys the token doesn't hold.
+- **The code step of signing in vanished.** Better Auth fetches the session again after the password, and the
+  sign-in page showed "Checking who is signed in…" in place of the form while it did, losing the step. Only the
+  session's first load is "pending" now.
+- **A 429 said "try again in 29862294512896 minutes".** pg reads a `bigint` as a string, and Better Auth adds the
+  window to `rateLimit.lastRequest`, so the sum was two strings joined. The limit itself still held (subtraction
+  coerces). The sign-in service's pool (`authPool`) now reads a `bigint` as a number; every one Better Auth keeps is
+  milliseconds.
+- **Accounts verified before the second factor had no emailed code** (`twoFactorEnabled` false), so they would sign
+  in with the password alone, which passes no check. A data migration turns it on for every verified account.
+
+Each has a test that fails without its fix. One local limit, not a bug: through Vite's proxy every browser is
+127.0.0.1, one rate-limit bucket per path, and a header the page adds becomes a two-value chain the service doesn't
+trust without `AUTH_TRUSTED_PROXIES`. So the journeys send their sign-in calls straight to the service, each with
+its own address. A passkey can't be checked headless; it is checked by hand (Touch ID).
+
 **Consequences, once decided:**
 - **Each choice becomes a setting:** in `auth/src/config.ts` where it differs by deployment, otherwise in
   `auth/src/auth.ts`.

@@ -5,7 +5,7 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testconta
 import { runner } from "node-pg-migrate"
 import { createRemoteJWKSet, jwtVerify } from "jose"
 import { Pool } from "pg"
-import { createAuth } from "./auth.js"
+import { authPool, createAuth } from "./auth.js"
 import { loadConfig } from "./config.js"
 import type { Email } from "./email.js"
 import { createServer } from "./server.js"
@@ -49,7 +49,7 @@ describe("the sign-in service", () => {
             // Have I Been Pwned is an internet call: off here, its setting is tested in config.tests.ts
             AUTH_BREACHED_PASSWORDS: "false"
         })
-        pool = new Pool({ connectionString: config.databaseUrl, options: "-c search_path=auth" })
+        pool = authPool(config.databaseUrl)
         http.on("request", createServer(createAuth(config, async email => void sent.push(email), pool)))
     })
 

@@ -128,6 +128,12 @@ describe("the API's sign-in check (ADR-037, ADR-055)", () => {
         expect(res.body).toMatchObject({ sub: "sub-7f3a", userId: "user-1" })
     })
 
+    test("the token's email wins over the session lookup's older copy (an email just changed)", async () => {
+        const res = await agent().post("/act").set("Authorization", `Bearer ${await token({ email: "olivia@contractor.example" })}`)
+        expect(res.status).toBe(200)
+        expect(res.body).toEqual({ sub: "sub-7f3a", email: "olivia@contractor.example", userId: "user-1" })
+    })
+
     describe("a route with a permission (ADR-058, ADR-060)", () => {
         // An owner and a platform admin sign in with the app or a passkey unless a test says otherwise
         const as = async (sub: string, amr: string[] = ["pwd", "totp"]) =>
