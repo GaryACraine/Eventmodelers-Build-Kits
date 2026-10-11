@@ -15,14 +15,20 @@ export interface RoleMap {
     roles: Record<string, { scope: "organisation" | "platform"; permissions: string[] }>
 }
 
-/** The roles a caller holds: platform-wide, and per organisation (keyed by the organisation's id) */
+/** The roles a caller holds: platform-wide, and in the organisation the request names (none when it names none) */
 export interface CallerRoles {
     platform: string[]
-    organisations: Record<string, string[]>
+    organisation: string[]
 }
 
-/** The caller's roles, from the project's read models: `sub` and `email` from the token, `session` from the lookup */
-export type RoleLookup = (caller: { sub: string; email: string; session: Record<string, string> }) => Promise<CallerRoles>
+/**
+ * The caller's roles, from the project's read models: `sub` and `email` from the token, `session` from the lookup,
+ * and the organisation the request names (the tenant key), if any. Only that organisation's roles are needed.
+ */
+export type RoleLookup = (
+    caller: { sub: string; email: string; session: Record<string, string> },
+    organisation?: string
+) => Promise<CallerRoles>
 
 let loaded: { file: string; map: RoleMap | undefined } | undefined
 
@@ -46,7 +52,6 @@ const holds = (map: RoleMap, role: string, scope: "organisation" | "platform", p
 export function decide(map: RoleMap, caller: CallerRoles, permission: string, tenant?: string): "allow" | "forbidden" | "not-found" {
     if (caller.platform.some(role => holds(map, role, "platform", permission))) return "allow"
     if (!tenant) return "forbidden"
-    const roles = caller.organisations[tenant] ?? []
-    if (roles.length === 0) return "not-found"
-    return roles.some(role => holds(map, role, "organisation", permission)) ? "allow" : "forbidden"
+    if (caller.organisation.length === 0) return "not-found"
+    return caller.organisation.some(role => holds(map, role, "organisation", permission)) ? "allow" : "forbidden"
 }

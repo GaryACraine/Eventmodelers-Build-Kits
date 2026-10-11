@@ -1,7 +1,7 @@
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from "jose"
 import type { WebApiSetup } from "@dcb-es/event-store-express"
 import { configureSignIn, type SessionLookup } from "../shared/signIn.js"
-import type { CallerRoles, RoleLookup, RoleMap } from "../shared/permissions.js"
+import type { RoleLookup, RoleMap } from "../shared/permissions.js"
 
 /**
  * Sign-in for a route's tests (ADR-055 part 2): a key of the test's own stands in for the sign-in service's, so a
@@ -18,9 +18,20 @@ import type { CallerRoles, RoleLookup, RoleMap } from "../shared/permissions.js"
  *
  *   const signIn = await testSignIn(lookup, { roles: { platform: [], organisations: { "org-1": ["owner"] } } })
  */
-export async function testSignIn(lookup?: SessionLookup, access: { roles?: CallerRoles | RoleLookup; roleMap?: RoleMap } = {}) {
+export async function testSignIn(
+    lookup?: SessionLookup,
+    access: { roles?: { platform?: string[]; organisations?: Record<string, string[]> } | RoleLookup; roleMap?: RoleMap } = {}
+) {
+    const given = access.roles
     const roles: RoleLookup | undefined =
-        typeof access.roles === "function" ? access.roles : access.roles ? async () => access.roles as CallerRoles : undefined
+        typeof given === "function"
+            ? given
+            : given
+              ? async (_caller, organisation) => ({
+                    platform: given.platform ?? [],
+                    organisation: (organisation && given.organisations?.[organisation]) || []
+                })
+              : undefined
     const issuer = "http://sign-in.test"
     const { privateKey, publicKey } = await generateKeyPair("EdDSA", { crv: "Ed25519" })
     const jwks = createLocalJWKSet({ keys: [{ ...(await exportJWK(publicKey)), alg: "EdDSA", kid: "test" }] })

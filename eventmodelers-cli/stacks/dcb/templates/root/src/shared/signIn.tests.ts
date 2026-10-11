@@ -43,10 +43,10 @@ describe("the API's sign-in check (ADR-037, ADR-055)", () => {
             platformAdmin: { scope: "platform", permissions: ["seat:read", "notification:list"] }
         }
     }
-    const roles: RoleLookup = async ({ sub, session }) => {
-        if (sub === "sub-ops") return { platform: ["platformAdmin"], organisations: {} }
-        const organisations: Record<string, string[]> = session.userId === "user-1" ? { "org-1": ["owner"], "org-3": ["engineer"] } : {}
-        return { platform: [], organisations }
+    const roles: RoleLookup = async ({ sub, session }, organisation) => {
+        if (sub === "sub-ops") return { platform: ["platformAdmin"], organisation: [] }
+        const held: Record<string, string[]> = session.userId === "user-1" ? { "org-1": ["owner"], "org-3": ["engineer"] } : {}
+        return { platform: [], organisation: (organisation && held[organisation]) || [] }
     }
 
     const agent = (configured: SignInSettings | null = settings, access: { roles?: RoleLookup; roleMap?: RoleMap } = { roles, roleMap }) =>
