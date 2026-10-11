@@ -36,9 +36,9 @@ describe("the sign-in service", () => {
             log: () => {}
         })
         http = createHttpServer()
-        await new Promise<void>(resolve => http.listen(0, resolve))
+        await new Promise<void>(resolve => http.listen(0, "127.0.0.1", resolve)) // 127.0.0.1 only: on every address, another program on 127.0.0.1 could answer it (see the backend's src/test/loopback.ts)
         const port = (http.address() as { port: number }).port
-        base = `http://localhost:${port}`
+        base = `http://127.0.0.1:${port}`
         const config = loadConfig({
             DEPLOYMENT: "on-premises",
             BETTER_AUTH_URL: base,

@@ -4090,6 +4090,26 @@ kit's.
   - **owner chain:** every access and step-up line passed. Two trial checks failed because the running backend
     hadn't been started with the mock's trial prices that the script needs. It is to be recorded again.
 
+**Step 9, the open items closed, 2026-10-11:**
+- **The end-to-end runs, recorded:** the owner chain passed 17/17, and the journeys passed 2/2 on the mock
+  (licensing `6e6f78c`). The two need different prices:
+  - the chain uses Paddle's fixture prices on a backend you start;
+  - the journey uses the mock's prices, on the backend Playwright starts when port 3000 is free.
+- **The 301 was another program answering.** supertest 7 starts the app on any free port on every address (`::`)
+  and sends to 127.0.0.1. macOS gave it a port that IntelliJ's built-in web server held on 127.0.0.1 alone (63342).
+  The request reached IntelliJ, which answers that path with `301 Moved Permanently`.
+  - **Proven:** a Node server bound `::` on 63342 without error, and a request to 127.0.0.1:63342 got IntelliJ's
+    301.
+  - **The fix:** `src/test/loopback.ts`, in vitest's `setupFiles`. supertest's own server listens on 127.0.0.1
+    only, and the request's URL is set once it's listening. The sign-in service's tests listen there too. A test
+    that names its own address keeps it.
+  - **Its tests:** 3. Without the setup file the request arrives on the shared socket (`::ffff:127.0.0.1`), and two
+    of them fail.
+  - **The result:** licensing's backend passed 439 tests in three full runs in a row, and auth passed 32
+    (`f73f468`, `620ec71`).
+  - It concerns every project's tests, not the slice whose test failed. No slice changed.
+- **EVIDENCE.md lists each failed run with its cause** ("Failed runs, and why").
+
 **Consequences, once decided:**
 - **Each choice becomes a setting:** in `auth/src/config.ts` where it differs by deployment, otherwise in
   `auth/src/auth.ts`.

@@ -659,8 +659,10 @@ model and build only what's ours.
                     free. So run them with the backend stopped in between. A sandbox run also needs port 5173 free.
                     The failed runs are kept;
                   - a sandbox recording, when convenient (step 8's sandbox pass is in the journey README);
-                  - the intermittent 301 in activate organisation's "already owns" integration test (1 in 4 full
-                    runs).
+                  - ✅ the intermittent 301 (ADR-056 "Step 9, the open items closed"). It was IntelliJ's built-in
+                    web server answering a supertest request on a shared port. Fixed in the kit:
+                    `src/test/loopback.ts` makes a test's server listen on 127.0.0.1. Licensing: 439 tests, three
+                    clean runs.
              - **Deferred (Gary, 2026-10-11): recovering a lost passkey.** Someone with only a passkey who loses it
                can't sign in, because D4a doesn't offer the emailed code. The recommendation is recovery by a platform
                admin. It's designed when taken up, after 2b.2d (ADR-056, step 3's findings).
