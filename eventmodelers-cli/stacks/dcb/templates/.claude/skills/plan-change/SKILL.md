@@ -198,6 +198,15 @@ the tags exactly, so it fails until the producer's same-name replacement is buil
   holds rebuilds no slice: the API reads the map when it starts. A route whose permission no role holds can't be
   called by anyone (completeness errors). Give the permission before the route is built, so its tests can sign in as
   a role that holds it.
+- **A role's sign-in level** (ADR-056 D3: `second-factor` or `not-by-email`, `emcli role sign-in`; not in emcli until
+  2b.2d builds it) is in the role map too: changing it rebuilds no slice. The API asks for the stronger factor by
+  step-up (401 `insufficient_user_authentication`). The tests of a route that role can call sign in with a matching
+  `amr`.
+- **Account screens are the sign-in service's** (ADR-056 D13, ADR-057): forgot and reset password, codes, the app,
+  passkeys, the account page. Drawn `--external Auth`, they make no job. What a flow changes in our model is ours,
+  for example identity's "the email is changed" (D6, a `self` command from the token).
+- **A security policy changes with its evidence** (ADR-056 D14): add or update its row in `security/POLICY.md` and
+  the tests that prove it in `security/EVIDENCE.md`, in the same change.
 - **A read-model test depends on events, not on other slices.** Its *given* goes in with `app.given(...)`
   (`build-state-view` Step 6), never through another slice's route.
 - **What the change touches:** every slice that produces or reads the same event, and every automation that
@@ -259,4 +268,5 @@ The full text is in the kit repo (`eventmodelers-cli/stacks/dcb/ADR.md`):
 | 053 | An external event says how it reaches us (`intake`): an endpoint is built only for `webhook`. |
 | 058 | No endpoint unless declared: `api` is a permission, `self` or `anonymous`; a webhook comes from its intake. |
 | 059 | A context's events are its own: other contexts read its published read models or translate its published events. |
+| 056 | Account security: a role's sign-in level is enforced by the API (step-up); account screens come with the kit; policies and evidence live in `security/`. |
 | 061 | Between contexts: pull a published event (default), push a fact, push a request to act, ask synchronously. |

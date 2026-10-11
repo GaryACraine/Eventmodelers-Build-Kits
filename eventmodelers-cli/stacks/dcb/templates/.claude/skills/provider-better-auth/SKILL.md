@@ -60,6 +60,28 @@ reaches you. If one does, block with `request-feedback`: the model needs `--exte
   const link = message.Text.match(/https?:\/\/\S+/)[0]   // opening it verifies the email, signs in, and lands on <page>
   ```
 
+## Decided, being built (ADR-056, Accepted 2026-10-11; PLAN 2b.2d)
+
+Not in the scaffold yet. Until it is, a slice that needs any of this blocks with `request-feedback`:
+- **Every password sign-in needs an emailed code** (D2), and "remember this device" lasts 30 days.
+- **A role may need more** (D1, D3). The role map's sign-in level (`second-factor` or `not-by-email`) is checked by
+  the API, not by Better Auth. The token's `amr` says how the session signed in. A weaker session gets **401
+  `insufficient_user_authentication`**, and the web app asks for the passkey or the app code. Roles never reach the
+  sign-in service.
+- **These screens come with the kit, never from a slice** (D13): forgot and reset password, enter a code, set up the
+  app and backup codes, passkeys, and the account page (password, email, second factors, sessions). In the model
+  they're `--external Auth`.
+- **A change of email** is recorded by identity's `self` command, which takes the new email from the token (D6).
+- **The rest**, each a setting in `auth/src/auth.ts` or `config.ts` (see the ADR):
+  - reset (D4);
+  - password rules and breached passwords (D7);
+  - passkeys (D8);
+  - sessions (D9);
+  - notices (D10);
+  - rate limits (D11);
+  - sign-up's unhappy paths and the 7-day removal of unverified accounts (D12).
+- **Security evidence** (D14): `security/POLICY.md` and `EVIDENCE.md` list each policy and its tests.
+
 ## Deployments
 
 The same screens work in our cloud and on-premises: only the sign-in service's settings differ (`DEPLOYMENT`,
