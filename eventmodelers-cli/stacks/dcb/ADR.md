@@ -3859,6 +3859,37 @@ Cyber Essentials Plus adds an independent technical audit. Neither asks for the 
 customers' security questionnaires, ISO 27001 and SOC 2 do. So the product keeps its policies and evidence together
 from the start.
 
+**The spike, 2026-10-11: D1 holds** (`auth/src/signInMethod.ts` and `signInMethod.tests.ts`; 7 tests on a real
+Postgres, each checked by removing the protection it covers).
+- **Every session records how it signed in, and the token carries it** as `amr`. The values:
+  - `email-link`: the verification link;
+  - `pwd` plus `email-otp`, `totp` or `backup-code`;
+  - `trusted-device`;
+  - `passkey`.
+
+  A session that replaces another (a password change, turning two-factor on) keeps the old one's factors. A session
+  created anywhere else gets none, so it passes no check (fail closed).
+- **What Better Auth 1.7.7 doesn't do, which we add** (found in its source):
+  1. **Passkeys don't require the device's own check** (`requireUserVerification: false` in the plugin). Without
+     that check (biometric or PIN), a passkey is one factor, not two. We require it at registration and at sign-in.
+  2. **Enrolling a factor could have stepped a session up.** A session that only proved the inbox could set up its
+     own app and then use it. So:
+     - proving the code that sets the app up doesn't step up;
+     - a new passkey never creates a session;
+     - adding, removing or viewing a factor needs the strongest factor the person already has
+       (`STRONGER_FACTOR_REQUIRED`).
+  3. **App codes entered while signed in aren't counted** by the plugin (only at sign-in). Since they now step a
+     session up, we count them against the plugin's own lock: 10 wrong codes lock the account for 15 minutes.
+- **A trusted device** shows the second factor was proved on that device before, but not which one. It counts as
+  `second-factor`, so an owner on a trusted device steps up with the app or a passkey.
+- **What's left:**
+  - **The first strong factor:** someone who has taken the password and the inbox before the owner sets up an app
+    or passkey can set up their own. That's inherent to any first enrolment. D3's prompt at the first owner action
+    keeps the window short.
+  - **Two refinements, put to Gary:**
+    - stop offering the emailed code to someone who has the app or a passkey (D4 as worded);
+    - how long a step-up lasts.
+
 **Consequences, once decided:**
 - **Each choice becomes a setting:** in `auth/src/config.ts` where it differs by deployment, otherwise in
   `auth/src/auth.ts`.

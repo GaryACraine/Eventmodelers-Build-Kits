@@ -560,8 +560,14 @@ model and build only what's ours.
 
                Account deletion waits on ADR-062. Mobile is recorded only.
              1. ✅ **Record the decisions** (ADR-056 Accepted; this entry; the Decisions Log).
-             2. **Spike:** the session records how it signed in, and the token carries `amr`. This proves D1 before
-                anything is built on it.
+             2. ✅ **Spike, 2026-10-11: D1 holds** (ADR-056 "The spike"; kit `auth/src/signInMethod.ts`, 7 tests,
+                each checked by removing the protection it covers). Every session records how it signed in, and the
+                token carries `amr`. Three gaps in Better Auth 1.7.7 are closed:
+                - passkeys without the device's own check;
+                - enrolment stepping a session up;
+                - in-session app codes not being counted.
+
+                The second-factor and passkey migration and plugins are in, ahead of step 3.
              3. **Kit, the sign-in service:**
                 - `twoFactor` (OTP and TOTP, backup codes), the passkey, reset, change of password and email;
                 - password rules and HIBP, sessions, notices, rate limits;

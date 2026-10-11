@@ -1,8 +1,11 @@
 import { betterAuth } from "better-auth"
-import { jwt } from "better-auth/plugins"
+import { APIError } from "better-auth/api"
+import { jwt, twoFactor } from "better-auth/plugins"
+import { passkey } from "@better-auth/passkey"
 import { Pool } from "pg"
 import type { AuthConfig } from "./config.js"
 import type { SendEmail } from "./email.js"
+import { afterHook, beforeHook, factorsOf, recordFactors } from "./signInMethod.js"
 
 /**
  * Better Auth, configured for this platform (ADR-054, ADR-055). Each part follows Better Auth's docs:
@@ -15,7 +18,10 @@ import type { SendEmail } from "./email.js"
  *   - the JWT plugin (docs/plugins/jwt): the token our API checks against `/api/auth/jwks` (ADR-037). `sub` is
  *     Better Auth's user id; the payload adds `email` and `email_verified`; the issuer and audience are `baseURL`;
  *     tokens last 15 minutes; keys are EdDSA (Ed25519);
- *   - rate limits stored in Postgres, so they hold across instances (docs/reference/options).
+ *   - rate limits stored in Postgres, so they hold across instances (docs/reference/options);
+ *   - a second factor (ADR-056): an emailed code for everyone, on from the moment the email is verified (D2); an
+ *     authenticator app and passkeys as stronger factors; how each session signed in, as `amr` in the token (D1,
+ *     `signInMethod.ts`).
  *
  * Everything else a person does with their account (resetting or changing a password, changing an email, a second
  * factor, passkeys) is off until ADR-056 is decided.
@@ -49,6 +55,18 @@ export function createAuth(
                 send({ to: user.email, subject: "Verify your email address", text: `Open this link to verify your email address: ${url}` })
             }
         },
+        session: {
+            additionalFields: { amr: { type: "string", required: false, input: false } }
+        },
+        databaseHooks: {
+            session: { create: { before: recordFactors } },
+            // D2: the emailed code is on for everyone from the moment their email is verified
+            user: {
+                create: { before: async user => (user.emailVerified ? { data: { ...user, twoFactorEnabled: true } } : undefined) },
+                update: { before: async user => (user.emailVerified === true ? { data: { ...user, twoFactorEnabled: true } } : undefined) }
+            }
+        },
+        hooks: { before: beforeHook, after: afterHook },
         rateLimit: { enabled: true, storage: "database" },
         advanced: {
             // Always check a browser request's origin, even under NODE_ENV=test (Better Auth's default skips it there)
@@ -58,9 +76,38 @@ export function createAuth(
         },
         telemetry: { enabled: false },
         plugins: [
+            twoFactor({
+                issuer: new URL(config.baseURL).hostname,
+                otpOptions: {
+                    sendOTP: async ({ user, otp }) => {
+                        send({ to: user.email, subject: "Your sign-in code", text: `Your sign-in code is ${otp}. It expires in 3 minutes.` })
+                    }
+                }
+            }),
+            passkey({
+                rpName: new URL(config.baseURL).hostname,
+                // The device's own check (biometric or PIN) is what makes a passkey two factors (NIST): required
+                authenticatorSelection: { residentKey: "preferred", userVerification: "required" },
+                registration: {
+                    afterVerification: async ({ verification }) => {
+                        if (!verification.registrationInfo?.userVerified)
+                            throw APIError.from("BAD_REQUEST", { message: "The passkey must check it's you (biometric or PIN)", code: "PASSKEY_USER_NOT_VERIFIED" })
+                    }
+                },
+                authentication: {
+                    afterVerification: async ({ verification }) => {
+                        if (!verification.authenticationInfo.userVerified)
+                            throw APIError.from("UNAUTHORIZED", { message: "The passkey must check it's you (biometric or PIN)", code: "PASSKEY_USER_NOT_VERIFIED" })
+                    }
+                }
+            }),
             jwt({
                 jwt: {
-                    definePayload: ({ user }) => ({ email: user.email, email_verified: user.emailVerified })
+                    definePayload: ({ user, session }) => ({
+                        email: user.email,
+                        email_verified: user.emailVerified,
+                        amr: factorsOf(session.amr)
+                    })
                 }
             })
         ]
