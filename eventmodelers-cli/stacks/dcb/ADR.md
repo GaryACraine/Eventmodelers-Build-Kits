@@ -3741,7 +3741,7 @@ options are available within Better Auth"). It is decided after ADR-055 is built
 | Without a password | Magic Link, Email OTP, Passkey (WebAuthn; works with Expo) | **Passkeys in the long run:** they resist phishing and fit biometrics on web and mobile. Magic links only on the web, if at all |
 | Web and mobile | one server, one set of rules; mobile through the Expo client or the OAuth 2.1 Provider plugin (native apps: OIDC with PKCE, as ADR-054 assumed) | **The same policies, with different mechanics:** on mobile, codes instead of links, passkeys or biometric unlock, longer sessions that refresh |
 | Sessions | `session.expiresIn` (default 7 days), `updateAge` (default 1 day); Multi Session; ending all sessions | **Set per app** (web portal, mobile); "sign out everywhere" in the account settings |
-| Deleting the account | `user.deleteUser`, with `sendDeleteAccountVerification`, `beforeDelete`, `afterDelete` | **Its own ADR:** our events hold personal data (the email), so this needs a GDPR answer (crypto-shredding or redaction) |
+| Deleting the account | `user.deleteUser`, with `sendDeleteAccountVerification`, `beforeDelete`, `afterDelete` | **Its own ADR (ADR-062, Proposed):** our events hold personal data (the email), so this needs a GDPR answer: personal data encrypted per person, the key thrown away |
 | Abuse | `rateLimit` (stored in Postgres, ADR-055), the Captcha plugin, the 2FA lockout | **Rate limits on.** A captcha on sign-up only if bots appear |
 | Security notices | hooks on sign-in, reset and change | **Email on:** the password changed, the email changed, 2FA turned off, a sign-in from a new device |
 
@@ -4434,3 +4434,62 @@ first real use, which proves it; until then the skills carry it as drafts.
 The skills carry it as draft guidance until its first use is built and proven: emcli's `event-model` ("Between
 contexts"), and the kit's `build-automation` and `plan-change`.
 
+
+### ADR-062: Forgetting a person in an event store: personal data encrypted per person, the key thrown away (open)
+
+**Status:** **Proposed, 2026-10-11 (Gary).** Recorded only: no research or build yet. Gary: "GDPR is more difficult
+in event-sourced systems, as no records are deleted… investigate crypto … strategies whereby we can identify PII
+data, encrypt it by default and then throw away the key". Gary has Kotlin code that does this, to be ported to the
+kit in TypeScript.
+**Date:** 2026-10-11
+**Builds on:**
+- ADR-017, ADR-018: an event is never changed once released;
+- ADR-056: deleting an account (its table names this ADR as the GDPR answer);
+- ADR-059, ADR-061: a context's events are its own; published events cross to other contexts;
+- ADR-060: roles read from read models.
+
+**Context:**
+- **The right to erasure (GDPR article 17) meets an append-only store.** Events are never deleted or changed, and
+  ours hold personal data, for example:
+  - `userWasRegistered.email`;
+  - `platformAdminWasGranted.email`, and `PlatformAdmins` is keyed by email;
+  - names, and whatever a provider's events carry (Paddle's customer).
+- **Better Auth's side is the easy part:** its tables are ordinary rows, and `user.deleteUser` removes them
+  (ADR-056). Our event store, the read models built from it, published copies in other contexts, and backups are
+  the hard part.
+- **Rewriting events in place** breaks ADR-017/018, every reader's assumption, and any checksum or replay. It's the
+  fallback, not the plan.
+
+**The proposal (crypto-shredding):**
+- **Personal data is marked in the model**, as a property of the field (properties, not prose), with the field that
+  names whose data it is (the subject: usually `userId`).
+- **It's encrypted by default when the event is appended**, with a key per subject, held in a key store outside the
+  event store.
+- **Readers decrypt with the subject's key.** To forget the person, the key is destroyed: the events stay, and their
+  personal fields can no longer be read. Readers then see a marker ("erased") in place of the value.
+- **Starting point:** Gary's Kotlin implementation, ported to TypeScript (in the scaffold or `dcb-event-store`).
+
+**Questions for when it's taken up:**
+1. **Encryption, not hashing.** Only encryption lets throwing away the key erase the value. A hash of an email can be
+   reversed by guessing, so hashing alone isn't erasure. A keyed hash (with the subject's key) may still serve lookups
+   by email, and dies with the key.
+2. **Where the marking lives:** a field property in emcli (e.g. `personal`, with its subject), carried into
+   `slice.json`, so the builders encrypt and decrypt without hand-written code.
+3. **The key store:** a Postgres table in our cloud and on-premises, or a KMS (envelope encryption on AWS, ADR-054).
+   Its own backups must expire, or a restored backup brings the key back.
+4. **A key per person or per organisation**, and data that belongs to both.
+5. **Personal data used as a key or tag:** a read model keyed by email (`PlatformAdmins`) or an event tagged by email
+   can't be shredded that way. Keys and tags must be ids, never personal data.
+6. **Read models:** rebuilt after erasure, or updated by an "erased" event; query tables and search indexes too.
+7. **Published events across contexts (ADR-061):** the subscriber's copy is encrypted with the same key, or the
+   subscriber reacts to an erasure event.
+8. **What legal retention keeps:** invoices and tax records may have to outlive the request; which fields are kept,
+   and on what basis.
+9. **Providers as processors:** Paddle and Better Auth erase on their own side; who asks them, and how it's recorded.
+10. **Logs and errors** that captured personal data.
+11. **Cost:** encrypting on every append and decrypting on every read, and caching keys safely.
+
+**To compare before deciding** (not yet researched): Axon's data protection module, Marten's masking of protected
+information, Emmett, and the event-sourcing literature on crypto-shredding.
+
+**Decision:** None yet. Taken up before any account can be deleted (ADR-056) and before release.
