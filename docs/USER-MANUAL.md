@@ -2999,11 +2999,26 @@ else by changing what they send.
   - 403 "register first" when someone signed in isn't registered yet.
 
 To model it, say to Claude, for example: *"activated by is the signed-in user's id"*. It maps the field
-`session:userId`, and if no read model gives `userId` yet, `emcli completeness` asks for the session lookup. A
-route that uses none of these values still answers without a token for now: "secure by default" is decided later
-(ADR-058).
+`session:userId`, and if no read model gives `userId` yet, `emcli completeness` asks for the session lookup.
 
-### 22.4 Our cloud or on-premises
+### 22.4 Who may call what: endpoints by declaration, roles and permissions
+
+**No command or read model has an endpoint unless the model declares one, and the declaration says who may call it**
+(ADR-058, ADR-060). Without one, only automations reach it, in-process.
+
+| Say to Claude, for example | The declaration | Who may call it |
+|---|---|---|
+| *"owners and admins read the organisation overview"* | `--api organisation:read` | a signed-in person whose role in that organisation holds the permission, or a platform admin's |
+| *"anyone signed in registers themselves"* | `--api self` | any signed-in person, acting only on their own data (`session:` values) |
+| *"anyone can read the price list"* | `--api anonymous` | anyone, not signed in |
+| *"Paddle tells us about subscriptions by webhook"* | `--intake webhook` on its event | the other system, proven by its signature |
+
+The roles and what each may do are the **role map**, kept in the model (`emcli role …`). The export writes it to
+`api/roles.json`, which the API reads at start, and writes the catalogue of who may do what to `api/permissions.md`.
+A caller with no role in the organisation a request names gets 404 (it doesn't learn whether it exists); one whose
+roles don't hold the permission gets 403. With no role map, every permission route refuses everyone.
+
+### 22.5 Our cloud or on-premises
 
 The sign-in service reads `DEPLOYMENT` (`cloud` or `on-premises`). Locally and in CI it's `on-premises`, because
 that's what a laptop is.
@@ -3017,12 +3032,40 @@ that's what a laptop is.
 Every default can be changed on its own (`EMAIL_TRANSPORT`, `AUTH_SECURE_COOKIES`, `AUTH_IP_HEADERS`). A missing
 setting stops the service at startup, with every problem listed.
 
-### 22.5 What isn't switched on yet
+### 22.6 Looking after an account
 
-Only signing up, confirming the email, signing in and signing out are on. The rest of looking after an account is
-recorded in ADR-056 and decided next (PLAN 2b.2d):
-- forgotten passwords;
-- changing a password or email;
-- a second factor (an emailed code by default; a passkey for the owner);
-- deleting an account.
+The kit's screens cover the rest of an account's life (ADR-056), and the loop builds none of them: Forgotten Password
+and Choose a New Password, Enter Your Code, and the account page (`/account`: the password, the email, the
+authenticator app with its backup codes, passkeys and sessions).
 
+- **A password alone never signs anyone in.** Everyone gets an emailed code after their password, from the moment
+  their email is confirmed. Once someone has the authenticator app or a passkey, the emailed code isn't offered any
+  more: a stolen inbox can't sign them in.
+- **A role can need more.** Say to Claude, for example: *"owners must sign in with the app or a passkey"*
+  (`emcli role sign-in owner not-by-email`). When an owner who signed in with the emailed code does an owner action,
+  the API asks for more (a 401 the web app understands), the web app's prompt asks for the app's code or the passkey,
+  or helps them set one up, then sends the request again. It lasts 12 hours (`AUTH_STEP_UP_HOURS`).
+- **A forgotten password** is an emailed link that works once, for an hour, and signs out every session. **Changing
+  the password** needs the current one and signs out the other sessions; **changing the email** is confirmed at the
+  old address and verified at the new one. Each is emailed as a notice.
+- **Not yet:** deleting an account (ADR-062), and recovering a lost passkey.
+
+### 22.7 Security policies and evidence
+
+Every project has `SECURITY.md` and a `security/` folder (ADR-056 D14), so a customer's security questionnaire or a
+certification can be answered from one place:
+
+- `security/POLICY.md`: each policy in plain terms, with its setting and the decision behind it. The kit's own come
+  filled in: access control (`AC-…`) and account security (`AS-…`);
+- `security/EVIDENCE.md`: the tests that prove each policy, by file and test name, and when they last ran;
+- `security/results/`: the recorded runs.
+
+Add your project's own policies and evidence as they land: its end-to-end scripts, a check done by hand, its role
+map's levels. Record a run so it's kept as it happened, then link it from the policy's "Last run":
+
+```bash
+npm run security:record -- auth-tests -- npm --prefix auth test
+npm run security:check      # warns when a policy names no test, or one it names doesn't exist
+```
+
+The check never blocks a commit; `npm run security:check -- --strict` fails on a warning, for CI.

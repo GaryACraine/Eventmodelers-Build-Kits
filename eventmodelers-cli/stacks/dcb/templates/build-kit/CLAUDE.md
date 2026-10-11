@@ -194,6 +194,13 @@ The hook lives in `.githooks/`, added by `eventmodelers init --hooks` (or `event
 `prepare` then keeps `core.hooksPath` pointing at it (and leaves it alone when `.githooks/` is absent). It only acts on commits
 that touch a slice folder (backend or `web/`), so model, docs and `index.ts` wiring commits pass straight through.
 
+## Security policies and evidence
+
+`SECURITY.md` and `security/` are the project's policies and the tests that prove them (ADR-056 D14):
+`security/POLICY.md`, `security/EVIDENCE.md` and the recorded runs in `security/results/`. A loop job never edits
+them. Outside the loop, a change that adds or changes a policy adds its rows in the same change, and
+`npm run security:check` warns when a policy names no test, or a test it names doesn't exist.
+
 ## Branching
 
 The loop never creates, switches or merges branches. It builds on whatever branch is checked out.
