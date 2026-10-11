@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
@@ -21,11 +22,11 @@ const refused = (status: number, message?: string, code?: string) => ({ data: nu
 const signedIn = () =>
     vi.spyOn(signInService, "useSession").mockReturnValue({ data: { user: { id: "u-1", email: "owner@contractor.example" } }, isPending: false } as never)
 
-const inApp = (ui: React.ReactNode) =>
+const inApp = (ui: React.ReactNode, path = "/") =>
     render(
         <SessionProvider mode="better-auth" remember={false}>
             <StepUpProvider>
-                <MemoryRouter>{ui}</MemoryRouter>
+                <MemoryRouter initialEntries={[path]}>{ui}</MemoryRouter>
             </StepUpProvider>
         </SessionProvider>
     )
@@ -122,6 +123,53 @@ describe("the API client and a step-up", () => {
         await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
     })
 
+    it("a request a page sends as it first loads is still stepped up (the prompt is set before the page's effects)", async () => {
+        const { api, apiUrl, read } = await import("./api")
+        let calls = 0
+        server.use(
+            http.get(apiUrl("/step-up-probe"), () =>
+                ++calls === 1 ? HttpResponse.json({}, { status: 401, headers: challenge }) : HttpResponse.json({ ok: true })
+            )
+        )
+        vi.spyOn(signInService, "factors").mockResolvedValue(ok({ app: true, passkeys: 0 }))
+        vi.spyOn(signInService, "verifyAppCode").mockResolvedValue(ok())
+        let answer: unknown
+        function OnLoad() {
+            useEffect(() => {
+                void read(api.GET("/step-up-probe" as never, {} as never)).then((data) => (answer = data))
+            }, [])
+            return <p>page</p>
+        }
+        inApp(<OnLoad />)
+        await userEvent.type(await screen.findByLabelText("Code from your app"), "123456")
+        await userEvent.click(screen.getByRole("button", { name: "Confirm" }))
+        await waitFor(() => expect(answer).toEqual({ ok: true }))
+    })
+
+    it("requests refused together share one prompt and one code", async () => {
+        const { api, apiUrl, command } = await import("./api")
+        const seen: string[] = []
+        server.use(
+            http.post(apiUrl("/step-up-probe"), async ({ request }) => {
+                const { n } = (await request.json()) as { n: string }
+                seen.push(n)
+                return seen.filter((x) => x === n).length === 1
+                    ? HttpResponse.json({}, { status: 401, headers: challenge })
+                    : new HttpResponse(null, { status: 204 })
+            })
+        )
+        vi.spyOn(signInService, "factors").mockResolvedValue(ok({ app: true, passkeys: 0 }))
+        const verify = vi.spyOn(signInService, "verifyAppCode").mockResolvedValue(ok())
+        inApp(<p>page</p>)
+        const both = Promise.all(["a", "b"].map((n) => command(api.POST("/step-up-probe" as never, { body: { n } } as never))))
+        await userEvent.type(await screen.findByLabelText("Code from your app"), "123456")
+        await userEvent.click(screen.getByRole("button", { name: "Confirm" }))
+        await both
+        expect(verify).toHaveBeenCalledTimes(1)
+        expect(seen.sort()).toEqual(["a", "a", "b", "b"])
+        expect(screen.queryByRole("dialog")).toBeNull()
+    })
+
     it("put off, the 401 stands, and says what it asked for", async () => {
         const { api, apiUrl, command, ApiError } = await import("./api")
         server.use(http.post(apiUrl("/step-up-probe"), () => HttpResponse.json({}, { status: 401, headers: challenge })))
@@ -184,6 +232,46 @@ describe("the account page", () => {
         await userEvent.click(screen.getByRole("button", { name: "Confirm" }))
         await waitFor(() => expect(add).toHaveBeenCalledTimes(2))
         expect(screen.queryByRole("alert")).toBeNull()
+    })
+
+    it("setting up the app when the service wants the strongest factor first (someone with a passkey): asks for it, then goes on", async () => {
+        const setUp = vi
+            .spyOn(signInService, "setUpApp")
+            .mockResolvedValueOnce(refused(403, "Confirm it's you with your authenticator app or passkey first", "STRONGER_FACTOR_REQUIRED"))
+            .mockResolvedValueOnce(ok({ totpURI: "otpauth://totp/app:o?secret=JBSWY3DPEHPK3PXP", backupCodes: ["aaaaa-bbbbb"] }))
+        vi.spyOn(signInService, "factors").mockResolvedValue(ok({ app: false, passkeys: 1 }))
+        vi.spyOn(signInService, "signInWithPasskey").mockResolvedValue(ok())
+        inApp(<AccountPage />)
+        await userEvent.click(await screen.findByRole("button", { name: "Set up the authenticator app" }))
+        await userEvent.type(screen.getByLabelText("Your password"), "correct horse battery staple")
+        await userEvent.click(screen.getByRole("button", { name: "Continue" }))
+        await userEvent.click(await screen.findByRole("button", { name: "Use your passkey" }))
+        expect(await screen.findByRole("img", { name: "QR code for your authenticator app" })).toBeInTheDocument()
+        expect(setUp).toHaveBeenCalledTimes(2)
+    })
+
+    it("a failed check of the factors says so, never 'not set up'", async () => {
+        vi.spyOn(signInService, "factors").mockResolvedValue(refused(500, "Internal Server Error"))
+        inApp(<AccountPage />)
+        expect(await screen.findByRole("button", { name: "Check again" })).toBeInTheDocument()
+        expect(screen.queryByText(/Not set up/)).toBeNull()
+        expect(screen.queryByRole("button", { name: "Set up the authenticator app" })).toBeNull()
+    })
+
+    it("an email change's link that failed doesn't say the address changed", () => {
+        inApp(<AccountPage />, "/account?email=changing&error=TOKEN_EXPIRED")
+        expect(screen.queryByText(/this is your new address/)).toBeNull()
+    })
+
+    it("a password change reads the sessions again: the others were signed out", async () => {
+        const sessions = vi.spyOn(signInService, "listSessions").mockResolvedValue(ok([]))
+        vi.spyOn(signInService, "changePassword").mockResolvedValue(ok())
+        inApp(<AccountPage />)
+        await waitFor(() => expect(sessions).toHaveBeenCalledTimes(1))
+        await userEvent.type(screen.getByLabelText("Current password"), "correct horse battery staple")
+        await userEvent.type(screen.getByLabelText("New password"), "a brand new long password")
+        await userEvent.click(screen.getByRole("button", { name: "Change my password" }))
+        await waitFor(() => expect(sessions).toHaveBeenCalledTimes(2))
     })
 
     it("signs out everywhere else (D9)", async () => {

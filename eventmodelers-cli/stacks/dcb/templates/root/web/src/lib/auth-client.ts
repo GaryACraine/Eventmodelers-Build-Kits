@@ -53,6 +53,8 @@ export type SecondFactorMethod = "otp" | "totp"
 
 /** The pages the sign-in service's links land on (a path on this site) */
 export const RESET_PASSWORD_PAGE = "/reset-password"
+/** The project's page an email change lands on, if it has one (routes.tsx passes it when a page has this path) */
+export const EMAIL_CHANGED_PAGE = "/email-changed"
 
 /**
  * Every call to the sign-in service, through one plain object of ours: the session, the API client and the screens

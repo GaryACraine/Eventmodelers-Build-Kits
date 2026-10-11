@@ -3934,7 +3934,8 @@ checked by removing it):
 `auth-client.ts`; emcli a6b0d28's starters match them):
 - **Sign-in asks for the second factor after the password.**
   - The emailed code is sent at once, with "send a new code" and "trust this device".
-  - Someone with the app is asked for its code, with a backup code or a passkey as the alternatives.
+  - Someone with the app is asked for its code, with a backup code as the alternative. A passkey isn't offered at this
+    step, because whether they have one isn't known before sign-in; "Sign in with a passkey" is on the first screen.
   - Someone with only a passkey is offered just the passkey (D4a leaves them no other method).
   - "Sign in with a passkey" is on the first screen too.
 - **Forgotten and reset password; "send it again" on check-your-email; an expired verification link** (D4, D12).
@@ -3971,6 +3972,34 @@ checked by removing it):
   - a type check and a build.
 
   End to end in a browser is step 8.
+
+**Step 6, reviewed at high effort, 2026-10-11** (`/code-review high 249`, suggested once step 6 turned out to touch security; fixed in PR #252). The review
+found ten problems, and fixing them uncovered one more, from the spike:
+- **A passkey step-up never worked, and could switch accounts.** Two things combined:
+  - `recordFactors` treated a passkey sign-in while signed in as "replacing a session", so the new session kept the
+    old `pwd email-otp`. Now a passkey verification always records `passkey`.
+  - Better Auth signs in whoever owns the passkey used. On a device holding two people's passkeys, the wrong one would
+    have switched accounts in the middle of the action, and the request would have been sent again as the other
+    person. Now, while someone is signed in, a passkey must be theirs (`PASSKEY_OF_ANOTHER_ACCOUNT`, 403), and the
+    weaker session it replaces is ended.
+
+  Tests now cover both: amr, the sessions left, and a borrowed passkey refused. A mutation check shows the ownership
+  test fails without its check.
+- **The prompt:**
+  - requests refused together now share one answer: one code, one prompt;
+  - it's set in a layout effect, and requests are copied whenever sign-in is real, so a page's first requests are
+    stepped up too. (In practice an `await` in openapi-fetch already let the prompt be set first. The fix stops
+    relying on that, and its test stays as a regression check.)
+  - A retried request never goes out with the weaker token, and a second 401 drops the kept token.
+- **The account page:**
+  - setting up the app asks for the stronger factor when the service wants it, for someone who has a passkey;
+  - a failed factors check says so ("Check again") instead of showing "Not set up";
+  - an expired email-change link no longer says the address changed. The notice now says to start the change again,
+    not to verify;
+  - the sessions list is reloaded after a password change.
+- **Sign-in:** "Use a passkey" is no longer offered to someone who has only the app (it was a dead end).
+- **One copy each** of the alert, the factors check and the factor-change helper, where there had been several.
+- **Proven by:** 95 web tests in a scratch copy of licensing (8 new, 1 changed) and the auth service's 30, all passing.
 
 **Consequences, once decided:**
 - **Each choice becomes a setting:** in `auth/src/config.ts` where it differs by deployment, otherwise in

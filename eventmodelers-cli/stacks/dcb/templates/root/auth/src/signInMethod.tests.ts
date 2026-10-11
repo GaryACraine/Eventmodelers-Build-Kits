@@ -151,6 +151,25 @@ describe("how a session signed in (amr)", () => {
         expect((await c.request("/passkey/verify-authentication", { body: { response: key.authenticate(challenge.body) } })).status).toBe(200)
         expect(await c.amr()).toEqual(["passkey"])
 
+        // Stepping up with it while signed in: the same person, and the weaker session it replaces is ended
+        // (b's session is from before the passkey: a password and emailed code)
+        const stepUp = await b.request("/passkey/generate-authenticate-options")
+        expect((await b.request("/passkey/verify-authentication", { body: { response: key.authenticate(stepUp.body) } })).status).toBe(200)
+        expect(await b.amr()).toEqual(["passkey"])
+        const sessions = await service.pool.query(`select amr from "session" s join "user" u on u.id = s."userId" where u.email = $1`, [email])
+        // the verifying browser's, the passkey sign-in's, and the step-up's: the session it replaced is gone
+        expect(sessions.rows.map(r => r.amr).sort()).toEqual(["email-link", "passkey", "passkey"])
+
+        // Someone else's session can't step up with this person's passkey (a shared device)
+        const other = "other@example.com"
+        await verifiedPerson(other)
+        const theirs = await signInWithEmailedCode(other)
+        const borrowed = await theirs.request("/passkey/generate-authenticate-options")
+        const refused = await theirs.request("/passkey/verify-authentication", { body: { response: key.authenticate(borrowed.body) } })
+        expect(refused.status).toBe(403)
+        expect(refused.body.code).toBe("PASSKEY_OF_ANOTHER_ACCOUNT")
+        expect(await theirs.amr()).toEqual(["pwd", "email-otp"])
+
         // Without the device's check, refused
         const d = browser()
         const unverified = await d.request("/passkey/generate-authenticate-options")
