@@ -130,8 +130,8 @@ describe("the second factor at sign-in (ADR-056 D2, D4a)", () => {
         await userEvent.click(screen.getByRole("button", { name: "Continue" }))
         expect(backup).toHaveBeenCalledWith("abcde-fghij", false)
 
-        await userEvent.click(screen.getByRole("button", { name: "Use a passkey" }))
-        expect(screen.getAllByRole("button", { name: "Sign in with a passkey" })).toHaveLength(1)
+        // No passkey offered here: whether they have one isn't known yet ("Sign in with a passkey" is on the first screen)
+        expect(screen.queryByRole("button", { name: "Use a passkey" })).toBeNull()
     })
 
     it("someone with only a passkey is offered nothing by email: the passkey finishes signing in", async () => {
@@ -197,6 +197,13 @@ describe("a verification link that expired (ADR-056 D12)", () => {
         await userEvent.click(screen.getByRole("button", { name: "Send me a new link" }))
         expect(again).toHaveBeenCalledWith("o@example.com", "/get-started")
         expect(await screen.findByRole("status")).toHaveTextContent("We've sent a new link to o@example.com")
+    })
+
+    it("an email change's expired link says to start the change again, not to verify", () => {
+        inRouter(<LinkExpired />, "/email-changed?error=TOKEN_EXPIRED")
+        expect(screen.getByRole("alert")).toHaveTextContent("Your email hasn't changed")
+        expect(screen.getByRole("link", { name: "Change it again from your account" })).toHaveAttribute("href", "/account")
+        expect(screen.queryByLabelText("Email")).toBeNull()
     })
 
     it("shows nothing on a page without a link problem", () => {

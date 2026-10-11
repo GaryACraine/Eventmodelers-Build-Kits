@@ -73,8 +73,9 @@ const signedIn: Middleware = {
             const token = await bearerToken()
             if (token) request.headers.set("Authorization", `Bearer ${token}`)
         }
-        // Only with a prompt to show (StepUpProvider sets one with real sign-in)
-        if (stepUpPrompt) sent.set(request, request.clone())
+        // Kept with real sign-in, or whenever a prompt is set: a page's first requests can go out before StepUpProvider
+        // has set its prompt, and the prompt is only needed once the answer comes back
+        if (signInMode === "better-auth" || stepUpPrompt) sent.set(request, request.clone())
         return request
     },
     async onResponse({ request, response }) {
@@ -84,10 +85,14 @@ const signedIn: Middleware = {
         const again = sent.get(request)
         if (!level || !again || !stepUpPrompt || !(await stepUpPrompt(level))) return response
         if (signInMode === "better-auth") {
+            // The new session's token; never the weaker one the request was refused with
             const token = await bearerToken()
             if (token) again.headers.set("Authorization", `Bearer ${token}`)
+            else again.headers.delete("Authorization")
         }
-        return globalThis.fetch(again)
+        const retried = await globalThis.fetch(again)
+        if (retried.status === 401) forgetBearerToken()
+        return retried
     }
 }
 

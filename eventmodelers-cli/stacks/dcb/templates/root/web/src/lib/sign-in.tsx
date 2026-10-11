@@ -3,7 +3,7 @@ import { Link, Navigate, useLocation, useSearchParams } from "react-router"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { messageOf, signInService, type SecondFactorMethod, type ServiceError } from "./auth-client"
+import { EMAIL_CHANGED_PAGE, messageOf, signInService, type SecondFactorMethod, type ServiceError } from "./auth-client"
 import { useSessionState } from "./session"
 
 /**
@@ -26,7 +26,7 @@ export function nextPath(next: string | null | undefined): string {
 }
 
 /** A refusal, read out to the person */
-function Problem({ children }: { children?: ReactNode }) {
+export function Problem({ children }: { children?: ReactNode }) {
     if (!children) return null
     return (
         <p role="alert" className="text-sm text-destructive">
@@ -114,8 +114,8 @@ function PasskeySignIn({ onError }: { onError: (message: string | undefined) => 
 
 /**
  * The second factor, after the password. With the emailed code on offer it's sent at once; someone with the app is
- * asked for its code, with a backup code or a passkey as the ways round a lost phone. "Trust this device" skips this
- * step here for 30 days.
+ * asked for its code, with a backup code as the way round a lost phone. Someone offered neither has only a passkey
+ * (D4a), and is asked for it. "Trust this device" skips this step here for 30 days.
  */
 export function SecondFactorForm({ methods, onStartAgain }: { methods: SecondFactorMethod[]; onStartAgain: () => void }) {
     const emailed = methods.includes("otp")
@@ -214,18 +214,13 @@ export function SecondFactorForm({ methods, onStartAgain }: { methods: SecondFac
                     </button>
                 )}
             </p>
-            {!emailed && (
+            {/* A backup code is the way round a lost phone. A passkey isn't offered here: whether this person has one isn't
+                known before they've signed in, and "Sign in with a passkey" is on the first screen ("Start again") */}
+            {method !== "backup" && methods.includes("totp") && (
                 <p className="text-sm text-muted-foreground">
-                    {method !== "backup" && methods.includes("totp") && (
-                        <button type="button" className="mock-link" onClick={choose("backup")}>
-                            Use a backup code
-                        </button>
-                    )}{" "}
-                    {method !== "passkey" && (
-                        <button type="button" className="mock-link" onClick={choose("passkey")}>
-                            Use a passkey
-                        </button>
-                    )}
+                    <button type="button" className="mock-link" onClick={choose("backup")}>
+                        Use a backup code
+                    </button>
                 </p>
             )}
             <p className="text-sm text-muted-foreground">
@@ -452,6 +447,18 @@ export function LinkExpired() {
     const [sent, setSent] = useState<string>()
     const problem = params.get("error")
     if (!problem || !LINK_PROBLEMS.has(problem) || pathname === "/reset-password") return null
+    // A change of email's link: starting the change again sends new ones (a verification link wouldn't do)
+    if (pathname === EMAIL_CHANGED_PAGE || params.get("email") === "changing") {
+        return (
+            <section className="mock-card" role="alert" aria-label="This link has expired">
+                <h2>This link has expired</h2>
+                <p>A link to change your email works once, for an hour. Your email hasn't changed.</p>
+                <p className="text-sm text-muted-foreground">
+                    <Link to="/account">Change it again from your account</Link>
+                </p>
+            </section>
+        )
+    }
 
     const submit = async (event: FormEvent) => {
         event.preventDefault()

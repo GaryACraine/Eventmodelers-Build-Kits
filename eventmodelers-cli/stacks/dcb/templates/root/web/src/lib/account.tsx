@@ -3,10 +3,10 @@ import { useSearchParams } from "react-router"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { messageOf, signInService, type ServiceError } from "./auth-client"
+import { EMAIL_CHANGED_PAGE, messageOf, signInService, type ServiceError } from "./auth-client"
 import { useSession } from "./session"
-import { NewPassword } from "./sign-in"
-import { AppSetup, useStepUp } from "./step-up"
+import { NewPassword, Problem } from "./sign-in"
+import { AppSetup, useFactorChange, useFactors } from "./step-up"
 
 /**
  * `/account` (ADR-056 D5, D6, D8, D9, D13): the signed-in person's own sign-in, all of it the sign-in service's, so the
@@ -23,52 +23,25 @@ import { AppSetup, useStepUp } from "./step-up"
  */
 export const ACCOUNT_PAGE = "/account"
 
-/** The project's page an email change lands on, if it has one (routes.tsx passes it when a page has this path) */
-export const EMAIL_CHANGED_PAGE = "/email-changed"
-
-/** The sign-in service's answer, and a refusal read out */
-type Answer = { error?: ServiceError | null }
-
-function Problem({ children }: { children?: ReactNode }) {
-    if (!children) return null
-    return (
-        <p role="alert" className="text-sm text-destructive">
-            {children}
-        </p>
-    )
-}
+export { EMAIL_CHANGED_PAGE }
 
 function Done({ children }: { children?: ReactNode }) {
     if (!children) return null
     return <p role="status">{children}</p>
 }
 
-/**
- * A change to a factor: when the sign-in service wants the strongest factor first, the person is asked for it
- * (the step-up prompt) and the change goes again once.
- */
-function useFactorChange() {
-    const { ask } = useStepUp()
-    return useCallback(
-        async <T extends Answer>(change: () => Promise<T>): Promise<T> => {
-            const first = await change()
-            if (first.error?.code !== "STRONGER_FACTOR_REQUIRED") return first
-            return (await ask("not-by-email")) ? change() : first
-        },
-        [ask]
-    )
-}
-
 export function AccountPage({ emailChangedPage }: { emailChangedPage?: string }) {
     const { email } = useSession()
+    // A password change signs out the other sessions: the list below is read again
+    const [sessionsChanged, setSessionsChanged] = useState(0)
     return (
         <>
             <h1>Your account</h1>
             <EmailSection email={email ?? ""} landing={emailChangedPage ?? `${ACCOUNT_PAGE}?email=changing`} />
-            <PasswordSection />
+            <PasswordSection onChanged={() => setSessionsChanged((n) => n + 1)} />
             <AppSection />
             <PasskeySection />
-            <SessionsSection />
+            <SessionsSection changed={sessionsChanged} />
         </>
     )
 }
@@ -78,7 +51,8 @@ function EmailSection({ email, landing }: { email: string; landing: string }) {
     const [done, setDone] = useState<string>()
     const [error, setError] = useState<string>()
     const [params] = useSearchParams()
-    const changing = params.get("email") === "changing"
+    // Landed from the change's link, and it worked (an expired one comes back with `error`)
+    const changing = params.get("email") === "changing" && !params.get("error")
 
     const submit = async (event: FormEvent) => {
         event.preventDefault()
@@ -101,7 +75,7 @@ function EmailSection({ email, landing }: { email: string; landing: string }) {
     )
 }
 
-function PasswordSection() {
+function PasswordSection({ onChanged }: { onChanged: () => void }) {
     const [current, setCurrent] = useState("")
     const [next, setNext] = useState("")
     const [done, setDone] = useState<string>()
@@ -117,6 +91,7 @@ function PasswordSection() {
             setDone("Your password is changed, and every other session was signed out.")
             setCurrent("")
             setNext("")
+            onChanged()
         }
     }
     return (
@@ -140,21 +115,8 @@ function PasswordSection() {
     )
 }
 
-/** What the person can prove beyond the inbox, reloaded after each change */
-function useFactors() {
-    const [factors, setFactors] = useState<{ app: boolean; passkeys: number }>()
-    const load = useCallback(async () => {
-        const { data } = await signInService.factors()
-        setFactors(data ?? { app: false, passkeys: 0 })
-    }, [])
-    useEffect(() => {
-        void load()
-    }, [load])
-    return { factors, load }
-}
-
 function AppSection() {
-    const { factors, load } = useFactors()
+    const { factors, error: unknown, reload: load } = useFactors()
     const change = useFactorChange()
     const [settingUp, setSettingUp] = useState(false)
     const [password, setPassword] = useState("")
@@ -182,9 +144,19 @@ function AppSection() {
         <section className="mock-card" aria-label="Authenticator app">
             <h2>Authenticator app</h2>
             {!factors ? (
-                <p role="status">Checking…</p>
+                unknown ? (
+                    <>
+                        <Problem>{unknown}</Problem>
+                        <Button type="button" variant="secondary" className="mock-secondary" onClick={load}>
+                            Check again
+                        </Button>
+                    </>
+                ) : (
+                    <p role="status">Checking…</p>
+                )
             ) : settingUp ? (
                 <AppSetup
+                    change={change}
                     onDone={async () => {
                         setSettingUp(false)
                         setDone("The app is set up. Signing in now asks for its code.")
@@ -245,7 +217,7 @@ function PasskeySection() {
 
     const add = async () => {
         setError(undefined)
-        const result = await change(async () => (await signInService.addPasskey()) as Answer)
+        const result = await change(async () => (await signInService.addPasskey()) as { error?: ServiceError | null })
         if (result?.error) setError(messageOf(result.error, "Couldn't add the passkey. Try again."))
         else await load()
     }
@@ -292,7 +264,7 @@ interface SignedInSession {
     updatedAt?: string | Date
 }
 
-function SessionsSection() {
+function SessionsSection({ changed }: { changed: number }) {
     const { data: current } = signInService.useSession()
     const [sessions, setSessions] = useState<SignedInSession[]>()
     const [done, setDone] = useState<string>()
@@ -303,7 +275,7 @@ function SessionsSection() {
     }, [])
     useEffect(() => {
         void load()
-    }, [load])
+    }, [load, changed])
 
     const elsewhere = async () => {
         const { error } = await signInService.signOutEverywhereElse()

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react"
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react"
 import { renderSVG } from "uqr"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label"
 import { onStepUp, type StepUpLevel } from "./api"
 import { forgetBearerToken, messageOf, signInMode, signInService, type ServiceError } from "./auth-client"
 import { useSessionState } from "./session"
+import { Problem } from "./sign-in"
 
 /**
  * Signing in more strongly (ADR-056 D1, D3, D15): an action whose role needs the app or a passkey, from a session that
@@ -27,15 +28,17 @@ const StepUpContext = createContext<StepUp | undefined>(undefined)
 /** The prompt, for the API client and the account page. With the stub session there's nothing to step up to. */
 export function StepUpProvider({ children }: { children: ReactNode }) {
     const [asking, setAsking] = useState<{ level: StepUpLevel; resolve: (done: boolean) => void }>()
-    const queue = useRef<Promise<boolean>>(Promise.resolve(true))
+    const open = useRef<Promise<boolean>>(undefined)
 
     const ask = useCallback((level: StepUpLevel) => {
-        // One prompt at a time: requests refused together wait on the same answer
-        const answer = queue.current.then(() => new Promise<boolean>((resolve) => setAsking({ level, resolve })))
-        queue.current = answer.catch(() => false)
-        return answer
+        // One prompt at a time: requests refused while it's open share its answer, so one code steps them all up
+        open.current ??= new Promise<boolean>((resolve) => setAsking({ level, resolve })).finally(() => {
+            open.current = undefined
+        })
+        return open.current
     }, [])
-    useEffect(() => (signInMode === "better-auth" ? onStepUp(ask) : undefined), [ask])
+    // Before the page's own effects send their first requests (a layout effect runs ahead of every passive one)
+    useLayoutEffect(() => (signInMode === "better-auth" ? onStepUp(ask) : undefined), [ask])
 
     const finish = (done: boolean) => {
         if (done) forgetBearerToken()
@@ -57,25 +60,55 @@ export function useStepUp(): StepUp {
     return value
 }
 
-type Factors = { app: boolean; passkeys: number }
+/** What the person can prove beyond the inbox */
+export type Factors = { app: boolean; passkeys: number }
+
+/** The person's factors, from the sign-in service; `error` when it couldn't say (never a guess) */
+export function useFactors(load = true) {
+    const [factors, setFactors] = useState<Factors>()
+    const [error, setError] = useState<string>()
+    const reload = useCallback(async () => {
+        setError(undefined)
+        const { data, error } = await signInService.factors()
+        if (error || !data) setError(messageOf((error ?? { status: 500 }) as ServiceError, "Couldn't check how you can confirm it's you. Try again."))
+        else setFactors(data)
+    }, [])
+    useEffect(() => {
+        if (load) void reload()
+    }, [load, reload])
+    return { factors, error, reload }
+}
+
+/** The sign-in service's answer to a call */
+type Answer = { error?: ServiceError | null }
+
+/**
+ * A change to a factor: when the sign-in service wants the strongest factor first (`STRONGER_FACTOR_REQUIRED`), the
+ * person is asked for it through the prompt and the change goes again, once.
+ */
+export function useFactorChange() {
+    const { ask } = useStepUp()
+    return useCallback(
+        async <T extends Answer>(change: () => Promise<T>): Promise<T> => {
+            const first = await change()
+            if (first.error?.code !== "STRONGER_FACTOR_REQUIRED") return first
+            return (await ask("not-by-email")) ? change() : first
+        },
+        [ask]
+    )
+}
+
+/** A factor change as it is, with no prompt to ask through (inside the prompt itself) */
+const asItIs = <T,>(change: () => Promise<T>) => change()
 
 /** The prompt itself, over the page */
 export function StepUpPrompt({ level, onDone }: { level: StepUpLevel; onDone: (done: boolean) => void }) {
     const { signOut } = useSessionState()
-    const [factors, setFactors] = useState<Factors>()
+    const { factors, error: unknown, reload: load } = useFactors(level === "not-by-email")
     const [error, setError] = useState<string>()
     const [code, setCode] = useState("")
     const [busy, setBusy] = useState(false)
     const [settingUp, setSettingUp] = useState(false)
-
-    const load = useCallback(async () => {
-        const { data, error } = await signInService.factors()
-        if (error) setError(messageOf(error as ServiceError, "Couldn't check how you can confirm it's you."))
-        else setFactors(data ?? { app: false, passkeys: 0 })
-    }, [])
-    useEffect(() => {
-        if (level === "not-by-email") void load()
-    }, [level, load])
 
     const withApp = async (event: FormEvent) => {
         event.preventDefault()
@@ -117,10 +150,11 @@ export function StepUpPrompt({ level, onDone }: { level: StepUpLevel; onDone: (d
             </>
         )
     } else if (!factors) {
-        body = <p role="status">Checking how you can confirm it's you…</p>
+        body = unknown ? null : <p role="status">Checking how you can confirm it's you…</p>
     } else if (settingUp) {
         body = (
             <AppSetup
+                change={asItIs}
                 onDone={async () => {
                     setSettingUp(false)
                     await load()
@@ -175,11 +209,7 @@ export function StepUpPrompt({ level, onDone }: { level: StepUpLevel; onDone: (d
             <section className="mock-card w-full" role="dialog" aria-modal="true" aria-labelledby="step-up-heading">
                 <h2 id="step-up-heading">Confirm it's you</h2>
                 {body}
-                {error && (
-                    <p role="alert" className="text-sm text-destructive">
-                        {error}
-                    </p>
-                )}
+                <Problem>{error ?? unknown}</Problem>
                 <p className="text-sm text-muted-foreground">
                     <button type="button" className="mock-link" onClick={() => onDone(false)}>
                         Not now
@@ -204,7 +234,14 @@ function secretOf(totpURI: string): string {
  * code, which finishes it; then the backup codes, shown once. Setting it up doesn't confirm it's you yet: its next
  * code does (the sign-in service's rule), which is what the step-up prompt asks for after this.
  */
-export function AppSetup({ onDone }: { onDone: () => void }) {
+export function AppSetup({
+    onDone,
+    change
+}: {
+    onDone: () => void
+    /** How the change is made: through `useFactorChange` on the account page, as it is inside the prompt */
+    change: <T extends Answer>(change: () => Promise<T>) => Promise<T>
+}) {
     const [password, setPassword] = useState("")
     const [started, setStarted] = useState<{ totpURI: string; backupCodes: string[] }>()
     const [code, setCode] = useState("")
@@ -216,7 +253,7 @@ export function AppSetup({ onDone }: { onDone: () => void }) {
         event.preventDefault()
         setBusy(true)
         setError(undefined)
-        const { data, error } = await signInService.setUpApp(password)
+        const { data, error } = await change(() => signInService.setUpApp(password))
         setBusy(false)
         if (error) setError(messageOf(error as ServiceError, "Couldn't start setting up the app. Check your password."))
         else setStarted(data as { totpURI: string; backupCodes: string[] })
@@ -231,11 +268,7 @@ export function AppSetup({ onDone }: { onDone: () => void }) {
         else setFinished(true)
     }
 
-    const problem = error && (
-        <p role="alert" className="text-sm text-destructive">
-            {error}
-        </p>
-    )
+    const problem = <Problem>{error}</Problem>
     if (finished && started) {
         return (
             <section aria-label="Your backup codes">

@@ -64,6 +64,7 @@ const NEW_ACCOUNT_MS = 24 * 3_600_000
  * `databaseHooks.session.create.before`: record the factors on every new session.
  * - **Replacing a session** (one is signed in already: changing the password, turning two-factor on or off) keeps its
  *   factors. Proving a factor while enrolling it never makes a session stronger.
+ * - **A passkey** is `passkey`, signed in already or not: a passkey step-up is a new session of the same person.
  * - **Signing in with the password** (`/sign-in/email`): a session survives it only when two-factor is off, or the
  *   device is trusted. Otherwise the two-factor plugin deletes it and asks for the code.
  * - **The verification link** signs in a new account only. The same endpoint confirms a change of email, and that
@@ -73,7 +74,10 @@ export async function recordFactors(session: Session, ctx: GenericEndpointContex
     const current = ctx?.context.session?.session as Session | undefined
     let factors: Factor[]
     let strongAt: Date | string | null | undefined = null
-    if (current) {
+    if (ctx?.path === "/passkey/verify-authentication") {
+        // A passkey proves itself, signed in or not; while signed in it's the same person's (the before hook)
+        factors = ["passkey"]
+    } else if (current) {
         factors = factorsOf(current.amr)
         strongAt = current.strongAt
     } else if (ctx?.path === "/sign-in/email") {
@@ -86,7 +90,7 @@ export async function recordFactors(session: Session, ctx: GenericEndpointContex
         const isNew = !!user && Date.now() - new Date(user.createdAt).getTime() < NEW_ACCOUNT_MS
         factors = !purpose && isNew && !(await hasNotByEmailFactor(ctx, session.userId)) ? ["email-link"] : []
     } else factors = (ctx?.path && SIGNED_IN_AT[ctx.path]) || []
-    if (!current && isNotByEmail(factors)) strongAt = new Date()
+    if ((!current || ctx?.path === "/passkey/verify-authentication") && isNotByEmail(factors)) strongAt = new Date()
     if (!factors.length) console.warn(`[auth] a session was created at ${ctx?.path ?? "(no request)"} with no known factor: it passes no check`)
     return { data: { ...session, amr: factors.join(" "), strongAt } }
 }
@@ -140,6 +144,9 @@ const failed = (returned: unknown) => returned instanceof Error || (returned ins
  *   enrol their own app, then step up with it.
  * - **Registering a passkey never signs anyone in** (`createSession` is refused): the new passkey proves nothing yet.
  * - **No emailed code once there's a stronger factor** (D4a): asking for one, or entering one, is refused at sign-in.
+ * - **A passkey while signed in steps up the same person only.** Better Auth signs in whoever owns the passkey used, so
+ *   on a device holding two people's passkeys, the wrong one would switch accounts mid-action; it's refused. The
+ *   weaker session it replaces is ended (`steppingUpFrom`).
  * - **The app code while signed in is how a session steps up** (D1). The plugin doesn't count wrong codes there, so
  *   we do, with the plugin's own lock. Only an app that was set up already counts: proving the code that sets it up
  *   doesn't step up (`enrollingApp`, which the notices read too).
@@ -166,6 +173,17 @@ const before = createAuthMiddleware(async ctx => {
             })
         return
     }
+    if (ctx.path === "/passkey/verify-authentication") {
+        const current = await getSessionFromCtx(ctx)
+        if (!current) return
+        const credentialID = (ctx.body as { response?: { id?: string } } | undefined)?.response?.id
+        const key = credentialID
+            ? await ctx.context.adapter.findOne<{ userId: string }>({ model: "passkey", where: [{ field: "credentialID", value: credentialID }] })
+            : null
+        if (!key || key.userId !== current.user.id)
+            throw APIError.from("FORBIDDEN", { message: "That passkey is for another account: use your own", code: "PASSKEY_OF_ANOTHER_ACCOUNT" })
+        return { context: { steppingUpFrom: current.session.token } }
+    }
     if (ctx.path === "/two-factor/verify-totp") {
         const current = await getSessionFromCtx(ctx)
         if (!current) return
@@ -183,7 +201,8 @@ const before = createAuthMiddleware(async ctx => {
  * - **a right app code while signed in** adds `totp` to the session and restarts its 12 hours (D15); a wrong one counts
  *   toward the lock;
  * - **turning the app off keeps the emailed code** (D2): the plugin turns two-factor off altogether, so it's turned
- *   back on.
+ *   back on;
+ * - **a passkey step-up** ends the session it replaced.
  */
 const after = createAuthMiddleware(async ctx => {
     const returned = ctx.context.returned
@@ -199,6 +218,11 @@ const after = createAuthMiddleware(async ctx => {
     if (ctx.path === "/two-factor/disable") {
         const current = ctx.context.session
         if (current && !failed(returned)) await ctx.context.internalAdapter.updateUser(current.user.id, { twoFactorEnabled: true })
+        return
+    }
+    if (ctx.path === "/passkey/verify-authentication") {
+        const from = (ctx as { steppingUpFrom?: string }).steppingUpFrom
+        if (from && !failed(returned)) await ctx.context.internalAdapter.deleteSession(from)
         return
     }
     if (ctx.path !== "/two-factor/verify-totp" || !(ctx as { stepUpWithApp?: boolean }).stepUpWithApp) return
