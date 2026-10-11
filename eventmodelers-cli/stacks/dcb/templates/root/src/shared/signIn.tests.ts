@@ -5,8 +5,9 @@ import { getApplication } from "@dcb-es/event-store-express"
 import type { RoleLookup, RoleMap } from "./permissions.js"
 import { configureSignIn, readModelLookup, requirePermission, requireSession, sessionOf, signedInOf, signInSettings, type SignInSettings } from "./signIn.js"
 
-// Tokens as the sign-in service issues them (Better Auth's JWT plugin: EdDSA, `sub`, `email`, `email_verified`),
-// signed here with a key of our own and checked against a JWKS holding it
+// Tokens as the sign-in service issues them (Better Auth's JWT plugin: EdDSA, `sub`, `email`, `email_verified`, and
+// `amr`, how the session signed in: a password and an emailed code unless a test says otherwise), signed here with a
+// key of our own and checked against a JWKS holding it
 const issuer = "http://localhost:5173"
 
 describe("the API's sign-in check (ADR-037, ADR-055)", () => {
@@ -21,7 +22,7 @@ describe("the API's sign-in check (ADR-037, ADR-055)", () => {
     })
 
     const token = (claims: Record<string, unknown> = {}, options: { issuer?: string; expiresIn?: string; signWith?: CryptoKey } = {}) =>
-        new SignJWT({ email: "owner@contractor.example", email_verified: true, ...claims })
+        new SignJWT({ email: "owner@contractor.example", email_verified: true, amr: ["pwd", "email-otp"], ...claims })
             .setProtectedHeader({ alg: "EdDSA", kid: "k1" })
             .setSubject("sub-7f3a")
             .setIssuer(options.issuer ?? issuer)
@@ -34,18 +35,21 @@ describe("the API's sign-in check (ADR-037, ADR-055)", () => {
     // The session lookup: our userId for a registered sub (licensing: My Account)
     const lookup = readModelLookup(async sub => (sub === "sub-7f3a" ? { sub, userId: "user-1", email: "owner@contractor.example" } : null))
 
-    // ADR-060: the role map, and the roles each caller holds (an owner of org-1, an engineer of org-3, a platform admin)
+    // ADR-060: the role map, and the roles each caller holds (an owner of org-1, an engineer of org-3, an admin of
+    // org-4, a platform admin). ADR-056 D3: the owner and the platform admin need the app or a passkey
     const roleMap: RoleMap = {
         tenantKey: "organisationId",
         roles: {
-            owner: { scope: "organisation", permissions: ["seat:assign", "seat:read"] },
+            owner: { scope: "organisation", permissions: ["seat:assign", "seat:read"], signIn: "not-by-email" },
+            admin: { scope: "organisation", permissions: ["seat:read"], signIn: "second-factor" },
             engineer: { scope: "organisation", permissions: [] },
-            platformAdmin: { scope: "platform", permissions: ["seat:read", "notification:list"] }
+            platformAdmin: { scope: "platform", permissions: ["seat:read", "notification:list"], signIn: "not-by-email" }
         }
     }
     const roles: RoleLookup = async ({ sub, session }, organisation) => {
         if (sub === "sub-ops") return { platform: ["platformAdmin"], organisation: [] }
-        const held: Record<string, string[]> = session.userId === "user-1" ? { "org-1": ["owner"], "org-3": ["engineer"] } : {}
+        const held: Record<string, string[]> =
+            session.userId === "user-1" ? { "org-1": ["owner"], "org-3": ["engineer"], "org-4": ["owner", "admin"] } : {}
         return { platform: [], organisation: (organisation && held[organisation]) || [] }
     }
 
@@ -73,7 +77,7 @@ describe("the API's sign-in check (ADR-037, ADR-055)", () => {
     test("a valid token says who is signed in", async () => {
         const res = await agent().get("/who").set("Authorization", `Bearer ${await token()}`)
         expect(res.status).toBe(200)
-        expect(res.body).toEqual({ sub: "sub-7f3a", email: "owner@contractor.example" })
+        expect(res.body).toEqual({ sub: "sub-7f3a", email: "owner@contractor.example", amr: ["pwd", "email-otp"] })
     })
 
     test.each([
@@ -125,8 +129,9 @@ describe("the API's sign-in check (ADR-037, ADR-055)", () => {
     })
 
     describe("a route with a permission (ADR-058, ADR-060)", () => {
-        const as = async (sub: string) =>
-            `Bearer ${await new SignJWT({ email: `${sub}@example.com`, email_verified: true })
+        // An owner and a platform admin sign in with the app or a passkey unless a test says otherwise
+        const as = async (sub: string, amr: string[] = ["pwd", "totp"]) =>
+            `Bearer ${await new SignJWT({ email: `${sub}@example.com`, email_verified: true, amr })
                 .setProtectedHeader({ alg: "EdDSA", kid: "k1" })
                 .setSubject(sub)
                 .setIssuer(issuer)
@@ -169,6 +174,40 @@ describe("the API's sign-in check (ADR-037, ADR-055)", () => {
             expect((await agent().get("/notifications").set("Authorization", await as("sub-ops"))).status).toBe(200)
         })
 
+        describe("how strongly the caller signed in (ADR-056)", () => {
+            const stepUp = (res: supertest.Response, level: string) => {
+                expect(res.status).toBe(401)
+                expect(res.headers["www-authenticate"]).toContain('error="insufficient_user_authentication"')
+                expect(res.headers["www-authenticate"]).toContain(`acr_values="${level}"`)
+                expect(res.body.signIn).toBe(level)
+            }
+
+            test("an owner who proved only the inbox is asked for the app or a passkey, and doesn't run", async () => {
+                stepUp(await agent().get("/seats/org-1").set("Authorization", await as("sub-7f3a", ["pwd", "email-otp"])), "not-by-email")
+                stepUp(await agent().get("/seats/org-1").set("Authorization", await as("sub-7f3a", ["pwd", "trusted-device"])), "not-by-email")
+            })
+
+            test("an owner with the app, a backup code or a passkey runs", async () => {
+                for (const amr of [["pwd", "totp"], ["pwd", "backup-code"], ["passkey"]])
+                    expect((await agent().get("/seats/org-1").set("Authorization", await as("sub-7f3a", amr))).status, amr.join()).toBe(200)
+            })
+
+            test("a role the caller also holds, with a lower level, is enough on its own", async () => {
+                expect((await agent().get("/seats/org-4").set("Authorization", await as("sub-7f3a", ["pwd", "email-otp"]))).status).toBe(200)
+                stepUp(await agent().post("/assign").set("Authorization", await as("sub-7f3a", ["pwd", "email-otp"])).send({ organisationId: "org-4" }), "not-by-email")
+            })
+
+            test("a platform admin needs the app or a passkey too", async () => {
+                stepUp(await agent().get("/notifications").set("Authorization", await as("sub-ops", ["pwd", "email-otp"])), "not-by-email")
+            })
+
+            test("asking for a step-up never says more than a 404 or 403 would", async () => {
+                const weak = await as("sub-7f3a", ["pwd", "email-otp"])
+                expect((await agent().get("/seats/org-2").set("Authorization", weak)).status).toBe(404)
+                expect((await agent().get("/seats/org-3").set("Authorization", weak)).status).toBe(403)
+            })
+        })
+
         test("denies everyone when the roles aren't configured", async () => {
             const res = await agent(settings, {}).get("/seats/org-1").set("Authorization", await as("sub-7f3a"))
             expect(res.status).toBe(403)
@@ -176,8 +215,20 @@ describe("the API's sign-in check (ADR-037, ADR-055)", () => {
         })
     })
 
+    test.each([
+        ["a password alone", ["pwd"]],
+        ["no factors at all", []],
+        ["no amr claim", undefined]
+    ])("a session with %s is asked for a second factor on every signed-in route (ADR-056 D2)", async (_, amr) => {
+        const res = await agent().get("/mine").set("Authorization", `Bearer ${await token({ amr })}`)
+        expect(res.status).toBe(401)
+        expect(res.headers["www-authenticate"]).toContain('error="insufficient_user_authentication"')
+        expect(res.body.signIn).toBe("second-factor")
+        expect((await agent().get("/who").set("Authorization", `Bearer ${await token({ amr })}`)).status).toBe(200)
+    })
+
     test("signed in but not registered: 403, register first", async () => {
-        const stranger = await new SignJWT({ email: "new@example.com", email_verified: true })
+        const stranger = await new SignJWT({ email: "new@example.com", email_verified: true, amr: ["pwd", "email-otp"] })
             .setProtectedHeader({ alg: "EdDSA", kid: "k1" })
             .setSubject("sub-new")
             .setIssuer(issuer)

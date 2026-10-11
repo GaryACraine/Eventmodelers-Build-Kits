@@ -322,7 +322,8 @@ token (or the session lookup), never the path:
 
 Its tests sign in with `testSignIn` (`src/test/signIn.ts`): `signIn.configure()` first in `apis`, and
 `.set("Authorization", await signIn.bearer({ sub }))`. Test that a request without the header gets 401, and that each
-person sees only their own document.
+person sees only their own document. A read with a `guard: requirePermission(...)` follows `build-state-change`'s
+permission tests, including the step-up when the role is `not-by-email` (ADR-056).
 
 **The session lookup** (`sessionLookup: true` on the read model): the read model keyed by `sub` whose other fields
 (`userId`) are the signed-in person's session keys. Give it `type: "inline-projected"`, so it's current when the

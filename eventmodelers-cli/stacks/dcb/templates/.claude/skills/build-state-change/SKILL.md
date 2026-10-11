@@ -362,7 +362,7 @@ File: `src/contexts/{context}/slices/{slicename}/route.ts`
 
 | `api` | Guard | Answers |
 |---|---|---|
-| a permission (`seat:assign`) | `requirePermission("seat:assign", [/* its session keys, if any */])` | 401 not signed in; 404 in an organisation the caller has no role in; 403 a member without the permission (ADR-060). The organisation is the role map's tenant key (`organisationId`) in the path or body |
+| a permission (`seat:assign`) | `requirePermission("seat:assign", [/* its session keys, if any */])` | 401 not signed in; 404 in an organisation the caller has no role in; 403 a member without the permission (ADR-060); 401 step-up when the role needs a stronger sign-in (ADR-056). The organisation is the role map's tenant key (`organisationId`) in the path or body |
 | `self` | `requireSession([/* its session keys */])` (below) | 401; 403 register first |
 | `anonymous` | none | — |
 
@@ -508,6 +508,13 @@ Use a role the map gives the permission, and the specifications' organisation. A
 - a request without the header gets 401;
 - the same caller in another organisation gets 404;
 - a member whose roles lack the permission gets 403 (`{ "org-1": ["engineer"] }`, or any role without it).
+
+**How strongly the caller signed in** (ADR-056): `signIn.bearer({ sub })` signs in with a password and an emailed
+code (`amr: ["pwd", "email-otp"]`), which is enough for a role whose `signIn` in `api/roles.json` is `second-factor`
+(the default). When the role you use is `not-by-email` (an owner, the platform admin), sign in with the app instead,
+`signIn.bearer({ sub, amr: ["pwd", "totp"] })`, and add a fourth test: the same caller with `["pwd", "email-otp"]`
+gets **401** with `WWW-Authenticate` containing `insufficient_user_authentication` and `body.signIn` `not-by-email`.
+`requirePermission` does this; never check `amr` in a route.
 
 Uses `ApiSpecification` (in-memory store, no Docker needed for unit tests):
 

@@ -17,6 +17,11 @@ import type { RoleLookup, RoleMap } from "../shared/permissions.js"
  * caller), checked against the project's role map (`api/roles.json`, or `access.roleMap`):
  *
  *   const signIn = await testSignIn(lookup, { roles: { platform: [], organisations: { "org-1": ["owner"] } } })
+ *
+ * The token says how the session signed in (`amr`, ADR-056): a password and an emailed code by default, enough for a
+ * `second-factor` role. A role that needs `not-by-email` (an owner) is signed in with the app or a passkey:
+ *
+ *   await signIn.bearer({ sub: "sub-owner", amr: ["passkey"] })
  */
 export async function testSignIn(
     lookup?: SessionLookup,
@@ -38,8 +43,8 @@ export async function testSignIn(
     return {
         configure: (): WebApiSetup => configureSignIn({ settings: { issuer, audience: issuer, jwks }, lookup, roles, roleMap: access.roleMap }),
         /** The Authorization header for someone signed in, with a verified email */
-        bearer: async ({ sub, email = `${sub}@example.com` }: { sub: string; email?: string }) =>
-            `Bearer ${await new SignJWT({ email, email_verified: true })
+        bearer: async ({ sub, email = `${sub}@example.com`, amr = ["pwd", "email-otp"] }: { sub: string; email?: string; amr?: string[] }) =>
+            `Bearer ${await new SignJWT({ email, email_verified: true, amr })
                 .setProtectedHeader({ alg: "EdDSA", kid: "test" })
                 .setSubject(sub)
                 .setIssuer(issuer)
