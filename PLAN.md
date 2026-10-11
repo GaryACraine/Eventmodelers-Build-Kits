@@ -507,8 +507,17 @@ model and build only what's ours.
                   - journeys mock and sandbox 8/8;
                   - owner-chain 15/15 (404 for another organisation, 403 on notifications, the platform admin's 200);
                   - settled-chain 14/14, trial-cancellation 49/49, paddle-sync 33/33.
-                - **Next:** the role sync to Better Auth (step 5: the first published event and translation, ADR-059
-                  point 4).
+             5. ✅ **2026-10-11: ADR-061 Proposed. How contexts integrate:**
+                - **The patterns** (Gary's push/pull/synchronous, refined by what crosses: a fact or a request to act):
+                  pull a published event (the default), push a fact, push a request to act, ask synchronously.
+                - **Each drawn and built:**
+                  - in the skills, as drafts: emcli `event-model` "Between contexts"; the kit's `build-automation`
+                    "Between contexts" and `plan-change`;
+                  - the reactors already exist (`defineAutomation`: a checkpoint, a to-do list, `issue`), so one
+                    deployment needs no new event-store capability.
+                - **The role sync, deferred:** licensing → identity (pull, `subscribed`), then identity → Better Auth (a
+                  request to act). Nothing needs roles in Better Auth yet; the API reads `Memberships`. It's built
+                  when the per-role second factor (2b.2d) or SSO groups (2b.2b) need it.
 
                 **Was:**
                 - kit: `permissions.ts`, `RoleLookup`, `requirePermission` (404 and 403), `readModelRoute`'s
@@ -4473,6 +4482,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-11 | 2b.2f step 3 proven in licensing: 10 declared operations, 15 routes removed by hand, six permission routes rebuilt by the loop, all e2e green; the e2e scripts sign in for real | Gary: keep end-to-end coverage, so the shell scripts sign in with a bearer token rather than being retired; routes removed by hand rather than through the loop |
 | 2026-10-11 | ADR-058 Accepted (endpoints by declaration; the platform admin is a person; roles per ADR-060); step 4 (the role map) started | Gary, after step 3 was proven in licensing. The loop was restarted to load the current ralph.js (it predated the rebuild warning) |
 | 2026-10-11 | 2b.2f step 4 done: the role map in the model (emcli `role`, `api/roles.json`, `api/permissions.md`); `requirePermission` checks it (a platform role anywhere; otherwise roles in the named organisation: 404 for a non-member, 403 without the permission); `RoleLookup` per organisation; licensing's Memberships (by organisation) and identity's PlatformAdmins (by email, setup from `PLATFORM_ADMIN_EMAILS`) | Gary's choices: setup by email; the proposed map; the catalogue now, the board later. Keyed by organisation to avoid re-tagging a built event (ADR-048). An access setting defaults to nobody (found when the loop used the model's example) |
+| 2026-10-11 | ADR-061 Proposed: four patterns between contexts by what crosses (pull a published event, the default; push a fact; push a request to act; ask synchronously); published events are API; intakes `subscribed` (new), `fetched`, `webhook`; carried into the skills as drafts; the role sync deferred until something needs roles in Better Auth | Gary: model the push/pull/synchronous patterns as ADRs and in the skills, since they'll repeat. The kit's reactors already cover one deployment. The role sync has no consumer since ADR-060 |
 
 ## Progress
 

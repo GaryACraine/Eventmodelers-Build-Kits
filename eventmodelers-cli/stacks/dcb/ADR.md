@@ -3284,6 +3284,8 @@ general case"; "we need this flexibility in our loop, whether we want an endpoin
    - **`none`:** it stays in its system. Nothing is built or recorded for it (no endpoint, no `Events.ts` entry); only
      an external read model may show it. Auth's `userSignedUp`.
    - **`fetched`** is left until a case needs it (Paddle Sync records the same event the webhook does).
+   - ADR-061 (Proposed) adds `subscribed` (another context's published event, read in-process) and gives `fetched`
+     its cross-context use.
 2. **Unset builds nothing.** emcli's completeness warns until the model says; the event makes no job.
 3. **Completeness errors** when an event left in its system feeds one of our read models, triggers our automation or
    command, or is given in one of our scenarios: we can only project, react to or test what we record.
@@ -4113,6 +4115,8 @@ says how it reaches us), ADR-055 part 2 (the session lookup).
 
    Compare Emmett, Axon 5 and Marten first. The likely first use is the role sync: licensing's role assignments
    reaching identity's automations that tell Auth (ADR-037, ADR-058).
+
+   **Now ADR-061 (Proposed, 2026-10-11):** the patterns between contexts, how each is drawn, and what each builds.
 5. **Enforced:**
    - **emcli** refuses `element copy` of an event or a command across contexts, and marks a read model copied across
      as external to its owner. Completeness gives an error at hand-off for an existing cross-context event copy, for
@@ -4312,4 +4316,114 @@ checked by the decider or a read model, and the person is told why. A missing pe
 - the API reads the caller's membership and roles through the session lookup, and the token carries only `sub`;
 - emcli's `cognitoGroups`, `cedarAction` and `cedarRoles` are migrated, then removed;
 - the catalogue is generated and checked.
+
+### ADR-061: How contexts integrate: pull a published event, push a fact, push a request, ask synchronously
+
+**Status:** Proposed, 2026-10-11 (Gary: "high level integration patterns between different contexts… these patterns
+will repeat"). Recorded now; built at the first real use, which proves it.
+**Date:** 2026-10-11
+**Builds on:**
+- ADR-040, ADR-041: the inbox, and the fetch behind a webhook;
+- ADR-053: an external event's intake;
+- ADR-058: a fact or a request to act;
+- ADR-059: a context's events are its own (this answers its point 4);
+- ADR-060: who may call what.
+
+**Context:**
+- **The role sync was to be the first time one context reacts to another's fact** (ADR-059 point 4). Gary asked for
+  the general patterns first, and how each is drawn in the model.
+- **His sketch:**
+  - push: the owner's own event triggers the owner's automation, which calls the subscriber;
+  - pull: like a webhook today, the subscriber models an external event and its automation pulls the owner's
+    events;
+  - synchronous: when the answer is needed at once.
+
+  Push or pull decides where the automation lives.
+- **What the kit already has (checked):** reactors. An automation (`defineAutomation`, `src/shared/automations.ts`)
+  is:
+  - a processor on the event store's consumer, with its own checkpoint (`_handler_bookmarks`);
+  - a to-do list projected from its trigger events;
+  - an idempotent `issue(decider, command)` that records our own event.
+
+  External ones make their calls in Temporal, as the Paddle cancel does. So within one deployment, every pattern
+  below needs **no new event-store capability**.
+- **Paddle already shows three of them:** its webhook pushes facts, the Paddle Sync pulls them (ADR-040, ADR-041), and
+  "cancel the refused trial at Paddle" pushes a request to act.
+- **Others (2026-10-11):**
+  - **Marten with Wolverine** pushes captured events onward through a transactional outbox ("event forwarding"), or
+    lets a subscriber process the stream in order ("event subscriptions", on the async daemon), distributable across
+    a cluster.
+  - **Emmett** splits consumers (where events come from: the PostgreSQL store, EventStoreDB, Kafka) from processors
+    (what reacts).
+  - **Dudycz** publishes only external events, designed and versioned, through an outbox and inbox.
+  - **Axon 5** has separate components listen to a context's events and raise integration events (an
+    anti-corruption layer).
+
+  Sources: [Publishing events from Marten through Wolverine](https://jeremydmiller.com/2023/11/16/publishing-events-from-marten-through-wolverine/),
+  [Marten subscriptions](https://martendb.io/events/subscriptions.html),
+  [Wolverine event forwarding](https://wolverinefx.net/guide/durability/marten/event-forwarding.html),
+  [Consumers, projectors, reactors in Emmett](https://event-driven.io/en/consumers_processors_in_emmett/),
+  [Communication between bounded contexts (Axon)](https://discuss.axoniq.io/t/communication-between-bounded-contexts/4210).
+
+**Proposed:**
+1. **Name what crosses, not only who moves it.** A fact is an event, which the receiver can't refuse. A request to act
+   is a command, which it can. This is the line ADR-058 drew for webhooks. Four patterns follow, and where the
+   automation lives follows from each:
+
+   | Pattern | What crosses | Its automation lives in | The owner draws | The other context draws |
+   |---|---|---|---|---|
+   | **1. Pull a published event** (the default) | a fact | the subscriber | its event, marked `--published` | a copy of it, `--external <owner>`, with an intake; its translation (to-do list, automation, its own command and event) |
+   | **2. Push a published event** | a fact | the owner (delivery only) | `--published`; delivery is the kit's outbox, not drawn per subscriber | as in 1, with intake `webhook` |
+   | **3. Push a request to act** | a command | the owner | its to-do list and automation, issuing a copy of the other context's command, `--external <its context>` | its command, declared (`--api`, or reached in-process) |
+   | **4. Ask synchronously** | a query (a command only with a reason) | the asker, inside its own request | its published read model | a copy of it, `--external <owner>` (ADR-059 (a), as today) |
+
+2. **A published event is part of the owner's API.**
+   - It's designed on purpose, carrying what readers need so they don't rebuild state.
+   - Any change is a new version (ADR-017/018), and retiring it follows ADR-046's supersede rules.
+   - Every other event stays private (ADR-059).
+   - ADR-059 is amended, not reversed: a copy across contexts is allowed only of a **published** event or a
+     **declared** command, marked `--external <owner>`. Completeness errors on a copy of an unpublished event, and on
+     a copy with fields the original lacks.
+3. **How a published event arrives** (the subscriber's copy's intake):
+   - **`subscribed`** (new): the same deployment. The subscriber's reactor reads the owner's published event types
+     from the shared event store, from its own checkpoint. The store already is the outbox.
+   - **`fetched`**: another deployment. The subscriber pulls the owner's feed (the kit's `/events`, filtered to
+     published types) after a checkpoint, on a Schedule, as the Paddle Sync does.
+   - **`webhook`** (ADR-053): the owner pushes it, through an outbox with retries, to the subscriber's inbox.
+4. **Choosing:**
+   - **Pull (1) by default.** The owner needn't know its subscribers; each owns its reaction and its pace. In one
+     deployment it's `subscribed`: no HTTP, no outbox.
+   - **Push a request (3)** when the owner owns the process and the other context is a capability that obeys
+     ("send this invitation email"). The owner then depends on that command, a coupling taken knowingly.
+   - **Push an event (2)** only across deployments where pulling is impractical, since it needs an outbox.
+   - **Synchronous (4)** for reads. A synchronous command only with a reason: the request then fails whenever the
+     other context is down.
+5. **What each builds** (the kit's `build-automation`, "Between contexts"):
+   - **1, `subscribed`:** an internal automation whose trigger is the owner's published event type;
+   - **1, `fetched`:** a Schedule reading the feed;
+   - **2:** the owner's outbox, and the subscriber's inbox (`configureWebhookInbox`);
+   - **3:** an automation issuing the other context's command, through its decider in-process (one deployment), or
+     its declared endpoint with a machine identity (API keys, deferred by ADR-058);
+   - **4:** a query the owner exports, as `readModelLookup` does.
+6. **New at first use, and only then:**
+   - **emcli:**
+     - `--published` on events;
+     - cross-context copies of published events and declared commands (marked external, intake `subscribed`);
+     - completeness for them;
+   - **kit:**
+     - a published-events module per context, and the `context-events-private` check allowing imports from it;
+     - the feed filtered to published types (`fetched`);
+     - an outbox (push across deployments).
+7. **The role sync, against this** (licensing decides roles; identity tells Better Auth, ADR-037):
+   - licensing → identity is pattern 1, `subscribed`: an identity reactor on licensing's published
+     `userWasAssignedToRole` (later `…Removed`);
+   - identity → Better Auth is pattern 3 towards an external system: an external automation calling Better Auth's
+     admin API, then recording `roleWasSetInAuth`. That's the Paddle cancel's shape, with a `provider-better-auth`
+     call.
+   - **Deferred:** since ADR-060 the API reads roles from `Memberships`, so nothing needs roles in Better Auth yet. The
+     consumers that would (a second factor per role, ADR-056; SSO groups, 2b.2b) aren't built. As with API keys, the
+     first real consumer triggers the build.
+
+**Decision:** open (Proposed). The skills carry it as draft guidance: emcli's `event-model` ("Between contexts"),
+and the kit's `build-automation` and `plan-change`.
 
