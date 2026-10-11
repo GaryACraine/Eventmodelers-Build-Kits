@@ -4027,7 +4027,18 @@ sandbox. The first runs found four kit bugs, none of which a unit test had shown
 Each has a test that fails without its fix. One local limit, not a bug: through Vite's proxy every browser is
 127.0.0.1, one rate-limit bucket per path, and a header the page adds becomes a two-value chain the service doesn't
 trust without `AUTH_TRUSTED_PROXIES`. So the journeys send their sign-in calls straight to the service, each with
-its own address. A passkey can't be checked headless; it is checked by hand (Touch ID).
+its own address. A passkey can't be checked headless; it was checked by hand.
+
+**The passkey, checked by hand, 2026-10-11** (Gary, with a hardware security key: a touch, its PIN, a touch again).
+It was added on the account page, signed in from signed out, and confirmed an owner action on the step-up prompt,
+which offered only "Use your passkey". To reach the prompt, the session's `strongAt` was set 13 hours back (D15),
+because a passkey holder can't get a session that proved only the inbox (D4a). After the step-up, one session was
+left, the new passkey one. The check found one more gap (kit PR #256):
+- **D15 left a passkey-only session with no factor at all.** After 12 hours the token dropped `passkey`, so `amr` was
+  empty. That fails even D2's second-factor check, and the prompt read it as an old session ("Sign in again").
+  `pwd totp` dropped to `pwd` the same way. Now the token keeps `mfa` (RFC 8176, "multiple factors") in place of a
+  lapsed factor. `mfa` meets `second-factor` but not `not-by-email`, so the owner is asked for the passkey or the
+  app again, as D15 meant. The old test had expected the empty list.
 
 **Consequences, once decided:**
 - **Each choice becomes a setting:** in `auth/src/config.ts` where it differs by deployment, otherwise in

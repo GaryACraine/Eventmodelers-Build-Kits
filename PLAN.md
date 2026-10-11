@@ -540,7 +540,7 @@ model and build only what's ours.
           3. **2b.2b SSO for on-premises customers:** check Better Auth's SSO plugin against Entra ID or Okta.
           4. **2b.2c Security releases:** advisory alerts on `better-auth`, pinned versions, a patch path for
              on-premises installs.
-          5. **2b.2d NEXT: the account security lifecycle (ADR-056, Accepted 2026-10-11).** Steps 1 to 8 done but the passkey by hand; step 9 next.
+          5. **2b.2d NEXT: the account security lifecycle (ADR-056, Accepted 2026-10-11).** Steps 1 to 8 done; step 9 next.
              - **The decisions** (D1–D14, in ADR-056 "Decided"):
                - **D1:** a role's sign-in requirement is enforced in our API by step-up (`amr` in the token; 401
                  `insufficient_user_authentication`), so the role sync stays deferred;
@@ -620,7 +620,7 @@ model and build only what's ours.
                     passkey step-up that never worked and could switch accounts (ADR-056 "Step 6, reviewed");
                   - licensing `a3c6d06`: auth 4 files, web 95 tests, backend 64 files pass; `kit-drift` 0; the loop's
                     context back to licensing.
-             8. **Proof** (all but the passkey by hand done 2026-10-11; kit PR #255, ADR-056 "Step 8"):
+             8. **Proof** (done 2026-10-11; kit PRs #255, #256, ADR-056 "Step 8"):
                 - ✅ `e2e/lib/auth.mjs`: the sign-in service as a browser uses it (cookies, its own address, emails
                   waited for by subject and as new, authenticator codes by RFC 6238, app keys kept in the gitignored
                   `e2e/.state`); `signin.mjs <label> [--app]` signs in with the emailed code, or sets up and proves the
@@ -637,7 +637,10 @@ model and build only what's ours.
                   token's email); the code step of signing in vanished (the session's refetch showed the wait in its
                   place); a 429's wait read billions of minutes (pg's bigint as a string); accounts verified before
                   the second factor had no emailed code (a data migration);
-                - a passkey checked by hand (Touch ID): **Gary**, on the account page and the step-up prompt.
+                - ✅ a passkey checked by hand (Gary, 2026-10-11, a hardware security key): added on the account page,
+                  signed in from signed out, and confirmed an owner action on the step-up prompt ("Use your passkey"
+                  only). It found that D15 left a passkey-only session with no factor after 12 hours; the token now
+                  keeps `mfa` (kit PR #256).
              9. **Security evidence (D14):** the kit scaffolds `SECURITY.md` and `security/` (`POLICY.md`,
                 `EVIDENCE.md`, `results/`), with a check. Licensing's covers 2b.2f's access control and 2b.2d.
              - **Deferred (Gary, 2026-10-11): recovering a lost passkey.** Someone with only a passkey who loses it
