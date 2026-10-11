@@ -658,7 +658,8 @@ model and build only what's ours.
                     while the trial journey uses `mock_web_trial` on the backend Playwright starts when port 3000 is
                     free. So run them with the backend stopped in between. A sandbox run also needs port 5173 free.
                     The failed runs are kept;
-                  - a sandbox recording, when convenient (step 8's sandbox pass is in the journey README);
+                  - ✅ the sandbox recording: journeys 2/2 on Paddle's sandbox (licensing `e5e00c6`). Every policy now
+                    links a recorded, passing run;
                   - ✅ the intermittent 301 (ADR-056 "Step 9, the open items closed"). It was IntelliJ's built-in
                     web server answering a supertest request on a shared port. Fixed in the kit:
                     `src/test/loopback.ts` makes a test's server listen on 127.0.0.1. Licensing: 439 tests, three
