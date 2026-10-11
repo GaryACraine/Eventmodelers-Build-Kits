@@ -455,8 +455,26 @@ model and build only what's ours.
                   in-process tests otherwise (`DeciderSpecification`, `readModel.tests.ts`); the contract check leaves
                   webhooks to the inbox. No `routes-declared` check: `api-contract` already rejects an undeclared
                   route. Template tests pass in licensing.
-                - **Licensing next** (Gary's go-ahead): declare each endpoint, replace the slices that change, fix the
-                  journey's read of `/untranslated-notifications` (it now needs sign-in).
+                - **Licensing, 2026-10-10/11** (`e995447`…`f63196a`):
+                  - the model declares 10 operations (9 routes and Paddle's webhook):
+                    - `self`: register user, my account, activate organisation;
+                    - `checkout:report`, `organisation:read` (start options, overview), `settings:configure`,
+                      `notification:list`;
+                  - 15 automation-only commands and to-do lists lost their routes, removed by hand (Gary), one
+                    commit per slice, with tests moved in-process:
+                    - 8 `decider.tests.ts` (`DeciderSpecification`) plus Postgres `decider.integration.tests.ts`
+                      (`handle`);
+                    - 7 `readModel.tests.ts` through the runtime; two setups that posted to another slice's route now
+                      append the events;
+                  - six built slices that gain a permission are replaced under the same name, so the loop rebuilds
+                    them with `requirePermission`. **The export waits for Gary**; the preview re-queues exactly those
+                    six (three with their screens);
+                  - results: backend 384 passed (3 skipped); web 62; contract 9 match; journey mock 8/8 and sandbox
+                    8/8;
+                  - the four e2e scripts sign up for real (`e2e/lib/signin.mjs`) and read routeless to-do lists from
+                    their tables (Gary: keep e2e coverage). settled-chain 14/14, trial-cancellation PASS,
+                    paddle-sync 33/33, owner-chain 11/12: the trial now comes by signed webhook, and its new check that
+                    the overview needs sign-in passes once the loop rebuilds that slice.
              4. **Permissions in the model (ADR-060):** in emcli, `permission` on commands and read models and the role
                 map, after migrating the legacy model's `cedarAction`, `cedarRoles` and `cognitoGroups`; the
                 catalogue (`x-permission`, `api/permissions.md`) and its checks; the API checks, tested both ways.
