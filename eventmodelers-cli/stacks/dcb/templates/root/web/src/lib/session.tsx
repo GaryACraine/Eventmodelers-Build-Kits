@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState, type FormEvent, type ReactNode } from "react"
+import { createContext, useCallback, useContext, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -83,6 +83,12 @@ function StubSession({ initial, remember, children }: { initial?: Session; remem
 function BetterAuthSession({ remember, children }: { remember: boolean; children: ReactNode }) {
     const { data, isPending } = signInService.useSession()
     const { typed, signIn, forget } = useTypedIds(undefined, remember)
+    // Only the first load is "finding out who is signed in". Better Auth fetches the session again after a sign-in
+    // call (and on focus), and a page that showed the wait each time would lose what's on it: the code step of
+    // signing in, between the password and the code
+    const loaded = useRef(false)
+    if (!isPending) loaded.current = true
+    const pending = isPending && !loaded.current
     const user = data?.user
     const signOut = useCallback(() => {
         forget()
@@ -94,11 +100,11 @@ function BetterAuthSession({ remember, children }: { remember: boolean; children
             session: user ? { ...typed, sub: user.id, email: user.email } : {},
             mode: "better-auth",
             signedIn: Boolean(user),
-            pending: isPending,
+            pending,
             signIn,
             signOut
         }),
-        [user, typed, isPending, signIn, signOut]
+        [user, typed, pending, signIn, signOut]
     )
     return <SessionContext.Provider value={state}>{children}</SessionContext.Provider>
 }

@@ -540,7 +540,7 @@ model and build only what's ours.
           3. **2b.2b SSO for on-premises customers:** check Better Auth's SSO plugin against Entra ID or Okta.
           4. **2b.2c Security releases:** advisory alerts on `better-auth`, pinned versions, a patch path for
              on-premises installs.
-          5. **2b.2d NEXT: the account security lifecycle (ADR-056, Accepted 2026-10-11).**
+          5. **2b.2d NEXT: the account security lifecycle (ADR-056, Accepted 2026-10-11).** Steps 1 to 8 done but the passkey by hand; step 9 next.
              - **The decisions** (D1–D14, in ADR-056 "Decided"):
                - **D1:** a role's sign-in requirement is enforced in our API by step-up (`amr` in the token; 401
                  `insufficient_user_authentication`), so the role sync stays deferred;
@@ -620,12 +620,24 @@ model and build only what's ours.
                     passkey step-up that never worked and could switch accounts (ADR-056 "Step 6, reviewed");
                   - licensing `a3c6d06`: auth 4 files, web 95 tests, backend 64 files pass; `kit-drift` 0; the loop's
                     context back to licensing.
-             8. **Proof:**
-                - `e2e/lib/signin.mjs` completes the emailed code;
-                - e2e scripts for reset, change of password and email, and step-up (refused, then allowed after a
-                  TOTP enrolment);
-                - journeys on mock and sandbox, and the other chains;
-                - a passkey checked by hand.
+             8. **Proof** (all but the passkey by hand done 2026-10-11; kit PR #255, ADR-056 "Step 8"):
+                - ✅ `e2e/lib/auth.mjs`: the sign-in service as a browser uses it (cookies, its own address, emails
+                  waited for by subject and as new, authenticator codes by RFC 6238, app keys kept in the gitignored
+                  `e2e/.state`); `signin.mjs <label> [--app]` signs in with the emailed code, or sets up and proves the
+                  app. Owners and the platform admin sign in with the app;
+                - ✅ the step-up: the owner chain checks a sign-up's own token is refused with 401
+                  `insufficient_user_authentication`, `acr_values="not-by-email"`, and the app's is allowed (17/17);
+                  the trial journey's owner sets the app up on the step-up prompt at their first owner action (9/9);
+                - ✅ `account-security.journey.ts` (5/5): change of password (other sessions ended), change of email
+                  through Email Changed (`changeUserEmail` recorded, My Account updated), forgotten password, sign-in
+                  with the emailed code on the screens;
+                - ✅ journeys on mock (three times) and sandbox; owner chain 17, settled chain 14, trial cancellation
+                  48 and Paddle Sync 32 checks, all passing; licensing auth 31, web 96, backend 435 tests pass;
+                - ✅ found and fixed (kit PR #255): the email change recorded nothing (the session lookup overwrote the
+                  token's email); the code step of signing in vanished (the session's refetch showed the wait in its
+                  place); a 429's wait read billions of minutes (pg's bigint as a string); accounts verified before
+                  the second factor had no emailed code (a data migration);
+                - a passkey checked by hand (Touch ID): **Gary**, on the account page and the step-up prompt.
              9. **Security evidence (D14):** the kit scaffolds `SECURITY.md` and `security/` (`POLICY.md`,
                 `EVIDENCE.md`, `results/`), with a check. Licensing's covers 2b.2f's access control and 2b.2d.
              - **Deferred (Gary, 2026-10-11): recovering a lost passkey.** Someone with only a passkey who loses it

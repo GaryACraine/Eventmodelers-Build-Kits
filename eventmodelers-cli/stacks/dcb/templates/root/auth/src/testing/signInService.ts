@@ -3,8 +3,7 @@ import { fileURLToPath } from "node:url"
 import { PostgreSqlContainer } from "@testcontainers/postgresql"
 import { runner } from "node-pg-migrate"
 import { createRemoteJWKSet, jwtVerify } from "jose"
-import { Pool } from "pg"
-import { createAuth } from "../auth.js"
+import { authPool, createAuth } from "../auth.js"
 import { loadConfig } from "../config.js"
 import type { Email, SendEmail } from "../email.js"
 import { createServer } from "../server.js"
@@ -39,7 +38,7 @@ export async function startSignInService({ env = {}, sendEmail }: { env?: Record
         AUTH_BREACHED_PASSWORDS: "false",
         ...env
     })
-    const pool = new Pool({ connectionString: config.databaseUrl, options: "-c search_path=auth" })
+    const pool = authPool(config.databaseUrl)
     const sent: Email[] = []
     http.on("request", createServer(createAuth(config, sendEmail ?? (async email => void sent.push(email)), pool)))
 
@@ -74,7 +73,7 @@ export async function startSignInService({ env = {}, sendEmail }: { env?: Record
             try {
                 body = JSON.parse(text)
             } catch {}
-            return { status: response.status, body, location: response.headers.get("location") }
+            return { status: response.status, body, location: response.headers.get("location"), retryAfter: response.headers.get("x-retry-after") }
         }
         return {
             address,

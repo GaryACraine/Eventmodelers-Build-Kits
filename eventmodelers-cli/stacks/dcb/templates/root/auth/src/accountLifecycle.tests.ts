@@ -188,6 +188,16 @@ describe("the account's security lifecycle (ADR-056)", () => {
             expect(statuses.slice(0, 5)).not.toContain(429)
             expect(statuses[5]).toBe(429)
         })
+
+        test("the 429 says how long to wait, within the window (the web app shows it in minutes)", async () => {
+            const b = service.browser()
+            let refused
+            for (let i = 0; i < 6; i++) refused = await b.request("/sign-in/email", { body: { email: "wait@example.com", password: "a wrong password, again" } })
+            expect(refused!.status).toBe(429)
+            const seconds = Number(refused!.retryAfter)
+            expect(seconds).toBeGreaterThan(0)
+            expect(seconds).toBeLessThanOrEqual(60)
+        })
     })
 
     describe("D12: sign-up's unhappy paths", () => {

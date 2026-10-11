@@ -2,11 +2,25 @@ import { betterAuth } from "better-auth"
 import { APIError } from "better-auth/api"
 import { haveIBeenPwned, jwt, twoFactor } from "better-auth/plugins"
 import { passkey } from "@better-auth/passkey"
-import { Pool } from "pg"
+import { Pool, types } from "pg"
 import { accountChanges } from "./accountChanges.js"
 import type { AuthConfig } from "./config.js"
 import type { Email, SendEmail } from "./email.js"
 import { factorsInToken, recordFactors, signInMethod } from "./signInMethod.js"
+
+/**
+ * The pool for the sign-in service's tables, on the `auth` schema. A `bigint` is read as a number: Better Auth keeps
+ * milliseconds in one (`rateLimit.lastRequest`) and adds to it, which on pg's default string makes the 429's
+ * `X-Retry-After` nonsense (a wait of billions of minutes). Every one it keeps is a time in milliseconds, far inside a
+ * safe integer.
+ */
+export function authPool(databaseUrl: string): Pool {
+    return new Pool({
+        connectionString: databaseUrl,
+        options: "-c search_path=auth",
+        types: { getTypeParser: ((oid: number, format?: "text" | "binary") => (oid === types.builtins.INT8 ? Number : types.getTypeParser(oid, format))) as typeof types.getTypeParser }
+    })
+}
 
 /**
  * Better Auth, configured for this platform (ADR-054, ADR-055, ADR-056). Each part follows Better Auth's docs:
@@ -35,11 +49,7 @@ import { factorsInToken, recordFactors, signInMethod } from "./signInMethod.js"
  *
  * `database` is the pool for its tables: by default one on the `auth` schema (tests pass their own, to close it).
  */
-export function createAuth(
-    config: AuthConfig,
-    sendEmail: SendEmail,
-    database = new Pool({ connectionString: config.databaseUrl, options: "-c search_path=auth" })
-) {
+export function createAuth(config: AuthConfig, sendEmail: SendEmail, database = authPool(config.databaseUrl)) {
     /**
      * Sent without being awaited. A failure is logged as an alert line (ADR-032's format: a log-based rule turns it into
      * an email or a page); the person has a "send it again" on every screen that sends one. No address in the line.

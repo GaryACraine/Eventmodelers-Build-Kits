@@ -51,6 +51,21 @@ describe("the session with real sign-in (better-auth)", () => {
         expect(screen.getByRole("link", { name: "Sign up" })).toHaveAttribute("href", "/sign-up?next=%2Fget-started")
     })
 
+    it("keeps the code step of signing in while Better Auth fetches the session again (only the first load waits)", async () => {
+        answer = { data: null, isPending: false }
+        vi.spyOn(signInService, "signInWithEmail").mockResolvedValue({ data: { twoFactorRedirect: true, twoFactorMethods: ["otp"] }, error: null } as never)
+        vi.spyOn(signInService, "sendCode").mockResolvedValue({ data: { status: true }, error: null } as never)
+        const { rerender } = render(page(["sub"]))
+        await userEvent.type(screen.getByLabelText("Email"), "owner@contractor.example")
+        await userEvent.type(screen.getByLabelText("Password"), "correct horse battery staple")
+        await userEvent.click(screen.getByRole("button", { name: "Sign in" }))
+        expect(await screen.findByRole("form", { name: "Enter your code" })).toBeInTheDocument()
+        answer = { data: null, isPending: true }
+        rerender(page(["sub"]))
+        expect(screen.getByRole("form", { name: "Enter your code" })).toBeInTheDocument()
+        expect(screen.queryByText("Checking who is signed in…")).toBeNull()
+    })
+
     it("gives the page sub and email from the signed-in user", () => {
         answer = { data: { user: { id: "u-1", email: "owner@contractor.example" } }, isPending: false }
         render(page(["sub", "email"]))

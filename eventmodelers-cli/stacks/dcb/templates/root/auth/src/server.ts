@@ -1,8 +1,7 @@
 import express from "express"
 import { toNodeHandler } from "better-auth/node"
 import { fileURLToPath } from "node:url"
-import { Pool } from "pg"
-import { createAuth, type Auth } from "./auth.js"
+import { authPool, createAuth, type Auth } from "./auth.js"
 import { loadConfig } from "./config.js"
 import { emailSender } from "./email.js"
 import { removeUnverifiedAccountsRegularly } from "./unverified.js"
@@ -23,7 +22,7 @@ export function createServer(auth: Auth): express.Express {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const config = loadConfig()
-    const pool = new Pool({ connectionString: config.databaseUrl, options: "-c search_path=auth" })
+    const pool = authPool(config.databaseUrl)
     const app = createServer(createAuth(config, emailSender(config), pool))
     // ADR-056 D12: accounts never verified are removed after AUTH_UNVERIFIED_RETENTION_DAYS
     const stopRemoving = removeUnverifiedAccountsRegularly(pool, config.unverifiedRetentionDays)
