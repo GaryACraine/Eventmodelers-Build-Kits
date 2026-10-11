@@ -568,6 +568,11 @@ model and build only what's ours.
                 - in-session app codes not being counted.
 
                 The second-factor and passkey migration and plugins are in, ahead of step 3.
+                **Settled by Gary the same day:**
+                - **D4a:** no emailed code once the person has the app or a passkey;
+                - **D15:** a step-up lasts 12 hours (`AUTH_STEP_UP_HOURS`).
+
+                Both are built in step 3.
              3. **Kit, the sign-in service:**
                 - `twoFactor` (OTP and TOTP, backup codes), the passkey, reset, change of password and email;
                 - password rules and HIBP, sessions, notices, rate limits;
@@ -4529,6 +4534,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-11 | ADR-056 lifecycle flows: reset by a 1-hour link that ends every session and doesn't skip a stronger factor; a change of password needs the current one; a change of email is confirmed at the old address and verified at the new one, and identity records it by a `self` command from the token; 12 characters with breached passwords refused (`AUTH_BREACHED_PASSWORDS`); passkeys, no magic links or SMS; web sessions 7 days; notices; stricter rate limits; the screens come with the kit | Gary: "Self command from token" (no webhook between our own services). The rest were recommendations (NIST SP 800-63B, OWASP), accepted with the plan |
 | 2026-10-11 | ADR-056 sign-up's unhappy paths: unverified accounts removed after 7 days; an expired-link page with a new link; "send the link again"; an email to someone signing up again with the same address; alerts on emails that can't be sent; a 429 message | Gary: "7 days". It covers mistyped addresses, and those accounts never reach our events |
 | 2026-10-11 | ADR-056 D14: every project keeps its security policies and evidence in `security/` (`POLICY.md`, `EVIDENCE.md`, `results/`), pointed to by `SECURITY.md`, with a check that each policy names tests that exist | Gary: "ensure the tests and our policies are easily discoverable" (Cyber Essentials). Certification and customers' questionnaires ask for both |
+| 2026-10-11 | ADR-056 spike: D1 holds; D4a (no emailed code once there's the app or a passkey) and D15 (a step-up lasts 12 hours) | Gary: "Stop offering it", "12 hours". The spike found that the emailed code is offered to everyone, so a taken inbox reached admin level even for someone with the app; a step-up otherwise lasted the session's 7 days (NIST: 12 hours) |
 
 ## Progress
 

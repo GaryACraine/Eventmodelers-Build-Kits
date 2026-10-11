@@ -3886,9 +3886,13 @@ Postgres, each checked by removing the protection it covers).
   - **The first strong factor:** someone who has taken the password and the inbox before the owner sets up an app
     or passkey can set up their own. That's inherent to any first enrolment. D3's prompt at the first owner action
     keeps the window short.
-  - **Two refinements, put to Gary:**
-    - stop offering the emailed code to someone who has the app or a passkey (D4 as worded);
-    - how long a step-up lasts.
+  - **Two refinements, settled by Gary on 2026-10-11:**
+    - **D4a, no emailed code once there's a stronger factor** (Gary: "Stop offering it"). Someone who has the app or
+      a passkey is no longer offered the emailed code at sign-in, and asking for one is refused. So the inbox alone
+      can't get into their account at any level. A lost phone is covered by a backup code or a passkey.
+    - **D15, a step-up lasts 12 hours** (Gary: "12 hours"; NIST asks again every 12 hours at this level). The session
+      records when the app, a backup code or a passkey was last proved. After 12 hours the token no longer lists that
+      factor, so the API asks again. The setting is `AUTH_STEP_UP_HOURS`, default 12.
 
 **Consequences, once decided:**
 - **Each choice becomes a setting:** in `auth/src/config.ts` where it differs by deployment, otherwise in
