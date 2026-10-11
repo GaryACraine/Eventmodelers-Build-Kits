@@ -4283,9 +4283,12 @@ checked by the decider or a read model, and the person is told why. A missing pe
 
   The board shows it later.
 - **The caller's roles** come from the project's own read models, through a `RoleLookup` wired in `index.ts` beside
-  the session lookup: `{ platform: [...], organisations: { <id>: [...] } }`.
-  - In licensing, `Memberships` (licensing, by `userId`) gives the organisation roles. It's a published read model
-    queried in-process (ADR-059 (a)).
+  the session lookup. It's given the organisation the request names, and answers `{ platform: [...], organisation:
+  [...] }`: only that organisation's roles are needed.
+  - In licensing, `Memberships` (licensing, keyed by `organisationId`, the caller's entries kept) gives the
+    organisation roles. It's a published read model queried in-process (ADR-059 (a)).
+  - It's keyed by organisation, not by person: `userWasAssignedToRole` is tagged by `organisationId` only, and tagging
+    it by `userId` would change a built event's tags (ADR-048).
   - `PlatformAdmins` (identity, by the token's email) gives the platform role.
 - **The check** is `requirePermission(permission)`:
   - allowed if a platform role holds the permission;

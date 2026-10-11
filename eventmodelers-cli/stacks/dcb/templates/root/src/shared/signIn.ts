@@ -153,7 +153,7 @@ export function requirePermission(permission: string, keys: string[] = []) {
             const request = req as { params?: Record<string, unknown>; body?: Record<string, unknown> }
             const named = request.params?.[map.tenantKey] ?? request.body?.[map.tenantKey]
             const tenant = typeof named === "string" ? named : undefined
-            const decision = decide(map, await rolesOf({ sub: who.sub, email: who.email, session }), permission, tenant)
+            const decision = decide(map, await rolesOf({ sub: who.sub, email: who.email, session }, tenant), permission, tenant)
             if (decision === "allow") return next()
             if (decision === "not-found") {
                 return sendProblem(res, 404, { type: "about:blank", title: "Not Found", status: 404, detail: "Not found." })
