@@ -16,7 +16,8 @@ import { APIError, createAuthEndpoint, createAuthMiddleware, getSessionFromCtx, 
  *
  * A session created where none of these is known gets no factors, so it passes no check (fail closed).
  */
-export type Factor = "pwd" | "email-otp" | "totp" | "backup-code" | "passkey" | "trusted-device" | "email-link"
+/** `mfa` (RFC 8176): a second factor was proved, but too long ago to count as the app or a passkey (D15) */
+export type Factor = "pwd" | "email-otp" | "totp" | "backup-code" | "passkey" | "trusted-device" | "email-link" | "mfa"
 
 /** The factors that don't depend on the inbox (D3's `not-by-email`) */
 const NOT_BY_EMAIL: readonly Factor[] = ["totp", "backup-code", "passkey"]
@@ -32,12 +33,15 @@ type Session = { userId: string; amr?: string | null; strongAt?: Date | string |
 
 /**
  * The factors the token carries (D15): a factor that doesn't depend on the inbox counts for `stepUpHours` after it was
- * last proved, then drops out, so the API asks for it again. The others last as long as the session.
+ * last proved, then drops out, so the API asks for it again. It was still a second factor (D2), which lasts as long
+ * as the session: `mfa` takes its place, so a passkey-only session (or the password and the app) isn't left with
+ * none, and is asked for the passkey or the app again rather than to sign in again.
  */
 export function factorsInToken(session: Session, stepUpHours: number, now = Date.now()): Factor[] {
     const factors = factorsOf(session.amr)
     const strongAt = session.strongAt ? new Date(session.strongAt).getTime() : 0
-    return now - strongAt < stepUpHours * 3_600_000 ? factors : factors.filter(f => !NOT_BY_EMAIL.includes(f))
+    if (now - strongAt < stepUpHours * 3_600_000 || !isNotByEmail(factors)) return factors
+    return [...factors.filter(f => !NOT_BY_EMAIL.includes(f)), "mfa"]
 }
 
 /** The factors a session created by signing in at `path` has proved; the password came first for the two-factor paths */

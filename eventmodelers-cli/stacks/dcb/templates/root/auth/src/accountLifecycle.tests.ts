@@ -228,7 +228,7 @@ describe("the account's security lifecycle (ADR-056)", () => {
     })
 
     describe("D15: a step-up lasts 12 hours", () => {
-        test("after 12 hours the token stops listing the app, so the API asks again; the session itself goes on", async () => {
+        test("after 12 hours the token stops listing the app, so the API asks again; the session keeps a second factor", async () => {
             const email = "twelve-hours@example.com"
             await service.verifiedPerson(email)
             const b = await service.signInWithEmailedCode(email)
@@ -238,15 +238,21 @@ describe("the account's security lifecycle (ADR-056)", () => {
             expect(await b.amr()).toEqual(["pwd", "email-otp", "totp"])
 
             await service.pool.query(`update session set "strongAt" = now() - interval '13 hours' where "userId" = (select id from "user" where email = $1)`, [email])
-            expect(await b.amr()).toEqual(["pwd", "email-otp"])
+            expect(await b.amr()).toEqual(["pwd", "email-otp", "mfa"])
         })
 
-        test("factorsInToken keeps the inbox's factors and drops the others once the hours have passed", () => {
+        test("factorsInToken keeps the inbox's factors and puts mfa for the others once the hours have passed", () => {
             const at = Date.UTC(2026, 9, 11, 12)
             const session = { userId: "u", amr: "pwd email-otp totp", strongAt: new Date(at) }
             expect(factorsInToken(session, 12, at + 11 * 3_600_000)).toEqual(["pwd", "email-otp", "totp"])
-            expect(factorsInToken(session, 12, at + 12 * 3_600_000)).toEqual(["pwd", "email-otp"])
-            expect(factorsInToken({ userId: "u", amr: "passkey" }, 12, at)).toEqual([])
+            expect(factorsInToken(session, 12, at + 12 * 3_600_000)).toEqual(["pwd", "email-otp", "mfa"])
+            expect(factorsInToken({ userId: "u", amr: "pwd email-otp" }, 12, at)).toEqual(["pwd", "email-otp"])
+        })
+
+        test("a passkey-only session after 12 hours keeps a second factor (mfa), so it's asked for the passkey, not to sign in again", () => {
+            const at = Date.UTC(2026, 9, 11, 12)
+            expect(factorsInToken({ userId: "u", amr: "passkey", strongAt: new Date(at) }, 12, at + 13 * 3_600_000)).toEqual(["mfa"])
+            expect(factorsInToken({ userId: "u", amr: "pwd totp", strongAt: new Date(at) }, 12, at + 13 * 3_600_000)).toEqual(["pwd", "mfa"])
         })
     })
 })

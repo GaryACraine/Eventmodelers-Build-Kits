@@ -203,6 +203,12 @@ describe("the API's sign-in check (ADR-037, ADR-055)", () => {
                 stepUp(await agent().post("/assign").set("Authorization", await as("sub-7f3a", ["pwd", "email-otp"])).send({ organisationId: "org-4" }), "not-by-email")
             })
 
+            test("a passkey or the app proved over 12 hours ago (mfa, D15) is still a second factor, but an owner is asked again", async () => {
+                const lapsed = await as("sub-7f3a", ["mfa"])
+                expect((await agent().get("/seats/org-4").set("Authorization", lapsed)).status).toBe(200)
+                stepUp(await agent().get("/seats/org-1").set("Authorization", lapsed), "not-by-email")
+            })
+
             test("a platform admin needs the app or a passkey too", async () => {
                 stepUp(await agent().get("/notifications").set("Authorization", await as("sub-ops", ["pwd", "email-otp"])), "not-by-email")
             })

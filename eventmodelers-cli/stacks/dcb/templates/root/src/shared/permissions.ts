@@ -22,13 +22,14 @@ export interface RoleMap {
 /**
  * How strongly a session signed in (ADR-056 D3), from the factors in its token (`amr`, set by the sign-in service):
  * - **second-factor:** anything beyond the password: an emailed code, the app, a backup code, a passkey, a device
- *   trusted after one of those, or the link that verified a new account;
+ *   trusted after one of those, the link that verified a new account, or `mfa` (one of the app, a backup code or a
+ *   passkey, proved over 12 hours ago, D15);
  * - **not-by-email:** the app, a backup code or a passkey, proved in the last 12 hours (the sign-in service drops
  *   them from the token after that, D15). Taking the inbox alone never reaches it.
  */
 export type SignInLevel = "second-factor" | "not-by-email"
 
-const SECOND_FACTORS = ["email-otp", "totp", "backup-code", "passkey", "trusted-device", "email-link"]
+const SECOND_FACTORS = ["email-otp", "totp", "backup-code", "passkey", "trusted-device", "email-link", "mfa"]
 const NOT_BY_EMAIL = ["totp", "backup-code", "passkey"]
 
 /** Whether a session with these factors has signed in strongly enough for `level` */
