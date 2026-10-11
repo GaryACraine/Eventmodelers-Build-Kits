@@ -1,6 +1,6 @@
 import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose"
 import { sendProblem, type WebApiSetup } from "@dcb-es/event-store-express"
-import { decide, roleMap as roleMapFromFile, type RoleLookup, type RoleMap } from "./permissions.js"
+import { decide, meets, roleMap as roleMapFromFile, type RoleLookup, type RoleMap, type SignInLevel } from "./permissions.js"
 
 /** Express's response, as the library's router types it (the project may resolve another copy of express's types) */
 type ApiResponse = Parameters<typeof sendProblem>[0]
@@ -25,6 +25,12 @@ type ApiResponse = Parameters<typeof sendProblem>[0]
  * **Permissions** (ADR-060): `roles` is the project's `RoleLookup` (the caller's roles, from its read models), and the
  * role map is `api/roles.json` (tests pass `roleMap`). Without either, every permission route answers 403.
  *
+ * **How strongly the person signed in** (ADR-056): the token's `amr` lists the factors the session proved. Every
+ * route that needs someone signed in needs a second factor (D2), and a role may need more (D3, the role map's
+ * `signIn`). When the session falls short, the answer is **401 with `WWW-Authenticate: Bearer
+ * error="insufficient_user_authentication"`** (RFC 9470, step-up) and the level needed (`acr_values`, and `signIn` in
+ * the body). The web app then asks for the stronger factor and retries.
+ *
  * Configured by `AUTH_ISSUER`, `AUTH_AUDIENCE` (both the sign-in service's BETTER_AUTH_URL by default) and
  * `AUTH_JWKS_URL` (where this service reaches its JWKS, e.g. http://auth:3001/api/auth/jwks inside Compose). The same
  * in our cloud and on-premises. Put it after CORS and before every route in `apis`.
@@ -33,6 +39,8 @@ export interface SignedIn {
     /** The sign-in service's permanent id for the person (ADR-037: our own user is linked by it) */
     sub: string
     email: string
+    /** The factors this session proved (the token's `amr`), e.g. ["pwd", "email-otp"]; none when the token has none */
+    amr: string[]
 }
 
 /** The signed-in person's values a route asked for: `sub`, `email`, and any looked-up key (`userId`) */
@@ -77,7 +85,8 @@ export function configureSignIn({
                 if (typeof payload.sub !== "string" || typeof payload.email !== "string") {
                     return refuse(res, "The token doesn't say who is signed in.")
                 }
-                res.locals["signedIn"] = { sub: payload.sub, email: payload.email } satisfies SignedIn
+                const amr = Array.isArray(payload["amr"]) ? payload["amr"].filter((f): f is string => typeof f === "string") : []
+                res.locals["signedIn"] = { sub: payload.sub, email: payload.email, amr } satisfies SignedIn
                 next()
             } catch {
                 refuse(res, "The token is invalid or has expired: sign in again.")
@@ -89,8 +98,9 @@ export function configureSignIn({
 const sessions = new WeakMap<object, Session>()
 
 /**
- * Route middleware for a route that uses the signed-in person's values: 401 without a valid token; 403 when a key
- * the token doesn't hold isn't in the session lookup (signed up, not registered yet). Then `sessionOf(req)` has them.
+ * Route middleware for a route that uses the signed-in person's values: 401 without a valid token, or a step-up when
+ * the session proved no second factor (ADR-056 D2); 403 when a key the token doesn't hold isn't in the session lookup
+ * (signed up, not registered yet). Then `sessionOf(req)` has them.
  *
  *   router.post("/activate-organisation", requireSession(["userId"]), validateBody(Schema), on(async req => {
  *       const { userId } = sessionOf(req)
@@ -99,6 +109,7 @@ export function requireSession(keys: string[]) {
     return async (req: object, res: ApiResponse, next: () => void): Promise<void> => {
         const signedIn = signedInOf(res)
         if (!signedIn) return refuse(res, "Sign in first.")
+        if (!meets(signedIn.amr, "second-factor")) return stepUp(res, "second-factor")
         const session: Session = { sub: signedIn.sub, email: signedIn.email }
         if (keys.some(key => !(key in session))) {
             const lookup = res.locals["sessionLookup"] as SessionLookup | undefined
@@ -130,7 +141,9 @@ export function requireSession(keys: string[]) {
  * - allowed when a platform role the caller holds has the permission;
  * - otherwise the organisation is the role map's tenant key (`organisationId`) in the path, else the body:
  *   **404** when the caller holds no role there (it doesn't reveal that the organisation exists), **403** when they
- *   hold one without the permission.
+ *   hold one without the permission;
+ * - **401, step up** (RFC 9470) when a role that holds it needs a stronger sign-in than this session's (ADR-056 D3:
+ *   an owner needs the app or a passkey).
  * Put it where the path's parameters are known (on the route, or readModelRoute's `guard`), never `router.use`.
  */
 export function requirePermission(permission: string, keys: string[] = []) {
@@ -153,8 +166,9 @@ export function requirePermission(permission: string, keys: string[] = []) {
             const request = req as { params?: Record<string, unknown>; body?: Record<string, unknown> }
             const named = request.params?.[map.tenantKey] ?? request.body?.[map.tenantKey]
             const tenant = typeof named === "string" ? named : undefined
-            const decision = decide(map, await rolesOf({ sub: who.sub, email: who.email, session }, tenant), permission, tenant)
+            const decision = decide(map, await rolesOf({ sub: who.sub, email: who.email, session }, tenant), permission, who.amr, tenant)
             if (decision === "allow") return next()
+            if (typeof decision === "object") return stepUp(res, decision.stepUp)
             if (decision === "not-found") {
                 return sendProblem(res, 404, { type: "about:blank", title: "Not Found", status: 404, detail: "Not found." })
             }
@@ -190,6 +204,17 @@ export function readModelLookup(read: (sub: string) => Promise<Record<string, un
 /** The person this request was made by, or undefined if it carried no token */
 export function signedInOf(res: { locals: Record<string, unknown> }): SignedIn | undefined {
     return res.locals["signedIn"] as SignedIn | undefined
+}
+
+const STEP_UP: Record<SignInLevel, string> = {
+    "second-factor": "Confirm it's you with a second factor: sign in again.",
+    "not-by-email": "Confirm it's you with your authenticator app or passkey."
+}
+
+/** 401 asking for a stronger sign-in (RFC 9470): the level needed is `acr_values`, and `signIn` in the body */
+function stepUp(res: ApiResponse, level: SignInLevel): void {
+    res.setHeader("WWW-Authenticate", `Bearer error="insufficient_user_authentication", error_description="${STEP_UP[level]}", acr_values="${level}"`)
+    sendProblem(res, 401, { type: "about:blank", title: "Unauthorized", status: 401, detail: STEP_UP[level], signIn: level })
 }
 
 function refuse(res: ApiResponse, detail: string): void {

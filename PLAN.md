@@ -578,7 +578,8 @@ model and build only what's ours.
                 - password rules and HIBP, sessions, notices, rate limits;
                 - sign-up's unhappy paths and the 7-day cleanup;
                 - each with tests.
-             4. **Kit, the API's step-up:**
+             4. ✅ **Kit, the API's step-up** (done 2026-10-11; ADR-056 "Step 4"; its 30 sign-in tests and licensing's 60
+                backend files pass in a scratch copy with the kit's files):
                 - `permissions.ts` (`signIn` per role, `decide` → step-up) and `requirePermission`'s 401;
                 - `testSignIn` with `amr`;
                 - the build skills.

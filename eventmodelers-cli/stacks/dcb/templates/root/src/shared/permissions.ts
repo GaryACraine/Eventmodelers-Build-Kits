@@ -8,12 +8,36 @@ import { existsSync, readFileSync } from "node:fs"
  * A role is **platform**-scoped (the platform admin: it holds its permissions everywhere) or **organisation**-scoped
  * (an owner, an admin: only in the organisation it was given in). An organisation-scoped permission is checked in the
  * organisation the request names, by the tenant key (`organisationId`) in its path or body.
+ *
+ * **How strongly the caller must have signed in** (ADR-056 D1, D3): each role has a sign-in level, `second-factor`
+ * by default. The token's `amr` says which factors this session proved; a role's permission counts only when they're
+ * enough for its level. Otherwise the caller is asked to step up.
  */
 export interface RoleMap {
     /** The field that names the organisation in a request, e.g. "organisationId" */
     tenantKey: string
-    roles: Record<string, { scope: "organisation" | "platform"; permissions: string[] }>
+    roles: Record<string, { scope: "organisation" | "platform"; permissions: string[]; signIn?: SignInLevel }>
 }
+
+/**
+ * How strongly a session signed in (ADR-056 D3), from the factors in its token (`amr`, set by the sign-in service):
+ * - **second-factor:** anything beyond the password: an emailed code, the app, a backup code, a passkey, a device
+ *   trusted after one of those, or the link that verified a new account;
+ * - **not-by-email:** the app, a backup code or a passkey, proved in the last 12 hours (the sign-in service drops
+ *   them from the token after that, D15). Taking the inbox alone never reaches it.
+ */
+export type SignInLevel = "second-factor" | "not-by-email"
+
+const SECOND_FACTORS = ["email-otp", "totp", "backup-code", "passkey", "trusted-device", "email-link"]
+const NOT_BY_EMAIL = ["totp", "backup-code", "passkey"]
+
+/** Whether a session with these factors has signed in strongly enough for `level` */
+export function meets(factors: readonly string[], level: SignInLevel): boolean {
+    return factors.some(f => (level === "not-by-email" ? NOT_BY_EMAIL : SECOND_FACTORS).includes(f))
+}
+
+/** What a permission check decided: go ahead, refuse, hide the organisation, or ask for a stronger sign-in */
+export type Decision = "allow" | "forbidden" | "not-found" | { stepUp: SignInLevel }
 
 /** The roles a caller holds: platform-wide, and in the organisation the request names (none when it names none) */
 export interface CallerRoles {
@@ -43,15 +67,21 @@ export function roleMap(file = process.env["ROLES_FILE"] ?? "api/roles.json"): R
 const holds = (map: RoleMap, role: string, scope: "organisation" | "platform", permission: string) =>
     map.roles[role]?.scope === scope && map.roles[role].permissions.includes(permission)
 
+const levelOf = (map: RoleMap, role: string): SignInLevel => map.roles[role]?.signIn ?? "second-factor"
+
 /**
- * May this caller use `permission`, in the organisation `tenant` names (if any)?
- * - **allow:** a platform role holds it, or a role the caller holds in that organisation does;
+ * May this caller use `permission`, in the organisation `tenant` names (if any), having signed in with `factors`?
+ * - **allow:** a role that holds it (platform-wide, or in that organisation) has its sign-in level met;
+ * - **step-up:** roles hold it, but none has its level met: the weakest level among them is asked for;
  * - **not-found:** the caller holds no role in that organisation (it doesn't say whether the organisation exists);
  * - **forbidden:** otherwise (a member without the permission, or a request that names no organisation).
  */
-export function decide(map: RoleMap, caller: CallerRoles, permission: string, tenant?: string): "allow" | "forbidden" | "not-found" {
-    if (caller.platform.some(role => holds(map, role, "platform", permission))) return "allow"
+export function decide(map: RoleMap, caller: CallerRoles, permission: string, factors: readonly string[], tenant?: string): Decision {
+    const granting = caller.platform.filter(role => holds(map, role, "platform", permission))
+    if (tenant) granting.push(...caller.organisation.filter(role => holds(map, role, "organisation", permission)))
+    if (granting.some(role => meets(factors, levelOf(map, role)))) return "allow"
+    if (granting.length > 0)
+        return { stepUp: granting.some(role => levelOf(map, role) === "second-factor") ? "second-factor" : "not-by-email" }
     if (!tenant) return "forbidden"
-    if (caller.organisation.length === 0) return "not-found"
-    return caller.organisation.some(role => holds(map, role, "organisation", permission)) ? "allow" : "forbidden"
+    return caller.organisation.length === 0 ? "not-found" : "forbidden"
 }

@@ -3910,6 +3910,18 @@ checked by removing it):
     Manager), so it's rare. Recovery by a platform admin is to be decided with the account screens.
   - **A second sign-up already answered exactly like a new one,** plugin fields included, with no option set.
 
+**Step 4, the API's step-up, built 2026-10-11** (`src/shared/permissions.ts`, `signIn.ts`, `src/test/signIn.ts`):
+- **Each role in the map has a sign-in level** (`signIn`, `second-factor` by default). `decide` allows a request
+  when a role that holds the permission has its level met by the token's `amr`. When roles hold it but none has its
+  level met, it asks for the weakest of their levels. So someone who is both owner and admin can still do admin
+  things with an emailed code.
+- **Every route that needs someone signed in needs a second factor** (D2). This backs up the sign-in service: a
+  session with no factors, or a token without `amr`, fails closed.
+- **The answer is 401 with `WWW-Authenticate: Bearer error="insufficient_user_authentication"` and `acr_values`**
+  (RFC 9470), with `signIn` in the body. A step-up is only offered where a role holds the permission, so it never
+  says more than a 404 or 403 would.
+- **`testSignIn`'s token** says a password and an emailed code unless a test says otherwise.
+
 **Consequences, once decided:**
 - **Each choice becomes a setting:** in `auth/src/config.ts` where it differs by deployment, otherwise in
   `auth/src/auth.ts`.
