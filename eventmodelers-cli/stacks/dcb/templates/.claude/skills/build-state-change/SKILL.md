@@ -509,10 +509,10 @@ Use a role the map gives the permission, and the specifications' organisation. A
 - the same caller in another organisation gets 404;
 - a member whose roles lack the permission gets 403 (`{ "org-1": ["engineer"] }`, or any role without it).
 
-**How strongly the caller signed in** (ADR-056): `signIn.bearer({ sub })` signs in with a password and an emailed
-code (`amr: ["pwd", "email-otp"]`), which is enough for a role whose `signIn` in `api/roles.json` is `second-factor`
-(the default). When the role you use is `not-by-email` (an owner, the platform admin), sign in with the app instead,
-`signIn.bearer({ sub, amr: ["pwd", "totp"] })`, and add a fourth test: the same caller with `["pwd", "email-otp"]`
+**How strongly the caller signed in** (ADR-056): `signIn.bearer({ sub })` signs in with a password and the
+authenticator app (`amr: ["pwd", "totp"]`), which is enough for every role, so the other tests never depend on the
+role map's levels. When the role you use is `not-by-email` in `api/roles.json` (an owner, the platform admin), add a
+fourth test: the same caller signed in with only an emailed code, `signIn.bearer({ sub, amr: ["pwd", "email-otp"] })`,
 gets **401** with `WWW-Authenticate` containing `insufficient_user_authentication` and `body.signIn` `not-by-email`.
 `requirePermission` does this; never check `amr` in a route.
 
