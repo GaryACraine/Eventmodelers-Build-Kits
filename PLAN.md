@@ -435,7 +435,7 @@ model and build only what's ours.
                - **Proposed (Gary asked, 2026-10-09):** an `identity` context for our user, the `sub` link, role sync
                  and account follow-ups, moved there in the same replacement.
                - **One chapter per sign-in flow.**
-          2. **2b.2f NEXT: secure by default, roles and the role sync (ADR-058, ADR-060).** Chosen 2026-10-09 (Gary)
+          2. ✅ **2b.2f secure by default and roles (ADR-058, ADR-060; done 2026-10-11, the role sync deferred).** Chosen 2026-10-09 (Gary)
              ahead of 2b.2b to 2b.2d: ADR-056's second factor is set per role, ADR-059 point 4 (how a context
              publishes an event) waits on the role sync, and most routes still answer anyone. Better Auth (ADR-054)
              lifts the 2026-10-05 reason the role-sync slices stayed draft.
@@ -517,7 +517,8 @@ model and build only what's ours.
                     deployment needs no new event-store capability.
                 - **The role sync, deferred:** licensing → identity (pull, `subscribed`), then identity → Better Auth (a
                   request to act). Nothing needs roles in Better Auth yet; the API reads `Memberships`. It's built
-                  when the per-role second factor (2b.2d) or SSO groups (2b.2b) need it.
+                  when SSO groups (2b.2b) need it. **2026-10-11:** the per-role second factor no longer needs it:
+                  ADR-056 D1 enforces it in the API, by step-up.
 
                 **Was:**
                 - kit: `permissions.ts`, `RoleLookup`, `requirePermission` (404 and 403), `readModelRoute`'s
@@ -539,29 +540,61 @@ model and build only what's ours.
           3. **2b.2b SSO for on-premises customers:** check Better Auth's SSO plugin against Entra ID or Okta.
           4. **2b.2c Security releases:** advisory alerts on `better-auth`, pinned versions, a patch path for
              on-premises installs.
-          5. **2b.2d The account security lifecycle (ADR-056, open).** Decide after 2b.2f (its second factor is set
-             per role):
-             - recovering a forgotten password;
-             - changing the password or the email;
-             - a second factor (TOTP, email or SMS codes, backup codes), and who must use it;
-             - passkeys and magic links;
-             - web vs mobile;
-             - sessions;
-             - deleting an account (GDPR): waits on ADR-062 (Proposed 2026-10-11: personal data encrypted per
-               person, the key thrown away; Gary's Kotlin code to port);
-             - abuse;
-             - security notices.
+          5. **2b.2d NEXT: the account security lifecycle (ADR-056, Accepted 2026-10-11).**
+             - **The decisions** (D1–D14, in ADR-056 "Decided"):
+               - **D1:** a role's sign-in requirement is enforced in our API by step-up (`amr` in the token; 401
+                 `insufficient_user_authentication`), so the role sync stays deferred;
+               - **D2:** an emailed code at every password sign-in;
+               - **D3:** levels `second-factor` and `not-by-email` in the role map (owner and platformAdmin:
+                 `not-by-email`);
+               - **D4, D5:** reset and change of password;
+               - **D6:** a change of email, recorded by identity's `self` command from the token;
+               - **D7:** 12 characters, breached passwords refused;
+               - **D8:** passkeys; no magic links or SMS;
+               - **D9:** sessions;
+               - **D10:** notices;
+               - **D11:** abuse;
+               - **D12:** sign-up's unhappy paths (unverified accounts removed after 7 days);
+               - **D13:** the screens come with the kit;
+               - **D14:** policies and evidence in `security/`.
 
-             ADR-056 lists Better Auth's options and a recommendation for each (Gary, 2026-10-09: "as long as we
-             don't lose record").
-             - **Sign-up's unhappy paths, each its own chapter (no branching in chapter 1, ADR-038):**
-               - the email never verified (stale accounts);
-               - an expired link (our screens don't show the error yet);
-               - signing up again with the same email (no email is sent today);
-               - a mistyped address;
-               - an email that can't be sent;
-               - rate limits;
-               - verified but never onboarded (licensing's own chapters).
+               Account deletion waits on ADR-062. Mobile is recorded only.
+             1. ✅ **Record the decisions** (ADR-056 Accepted; this entry; the Decisions Log).
+             2. **Spike:** the session records how it signed in, and the token carries `amr`. This proves D1 before
+                anything is built on it.
+             3. **Kit, the sign-in service:**
+                - `twoFactor` (OTP and TOTP, backup codes), the passkey, reset, change of password and email;
+                - password rules and HIBP, sessions, notices, rate limits;
+                - sign-up's unhappy paths and the 7-day cleanup;
+                - each with tests.
+             4. **Kit, the API's step-up:**
+                - `permissions.ts` (`signIn` per role, `decide` → step-up) and `requirePermission`'s 401;
+                - `testSignIn` with `amr`;
+                - the build skills.
+             5. **emcli:** `role sign-in <role> <level>`, `api/roles.json`, the contract and catalogue.
+             6. **Kit, the screens:** forgot and reset, enter a code, set up the app and backup codes, passkeys, and
+                the account page, with the step-up prompt in `api.ts`; mockup starters in emcli.
+             7. **Licensing:**
+                - `kit-drift`;
+                - sign-in levels in the role map;
+                - identity chapters per flow (external Auth screens);
+                - D6's slice, exported with Gary's go-ahead.
+             8. **Proof:**
+                - `e2e/lib/signin.mjs` completes the emailed code;
+                - e2e scripts for reset, change of password and email, and step-up (refused, then allowed after a
+                  TOTP enrolment);
+                - journeys on mock and sandbox, and the other chains;
+                - a passkey checked by hand.
+             9. **Security evidence (D14):** the kit scaffolds `SECURITY.md` and `security/` (`POLICY.md`,
+                `EVIDENCE.md`, `results/`), with a check. Licensing's covers 2b.2f's access control and 2b.2d.
+             - **Sign-up's unhappy paths** (D12; each its own chapter, no branching in chapter 1, ADR-038):
+               - the email never verified (removed after 7 days);
+               - an expired or used link (a page that sends a new one);
+               - signing up again with the same email (an email saying so, or the verification resent);
+               - a mistyped address (covered by the cleanup);
+               - an email that can't be sent (alerted, then resent);
+               - rate limits (a message);
+               - verified but never onboarded (licensing's own chapters, later).
 
                What Better Auth does today is recorded in ADR-056.
              - **Social sign-in (Google, Apple), later:** the flow still works (Better Auth stays the only issuer).
@@ -4486,6 +4519,10 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-11 | ADR-061 Proposed: four patterns between contexts by what crosses (pull a published event, the default; push a fact; push a request to act; ask synchronously); published events are API; intakes `subscribed` (new), `fetched`, `webhook`; carried into the skills as drafts; the role sync deferred until something needs roles in Better Auth | Gary: model the push/pull/synchronous patterns as ADRs and in the skills, since they'll repeat. The kit's reactors already cover one deployment. The role sync has no consumer since ADR-060 |
 | 2026-10-11 | ADR-061 Accepted | Gary, after review. The skills keep it as drafts until its first use is built and proven |
 | 2026-10-11 | ADR-062 Proposed: forgetting a person (GDPR erasure) by crypto-shredding: personal data marked in the model, encrypted per person on append, the key destroyed to forget; Gary's Kotlin code ported to TypeScript. Recorded only | Gary: events are never deleted, so erasure needs its own design. Not worked on yet; taken up before an account can be deleted and before release |
+| 2026-10-11 | ADR-056 Accepted. Enforcement and baseline: a role's sign-in requirement is enforced in our API by step-up (`amr` in the token, RFC 9470's 401), not in Better Auth; an emailed code at every password sign-in; levels `second-factor` and `not-by-email` in the role map (owner and platformAdmin `not-by-email`). The role sync stays deferred | Gary: "API step-up", "Emailed code for all". The API already reads roles (ADR-060), and asks for more only when someone acts in a role that needs it. Syncing roles to Auth would build two cross-context flows, and someone who is an owner in one organisation and an engineer in another would always need the strongest factor |
+| 2026-10-11 | ADR-056 lifecycle flows: reset by a 1-hour link that ends every session and doesn't skip a stronger factor; a change of password needs the current one; a change of email is confirmed at the old address and verified at the new one, and identity records it by a `self` command from the token; 12 characters with breached passwords refused (`AUTH_BREACHED_PASSWORDS`); passkeys, no magic links or SMS; web sessions 7 days; notices; stricter rate limits; the screens come with the kit | Gary: "Self command from token" (no webhook between our own services). The rest were recommendations (NIST SP 800-63B, OWASP), accepted with the plan |
+| 2026-10-11 | ADR-056 sign-up's unhappy paths: unverified accounts removed after 7 days; an expired-link page with a new link; "send the link again"; an email to someone signing up again with the same address; alerts on emails that can't be sent; a 429 message | Gary: "7 days". It covers mistyped addresses, and those accounts never reach our events |
+| 2026-10-11 | ADR-056 D14: every project keeps its security policies and evidence in `security/` (`POLICY.md`, `EVIDENCE.md`, `results/`), pointed to by `SECURITY.md`, with a check that each policy names tests that exist | Gary: "ensure the tests and our policies are easily discoverable" (Cyber Essentials). Certification and customers' questionnaires ask for both |
 
 ## Progress
 

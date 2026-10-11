@@ -3701,12 +3701,12 @@ on the deployment type, cloud or on-premises").
       the client sent (PLAN 14.8).
     - **Explained** in `docs/case-studies/reverse-proxies-and-client-ip.md`.
 
-### ADR-056: The account security lifecycle (open)
+### ADR-056: The account security lifecycle
 
-**Status:** Proposed, open; the second factor is settled: one opinionated default for now (2026-10-09, below). Proposed 2026-10-09 (Gary: "we can defer these decisions until later … as long as we don't lose
-record that we need to have these policies and decisions made in line with best practices and what configuration
-options are available within Better Auth"). It is decided after ADR-055 is built in the kit and licensing
-(PLAN 2b.2d).
+**Status:** **Accepted, 2026-10-11 (Gary): D1–D14 in "Decided" at the end.** Proposed 2026-10-09 (Gary: "we can
+defer these decisions until later … as long as we don't lose record that we need to have these policies and
+decisions made in line with best practices and what configuration options are available within Better Auth"). The
+second factor was settled in principle the same day. Account deletion is left to ADR-062.
 **Date:** 2026-10-09
 **Builds on:** ADR-054 (Better Auth everywhere), ADR-055 (sign-in in the kit).
 
@@ -3737,7 +3737,7 @@ options are available within Better Auth"). It is decided after ADR-055 is built
 | Changing the email | `user.changeEmail`, with `sendChangeEmailConfirmation` (confirmed at the current address first), then the new address verified | **Confirmed at the old address, verified at the new one, and the old one told.** Our `userWasRegistered.email` then goes stale, so our model needs an "email changed" follow-up |
 | Password rules | `minPasswordLength` (default 8), `maxPasswordLength` (default 128); the Have I Been Pwned plugin | **At least 12 characters, no composition rules, breached passwords refused** |
 | A second factor | the Two-Factor plugin: TOTP (an authenticator app); OTP through our own `sendOTP` (email or SMS); backup codes; trusted devices (30 days); lockout. Both methods can be on at once; passkeys come from the Passkey plugin | **Every method is built, and the policy is set per role** (Gary, 2026-10-09; see below). Backup codes with the app. SMS only if a customer insists: NIST restricts it, each message costs, and a provider must work for an Isle of Man company |
-| Who must use which | our policy, enforced in the sign-in service's hooks from the person's roles, which reach Auth through the role-sync slices (ADR-037) | **The defaults: the owner uses a passkey (an app is allowed); admins and engineers use an emailed code.** Each customer can change the policy per role (below). SSO customers get MFA from their own provider |
+| Who must use which | our policy, enforced in the sign-in service's hooks from the person's roles, which reach Auth through the role-sync slices (ADR-037). **Superseded by D1:** enforced in our API by step-up, from the roles it already reads | **The defaults: the owner uses a passkey (an app is allowed); admins and engineers use an emailed code.** Each customer can change the policy per role (below). SSO customers get MFA from their own provider |
 | Without a password | Magic Link, Email OTP, Passkey (WebAuthn; works with Expo) | **Passkeys in the long run:** they resist phishing and fit biometrics on web and mobile. Magic links only on the web, if at all |
 | Web and mobile | one server, one set of rules; mobile through the Expo client or the OAuth 2.1 Provider plugin (native apps: OIDC with PKCE, as ADR-054 assumed) | **The same policies, with different mechanics:** on mobile, codes instead of links, passkeys or biometric unlock, longer sessions that refresh |
 | Sessions | `session.expiresIn` (default 7 days), `updateAge` (default 1 day); Multi Session; ending all sessions | **Set per app** (web portal, mobile); "sign out everywhere" in the account settings |
@@ -3779,7 +3779,8 @@ options are available within Better Auth"). It is decided after ADR-055 is built
   - **The owner signs in with a passkey.** NIST counts a passkey as multi-factor on its own (the device plus the
     biometric), so the owner's passkey sign-in is their two factors. Better Auth's Passkey plugin provides it. Check
     how Better Auth records the sign-in method (for example, the Last Login Method plugin) when it's built.
-  - **Enforcing by role still needs the roles in Auth,** which arrive through the role-sync slices.
+  - ~~**Enforcing by role still needs the roles in Auth,** which arrive through the role-sync slices.~~
+    **Superseded 2026-10-11 (D1):** the API enforces it, so roles never need to reach Auth.
 - **Terms:** "TOTP" strictly means an authenticator app's time-based codes; an emailed code is an OTP.
 
 **Each decision also says whether it differs by deployment** (ADR-055's `DEPLOYMENT`). For example, an
@@ -3819,7 +3820,44 @@ These sit with the rest of the account lifecycle above (reset, change of email o
 - **What would break it:** our API accepting Google's or Apple's tokens directly (several issuers). The design never
   does that.
 
-**Decision:** open. Settled in PLAN 2b.2d, after ADR-055 is built and proven in licensing.
+**Decided, 2026-10-11 (Gary; Accepted).** Gary chose D1, D2, D6 and D12's 7 days from options. D14 is his request
+("ensure the tests and our policies are easily discoverable", with Cyber Essentials in mind). The rest are the
+recommendations, accepted with the plan. Account deletion is ADR-062's.
+
+| # | Decision | Settled | Settings it implies |
+|---|---|---|---|
+| D1 | **Where a role's sign-in requirement is enforced** | **In our API, by step-up** (Gary: "API step-up"). The token says how this session signed in (`amr`, RFC 8176). Each role in the role map (ADR-060) has a sign-in level. `requirePermission`, which already knows the caller's roles in that organisation, answers **401 with `WWW-Authenticate: Bearer error="insufficient_user_authentication"`** (RFC 9470) when the session is weaker than any of those roles needs, and the web app asks for the stronger factor. **Roles never reach Better Auth, so the role sync stays deferred** (ADR-061). Rejected: syncing roles to Auth and enforcing at sign-in (two cross-context flows, and someone who is an owner in one organisation and an engineer in another would always need the strongest factor). **Proved by a spike first:** the session records its method, and the token carries it. If it can't be recorded reliably, this comes back to Gary | the token's `amr`; the role map's `signIn` |
+| D2 | **The baseline for everyone** | **An emailed code at every password sign-in, from verification on** (Gary: "Emailed code for all"). A password alone never signs anyone in. "Remember this device" skips it for 30 days | `twoFactor` with OTP, on at verification; `trustDeviceMaxAge` 30 days |
+| D3 | **Sign-in levels in the role map** | Two levels: **`second-factor`** (any: an emailed code, the app or a passkey) and **`not-by-email`** (the app or a passkey, which survive a stolen inbox). Defaults: **owner `not-by-email`, platformAdmin `not-by-email`, admin and engineer `second-factor`.** An owner without a passkey or app is asked to add one at their first owner action. Customers changing levels comes later, and they may only tighten them | `emcli role sign-in <role> <level>`; `api/roles.json` |
+| D4 | **Forgotten password** | An emailed single-use link, valid 1 hour, that ends every session, with the same answer whether or not the account exists. **A reset doesn't skip a stronger factor:** if the account has the app or a passkey, signing in afterwards still asks for it. No reset by SMS and no security questions | `sendResetPassword`; `resetPasswordTokenExpiresIn` 3600; `revokeSessionsOnPasswordReset` true |
+| D5 | **Changing the password** | The current password is required, every other session ends, and a notice is emailed | `changePassword` with `revokeOtherSessions` |
+| D6 | **Changing the email, and our record of it** | Confirmed at the old address, verified at the new one, and the old address told. **Our record** (Gary: "Self command from token"): identity's `self` command takes the new email from the token (`session:email`, verified) and records `userEmailWasChanged` when it differs. The page the verification lands on calls it, and My Account calls it if it sees a difference. Rejected: the sign-in service pushing a signed fact (ADR-061 pattern 2), a webhook between our own services | `user.changeEmail`; `sendChangeEmailConfirmation` |
+| D7 | **Password rules** | At least 12 characters (at most 128), no composition rules. **Breached passwords are refused** (Have I Been Pwned's range API: only the first 5 characters of a SHA-1 hash leave) | `minPasswordLength` 12; `AUTH_BREACHED_PASSWORDS` (on by default; an on-premises install without internet turns it off) |
+| D8 | **Passkeys; no magic links, no SMS** | Passkeys are built and added from the account page. A passkey signs in on its own, since NIST counts it as two factors. No magic links. No SMS, unless a customer insists and a provider works for an Isle of Man company | `@better-auth/passkey`; `rpID` and origin from `BETTER_AUTH_URL` |
+| D9 | **Sessions** | **Web:** 7 days, refreshed daily; the API token lasts 15 minutes. The account page lists sessions, and "sign out everywhere" ends them. **Mobile:** recorded only until there's an app (codes instead of links, passkeys or biometric unlock, longer refreshing sessions) | `session.expiresIn` 604800; `updateAge` 86400 |
+| D10 | **Security notices** | An email when: the password changes or is reset; the email changes (to the old address); a second factor or passkey is added or removed; a backup code is used; someone signs in from a new device | hooks in `auth.ts`; senders in `email.ts` |
+| D11 | **Abuse** | Rate limits stay on, with stricter limits on sign-in, reset, codes and verification. 2FA lockout after 10 failures, for 15 minutes. No captcha until bots appear | `rateLimit.customRules`; `accountLockout` defaults |
+| D12 | **Sign-up's unhappy paths** | - **Expired or used link:** a page explains it and sends a new link.<br>- **"Send the link again"** on check-your-email, without signing in.<br>- **Signing up again with the same email:** emails "you already have an account" (sign-in and reset links), or resends the verification if the account is unverified; the screen's answer is unchanged.<br>- **Unverified accounts:** removed after **7 days** (Gary) by a scheduled job in the sign-in service. This covers mistyped addresses, and they never reach our events.<br>- **An email that can't be sent:** logged and alerted (ADR-043); the resend path covers the person.<br>- **Too many attempts (429):** "try again in N".<br>- **Verified but never onboarded:** licensing's own chapters, later | `onExistingUserSignUp`; `AUTH_UNVERIFIED_RETENTION_DAYS` 7 |
+| D13 | **Where the screens come from** | **The kit**, like Sign In and Sign Up (ADR-057): forgot and reset password, enter a code, set up the app and backup codes, passkeys, and an account page (password, email, second factors, sessions). The model draws them in identity chapters (one flow each, ADR-038) as screens marked `--external Auth`, so the loop builds nothing for them. The loop builds D6's slice | — |
+| D14 | **Security evidence, easy to find** | Every project scaffolds:<br>- **`SECURITY.md`** at the root, pointing to `security/`;<br>- **`security/README.md`**: the index;<br>- **`security/POLICY.md`**: each policy in plain terms, with its setting and ADR;<br>- **`security/EVIDENCE.md`**: each policy, the tests that prove it (unit, contract, e2e), and the last run's date and result;<br>- **`security/results/`**: dated e2e logs.<br><br>The access catalogue stays where the export writes it (`api/permissions.md`, `api/roles.json`), linked from the index. **A kit check warns** when a policy names no test, or a test it names doesn't exist. Each security step adds its rows as it lands | — |
+
+**Why step-up (D1) over a sign-in policy:**
+- the API is where roles already are (ADR-060);
+- it asks for the stronger factor only when someone acts in a role that needs it;
+- it's the standard challenge (RFC 9470).
+
+The cost is a prompt partway through a session, which the web app handles once for every page.
+
+**Certification (D14):** Cyber Essentials is self-assessed against five controls of the company's own IT:
+- firewalls;
+- secure configuration;
+- user access control, including MFA on cloud services;
+- malware protection;
+- security updates.
+
+Cyber Essentials Plus adds an independent technical audit. Neither asks for the product's own test results, but
+customers' security questionnaires, ISO 27001 and SOC 2 do. So the product keeps its policies and evidence together
+from the start.
 
 **Consequences, once decided:**
 - **Each choice becomes a setting:** in `auth/src/config.ts` where it differs by deployment, otherwise in
@@ -4423,7 +4461,8 @@ first real use, which proves it; until then the skills carry it as drafts.
      call.
    - **Deferred:** since ADR-060 the API reads roles from `Memberships`, so nothing needs roles in Better Auth yet. The
      consumers that would (a second factor per role, ADR-056; SSO groups, 2b.2b) aren't built. As with API keys, the
-     first real consumer triggers the build.
+     first real consumer triggers the build. **2026-10-11:** ADR-056 D1 enforces the second factor in the API
+     (step-up), so it isn't a consumer. SSO groups (2b.2b) are the one left.
 
 **Decision:** Accepted (2026-10-11):
 - the four patterns, with pull as the default;
