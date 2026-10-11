@@ -18,10 +18,11 @@ import type { RoleLookup, RoleMap } from "../shared/permissions.js"
  *
  *   const signIn = await testSignIn(lookup, { roles: { platform: [], organisations: { "org-1": ["owner"] } } })
  *
- * The token says how the session signed in (`amr`, ADR-056): a password and an emailed code by default, enough for a
- * `second-factor` role. A role that needs `not-by-email` (an owner) is signed in with the app or a passkey:
+ * The token says how the session signed in (`amr`, ADR-056): a password and the authenticator app by default, which is
+ * enough for every role, so a test that isn't about sign-in strength never depends on the role map's levels (changing a
+ * role's level rebuilds nothing). The step-up test says how weakly the caller signed in:
  *
- *   await signIn.bearer({ sub: "sub-owner", amr: ["passkey"] })
+ *   await signIn.bearer({ sub: "sub-owner", amr: ["pwd", "email-otp"] })   // an owner (not-by-email): 401, step up
  */
 export async function testSignIn(
     lookup?: SessionLookup,
@@ -43,7 +44,7 @@ export async function testSignIn(
     return {
         configure: (): WebApiSetup => configureSignIn({ settings: { issuer, audience: issuer, jwks }, lookup, roles, roleMap: access.roleMap }),
         /** The Authorization header for someone signed in, with a verified email */
-        bearer: async ({ sub, email = `${sub}@example.com`, amr = ["pwd", "email-otp"] }: { sub: string; email?: string; amr?: string[] }) =>
+        bearer: async ({ sub, email = `${sub}@example.com`, amr = ["pwd", "totp"] }: { sub: string; email?: string; amr?: string[] }) =>
             `Bearer ${await new SignJWT({ email, email_verified: true, amr })
                 .setProtectedHeader({ alg: "EdDSA", kid: "test" })
                 .setSubject(sub)

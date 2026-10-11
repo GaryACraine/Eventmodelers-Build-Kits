@@ -3921,7 +3921,11 @@ checked by removing it):
 - **The answer is 401 with `WWW-Authenticate: Bearer error="insufficient_user_authentication"` and `acr_values`**
   (RFC 9470), with `signIn` in the body. A step-up is only offered where a role holds the permission, so it never
   says more than a 404 or 403 would.
-- **`testSignIn`'s token** says a password and an emailed code unless a test says otherwise.
+- **`testSignIn`'s token** says a password and an emailed code unless a test says otherwise. *Revised 2026-10-11:* a
+  password and the app, which meets every level. Exporting licensing's levels showed the old default broke the tests of
+  9 built slices that call as owner or platform admin, though nothing about them had changed. With a default that meets
+  every level, a role's level stays out of built slices' tests, as it stays out of the contract. Only the step-up test
+  signs in weakly, and says so.
 
 **Step 5, emcli, built 2026-10-11** (emcli 6921619): `emcli role sign-in <role> second-factor|not-by-email`.
 - `api/roles.json` writes every role's `signIn`, the default included.
