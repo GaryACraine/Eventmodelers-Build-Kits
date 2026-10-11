@@ -4783,3 +4783,93 @@ kit in TypeScript.
 information, Emmett, and the event-sourcing literature on crypto-shredding.
 
 **Decision:** None yet. Taken up before any account can be deleted (ADR-056) and before release.
+
+### ADR-063: Security releases: knowing about a fix, holding versions still, and shipping the fix to every install (open)
+
+**Status:** **Proposed, 2026-10-11.** For Gary's decision (the questions at the end).
+**Date:** 2026-10-11
+**Builds on:**
+- ADR-054: our cloud on AWS, and on-premises containers;
+- ADR-055: Better Auth as its own service, `better-auth` pinned exactly ("security releases are ours");
+- ADR-056 D14: the policies and evidence in `security/`.
+
+**Context:**
+- **Better Auth fixes security problems often, in bursts.** GitHub's advisory database lists 23 for `better-auth`
+  from December 2024 to August 2026: 3 critical (one a duplicate) and 14 high. Eight were published on one day
+  (2026-07-07). Two touched what we use:
+  - GHSA-qq9h-g4jm-xgf3: a pre-account hijack through email-OTP sign-in, fixed in 1.6.22 and 1.7.0-beta.10;
+  - GHSA-p6v2-xcpg-h6xw: the rate limiter bypassed by rotating IPv6 addresses.
+
+  We run 1.7.7, the latest release (2026-09-30), and no advisory covers it. Vercel publishes a monthly security
+  post, and it fixes; shipping the fix to our cloud and to every on-premises install is ours (ADR-055).
+- **What licensing has today** (checked 2026-10-11):
+  - **The pins:** `better-auth` and `@better-auth/passkey` are 1.7.7 exactly in `auth/` and `web/`, and Temporal and
+    Mailpit images have exact tags. The other dependencies are ranges (`^`), held only by a lockfile.
+  - **The web app has no lockfile.** It was never committed, so the browser's code (sign-in included) resolves fresh
+    on every install, and `npm audit` can't run there (ENOLOCK). The kit's scaffold ships no web lockfile either.
+  - **The sign-in service's image carries test tooling.** `better-auth` lists `vitest` as an optional peer. Because
+    `auth/` also has vitest as a dev dependency, npm counts it as production. `npm prune --omit=dev` (the
+    Dockerfile's step) keeps vitest, vite and tinypool, and `npm ci --omit=dev --omit=peer` does too. tinypool 1.1.1
+    has two critical advisories (GHSA-5gmw-xhrv-c9v3, GHSA-85c8-ppgw-ccpr). Nothing at run time loads them, but every
+    image scan an on-premises customer runs will flag them.
+    - **Tried in a scratch copy:** first remove the dev dependencies from `package.json` (`npm pkg delete
+      devDependencies`), then run `npm install --omit=dev` against the same lockfile. That installs 130 packages
+      instead of 173, changes no version, and the audit finds 0 vulnerabilities.
+  - **The audit:** the backend's runtime dependencies and the sign-in service's (apart from the tooling above) are
+    clean. The test tooling has 9 (2 critical, 2 high: tinypool, `@fastify/busboy` under testcontainers' undici, and
+    `uuid` under dockerode).
+  - **Floating images:** `postgres:16` and `node:24-alpine` follow their major version, so two builds a week apart
+    differ.
+  - **Licensing has no git remote,** so GitHub's Dependabot alerts can't watch it. The kit is on GitHub.
+
+**Compared:**
+- **`npm audit`** (built in, GitHub's advisory database): needs a lockfile per package, and `--omit=dev` splits run
+  time from tooling. It needs the network; there's nothing to install.
+- **OSV-Scanner** (Google, v2.4): reads every lockfile and also container images (Alpine's packages too). It can scan
+  offline from a downloaded database. One binary to install.
+- **Dependabot or Renovate:** they open upgrade PRs and alert, but only for a repository on GitHub (Renovate can
+  self-host). They don't replace a gate at release.
+- **Trivy or Grype:** image scanners, overlapping OSV-Scanner's image scan. Customers often run one of these
+  themselves.
+
+**The proposal:**
+1. **Held still.**
+   - Every package directory commits its lockfile (root, `auth/`, `web/`, each `e2e/` package), and builds and images
+     install with `npm ci`.
+   - The sign-in path is pinned exactly and kept in step: `better-auth` and `@better-auth/passkey` at one version in
+     both `auth/` and `web/`. The check below warns when they differ.
+   - Images are pinned to an exact version (`postgres:16.x`, `node:24.x-alpine`). A release records each image's
+     digest.
+2. **Only run-time code in an image.** The sign-in service's Dockerfile removes the dev dependencies before its
+   run-time install, as tried above. A test proves it: the built image has no `vitest`.
+3. **Knowing about a fix: `npm run security:audit`** (a kit script beside `security-evidence.cjs`).
+   - It runs `npm audit --omit=dev` in each package with a lockfile, then the full audit, and reports two lists: what
+     runs (backend, sign-in service, web app) and the tooling.
+   - Warn only by default; `--strict` exits 1 for any high or critical advisory in what runs. That's the release
+     gate.
+   - Run with `security:record`, so the result is evidence (new policies SR-n in `POLICY.md`).
+   - **When it runs:** daily on a schedule, before every release, and after every kit update. Better Auth's advisories
+     reach a person too: a GitHub watch (security alerts) on `better-auth/better-auth`, and its monthly post.
+   - Images are scanned by OSV-Scanner when 14.8 builds them, since `npm audit` can't see Alpine's packages.
+4. **A fix, from the kit to every install.**
+   - **The kit first.** Upgrade the pinned version in the scaffold. Re-run the checks that guard Better Auth's
+     behaviour (the "recheck after every upgrade" list in ADR-055, now tests: the origin check, `amr`, the 12-hour
+     step-up), then the security evidence.
+   - **Each project:** `kit-drift`, the evidence re-run and recorded, then a release.
+   - **Our cloud:** deployed by CDK (14.8).
+   - **On-premises:** a release is a versioned set of images and a Compose file that names them by digest. The
+     sign-in service's migrations run before the new version starts (`auth-migrate`, as now). Notes go with each
+     release: what was fixed, the advisory, and whether it's urgent.
+   - **Supported versions:** fixes go to the latest release only. A customer behind it upgrades.
+5. **How fast** (for Gary to set): from the advisory to our cloud, and to the release customers can install, by
+   severity. A suggested starting point: critical within 2 days, high within 7, and the rest with the next release.
+
+**Questions for Gary:**
+1. The response times (5): accept the suggestion, or set others.
+2. Should licensing (and each new project) get a private GitHub remote, so Dependabot alerts and upgrade PRs come
+   free? Otherwise the daily `security:audit` is the alert, and it needs a scheduler (cron, or a Claude routine).
+3. How on-premises customers hear of a security release (email to a named contact, a status page, both), and whether
+   releases are signed (cosign) now or with 14.8.
+4. Whether the tooling's advisories (vitest 3 → 5, testcontainers 10 → 11) are fixed now, or tracked as warnings.
+
+**Decision:** None yet.
