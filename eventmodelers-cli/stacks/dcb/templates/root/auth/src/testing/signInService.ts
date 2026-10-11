@@ -26,8 +26,8 @@ export async function startSignInService({ env = {}, sendEmail }: { env?: Record
         log: () => {}
     })
     const http = createHttpServer()
-    await new Promise<void>(resolve => http.listen(0, resolve))
-    const base = `http://localhost:${(http.address() as { port: number }).port}`
+    await new Promise<void>(resolve => http.listen(0, "127.0.0.1", resolve)) // 127.0.0.1 only: on every address, another program on 127.0.0.1 could answer it (see the backend's src/test/loopback.ts)
+    const base = `http://127.0.0.1:${(http.address() as { port: number }).port}`
     const config = loadConfig({
         DEPLOYMENT: "on-premises",
         BETTER_AUTH_URL: base,
