@@ -6,7 +6,7 @@ import { Layout } from "@/Layout"
 import { server } from "@/mocks/server"
 import { apiUrl } from "./api"
 import { signInService } from "./auth-client"
-import { afterSignUp, allows, forgetPermissions, pageAllowed, useReturnTo, useStartPath, type Navigation } from "./navigation"
+import { afterSignUp, allows, forgetPermissions, pageAllowed, useCanRead, usePermissions, useReturnTo, useStartPath, type Navigation } from "./navigation"
 import { SessionProvider } from "./session"
 
 // The menu from the model (ADR-065): permissions, never roles, and what the API says the person holds
@@ -146,6 +146,36 @@ describe("after signing up, a new person registers first (ADR-068)", () => {
         expect(at("/get-started?next=%2Finvitations%2Fi1")).toBe("/invitations/i1")
         expect(at("/get-started")).toBe("its own next page")
         expect(at("/get-started?next=%2F%2Fevil.example")).toBe("its own next page")
+    })
+})
+
+describe("a page shows a part only to who may read it (ADR-068)", () => {
+    afterEach(() => vi.restoreAllMocks())
+
+    function Part() {
+        const held = usePermissions("org-1")
+        return <p data-held={held?.join(",") ?? ""}>{useCanRead("invitation:list", "org-1") ? "Pending invitations" : "hidden"}</p>
+    }
+
+    async function partFor(permissions: string[]) {
+        forgetPermissions()
+        vi.spyOn(signInService, "useSession").mockReturnValue({ data: { user: { id: "sub-1", email: "e@example.com" } }, isPending: false } as never)
+        server.use(http.get(apiUrl("/my-permissions"), ({ request }) =>
+            HttpResponse.json({ permissions: new URL(request.url).searchParams.get("organisationId") === "org-1" ? permissions : [] })))
+        render(<SessionProvider mode="better-auth" remember={false}><Part /></SessionProvider>)
+        expect(screen.getByRole("paragraph")).toHaveTextContent("hidden")   // never while the answer is on its way
+        return screen.getByRole("paragraph")
+    }
+
+    it("shows it to an admin, who holds the permission in that organisation", async () => {
+        const part = await partFor(["organisation:read", "invitation:list"])
+        await vi.waitFor(() => expect(part).toHaveTextContent("Pending invitations"))
+    })
+
+    it("hides it from an engineer, who doesn't", async () => {
+        const part = await partFor(["organisation:read"])
+        await vi.waitFor(() => expect(part).toHaveAttribute("data-held", "organisation:read"))
+        expect(part).toHaveTextContent("hidden")
     })
 })
 

@@ -348,6 +348,12 @@ Load more, sees both rows, and sees the button gone.
   const allowed = useAllowed(page.path, "reportCheckoutCompleted", organisationId)
   {allowed && <ReportCheckoutCompletedForm organisationId={organisationId} />}
   ```
+- **Show a part only to who may read it (ADR-068):** on a page whose parts need different permissions (the
+  organisation's page: its overview needs `organisation:read`, its pending invitations `invitation:list`), a view
+  whose read model's declaration is a permission renders only when `useCanRead("<resource:action>", <organisationId
+  from the route>)` (`@/lib/navigation`) is true, so an engineer sees the overview without the admin's parts. Nothing
+  shows until the person's permissions arrive, so a part never asks for what the API would refuse. Its page test
+  renders it once allowed and once not (answer `GET /my-permissions` with MSW).
 - **A list of the person's own with one row opens it** (ADR-065; licensing's My Organisations): a list page whose
   read model is keyed by a session value (`page.params` `from: "session"`, no route id) and that holds exactly one
   row goes straight to that row's page, `navigate(generatePath(<row page route>, row), { replace: true })`, so Back
