@@ -219,7 +219,13 @@ export async function issueOnce<C extends Command>(
 ): Promise<void> {
     const idempotencyKey = idempotencyKeyFor(key)
     if (await findExistingPosition(deps.pool, idempotencyKey)) return
-    await handle(deps.eventStore, decider, command, { idempotencyKey })
+    try {
+        await handle(deps.eventStore, decider, command, { idempotencyKey })
+    } catch (error) {
+        // Issued under the same key at the same time (a second delivery, another instance), so ours conflicted
+        if (await findExistingPosition(deps.pool, idempotencyKey)) return
+        throw error
+    }
 }
 
 function contextFor<TItem extends ReadModelDoc>(

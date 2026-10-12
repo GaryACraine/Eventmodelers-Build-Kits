@@ -538,8 +538,9 @@ model and build only what's ours.
                 draft auth role-sync slices (item 6).
              6. **Proven in licensing:** journeys on mock and sandbox, a refused role checked.
           3. **2b.2b SSO for on-premises customers:** check Better Auth's SSO plugin against Entra ID or Okta.
-          4. **2b.2c NEXT: Security releases** (ADR-063, Proposed 2026-10-11): advisory alerts on `better-auth`, pinned
-             versions, a patch path for on-premises installs.
+          4. **2b.2c NEXT: Security releases** (ADR-063, Accepted 2026-10-12): advisory alerts on `better-auth`,
+             pinned versions, a patch path for on-premises installs. Steps 1 and 2 done; step 3 waits only on the local
+             database's move to Postgres 18 and the end-to-end runs on it.
              - **Found in licensing (2026-10-11):**
                - the web app has no lockfile, so it can't be audited;
                - the sign-in service's image keeps vitest, vite and tinypool (an optional peer of `better-auth`), so
@@ -548,12 +549,39 @@ model and build only what's ours.
                - licensing has no git remote, so no Dependabot.
 
                `better-auth` 1.7.7 is the latest release, and no advisory covers it.
-             1. **Decide** ADR-063's four questions (response times, a GitHub remote, how customers hear, the tooling's
-                advisories).
-             2. **Kit:** lockfiles everywhere, the image's run-time install, `security:audit`, exact image tags, and
-                the SR policies with their evidence.
-             3. **Proven in licensing:** the audit recorded, an image built without the tooling, and a rehearsed
-                upgrade (the kit's pin bumped, then the evidence re-run).
+             1. ✅ **Decided** (Gary, 2026-10-12: "Happy with your recommendation, let's fix everything we can"):
+                - critical within 2 days, high within 7;
+                - no GitHub remote for now (the daily audit and a GitHub watch on Better Auth);
+                - customers hear by email; signing with 14.8;
+                - the tooling's advisories fixed now;
+                - **Postgres 18** (18.6; 19 is a beta, so it waits).
+             2. ✅ **Kit** (2026-10-12):
+                - `security:audit` (10 tests, mutation-checked), SR-1 to SR-6, `RELEASES.md` and
+                  `audit-exceptions.json` (`braces`: no fixed version, build tooling only);
+                - the run-time-only image, with `scripts/auth-image-check.mjs`;
+                - lockfiles, including the web app's;
+                - exact images (`postgres:18.6`, `node:24.21.0-alpine`);
+                - vitest 5 and testcontainers 12;
+                - `@types/express` declared;
+                - manual §22.8;
+                - the kit's checks 87/87.
+
+                **Found and fixed:** two instances issuing one command at once (`runSetup`, `issueOnce`) failed the
+                second. The tests now force the race.
+             3. **Proven in licensing** (2026-10-12; `43f56d1`, `7f098f1`, `5f526d7`):
+                - kit-drift 60 same;
+                - recorded on Postgres 18.6 test containers: backend 440 (3 skipped), auth 32/32, web 96/96;
+                - the audit `--strict` passes (0 in what runs, `braces` accepted);
+                - the image check: no tooling, `better-auth` loads, runs as `node`;
+                - `security:check` 32 policies, 0 warnings.
+                - **Left:** move the local database to 18 (dump and load, manual §22.8, rehearsed), then the owner
+                  chain and the journeys on it.
+             4. **The Postgres upgrade path:**
+                - **now, before release:** local and on-premises, dump and load; our cloud, RDS blue/green (14.8);
+                - **from now on:** the newest major RDS supports, once its first minor releases are out. Each upgrade is
+                  a security release's procedure (the evidence re-run), never a loop job;
+                - **next:** Postgres 19, after its release (aimed at the end of October 2026) and RDS support.
+                  `dcb-event-store` tests on 17 and its examples on 16: a library PR for Gary.
           5. ✅ **2b.2d: the account security lifecycle (ADR-056, Accepted 2026-10-11).** Steps 1 to 9 done (2026-10-11).
              - **The decisions** (D1–D14, in ADR-056 "Decided"):
                - **D1:** a role's sign-in requirement is enforced in our API by step-up (`amr` in the token; 401
@@ -4621,6 +4649,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-11 | Recovering a lost passkey deferred; recovery by a platform admin recommended | Gary: "Happy with your recommendation … defer this". It's rare, since passkeys usually sync, and it isn't needed for 2b.2d |
 | 2026-10-11 | ADR-056 step 9: evidence rows name tests by file and test name, checked to exist (warn only); a recorded run is never replaced (repeats numbered) | D14 asks for evidence that is easy to find and current. Checking names, not only files, catches a renamed test. Keeping every run, failures included, is what makes the record trustworthy: the first design replaced the day's log, which would have hidden a failed API run behind the passing one |
 | 2026-10-11 | ADR-063 Proposed: security releases (lockfiles everywhere, the sign-in path pinned exactly, run-time-only images, `security:audit` as the release gate, a release of digest-pinned images for on-premises); 2b.2d closed, 2b.2c next | Gary chose 2b.2c next. Licensing's audit found an unauditable web app (no lockfile) and test tooling in the sign-in service's image; Better Auth has 23 advisories in 20 months, 8 on one day |
+| 2026-10-12 | ADR-063 Accepted: the response times (critical 2 days, high 7), no remote for now, customers by email, the tooling fixed now; Postgres 16 → 18.6 (19 waits for its release and RDS) | Gary: "Happy with your recommendation, let's fix everything we can", and 16 was two majors behind. Before release there's no customer data, so a major upgrade is cheapest now; it's rehearsed by dump and load |
 
 ## Progress
 

@@ -63,10 +63,25 @@ describe("setup commands (ADR-043)", () => {
     })
 
     test("two instances starting together record it once", async () => {
-        await Promise.all([
-            runSetup({ eventStore, pool }, [holdPeriodSetup], { env: {}, logger: quiet }),
-            runSetup({ eventStore, pool }, [holdPeriodSetup], { env: {}, logger: quiet })
+        // Both look for the setup's key before either appends, so one append conflicts with the other's
+        let looked = 0
+        let bothLooked!: () => void
+        const together = new Promise<void>(resolve => (bothLooked = resolve))
+        const instance = {
+            query: async (...args: Parameters<Pool["query"]>) => {
+                const result = await (pool.query as (...a: unknown[]) => Promise<unknown>)(...args)
+                if (String(args[0]).includes("message_id = ANY") && looked < 2) {
+                    if (++looked === 2) bothLooked()
+                    await together
+                }
+                return result
+            }
+        } as unknown as Pool
+        const outcomes = await Promise.all([
+            runSetup({ eventStore, pool: instance }, [holdPeriodSetup], { env: {}, logger: quiet }),
+            runSetup({ eventStore, pool: instance }, [holdPeriodSetup], { env: {}, logger: quiet })
         ])
+        expect(outcomes.map(o => o[0].outcome).sort()).toEqual(["already issued", "issued"])
         expect(await configured()).toEqual([5])
     })
 

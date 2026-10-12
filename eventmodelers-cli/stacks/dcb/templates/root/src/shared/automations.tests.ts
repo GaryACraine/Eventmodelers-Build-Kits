@@ -188,6 +188,30 @@ describe("issueOnce", () => {
         const r = await db.query("SELECT type FROM events")
         expect(r.rows).toEqual([{ type: "parcelShipped" }])
     })
+
+    test("asked twice at the same time, issues it once, and neither fails", async () => {
+        const db = (pool = await getTestPgDatabasePool())
+        const eventStore = new PostgresEventStore({ pool: db })
+        await eventStore.ensureInstalled()
+        // Both look for the key before either appends, so one append conflicts with the other's
+        let looked = 0
+        let bothLooked!: () => void
+        const together = new Promise<void>(resolve => (bothLooked = resolve))
+        const lookup = {
+            query: async (...args: unknown[]) => {
+                const result = await (db.query as (...a: unknown[]) => Promise<unknown>)(...args)
+                if (String(args[0]).includes("message_id = ANY") && looked < 2) {
+                    if (++looked === 2) bothLooked()
+                    await together
+                }
+                return result
+            }
+        } as unknown as Pool
+        const ship = () => issueOnce({ eventStore, pool: lookup }, "shipper:p1", shipParcel, { type: "shipParcel", data: { parcelId: "p1" } })
+        await Promise.all([ship(), ship()])
+        const r = await db.query("SELECT type FROM events")
+        expect(r.rows).toEqual([{ type: "parcelShipped" }])
+    })
 })
 
 // ─── A list of one (ADR-040): no stored to-do list, the trigger event is the item ─────────────────────────────

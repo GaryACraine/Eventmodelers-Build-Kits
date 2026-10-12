@@ -45,3 +45,14 @@ tests that come with the kit, this project's end-to-end scripts, a check by hand
 | AS-14 | `auth/src/accountLifecycle.tests.ts` "five password attempts a minute from one address, then 429", "the 429 says how long to wait, within the window"; `auth/src/signInMethod.tests.ts` "wrong app codes while signed in lock the account, as at sign-in"; `web/src/lib/sign-in.test.tsx` "too many attempts says so (D11)" | — |
 | AS-15 | `auth/src/accountLifecycle.tests.ts` "signing up again looks the same as a new sign-up", "accounts never verified are removed after the retention", "is an alert line in the log, without the address"; `web/src/lib/sign-in.test.tsx` "shows above the page it landed on, and sends a new link back to that page" | — |
 | AS-16 | `auth/src/config.tests.ts` "a missing or bad setting stops it, naming every problem", "on-premises: SMTP, cookies secure only over https, the client IP from the reverse proxy", "cloud: SES with the task's role, cookies always secure, the client IP set at the edge" | — |
+
+## Security releases
+
+| ID | Proved by | Last run |
+|---|---|---|
+| SR-1 | `.build-kit/lib/security-audit.cjs` "no package-lock.json, so it can't be audited" (run by npm run security:audit) | — |
+| SR-2 | `.build-kit/lib/security-audit.cjs` "not an exact version", "better-auth's packages aren't one version" | — |
+| SR-3 | `.build-kit/lib/security-audit.cjs` "isn't an exact version" | — |
+| SR-4 | `scripts/auth-image-check.mjs` "the sign-in image holds no test tooling", "better-auth loads in the sign-in image", "the sign-in image runs as the node user, not root" | — |
+| SR-5 | `.build-kit/lib/security-audit.cjs` "what runs", "tooling"; `security/audit-exceptions.json` | — |
+| SR-6 | `security/RELEASES.md` | — |

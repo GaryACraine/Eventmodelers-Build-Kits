@@ -127,8 +127,9 @@ test("the kit's scaffold: every policy names tests that exist", () => {
   fs.cpSync(SCAFFOLD, root, { recursive: true, filter: (src) => !src.includes('node_modules') });
   fs.mkdirSync(path.join(root, '.build-kit/lib/checks'), { recursive: true });
   fs.cpSync(path.resolve(__dirname, '../../templates/build-kit/lib/checks'), path.join(root, '.build-kit/lib/checks'), { recursive: true });
+  fs.copyFileSync(path.resolve(__dirname, '../../templates/build-kit/lib/security-audit.cjs'), path.join(root, '.build-kit/lib/security-audit.cjs'));
   const r = run(root, '--strict');
   assert.strictEqual(r.stderr, '');
   assert.strictEqual(r.status, 0);
-  assert.match(r.stdout, /24 policies, 24 proved by tests that exist/);
+  assert.match(r.stdout, /30 policies, 30 proved by tests that exist/);
 });
