@@ -397,7 +397,7 @@ export function configure{SliceName}Route(deps: SliceDependencies): WebApiSetup 
                         store,
                         {commandHandlerFn},
                         { type: "{commandName}", data: { {field1}, {field2} } },
-                        { idempotencyKey }
+                        { idempotencyKey, retry: { onConflict: true } }
                     ))
                 return res => {
                     withETag(position)(res)
@@ -408,6 +408,12 @@ export function configure{SliceName}Route(deps: SliceDependencies): WebApiSetup 
     }
 }
 ```
+
+**Every route decides again after a conflict** (`retry: { onConflict: true }`, ADR-067): when another request
+appended first, the command is read and decided again, so the loser of a race gets the decider's own refusal (422)
+or nothing new, never a bare 409. Its integration test fires two of the slice's command at once with the same
+tags (`Promise.all` of two `agent.post(...)`) and expects one 201/204 and the rejection's 422 when the decider has
+a rule the winner's event breaks.
 
 **When a specification's `then` is nothing happens (`SPEC_NOTHING`, ADR-050),** call `handleCommand` instead of `handle`: it
 says whether anything was appended, and the route answers 200 when nothing was.
@@ -422,7 +428,7 @@ import { NoContent, withETag /* … */ } from "@dcb-es/event-store-express"
                     store,
                     {commandHandlerFn},
                     { type: "{commandName}", data: { {field1}, {field2} } },
-                    { idempotencyKey }
+                    { idempotencyKey, retry: { onConflict: true } }
                 )
                 return res => {
                     withETag(position)(res)

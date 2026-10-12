@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react"
+import { fireEvent, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
 import { apiUrl } from "@/lib/api"
@@ -62,5 +62,31 @@ describe("Register Course", () => {
         await fill({ id: "c1", title: "Math", capacity: "0" })
         expect(await screen.findByText("At least 1")).toBeInTheDocument()
         expect(onRegistered).not.toHaveBeenCalled()
+    })
+
+    it("sends once however fast it's pressed, with one Idempotency-Key, and disables the button meanwhile", async () => {
+        const keys: (string | null)[] = []
+        let answer!: () => void
+        server.use(
+            http.post(apiUrl("/register-course"), async ({ request }) => {
+                keys.push(request.headers.get("Idempotency-Key"))
+                await new Promise<void>((resolve) => (answer = resolve))
+                return new HttpResponse(null, { status: 204, headers: { ETag: '"1"' } })
+            })
+        )
+        const onRegistered = renderForm()
+        await userEvent.type(screen.getByLabelText("Course ID"), "c1")
+        await userEvent.type(screen.getByLabelText("Title"), "Math")
+        await userEvent.type(screen.getByLabelText("Capacity"), "30")
+        const button = screen.getByRole("button", { name: "Register course" })
+        // two presses before React renders the disabled button
+        fireEvent.click(button)
+        fireEvent.click(button)
+        await vi.waitFor(() => expect(button).toBeDisabled())
+        await vi.waitFor(() => expect(keys).toHaveLength(1))
+        answer()
+        await vi.waitFor(() => expect(onRegistered).toHaveBeenCalledTimes(1))
+        expect(keys[0]).toMatch(/^[0-9a-f-]{36}$/)
+        expect(button).not.toBeDisabled()
     })
 })

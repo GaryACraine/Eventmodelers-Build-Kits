@@ -5319,3 +5319,47 @@ the rule's consistency (`docs/DESIGN-AUTHORITIES.md`).
   join the decision model.
 - **The kit:** a limit on creating something before any role exists is a command rule over the person's facts, not a
   permission (with ADR-058 and ADR-060).
+
+### ADR-067: A command is sent once per press, and a route decides again after a conflict
+
+**Status:** **Accepted, 2026-10-12 (Gary).** Gary: "we should defend against this client side with simple hooks to
+disable buttons … as a default for anything command based." Agreed, with the server half.
+**Date:** 2026-10-12
+**Authorities consulted (ADR-064):** event sourcing (Emmett's `handleCommand` retry; Marten and Axon retry a
+conflicting command the same way), for the server half. The client half is the kit's own practice.
+
+**Context:**
+- After ADR-066, two activations by the same person at once answered 201 and 409. The 409 is the append condition's
+  conflict (`AppendConditionError`): the losing request never reached its decider's refusal ("You already belong to
+  an organisation"), so the screen couldn't explain it.
+- Every kit form already disabled its button while sending (RHF's `isSubmitting`, or a `sending` state). That is
+  React state: it disables at the next render, so a quick second press still sends. Each press also took a new
+  `Idempotency-Key`, so the server saw two intents.
+- A button can't stop two tabs, a phone and a laptop, or a script. Emmett decides again on a version conflict when
+  asked (`retry: { onVersionConflict: true }`: 3 retries from 100 ms); dcb-event-store had no such option.
+
+**Decision:**
+1. **Every command card sends through `useSubmitOnce` (`web/src/lib/submit.ts`) and disables its button while
+   `pending`.** A ref (not state) ignores a press while one is sending. Each press of the same form sends one
+   `Idempotency-Key` until the server answers: after a network failure the next press is the same intent (a replay
+   the server answers as before); once the server has answered, done or refused, the next press is a new intent.
+2. **Every route decides again after a conflict:** `handle(…, { idempotencyKey, retry: { onConflict: true } })`
+   (dcb-event-store phase 24). The second decision reads the winner's events, so the loser gets its decider's own
+   refusal (422) or nothing new; a 409 is left only for a conflict that persists after 3 retries.
+3. **Automations and setup commands keep their own answer to a conflict:** a processor retries the event (library
+   phase 19), and a setup command runs once at start. They don't take the option.
+
+**Alternatives considered:**
+- **The button only.** Rejected: two tabs or a script still meet the bare 409.
+- **The server only.** Rejected: a double press would still record two intents when the second is allowed (two
+  courses with generated ids), and costs a second request every time.
+- **Retry in the Express adapter** (catch the 409 and run the route again). Rejected: the library's command handler
+  is where Emmett puts it, and every caller of `handle` gets it.
+
+**Consequences:**
+- dcb-event-store phase 24: `HandleOptions.retry`, `ConflictRetryDefaults`; the processors' `Backoff` moved to the
+  core package.
+- Kit: `lib/submit.ts` and its tests; the template's forms and routes; `build-screen` (every command through
+  `useSubmitOnce`, a double-press test) and `build-state-change` (the option, a race test); `AGENT.md`.
+- Licensing: its routes take the option and its forms the hook (a kit pattern, by hand); activate organisation's
+  race answers 201 and 422.

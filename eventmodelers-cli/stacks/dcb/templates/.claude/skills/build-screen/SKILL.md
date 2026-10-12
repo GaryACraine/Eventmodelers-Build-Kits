@@ -133,14 +133,24 @@ const RegisterCourseSchema = z.object({
 - A mockup `<textarea>` is a native `<textarea>` too (no shadcn Textarea), registered as a string. It starts
   empty: its text in the mockup is the example value, not a default.
 - `useForm({ resolver: zodResolver(Schema) })`. A form with nothing typed (only props and session) is a plain
-  `<form onSubmit>` with `useState` for sending / done / error.
-- Submit:
+  `<form onSubmit>` with `useState` for done / error.
+- **Every command is sent through `useSubmitOnce` (`@/lib/submit`, ADR-067), and its button is disabled while
+  `pending`** (never RHF's `isSubmitting` or a `sending` state: they disable only at the next render, so a quick
+  second press sends twice). The hook ignores a press while one is sending, and gives each press of the form one
+  `Idempotency-Key` until the server answers:
   ```tsx
-  const { position } = await command(api.POST("/register-course", { body }))
-  await recordWrite(position)          // useWrites(): refetches the views, remembers the position
-  onRegistered?.(body)                 // a callback prop for the page (e.g. go to the new course)
+  const { run, pending } = useSubmitOnce()
+  const submit = handleSubmit((body) =>
+      run(async (key) => {
+          const { position } = await command(api.POST("/register-course", { body, headers: idempotent(key) }))
+          await recordWrite(position)      // useWrites(): refetches the views, remembers the position
+          onRegistered?.(body)             // a callback prop for the page (e.g. go to the new course)
+      }).catch((error) => setError("root", { message: error instanceof ApiError ? error.message : "Something went wrong. Try again." }))
+  )
+  // <Button type="submit" disabled={pending}>
   ```
-  A 201's generated fields are `command(...).data`: pass them to the callback.
+  A 201's generated fields are `command(...).data`: pass them to the callback. The form's tests include one
+  that presses twice before React renders (`fireEvent.click` twice) and expects one request.
 - A rejection is an `ApiError` carrying the backend's Problem-JSON `detail`: show `error.message` in a
   `<p role="alert">` (RHF: `setError("root", { message })`). A field error shows under its input.
 - Ids and labels: `id="{command}-{field}"`, `<Label htmlFor>` with the mockup's label text.
@@ -159,9 +169,10 @@ configuration and its mock.
   (`web/src/providers/{name}/`), which the first slice that needs it creates from the provider skill, with its tests.
 - **The form's button starts the other system's part; the command is sent when that completes:**
   ```tsx
+  // inside run(async (key) => { … }), like any command
   const outcome = await paddleCheckout().open({ items, customData: { organisationId }, frame: "checkout-frame", onSummary: setSummary })
   if (!outcome.completed) return                     // the buyer closed it: nothing sent, no error shown
-  const { position } = await command(api.POST("/report-checkout-completed", { body: { organisationId, transactionId: outcome.transactionId } }))
+  const { position } = await command(api.POST("/report-checkout-completed", { body: { organisationId, transactionId: outcome.transactionId }, headers: idempotent(key) }))
   await recordWrite(position)
   ```
   The mockup's `<form data-command="…">` is still the form: its button, its hidden fields as props.

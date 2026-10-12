@@ -22,7 +22,7 @@ export function configureUnsubscribeStudentRoute(deps: SliceDependencies): WebAp
                         store,
                         unsubscribeStudentFromCourse,
                         { type: "unsubscribeStudentFromCourse", data: { courseId, studentId } },
-                        { idempotencyKey }
+                        { idempotencyKey, retry: { onConflict: true } }
                     ))
                 return res => {
                     withETag(position)(res)

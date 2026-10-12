@@ -22,7 +22,7 @@ export function configureChangeCourseCapacityRoute(deps: SliceDependencies): Web
                         store,
                         updateCourseCapacity,
                         { type: "updateCourseCapacity", data: { courseId, newCapacity } },
-                        { idempotencyKey }
+                        { idempotencyKey, retry: { onConflict: true } }
                     ))
                 return res => {
                     withETag(position)(res)
