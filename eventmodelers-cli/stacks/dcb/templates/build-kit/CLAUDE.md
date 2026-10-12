@@ -201,6 +201,11 @@ that touch a slice folder (backend or `web/`), so model, docs and `index.ts` wir
 them. Outside the loop, a change that adds or changes a policy adds its rows in the same change, and
 `npm run security:check` warns when a policy names no test, or a test it names doesn't exist.
 
+`npm run security:audit` (ADR-063) lists known advisories in what runs and in the tooling, and warns when a package
+has no lockfile, `better-auth`'s packages aren't one exact version, or an image isn't an exact version. A loop job
+never changes a dependency (blocked-paths): an upgrade is a kit or project change, made outside the loop. An image a
+job writes (a mock's `Dockerfile`, its Compose service) names an exact version.
+
 ## Branching
 
 The loop never creates, switches or merges branches. It builds on whatever branch is checked out.

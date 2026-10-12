@@ -45,3 +45,17 @@ How people sign in, and how their accounts are kept safe (ADR-056's decisions D1
 | AS-14 | **Abuse:** rate limits on every sign-in path, stricter on sign-in, sign-up, reset, codes and verification, with the wait shown; wrong codes lock the second factor for a while | `rateLimit.customRules` | ADR-056 D11 |
 | AS-15 | **Signing up reveals nothing:** signing up again with an address looks the same as a new sign-up (its owner is emailed); accounts never verified are removed after 7 days; an email that can't be sent is an alert without the address; an expired link offers a new one | `AUTH_UNVERIFIED_RETENTION_DAYS` (7) | ADR-056 D12 |
 | AS-16 | **A wrong setting stops the sign-in service** rather than running insecurely, naming every problem. Cookies are secure over https and always in the cloud; the client's address comes from the deployment's proxy | `auth/src/config.ts` | ADR-055, ADR-056 |
+
+## Security releases
+
+How a fix in something we depend on reaches every install: knowing about it, holding versions still, and shipping it
+(ADR-063). The releases themselves are in [RELEASES.md](RELEASES.md).
+
+| ID | Policy | Setting | Decided in |
+|---|---|---|---|
+| SR-1 | **Every package is locked.** The backend, the sign-in service, the web app and each end-to-end package commit a lockfile, and images install from it, so a build is the build that was tested | `package-lock.json` in each; `npm ci` | ADR-063 |
+| SR-2 | **The sign-in path is pinned exactly, and in step.** `better-auth` and `@better-auth/*` are one exact version in the sign-in service and the web app. An upgrade re-runs the tests that guard Better Auth's behaviour (the origin check, `amr`, the 12-hour step-up) and the whole evidence before it's released | `auth/package.json`, `web/package.json` | ADR-055, ADR-063 |
+| SR-3 | **Images name an exact version** (`postgres:18.6`, never `postgres:18` or `latest`); a release records each image's digest | `docker-compose.yml`, each `Dockerfile` | ADR-063 |
+| SR-4 | **An image holds only what runs.** The sign-in service's image has no test tooling, and runs as the `node` user | `auth/Dockerfile` | ADR-063 |
+| SR-5 | **Known advisories are looked for** daily, before every release and after every kit update. A release has no high or critical advisory in what runs, unless it's accepted with a reason and a date to look again | `npm run security:audit`; `security/audit-exceptions.json` | ADR-063 |
+| SR-6 | **A fix ships within** 2 days of a critical advisory and 7 days of a high one, to our cloud and as a release customers can install; the rest go with the next release. Fixes go to the latest release only. Customers are told by email, to the contact each one names | [RELEASES.md](RELEASES.md) | ADR-063 |

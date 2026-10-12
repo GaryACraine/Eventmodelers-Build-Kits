@@ -4784,9 +4784,10 @@ information, Emmett, and the event-sourcing literature on crypto-shredding.
 
 **Decision:** None yet. Taken up before any account can be deleted (ADR-056) and before release.
 
-### ADR-063: Security releases: knowing about a fix, holding versions still, and shipping the fix to every install (open)
+### ADR-063: Security releases: knowing about a fix, holding versions still, and shipping the fix to every install
 
-**Status:** **Proposed, 2026-10-11.** For Gary's decision (the questions at the end).
+**Status:** **Accepted, 2026-10-12 (Gary).** Proposed 2026-10-11. Gary: "Happy with your recommendation, let's fix
+everything we can", and Postgres moves to 18 (19 is still a beta).
 **Date:** 2026-10-11
 **Builds on:**
 - ADR-054: our cloud on AWS, and on-premises containers;
@@ -4838,7 +4839,7 @@ information, Emmett, and the event-sourcing literature on crypto-shredding.
      install with `npm ci`.
    - The sign-in path is pinned exactly and kept in step: `better-auth` and `@better-auth/passkey` at one version in
      both `auth/` and `web/`. The check below warns when they differ.
-   - Images are pinned to an exact version (`postgres:16.x`, `node:24.x-alpine`). A release records each image's
+   - Images are pinned to an exact version (`postgres:18.6`, `node:24.21.0-alpine`). A release records each image's
      digest.
 2. **Only run-time code in an image.** The sign-in service's Dockerfile removes the dev dependencies before its
    run-time install, as tried above. A test proves it: the built image has no `vitest`.
@@ -4872,4 +4873,35 @@ information, Emmett, and the event-sourcing literature on crypto-shredding.
    releases are signed (cosign) now or with 14.8.
 4. Whether the tooling's advisories (vitest 3 → 5, testcontainers 10 → 11) are fixed now, or tracked as warnings.
 
-**Decision:** None yet.
+**Decision (2026-10-12, Gary):** the proposal, all five points, and the questions settled:
+1. **Response times:** critical within 2 days, high within 7, the rest with the next release (SR-6).
+2. **No GitHub remote for now.** The daily `security:audit` is the alert, with a person's GitHub watch on Better
+   Auth's advisories. A private remote (Dependabot for free) stays open.
+3. **Customers hear by email,** to the contact each one names, with the release notes. Signing releases (cosign)
+   comes with 14.8, when images are first published.
+4. **The tooling's advisories are fixed now:** vitest 3 → 5 and testcontainers 10 → 12 in the backend and the sign-in
+   service. The web app's `braces` (in the Tailwind CLI's file watcher) has no fixed version, so it's accepted with a
+   review date (`security/audit-exceptions.json`, 2027-01-12).
+5. **Postgres 18.** The scaffold was on 16, two majors behind. 18.6 is the newest release, and RDS supports 18 (from
+   18.1). 19 is in beta (Beta 4, 2026-09-24), so it waits until it's released and RDS supports it. 18 brings
+   asynchronous I/O, `uuidv7()`, skip scans on multi-column indexes, and statistics kept across `pg_upgrade`.
+   - **The upgrade path:** a major version can't read the old one's data folder. Locally and on-premises, dump
+     everything (`pg_dumpall`), start the new version empty, and load it (manual §22.8; rehearsed 2026-10-12: data, a
+     second database and sequences carried, the only errors the expected "already exists"). In our cloud, RDS
+     upgrades in place (blue/green). Before release there's no customer data, so this is the cheapest time.
+   - **From now on:** stay on the newest major RDS supports, moving once its first minor releases are out. An upgrade
+     is a security release's procedure (the evidence re-run), not a loop job.
+
+**Built (2026-10-12; kit, proven in licensing):**
+- `.build-kit/lib/security-audit.cjs` (`npm run security:audit`; 10 tests, mutation-checked) and policies SR-1 to SR-6
+  with their evidence, `security/RELEASES.md` and `security/audit-exceptions.json`;
+- the sign-in service's Dockerfile installs only what runs, and `scripts/auth-image-check.mjs` proves it (with the old
+  Dockerfile it finds vitest, vite and testcontainers);
+- lockfiles: the kit ships `web/package-lock.json` beside `auth/`'s;
+- exact images: `postgres:18.6` (Compose and every test container), `node:24.21.0-alpine`;
+- the tooling upgraded, and `@types/express` declared (the backend had it only by accident, through the event store
+  library's own install).
+- **Found on the way:** two instances issuing the same command at once (`runSetup` at start, `issueOnce` in an
+  automation) both found the key missing, so one append conflicted and failed. Each now looks for the key again after
+  a conflict. The tests make both look before either appends, so they fail every time without the fix. Before, the
+  race showed only now and then (once in three full runs on Postgres 18).

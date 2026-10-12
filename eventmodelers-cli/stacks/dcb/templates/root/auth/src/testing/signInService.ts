@@ -13,7 +13,7 @@ import { createServer } from "../server.js"
  * and browsers that keep their cookies. Have I Been Pwned is off (an internet call); `env` overrides any setting.
  */
 export async function startSignInService({ env = {}, sendEmail }: { env?: Record<string, string>; sendEmail?: SendEmail } = {}) {
-    const postgres = await new PostgreSqlContainer("postgres:16").start()
+    const postgres = await new PostgreSqlContainer("postgres:18.6").start()
     await runner({
         databaseUrl: postgres.getConnectionUri(),
         dir: fileURLToPath(new URL("../../migrations", import.meta.url)),

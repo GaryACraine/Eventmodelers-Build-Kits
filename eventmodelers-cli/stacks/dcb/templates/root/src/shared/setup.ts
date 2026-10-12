@@ -37,7 +37,13 @@ export function defineSetup<C extends Command>(setup: {
         issue: async (deps, env) => {
             const idempotencyKey = idempotencyKeyFor(`setup:${setup.name}`)
             if (await findExistingPosition(deps.pool, idempotencyKey)) return "already issued"
-            await handle(deps.eventStore, setup.decider, setup.command(env), { idempotencyKey })
+            try {
+                await handle(deps.eventStore, setup.decider, setup.command(env), { idempotencyKey })
+            } catch (error) {
+                // Another instance starting at the same time issued it first, so ours conflicted
+                if (await findExistingPosition(deps.pool, idempotencyKey)) return "already issued"
+                throw error
+            }
             return "issued"
         }
     }

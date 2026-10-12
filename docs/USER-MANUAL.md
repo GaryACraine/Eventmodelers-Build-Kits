@@ -3069,3 +3069,56 @@ npm run security:check      # warns when a policy names no test, or one it names
 ```
 
 The check never blocks a commit; `npm run security:check -- --strict` fails on a warning, for CI.
+
+### 22.8 Security releases: taking a fix
+
+Better Auth, like everything you depend on, has security fixes, sometimes several at once. Taking a fix and shipping
+it to our cloud and every customer's install is yours (ADR-063). A project starts held still: every package has a
+lockfile, `better-auth` is one exact version in the sign-in service and the web app, and each image names an exact
+version (`postgres:18.6`). The sign-in service's image holds only what runs.
+
+**Knowing about a fix.** Run the audit daily, before every release and after every kit update:
+
+```bash
+npm run security:audit                  # what runs, the tooling, and what's accepted
+npm run security:audit -- --strict      # the release gate
+```
+
+It lists each known advisory under what runs (the backend, the sign-in service, the web app) or the tooling (dev
+dependencies, `e2e/`). It warns when a package has no lockfile, the sign-in path isn't pinned in step, or an image
+floats. With `--strict`, a warning or a high or critical advisory in what runs fails it. It needs the network.
+Watch Better Auth's security advisories on GitHub too, so its notice reaches you on the day.
+
+**An advisory with no fix,** or one that never reaches what runs, can be accepted in
+`security/audit-exceptions.json`, with the reason and a date to look again. The kit ships one: `braces`, in the web
+app's build tooling only, which has no fixed version. After its date it counts again.
+
+**Taking it** (SR-6: within 2 days for a critical advisory, 7 for a high one):
+
+1. Upgrade the version where it's pinned. For Better Auth, upgrade both of its packages, in `auth/` and `web/`, to the
+   same version, and run `npm install` in each so the lockfiles follow.
+2. Run the tests and record them, with the image check:
+
+   ```bash
+   npm run security:record -- auth-tests -- npm --prefix auth test
+   npm run security:record -- auth-image -- node scripts/auth-image-check.mjs
+   npm run security:record -- audit -- npm run security:audit -- --strict
+   ```
+
+3. Release: build the images, record each digest in `security/RELEASES.md`, deploy our cloud, and email each
+   on-premises customer the release and what it fixes.
+
+**Upgrading Postgres.** A major version (16 to 18) can't read the old version's data folder. Before the first start
+on the new version, dump everything and load it back:
+
+```bash
+docker compose exec -T postgres pg_dumpall -U dcb > pg16.sql    # on the old version
+docker compose rm -sfv postgres                                  # remove its container and data volume
+docker compose up -d postgres                                    # the new version, empty
+docker compose exec -T postgres psql -U dcb -d postgres < pg16.sql
+```
+
+Two errors are expected while it loads: the role `dcb` and the database `dcb` already exist (the new version made
+them). The sign-in service's tables, Temporal's databases and the event store all live on this one server, so all of
+them come across. Restart what uses it afterwards (`npm run infra:start`, then the backend). In our cloud, RDS upgrades a major version itself (a blue/green deployment). On-premises, the release
+notes say to dump and load, as above.

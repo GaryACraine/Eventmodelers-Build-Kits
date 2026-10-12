@@ -1,0 +1,9 @@
+[
+    {
+        "advisory": "GHSA-vfj7-8cjw-p6xm",
+        "package": "braces",
+        "where": "web",
+        "reason": "No fixed version of braces exists. It reaches the web app only through the Tailwind CLI's file watcher (@tailwindcss/cli → @parcel/watcher → micromatch), which scripts/design-system.mjs runs once at build time; nothing of it ships to the browser.",
+        "review": "2027-01-12"
+    }
+]

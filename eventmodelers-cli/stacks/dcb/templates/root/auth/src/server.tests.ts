@@ -23,7 +23,7 @@ describe("the sign-in service", () => {
     const sent: Email[] = []
 
     beforeAll(async () => {
-        postgres = await new PostgreSqlContainer("postgres:16").start()
+        postgres = await new PostgreSqlContainer("postgres:18.6").start()
         await runner({
             databaseUrl: postgres.getConnectionUri(),
             dir: fileURLToPath(new URL("../migrations", import.meta.url)),
