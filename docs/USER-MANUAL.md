@@ -2133,7 +2133,7 @@ Menu:
 Account menu: the kit's Your account, then: nothing of the model's
 ```
 
-- **The things people work with come first:** each entity in the id register with a list page ("Organisations").
+- **The things people work with come first:** each entity in the id register (§13.11) with a list page ("Organisations").
   Its create page is offered on the list, and its one-thing pages are reached from the list or a flow.
 - **Then the areas:** pages about no one thing (a report, settings). A page goes in its context's area unless you
   say *"put the report under Reports"* (`element area … --in Reports`).
@@ -2156,6 +2156,70 @@ that needs a permission only organisation roles hold (the API would refuse them 
 **Where people land.** The start page (`/`) opens the first menu item the person may use, and Sign in when they're
 signed out. In licensing that's Organisations, the person's own organisations. With only one, it opens straight away
 on the organisation's Dashboard, so people land on their organisation.
+
+### 13.11 The things people work with: the id register
+
+The menu's items are **entities**: the things people look at, list and act on (organisations, invitations). They
+come from the ids you mark (`--id`), since those are the event store's tags. Not every id is a thing people work
+with: Paddle's `subscriptionId` is another system's, a sync's `syncId` is the system's own. So the model keeps one
+**register** of id keys, each with its kind (ADR-065). Tags are global, so there's one register for the whole store.
+
+Ask the skill *"which ids are things?"*. It drafts the register (`emcli id draft`) and asks about each id in plain
+terms. In licensing:
+
+| The skill asks | You say | It records |
+|---|---|---|
+| *"Is an organisation something people look at, list or act on?"* | *"Yes."* | `organisationId`: entity "Organisation" |
+| *"Does an invitation belong to one organisation?"* | *"Yes."* | `invitationId`: entity, its parent `organisationId` |
+| *"Whose id is `transactionId`?"* | *"Paddle's."* | external, from Paddle |
+| *"Should people be called Users or Persons?"* | *"Users."* | `userId`: entity "User" |
+| *"`sub` comes from the sign-in service: is it the same person as `userId`?"* | *"Yes: identity turns one into the other."* | `sub`: external, from Auth; `userId` owned by identity |
+
+`emcli id list` shows the result:
+
+```text
+organisationId: entity "Organisation" / "Organisations", owned by licensing
+invitationId: entity "Invitation" / "Invitations", owned by licensing, belongs to organisationId
+userId: entity "User" / "Users", owned by identity
+subscriptionId: external, from Paddle
+settingsId: singleton, owned by licensing
+syncId: system, owned by licensing
+email: lookup, owned by identity
+```
+
+An entity with a parent appears on its parent's page, never in the menu. Once the model has a register, a slice that
+brings a new id registers it in the same change: the skill asks about it when you add it, and completeness warns
+about any id left out.
+
+**Where each command goes follows from its ids** (D7). Ask *"where does assigning a seat go?"* (`emcli id show
+organisationId`):
+
+```text
+commands that live on it (D7):
+  activateOrganisation (licensing): create
+  reportCheckoutCompleted (licensing): action
+  startTrial (licensing): an automation issues it (on no page)
+```
+
+- A command that makes a new id is a **create** (*New organisation*, on the Organisations list; inviting a member is
+  a create on the organisation's page, its parent).
+- One that names an existing thing is an **action** on that thing's page.
+- One that names two things that don't belong to each other (assigning a seat to a person in an organisation) is a
+  **relationship**: on either page, with the other chosen on the screen.
+- One that only uses the signed-in person (changing your email) is on your own pages.
+- One only an automation issues is on no page.
+
+Your screens still decide where a command is drawn. If one is drawn on another thing's page than its ids say, the
+export warns. Usually an id is missing or a parent isn't recorded, so the skill fixes the model, not the screen.
+
+**"My organisations".** When people belong to things, ask for a list of their own: *"Show people their own
+organisations."* The skill adds a read model keyed by the signed-in person (`MyOrganisations`, by
+`session:userId`) on the Organisations list page. That page is the menu item and the start page, and with one
+organisation it opens it straight away.
+
+**What a change rebuilds.** Where a screen leads, or its mockup or route: that screen's UI. A register entry (a kind,
+a name, a parent), a page's area, or who holds which permission: nothing. The export rewrites `navigation.json`, and
+the menu follows.
 
 ---
 

@@ -833,8 +833,19 @@ model and build only what's ours.
           - Licensing (`2216a3c`…`6c83976`, one commit per slice, as the commit-scope guard asks): 6 routes, 4 forms.
             Activate organisation's race answers 201 and 422 (its test fails 3/3 without the retry); owner chain 20/20
             recorded; journeys mock (12.4s) and sandbox (17.1s) pass. Backend 457, web 117.
-          4. **NEXT:** planning rows (event-model skill, `plan-change`) and a manual section; distil the draft
-             `navigation.md` and `build-screen`'s one-row rule now that licensing has been through steps 1 to 3.
+          4. ✅ **Done 2026-10-12, ADR-065 complete.** Planning rows, the manual, and the drafts distilled.
+             - emcli `de6dcac`: `id show` puts a command only automations issue on no page (licensing's `startTrial`,
+               `assignSeat` and three more had shown as actions); `navigation` warns about a command drawn on another
+               entity's page than its ids name (D7; a child's command may sit on its parent's page). 516 tests;
+               mutation-checked (3 mutants caught). On licensing: no new warnings.
+             - `event-model`: `navigation.md` distilled (no longer a draft: what licensing taught, "My …" lists, what a
+               change rebuilds); Navigate mode no longer draft; the hand-off's ready check gains navigation.
+             - Kit: `plan-change` gains the navigation rows (what rebuilds, register a new id in the same change, a
+               "mine" list needs the person's tag) and ADR-065 in its table; `build-screen`'s one-row rule distilled
+               (and the form-callback paragraph moved back under "Where a card leads"); manual §13.11 (the register,
+               where commands go). Licensing `5dacd13` (kit-drift 0).
+             - Not built, and not needed: the ADR's "a flow screen with no next page that isn't its chapter's end".
+               The next page is derived from the timeline, so a screen with none is the end of its lane's flow.
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
        `plan-change` and `job-scope` count as proven once a change with users goes through expand, switch,
        contract in the loop.
@@ -4787,6 +4798,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-12 | Licensing's landing page is the person's organisation: My Organisations by person (a list, opened directly with one row), the Dashboard as the organisation's page. `userWasAssignedToRole` tagged with `userId`, not `roleId` (ADR-048 addendum) | Gary: one organisation per person for now, owners activate and others are invited; a `roleId` tag would make one lock per role value across the platform, and the role checks already hold inside the organisation (decision models over events, under the append condition, not read models) |
 | 2026-10-12 | ADR-066 Accepted: a person who holds no role in any organisation may activate one; `organisationWasActivated` loses its `userId` tag; replaces the same day's Proposed domain claim and ask to join | Gary: everyone other than the owner is invited explicitly, so someone not invited is the initiator; not by email domain (contractors' domains vary); not a platform admin's invite (it would couple them to onboarding); simple first |
 | 2026-10-12 | ADR-067 Accepted: every command card sends through `useSubmitOnce` and disables while pending; every route decides again after a conflict (`retry: { onConflict: true }`, dcb-event-store phase 24) | Gary: defend client side with simple hooks to disable buttons, as a default for anything command based. RHF's `isSubmitting` disables a render late; a button can't stop two tabs or a script, and Emmett, Marten and Axon decide again on a conflict |
+| 2026-10-12 | ADR-065 step 4 done: navigation guidance distilled (no longer a draft); `plan-change` and the hand-off's ready check gain navigation rows; manual §13.11; emcli places automation-only commands on no page and warns about a command on another entity's page | Licensing went through steps 1 to 3 (journeys pass), so the drafts stood on solid ground. The D7 warning was in the Accepted ADR but not yet in emcli, and `id show` listed automation-issued commands as page actions |
 
 ## Progress
 
