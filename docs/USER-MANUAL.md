@@ -2003,6 +2003,19 @@ board.
 The loop builds a slice's UI in `web/` from its mockup: a form per command the screen submits, a view per read
 model it displays, and the page the card is on (its route from §13's page routes).
 
+**Where each screen leads** (ADR-065). Once a screen's command succeeds, the person goes on to the next page in the
+chapter's timeline, in the same lane: the chapter is one flow, so the timeline already says what comes next. In
+licensing, Activate Organisation leads to Choose How to Start, and reporting the checkout leads to the Dashboard.
+A screen another system serves (the sign-in screens) leads nowhere, since what follows happens there. Say where the
+timeline can't show it:
+- *"After Get Started, the owner goes on to activate their organisation."* That flow continues in another
+  context's chapter, so the skill runs `emcli element next "register user/Get Started" --to "Activate Organisation"
+  --context licensing`.
+- *"Stay on the page after saving."* The skill runs `--none` on that card.
+
+`emcli element route --all` shows each card's `next:`. A change of next page rebuilds that screen's UI, as a changed
+mockup does.
+
 A slice's **backend** and its **UI** are two jobs, each with its own status, like the backend and frontend
 tasks of one story on a team. Each is its own job with its own routine and commit checks: the backend
 (`feat: [<slice>]`) and the UI (`feat: [<slice>] screen`, §15). The slice is Done when both are.

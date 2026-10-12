@@ -740,6 +740,15 @@ model and build only what's ours.
           Research went to the UI authorities, not the event-sourcing ones (ADR-064, `docs/DESIGN-AUTHORITIES.md`).
           1. Flow links: the next page from the timeline, `element next`, `build-screen`, licensing's two links,
              the journey without the nav or typed URLs.
+             - ✅ emcli `43ebf85` (2026-10-12): `deriveFlows` (the next page in the card's lane; none from a card
+               without a command or from another system's screen), `element next --to/--none/--clear`,
+               `screens[].next` with each ID's source, a fingerprint that changes only with a next page, and
+               warnings. 482 tests; mutation-checked (lane rule, fingerprint). A dry run on licensing derives
+               Activate → Choose How to Start (organisationId from the command) and checkout → Dashboard.
+             - ✅ kit: `build-screen` builds `next` (never chooses a destination itself), page test per move;
+               manual §13.9.
+             - Licensing: `element next` on Get Started → Activate Organisation (licensing), export (Gary's
+               go-ahead), the loop rebuilds the three screens, the journey updated.
           2. The register: `emcli id`, drafted from the id flags, with completeness checks.
           3. The menu and areas: `navigation.json`, `Layout.tsx` by permission, licensing's "my organisations".
           4. Planning rows (event-model skill, `plan-change`) and a manual section.

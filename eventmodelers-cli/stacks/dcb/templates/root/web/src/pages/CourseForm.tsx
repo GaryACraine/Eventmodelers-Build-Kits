@@ -2,7 +2,8 @@ import { useNavigate } from "react-router"
 import type { PageInfo } from "@/lib/page"
 import { RegisterCourseForm } from "@/slices/register-course/RegisterCourseForm"
 
-// slice.json screens[].page: "Course Form", from the slice "Register Course"
+// slice.json screens[].page: "Course Form", from the slice "Register Course";
+// screens[].next: "Course Page", after registerCourse, courseId from the command (ADR-065)
 export const page: PageInfo = { path: "/courses/new", title: "Course Form", nav: true }
 
 /** Course Form: register a course, then go to it. */

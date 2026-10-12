@@ -32,6 +32,7 @@ Each `screens[]` entry with a `mockup` is one screen card:
 | `dependencies` with `connectionType: "displays"` (INBOUND, READMODEL) | a **view** per read model |
 | `mockup.html` | the markup, 1:1: elements, classes, headings, labels, button text |
 | `page` = `{ title, route, params, slices }` | the page this card is part of, its client route, where each ID comes from, and the slices that make it up (timeline order) |
+| `next` = `{ title, context, route, params, on }` | where the person goes once this card's command (`on`) succeeds, and where each ID of that route comes from (ADR-065); absent, they stay |
 | `commands[]` / `readmodels[]` | fields, `apiEndpoint` (the API path), `readModelType`, `queries` |
 | `specifications[]` | the examples for mock data and tests, and the rejections the screen shows |
 
@@ -305,11 +306,27 @@ Load more, sees both rows, and sees the button gone.
   callbacks go where people expect (a create form navigates to the new entity's page, if a page with that `:id`
   exists; a list's `linkTo` points at it). A page's own heading from the mockup (`<h1>` outside any part) lives
   here.
+- **Where a card leads (`next`, ADR-065):** once the card's command succeeds, the page goes to `next.route`. emcli
+  derives it from the chapter's timeline (or the modeller set it), so never choose a destination yourself, and
+  never lead anywhere for a card without `next`. Each of `next.params` comes from where it says:
+  `"route"` from this page's `useParams()`, `"command"` from the form's callback (the body sent plus a 201's
+  generated fields), `"session"` from `useSession()`.
+  ```tsx
+  // slice.json screens[].next: "Choose How to Start", after activateOrganisation; organisationId from the command
+  const navigate = useNavigate()
+  <ActivateOrganisationForm onActivated={(sent) => navigate(generatePath("/organisations/:organisationId", { organisationId: sent.organisationId }))} />
+  ```
+  The form's callback passes `{ ...body, ...data }` (what was sent, and a 201's generated fields). Another
+  system's part of the page (ADR-044) calls it after its command is sent, like any form. The next page may be
+  another slice's, not built yet: the move is still built, and the page test checks the URL it goes to.
 - **A new page with `:id`:** the pages already built that list or create that entity now lead to it: give their
   list a `linkTo` and their create form an `onCreated` navigation (`generatePath(route, { id })`), and update their
-  page tests. Only page files change for this, never another slice's folder.
+  page tests. A create form whose card has `next` already goes where `next` says: leave it. Only page files change for this, never another slice's folder.
 - `{PageTitle}.test.tsx`: `render(<App initialPath="…" session={…} />)` shows the page at its route with this
-  slice's part, and the flow the page exists for (submit → the view updates, a row → its page).
+  slice's part, and the flow the page exists for (submit → the view updates, a row → its page). A card with `next`
+  gets **"after {command}, it goes to {next title}"**: submit, then expect the next page's heading if its page file
+  exists, or else the router's location (`await waitFor(() => expect(router.state.location.pathname).toBe("/…"))`
+  with `createMemoryRouter(routes, { initialEntries: ["…"] })`).
 
 ## Step 8 — Verify, check, commit
 
