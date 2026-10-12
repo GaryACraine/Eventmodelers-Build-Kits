@@ -5,11 +5,11 @@ import { afterWrite, api, apiUrl, command, positionOf, read, ApiError } from "./
 import { server } from "./mocks/server"
 
 describe("the app shell", () => {
-    it("finds the pages in src/pages/: the start page, linked from the header", async () => {
+    it("renders the header around the pages in src/pages/", async () => {
         render(<App initialPath="/" />)
-        expect(await screen.findByRole("navigation")).toHaveTextContent("Home")
-        // "Pages" lists the built pages; an app with none yet says so
-        expect(screen.getByRole("heading", { name: /^(Pages|Nothing here yet)$/ })).toBeInTheDocument()
+        // The menu is the model's once an export writes src/navigation.json (ADR-065), so the shell is checked here,
+        // not the menu's items or the start page (lib/navigation.test.tsx covers the menu)
+        expect(await screen.findByRole("navigation")).toHaveTextContent("App")
     })
 
     it("shows who is signed in", async () => {
