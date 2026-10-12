@@ -803,31 +803,25 @@ model and build only what's ours.
                  loop found nothing to change, since pages link through each other's `page.path`.
                - Found: `sandbox-setup.mjs` fails on a freshly reset sandbox database until the app has created its
                  tables.
-          **NEXT (Gary, 2026-10-12), before step 4: who may activate an organisation.** Today any registered,
-          signed-in person may (`activateOrganisation` is `self`) and becomes its owner (ADR-051); the code already
-          refuses a second organisation per owner (`OwnsOrganisation`, tagged `userId: activatedBy`, which the model
-          doesn't show). Gary wants something creative. A limit is a rule in the command (one per person, invitation
-          only, approval by the platform admin, ...), not a permission: nobody holds a role before the organisation
-          exists. Research it with the right authorities (ADR-064: SaaS onboarding and identity), design it as an ADR,
-          and fix the `organisationWasActivated` tag drift on the way.
-          - ✅ **ADR-066 Proposed 2026-10-12**, researched with a new authorities row (SaaS tenancy and onboarding:
-            Azure's tenant life cycle, Better Auth's organization plugin, Slack, Entra, WorkOS, Auth0). The proposal:
-            anyone signed in may activate once (D1); activation claims the person's company email domain, and a
-            second person from it is pointed to that organisation to **ask to join**, which the owner accepts as an
-            ordinary invitation (D2, D3); `platform admins only` as a per-deployment setting for on-premises and
-            contract customers (D4); a platform admin releases a squatted domain (D5); public mailboxes claim nothing
-            (D6); the tag drift fixed by renaming `activatedBy` to `userId --id` before release (D7).
-            **Waiting on Gary to settle D1 to D7**, then: model it in licensing (chapter 1 replacement, a new "asks
-            to join" chapter, the settings), `plan-change` and the manual.
+          **NEXT (Gary, 2026-10-12), before step 4: who may activate an organisation (ADR-066 Accepted).** A person
+          who holds no role in any organisation may activate (everyone else is invited, and accepting assigns a
+          role). A decision model over the person's roles by `userId` replaces `OwnsOrganisation`, and
+          `organisationWasActivated` loses its unmodelled `userId` tag (the drift). The same day's Proposed version
+          (domain claim and ask to join, PR #275) was replaced: Gary wants it simple, and contractors' domains vary.
+          - [x] ADR-066 and the authorities row (SaaS tenancy and onboarding).
+          - [ ] Licensing model: replace activate organisation (spec: given `userWasAssignedToRole` for the same user →
+            "You already belong to an organisation"; decision input `userWasAssignedToRole`), only while the loop
+            waits; commit and test, then export chapter 1 last.
+          - [ ] Gary runs the loop; tests, a concurrent-activation test, an e2e case (an owner's second activation
+            refused) recorded in `e2e/`; journeys mock and sandbox.
+          - Later, with chapters 3 to 5: their role-removal events join the decision model. With invitations: decide
+            whether a pending invitation refuses activation.
           4. Then: planning rows (event-model skill, `plan-change`) and a manual section; distil the draft
              `navigation.md` and `build-screen`'s one-row rule now that licensing has been through steps 1 to 3.
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
        `plan-change` and `job-scope` count as proven once a change with users goes through expand, switch,
        contract in the loop.
   - **Open points from the work so far** (for Gary to prioritise):
-    - **Model and code disagree on `organisationWasActivated`'s tags:** the code tags it `userId: activatedBy` (one
-      organisation per owner, `OwnsOrganisation`); the model can't show it, since the field is `activatedBy`
-      (found 2026-10-12). Settle when the event is next touched. Proposed fix: ADR-066 D7 (rename to `userId --id`).
     - **The platform admin's list of every organisation** (`organisation:list`): a later page; until then a platform
       admin with no membership sees an empty Organisations.
     - **emcli:**
@@ -4774,6 +4768,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-12 | ADR-065 D7: a command belongs to the entities its ids name (held id → that entity's page; generated → a create on the list or parent; two entities → a relationship; session → mine); navigation guidance is a draft reference in `event-model`, not a skill of its own | Gary: yes to D7, and asked whether to invest in a skill. Navigation is decided while modelling, so it lives with the modelling skill and is distilled once proven |
 | 2026-10-12 | ADR-065 step 3 design: navigation names permissions, never roles (the same `resource:action` as `api/roles.json`; scope from the page's tenant key; `GET /my-permissions` from the API's own lookup); account and security pages are the kit's utility navigation (area `account`). Who may activate an organisation stays open | Gary: navigation touches security, so it must cross-reference each role's granular permissions; cross-cutting auth pages are independent of slices, so decide them up front; activation to be revisited creatively later |
 | 2026-10-12 | Licensing's landing page is the person's organisation: My Organisations by person (a list, opened directly with one row), the Dashboard as the organisation's page. `userWasAssignedToRole` tagged with `userId`, not `roleId` (ADR-048 addendum) | Gary: one organisation per person for now, owners activate and others are invited; a `roleId` tag would make one lock per role value across the platform, and the role checks already hold inside the organisation (decision models over events, under the append condition, not read models) |
+| 2026-10-12 | ADR-066 Accepted: a person who holds no role in any organisation may activate one; `organisationWasActivated` loses its `userId` tag; replaces the same day's Proposed domain claim and ask to join | Gary: everyone other than the owner is invited explicitly, so someone not invited is the initiator; not by email domain (contractors' domains vary); not a platform admin's invite (it would couple them to onboarding); simple first |
 
 ## Progress
 
