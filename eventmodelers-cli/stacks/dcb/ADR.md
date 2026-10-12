@@ -4949,7 +4949,7 @@ events.
 
 ### ADR-065: Navigation from the model: flows along the timeline, a menu of entities, and areas for the rest
 
-**Status:** **Accepted, 2026-10-12 (Gary)**, with the decisions below (D1 to D6); proposed the same day.
+**Status:** **Accepted, 2026-10-12 (Gary)**, with the decisions below (D1 to D7); proposed the same day.
 Gary widened Gap 1 (links between pages) to navigation as a whole: how commands, queries and subscriptions gather
 under menu items, in a vertical-slice build. His first thought, appraised below: people understand a system by its
 entities, which DCB's tags name, so a central record of the tags could give the menu.
@@ -5136,6 +5136,25 @@ task-based UI; event modelling (`docs/DESIGN-AUTHORITIES.md`).
   anti-corruption layer translates at the boundary (decision 2 above; the appraisal's point 2).
 - **D6, events with several entities' tags** are handled as decision 2 says: the register classifies keys, and a page
   belongs to its route's entity.
+
+- **D7, a command belongs to the entities its IDs name** (Gary, 2026-10-12). A command's id fields are the tags of
+  its decision, so they are the entities it's about. With the register, emcli derives where a command lives in the
+  menu:
+
+  | The command's ids | It belongs to | In licensing |
+  |---|---|---|
+  | one existing entity's id, held by the page | that entity's page, as an action | `startTrial(organisationId)` → the organisation |
+  | a generated id | a "create" on the list of what it creates, or on its parent's page when it has one | `activateOrganisation` → "New organisation" |
+  | a parent's id and a child's generated id | the parent's page | inviting a member → the organisation's page |
+  | two existing entities, neither the other's parent | a relationship: either entity's page, the other chosen on the screen | `assignSeat(organisationId, userId)` |
+  | the session's id | the person's own pages ("mine") | `changeUserEmail` → Your Account |
+  | lookup, external or system ids | nothing: they don't place a command | `paddleEventId`, `syncId` |
+
+  Screens still decide where a command is drawn (D6). completeness warns about a command that no screen gives a home,
+  and about a screen placing a command on a different entity's page than its ids say.
+- **The guidance is a draft reference in the `event-model` skill** (`references/navigation.md`), not a skill of its
+  own. Navigation is decided while modelling, with the same person and the same emcli commands. It's written with
+  step 2 and distilled once licensing has been through steps 1 to 3.
 
 **The build, in order:**
 1. **Flow links** (emcli, kit, licensing):
