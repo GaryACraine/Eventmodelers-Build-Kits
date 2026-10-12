@@ -5256,122 +5256,66 @@ task-based UI; event modelling (`docs/DESIGN-AUTHORITIES.md`).
   - Gap 1's links are built;
   - the journey stops typing the dashboard's URL and stops using the nav for Activate.
 
-### ADR-066: Who may activate an organisation: anyone signed in, once, and a company's email domain claims its organisation (open)
+### ADR-066: Who may activate an organisation: a person who holds no role in any organisation
 
-**Status:** **Proposed, 2026-10-12**, for Gary to settle D1 to D7. Gary asked for something creative: today any
-registered, signed-in person may activate an organisation and becomes its owner (ADR-051).
+**Status:** **Accepted, 2026-10-12 (Gary).** Gary: everyone other than the owner is invited explicitly, so a person
+nobody has invited must be the initiator, and may activate. Keep it simple at first. This replaces the same day's
+Proposed version (PR #275), which claimed the company's email domain and added "ask to join"; see the alternatives.
 **Date:** 2026-10-12
-**Authorities consulted (ADR-064):** SaaS tenancy and onboarding (new row); authentication and sessions; authorisation;
-event sourcing and DCB, for the rule's consistency (`docs/DESIGN-AUTHORITIES.md`).
+**Authorities consulted (ADR-064):** SaaS tenancy and onboarding (new row); authorisation; event sourcing and DCB, for
+the rule's consistency (`docs/DESIGN-AUTHORITIES.md`).
 
 **Context:**
 - **What licensing does today:**
-  - `activateOrganisation` is `self`: anyone signed in, with a verified email, may call it. `activatedBy` is the
-    session's `userId`, never the body.
-  - The decider refuses a second organisation per person (`OwnsOrganisation`). It reads the event's `userId` tag,
-    which the code adds by hand (`userId: activatedBy`). The model doesn't show it: the field is `activatedBy` and
-    only `organisationId` is marked `--id`. That's the drift ADR-048 left open.
-  - The same decision assigns the owner role (`userWasAssignedToRole`, `actedAs: customer`).
-  - Invitations are modelled (chapters 2, 10 and 11: invite, accept, expire, withdraw) but not built.
-  - Gary, 2026-10-12: owners activate, everyone else is invited, one organisation per person for now.
+  - `activateOrganisation` is `self`: anyone signed in may call it, and becomes the owner. The same decision assigns
+    the owner role (`userWasAssignedToRole`, tagged `userId` since `d35e117`).
+  - The decider refuses a second organisation per person (`OwnsOrganisation`). It reads a `userId` tag that the code
+    adds to `organisationWasActivated` by hand (`userId: activatedBy`). The model doesn't show it, because the field
+    is `activatedBy`. That's the drift ADR-048 left open.
+  - Invitations are modelled but not built. Accepting one assigns a role (chapter 2). Removing a member, changing
+    their roles and handing over ownership take roles away (chapters 3, 4, 5: `userWasRemovedFromRole`,
+    `memberWasRemoved`).
 - **A limit can't be a permission:** a permission is held through a role in an organisation (ADR-060), and nobody
-  holds one before the organisation exists. So who may activate is a rule in the command, read from events and
-  settings, under the append condition.
-- **What the session gives us:** `sub` and a verified `email` from the token, and `userId` from identity's lookup
-  (`src/shared/signIn.ts`). So the person's email domain is known, and has been proven by a code sent to it.
+  holds one before the organisation exists.
+- **Research:**
+  - **Better Auth's organization plugin** (our sign-in service) limits creation with a rule checked at creation
+    (`allowUserToCreateOrganization`, `organizationLimit`), not a role.
+  - **Azure's tenant life cycle guide:** onboarding is self-service, automated or manual; the product chooses.
+  - **Microsoft Entra** reserves tenant creation for a *Tenant Creator* role (manual).
+  - **Slack, Entra, Clerk and WorkOS** route people to the organisation that holds their verified email domain.
 
-**Research:**
-- **Azure Architecture Center, tenant life cycle:** onboarding is "self-service, automated, or manual", and for
-  trials you decide "who can request a trial, how to prevent misuse… and whether to automate the trial creation or
-  involve your team". The question has no single answer. It's a setting the product chooses.
-- **Better Auth's organization plugin** (our sign-in service, ADR-054) splits it in two:
-  - `allowUserToCreateOrganization`: who may (true, false, or a function of the user, such as their plan);
-  - `organizationLimit`: how many each person may.
-
-  We don't use the plugin: the organisation is licensing's, in events. But the split is the right one.
-- **Slack and Microsoft Entra:** a workspace or tenant approves an **email domain**, and a person with a verified
-  address at it joins that workspace instead of starting another. Entra's self-service sign-up joins someone to the
-  tenant that holds their domain. A stronger claim (a DNS TXT record: WorkOS, Slack's paid plans) is a later step up
-  from an email proven by a code.
-- **Auth0 (B2B onboarding) and ActiveProspect:** a self-service join can still need approval by the customer's admin:
-  "request to join", then the organisation's admin approves.
-- **Sales-led and enterprise onboarding (SSOJet):** when a contract creates the workspace before anyone signs in,
-  self-service creation makes duplicate tenants. There, only staff create the organisation.
-- **The common pattern:** self-service for individuals and trials; company domains join the organisation that holds
-  them (by approval, or automatically once proven); staff create the organisation for enterprise customers.
-
-**The proposal: activation claims the company's domain.**
-
-Licensing's customers are companies (Craine Electrical). Two people from the same company, each activating, would
-make two organisations, two trials and two bills, and the second never meets the first. So activation records the
-person's email domain, and a second person from that domain is pointed to the organisation that holds it, to ask to
-join. A request the owner accepts becomes an ordinary invitation, so "everyone else is invited" stays true: there is
-one way into an organisation.
-
-- **D1. Anyone signed in may activate, once (as today, made explicit).** The rule: a person who has activated an
-  organisation may not activate another. It stays a command rule, not a permission (`self`).
-- **D2. Activation claims the email domain, unless it's a public mailbox.**
-  - `organisationWasActivated` gains `emailDomain` (from `session:email`), tagged: a domain is a thing with many
-    values, so it may be a tag (ADR-048 addendum).
-  - Activation is refused when another organisation holds the domain: "Craine Electrical already uses craine.im. Ask
-    to join it." The refusal names the organisation, so the page can offer the request.
-  - A public mailbox (gmail.com, outlook.com, icloud.com, …) claims nothing: the person gets an organisation of their
-    own, limited by D1 alone. The list is a setting (D6) with a default, since it can't be complete.
-  - **What it proves:** the person reads mail at the domain, proven by the sign-in code. It doesn't prove they speak
-    for the company. That's why the claim only routes people and grants no access (D3). Proof by DNS is a later step.
-- **D3. Ask to join: the owner accepts or declines.** Three new events in licensing: `joinWasRequested` (by the
-  person, for the organisation that holds their domain), `joinRequestWasAccepted` (the owner or an admin,
-  with the same permission as inviting, `member:invite`, new when invitations are built), and `joinRequestWasDeclined`. Accepting issues the invitation (`memberWasInvited`), so a seat,
-  a role and its expiry follow the invitation chapters already modelled. Its own chapter, without branching
-  (ADR-038).
-- **D4. Who may activate is a setting, per deployment.** In licensing's settings (ADR-043), beside the invitation's
-  expiry:
-  - `anyone` (the default): D1 and D2 as above, for our cloud;
-  - `platform admins only`: for an on-premises install (ADR-054), which serves one customer, and for a customer we
-    sign by contract. The platform admin activates the organisation for the owner, naming them by email. That's the
-    same decision with `actedAs: platform`, which the owner role already records.
-
-  The rule reads the setting in the decision, so changing it is a fact with a date, not a redeploy.
-- **D5. A claim can be released.** A platform admin may release a domain from an organisation
-  (`emailDomainWasReleased`), for a squatter, a merger or a mistake (Azure: tenants merge and split). The organisation
-  keeps its members. Only the routing changes.
-- **D6. The public mailbox list** is a setting with a default from a known list, and the platform admin adds to it.
-- **D7. The tag drift, fixed by a rename:** `organisationWasActivated`'s `activatedBy` becomes `userId`, marked
-  `--id` (one key per thing, the register's `userId`). The person who activates is the owner, so nothing is lost.
-  Nothing reads `activatedBy` outside its own slice except test fixtures, and the event isn't released, so it's an
-  edit (`plan-change`): the producer is a same-name replacement, and the fixtures in start trial, start options,
-  organisation overview, report checkout completed and translate Paddle notification change with it.
-  `emailDomain` (D2) is added in the same replacement.
-
-**What it costs and what it's for:**
-- **Duplicates and repeated trials:** one company, one organisation and one trial. That's free and immediate. A
-  second trial needs a second company domain or a public mailbox (one per person, D1). Card fingerprints are
-  Paddle's concern, not ours.
-- **Growth inside a company:** a colleague who signs up is shown their company's organisation, not an empty form.
-  That's Slack's and Entra's reason for the domain.
-- **The squatter case:** a contractor activates with the client's domain. The client's people ask to join and are
-  refused, then the platform admin releases the claim (D5). Proof by DNS would prevent it, at the cost of IT work
-  before a trial. It's kept for later, as a stronger claim that allows joining without approval.
-- **Personal data:** a company domain isn't a person's. The email itself stays in identity (ADR-059), and only its
-  domain is copied, at activation.
+**Decision:**
+1. **activate organisation refuses a person who holds a role in any organisation:** "You already belong to an
+   organisation". Everyone except an owner arrives by invitation, and accepting assigns a role, so a person with no
+   role is an initiator. Because activation assigns the owner role in the same decision, the same fact also refuses
+   an owner's second organisation.
+2. **The decision model counts the roles a person holds now:** it adds one on `userWasAssignedToRole` and takes it
+   away on the events that remove one, by the `userId` tag. Today only the first is built. When chapters 3 to 5 are
+   built, their removal events join the decision model, so a person who has left every organisation may start one.
+3. **It's a rule in the command, not a permission.** The endpoint stays `self`.
+4. **Two activations at once:** the append condition on the same `userId` query refuses the second.
+5. **`organisationWasActivated` loses its `userId` tag.** Nothing queries it any more, so the event is tagged only
+   with the id fields the model marks, and the drift goes away. `activatedBy` stays as it is. Before release, the
+   producer is replaced with the same name (ADR-046). Stored events keep the old tag, and no query reads it.
 
 **Alternatives considered:**
-- **One organisation per person, and nothing else (today).** This is the floor, D1. Alone, it lets one company start
-  many organisations and trials.
-- **Invitation only (a code from us).** Every trial waits on a person at our end. This is kept as D4's
-  `platform admins only`, not as the default.
-- **Approval by the platform admin for every activation.** This is the same delay for every customer, to catch the few.
-  The domain claim catches duplicates without it.
-- **Join automatically by domain, with no approval.** This lets anyone with a mailbox at the domain in. It's safe
-  only with proof by DNS (later).
-- **A permission (`organisation:activate`) held by default.** It can't be: there's no organisation to hold it in,
-  and a platform-wide default role is a permission held by everyone, which says nothing (ADR-060).
+- **Claim the company's email domain, and route colleagues to "ask to join"** (the Proposed version; Slack, Entra,
+  Clerk, WorkOS). Rejected (Gary): contractors are invited with other domains, and it's more than the start needs.
+- **A platform admin invites each owner, or activates for them** (Entra's Tenant Creator; the Proposed version's
+  "platform admins only" setting). Rejected: it ties the platform admin to every customer's onboarding.
+- **Approval by the platform admin for every activation.** Rejected for the same reason.
+- **A limit as a setting** (Better Auth's `organizationLimit`). Not now: one role-free start per person is enough.
 
-**Consequences (when Accepted):**
-- **Licensing (model, through emcli):** chapter 1's event and command change (D2, D7); a new chapter "A colleague
-  asks to join"; the setting and its configure command (D4, D6); "a platform admin releases a domain" (D5); the
-  Activate page shows the refusal's "ask to join".
-- **Kit:** `plan-change` gains "a rule about who may create a tenant is a command rule reading settings, never a
-  permission"; `build-state-change` notes that an email domain from `session:email` is lower-cased and taken after
-  the last `@`.
-- **The manual:** a section on who may activate, in licensing's terms.
+**Follow-ups:**
+- **A pending invitation:** a person invited but not yet accepted holds no role, so they may still activate. When
+  invitations are built, activation may refuse them and point them to the invitation (a decision model over
+  `memberWasInvited` by the invitee's email). Decide then.
+- **A contractor who wants their own organisation** while being a member elsewhere needs the rule relaxed. Deferred
+  until someone needs it.
+
+**Consequences:**
+- **Licensing:** activate organisation is replaced: a decision model over the person's roles by `userId`, the new
+  refusal, and no `userId` tag on `organisationWasActivated`. When the removal chapters are built, their events
+  join the decision model.
+- **The kit:** a limit on creating something before any role exists is a command rule over the person's facts, not a
+  permission (with ADR-058 and ADR-060).
