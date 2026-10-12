@@ -821,6 +821,18 @@ model and build only what's ours.
             copies a command's generated fields into the `when` step, and nothing removes a step's field.
           - Later, with chapters 3 to 5: their role-removal events join the decision model. With invitations: decide
             whether a pending invitation refuses activation.
+          ✅ **Done 2026-10-12: a command once per press, and a route decides again after a conflict (ADR-067).** Gary:
+          disable buttons by default for anything command based; the server half added so two tabs or a script meet
+          the decider's own refusal, not a 409.
+          - dcb-event-store phase 24 (PR #36, **waiting for Gary to merge**; licensing built from its branch):
+            `handle(…, { retry: { onConflict } })`, Emmett's numbers in the library's `Backoff` (moved to the core).
+            12 tests, mutation-checked.
+          - Kit: `web/src/lib/submit.ts` (`useSubmitOnce`: a ref guard, one `Idempotency-Key` per press until the server
+            answers), the template's forms and routes, `build-screen`, `build-state-change`, `AGENT.md`. Template web
+            83 tests, mutation-checked.
+          - Licensing (`2216a3c`…`6c83976`, one commit per slice, as the commit-scope guard asks): 6 routes, 4 forms.
+            Activate organisation's race answers 201 and 422 (its test fails 3/3 without the retry); owner chain 20/20
+            recorded; journeys mock (12.4s) and sandbox (17.1s) pass. Backend 457, web 117.
           4. **NEXT:** planning rows (event-model skill, `plan-change`) and a manual section; distil the draft
              `navigation.md` and `build-screen`'s one-row rule now that licensing has been through steps 1 to 3.
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
@@ -4774,6 +4786,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-12 | ADR-065 step 3 design: navigation names permissions, never roles (the same `resource:action` as `api/roles.json`; scope from the page's tenant key; `GET /my-permissions` from the API's own lookup); account and security pages are the kit's utility navigation (area `account`). Who may activate an organisation stays open | Gary: navigation touches security, so it must cross-reference each role's granular permissions; cross-cutting auth pages are independent of slices, so decide them up front; activation to be revisited creatively later |
 | 2026-10-12 | Licensing's landing page is the person's organisation: My Organisations by person (a list, opened directly with one row), the Dashboard as the organisation's page. `userWasAssignedToRole` tagged with `userId`, not `roleId` (ADR-048 addendum) | Gary: one organisation per person for now, owners activate and others are invited; a `roleId` tag would make one lock per role value across the platform, and the role checks already hold inside the organisation (decision models over events, under the append condition, not read models) |
 | 2026-10-12 | ADR-066 Accepted: a person who holds no role in any organisation may activate one; `organisationWasActivated` loses its `userId` tag; replaces the same day's Proposed domain claim and ask to join | Gary: everyone other than the owner is invited explicitly, so someone not invited is the initiator; not by email domain (contractors' domains vary); not a platform admin's invite (it would couple them to onboarding); simple first |
+| 2026-10-12 | ADR-067 Accepted: every command card sends through `useSubmitOnce` and disables while pending; every route decides again after a conflict (`retry: { onConflict: true }`, dcb-event-store phase 24) | Gary: defend client side with simple hooks to disable buttons, as a default for anything command based. RHF's `isSubmitting` disables a render late; a button can't stop two tabs or a script, and Emmett, Marten and Axon decide again on a conflict |
 
 ## Progress
 

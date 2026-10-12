@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ApiError, api, command } from "@/lib/api"
 import type { components } from "@/lib/api-types"
+import { idempotent, useSubmitOnce } from "@/lib/submit"
 import { useWrites } from "@/lib/writes"
 
 type RegisterCourse = components["schemas"]["RegisterCourseBody"]
@@ -19,7 +20,8 @@ const RegisterCourseSchema = z.object({
 
 /**
  * Register Course: the form of the "Course Form" screen (mockup: `form.mock-card`, `data-command="registerCourse"`).
- * Sends `POST /register-course` (slice.json `apiEndpoint`); a rejection shows the backend's message.
+ * Sends `POST /register-course` (slice.json `apiEndpoint`) once per press (`useSubmitOnce`); a rejection shows the
+ * backend's message.
  */
 export function RegisterCourseForm({ onRegistered }: { onRegistered?: (course: RegisterCourse) => void }) {
     const { recordWrite } = useWrites()
@@ -28,19 +30,20 @@ export function RegisterCourseForm({ onRegistered }: { onRegistered?: (course: R
         handleSubmit,
         reset,
         setError,
-        formState: { errors, isSubmitting }
+        formState: { errors }
     } = useForm({ resolver: zodResolver(RegisterCourseSchema) })
+    const { run, pending } = useSubmitOnce()
 
-    const submit = handleSubmit(async (body) => {
-        try {
-            const { position } = await command(api.POST("/register-course", { body }))
+    const submit = handleSubmit((body) =>
+        run(async (key) => {
+            const { position } = await command(api.POST("/register-course", { body, headers: idempotent(key) }))
             await recordWrite(position)
             reset()
             onRegistered?.(body)
-        } catch (error) {
+        }).catch((error) =>
             setError("root", { message: error instanceof ApiError ? error.message : "Something went wrong. Try again." })
-        }
-    })
+        )
+    )
 
     return (
         <form className="mock-card" onSubmit={submit} noValidate>
@@ -63,7 +66,7 @@ export function RegisterCourseForm({ onRegistered }: { onRegistered?: (course: R
                     {errors.root.message}
                 </p>
             )}
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={pending}>
                 Register course
             </Button>
         </form>

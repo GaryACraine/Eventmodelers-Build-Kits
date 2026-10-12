@@ -22,7 +22,7 @@ export function configureRegisterCourseRoute(deps: SliceDependencies): WebApiSet
                         store,
                         registerCourse,
                         { type: "registerCourse", data: { id, title, capacity } },
-                        { idempotencyKey }
+                        { idempotencyKey, retry: { onConflict: true } }
                     ))
                 return res => {
                     withETag(position)(res)

@@ -59,7 +59,7 @@ These are always up to date — read them directly before invoking any skill.
 - `decider()` takes a `handlers` factory (returns decision model instances) and a `decide` function
 - State keys in `handlers` must match the state properties used in `decide()`
 - `TaggedEvent` returned by event factories carries both the event and its `Tags.fromObj(...)` scope
-- `handle(store, decider, command, { idempotencyKey })` replaces stream-based CommandHandler
+- `handle(store, decider, command, { idempotencyKey, retry: { onConflict: true } })` replaces stream-based CommandHandler (a route decides again after a conflict, ADR-067)
 
 ## Pongo projection pattern
 

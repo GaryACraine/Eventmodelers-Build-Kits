@@ -22,7 +22,7 @@ export function configureSubscribeStudentRoute(deps: SliceDependencies): WebApiS
                         store,
                         subscribeStudentToCourse,
                         { type: "subscribeStudentToCourse", data: { courseId, studentId } },
-                        { idempotencyKey }
+                        { idempotencyKey, retry: { onConflict: true } }
                     ))
                 return res => {
                     withETag(position)(res)
