@@ -824,7 +824,7 @@ model and build only what's ours.
           ✅ **Done 2026-10-12: a command once per press, and a route decides again after a conflict (ADR-067).** Gary:
           disable buttons by default for anything command based; the server half added so two tabs or a script meet
           the decider's own refusal, not a 409.
-          - dcb-event-store phase 24 (PR #36, **waiting for Gary to merge**; licensing built from its branch):
+          - dcb-event-store phase 24 (PR #36, merged by Gary 2026-10-12; kit PR #278 merged after it; licensing type-checks against main):
             `handle(…, { retry: { onConflict } })`, Emmett's numbers in the library's `Backoff` (moved to the core).
             12 tests, mutation-checked.
           - Kit: `web/src/lib/submit.ts` (`useSubmitOnce`: a ref guard, one `Idempotency-Key` per press until the server
