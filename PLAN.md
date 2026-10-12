@@ -793,10 +793,18 @@ model and build only what's ours.
                - ✅ Kit: the start page opens the first menu item the person may use (Sign in when signed out),
                  waiting for the permissions; `build-screen` opens a person's only row (draft); `plan-change` says
                  what to tag. Licensing `494bf0f`, web 104 tests, mutation-checked.
-               - NEXT: Gary's go-ahead to reset the local database and export chapter 1; after the loop, the
-                 journeys (Activate → `/start`; checkout → the Dashboard at `/organisations/:id`; signing in again
-                 lands on it).
-          4. Planning rows (event-model skill, `plan-change`) and a manual section.
+               - ✅ **Done 2026-10-12, step 3 complete.** Event stores reset (`dcb`, `dcb_sandbox`; the sign-in
+                 accounts kept), chapter 1 exported (Gary's go-ahead). The loop built the replacements, My
+                 Organisations and the moved screens (`08cb830`…`6bdf530`). Journeys (licensing `b837967`): mock and
+                 sandbox pass; `/` and the menu's Organisations open the owner's only organisation.
+               - Found: emcli took a screen as built when the model changed after the loop had rebuilt it (report
+                 checkout completed). Fixed in emcli `2c51387`: a queued rebuild records what it builds (`to`) and is
+                 queued again when the model has moved on. Licensing's entry was set back by hand and re-exported; the
+                 loop found nothing to change, since pages link through each other's `page.path`.
+               - Found: `sandbox-setup.mjs` fails on a freshly reset sandbox database until the app has created its
+                 tables.
+          4. **NEXT:** planning rows (event-model skill, `plan-change`) and a manual section; distil the draft
+             `navigation.md` and `build-screen`'s one-row rule now that licensing has been through steps 1 to 3.
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
        `plan-change` and `job-scope` count as proven once a change with users goes through expand, switch,
        contract in the loop.
