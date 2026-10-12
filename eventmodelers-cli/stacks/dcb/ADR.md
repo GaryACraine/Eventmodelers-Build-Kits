@@ -4926,8 +4926,10 @@ events.
 1. **An open design question is researched with the authorities of its discipline:** standards and guides first,
    then the products and frameworks that solved the same problem (competitors and inspirations). Compare them before
    recommending, and note each one's design reason and what copying it would cost us.
-2. **Axon 5, Emmett and Marten are the authorities for event sourcing** (consistency, the store, projections,
-   processors, upcasting), and Dilger's book for event sourcing and event modelling. Other questions consult them
+2. **Axon 5, Emmett, Marten and event-driven.io are the authorities for event sourcing** (consistency, the store,
+   projections, processors, upcasting), and Dilger's book for event sourcing and event modelling. event-driven.io is
+   Oskar Dudycz's (Emmett's author); its Event Sourcing, CQRS and Event-Driven Architecture categories are the ones
+   consulted (added by Gary, 2026-10-12). Other questions consult them
    only on the part that is event sourcing. A question doesn't become one because events are involved.
 3. **The index is `docs/DESIGN-AUTHORITIES.md`:** a row per discipline, with its standards and guides, its
    inspirations and competitors, where a local copy is kept, and the ADRs that used it. It starts with the
