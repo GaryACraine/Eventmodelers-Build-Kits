@@ -5430,5 +5430,10 @@ can't accept). Event sourcing for decision 5 (a decision folds what is pending; 
   automation's work uses it (`build-automation`); a page that follows sign-up honours `?next=` (`build-screen`).
 - Licensing: chapters 2, 10 and 11 modelled and built; `organisationId` (and on accepting, `userId`) tagged on the
   invitation events; `invitee signed up` and `member auth role was assigned` removed.
-- Later: buying more seats (chapter 6) raises the allowance; removing a member (chapter 4) frees a seat; contractors
-  in several organisations stay deferred (ADR-066).
+- Later: the seats bought come only from `trialWasStarted` today. When chapters 1b, 6 and 7 are built,
+  `subscriptionWasStarted`, `seatsWereAdded` and `seatsWereRemoved` join the invite decision's count. Removing a
+  member (chapter 4) frees a seat. Contractors in several organisations stay deferred (ADR-066).
+- **A seat reduction beats a pending invitation** (Gary, 2026-10-12): the owner reducing seats isn't willing to pay
+  for them, so when a reduction leaves fewer seats than are assigned and held, the pending invitations lose their
+  holds, never the reduction. How (accepting refused for want of a seat, or the excess invitations withdrawn) is
+  designed with chapter 7.
