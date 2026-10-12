@@ -774,6 +774,9 @@ model and build only what's ours.
        `plan-change` and `job-scope` count as proven once a change with users goes through expand, switch,
        contract in the loop.
   - **Open points from the work so far** (for Gary to prioritise):
+    - **Open question (Gary, 2026-10-12): who may activate an organisation.** Today any registered, signed-in
+      person may (`self`), and becomes its owner (ADR-051). Gary wants to revisit it later and find something
+      creative; a limit would be a rule in the command (one per person, invitation only, approval), not a permission.
     - **emcli:**
       - `slice remove` doesn't warn when the slice is built;
       - an export limited by `--chapter` drops another chapter's index entries whose slice ids changed (a

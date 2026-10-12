@@ -5167,6 +5167,51 @@ task-based UI; event modelling (`docs/DESIGN-AUTHORITIES.md`).
    - `navigation.json`;
    - `Layout.tsx`, by permission;
    - licensing's "my organisations".
+
+   **How step 3 is built** (2026-10-12; the details decision 6 left open):
+   - **A page's entity** is the deepest entity among its route's ids (`/organisations/:organisationId/dashboard` →
+     the organisation), else the entity it lists (`/organisations`) or creates (`/organisations/new`). A page with
+     none belongs to an area.
+   - **Its area** is the screen's `area` property (`emcli element area`), defaulting to the context. `--none` keeps a
+     page out of the menu: one reached only by its flow, such as Get Started after signing up, or a page an emailed
+     link opens.
+   - **The menu:** one item per top-level entity (no parent) that has a list page, showing that page, then each
+     area's pages. A page with route ids is never in the menu: it's reached from a list or a flow. A create page is
+     offered on the list ("New organisation"), as react-admin and Refine offer a resource's create.
+   - **What the person may use, in the role map's own terms (Gary: align with ADR-060's granular permissions):**
+     - `navigation.json` holds **permissions, never roles.** For each page, and each command on it, it names the
+       declaration of the endpoint behind it (ADR-058): the same `resource:action` string the API checks and
+       `api/roles.json` grants (`organisation:read`), or `self`, or anonymous. Both are written from the same
+       declarations at the same export, so they can't drift. `roles.json` stays the only place that says which role
+       holds what, and changing a role never touches navigation.
+     - **Scope comes from the page, as on the API:** a page whose route holds the tenant key (`:organisationId`) is
+       checked in that organisation, so organisation roles count there; a page without it counts platform roles only,
+       exactly as `decide` does with no tenant. emcli warns when a page without the tenant key needs a permission that
+       only organisation roles hold: the API would refuse every one of them there, so the model is wrong.
+     - **The person's permissions come from the API** (`GET /my-permissions`, and `?organisationId=` on an
+       organisation's pages), from the same role lookup, role map and `decide` as `requirePermission`. The client
+       never works out roles itself. It's react-admin's `getPermissions` and Refine's `accessControlProvider`: the
+       client asks, the server decides.
+     - **Shown:** a menu item when every read on its page is allowed; an action on a page when its command's
+       permission is. A permission held only at a stronger sign-in level is still shown: using it asks the person to
+       step up, as the API does (ADR-056 D3).
+     - **A permission no role holds** (the catalogue's **nobody**): its page or action is never shown, and emcli
+       warns, as it does for the endpoint (a setting that grants access defaults to nobody).
+     - Hiding is a courtesy, never the check: the API still refuses.
+   - **Account and security pages are utility navigation, fixed by the kit, not derived** (Accepted, Gary
+     2026-10-12). NN/g and Material keep the account menu (top right) apart from the primary menu, and GOV.UK One Login
+     keeps security apart from each service's navigation. These pages are the same in every project and don't come
+     from slices:
+     - **signed out:** "Sign in" and "Sign up" in the header; Forgot and Reset password reached by their links only;
+     - **signed in:** the person's email opens the account menu: Your account (email, password, the authenticator
+       app, passkeys, where you're signed in), then Sign out. A role's step-up is a prompt, never a page;
+     - the model's own pages join it with the reserved area `account` (`element area … account`): a person's
+       profile, say. A landing page an emailed link opens (Email Changed) is `--none`: in no menu.
+     The kit's pages stay out of `navigation.json` (the layout lists them itself); `account` is the one area name
+     the kit reserves.
+   - **Nothing leads to a page** (a warning): it isn't in the menu, no flow leads to it, it doesn't follow another
+     system's screen on its timeline (signing up leads to Get Started), and it isn't the one-entity page of an
+     entity with a list.
 4. **Planning and the manual:**
    - the event-model skill and `plan-change` rows;
    - a manual section.
