@@ -734,7 +734,11 @@ model and build only what's ours.
           `trialDays` read from Paddle's price.
        4. **Split "start trial checkout"** (screen, then Paddle's event), replacing the built slice, when that area is
           next touched.
-       5. **Gap 1: links between pages,** with the sign-in work (Get Started changes then).
+       5. **NEXT (Gary, 2026-10-12): Gap 1, links between pages, widened to navigation as a whole (ADR-065,
+          Proposed).** Flows lead forward along the chapter's timeline, a menu of entities comes from a register of
+          the context's tags, and areas hold the pages that belong to no entity. Research went to the UI
+          authorities, not the event-sourcing ones (ADR-064, `docs/DESIGN-AUTHORITIES.md`). Next: Gary's answers to
+          ADR-065's four open questions, then the build, flow links first.
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
        `plan-change` and `job-scope` count as proven once a change with users goes through expand, switch,
        contract in the loop.
@@ -4677,6 +4681,8 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-11 | ADR-063 Proposed: security releases (lockfiles everywhere, the sign-in path pinned exactly, run-time-only images, `security:audit` as the release gate, a release of digest-pinned images for on-premises); 2b.2d closed, 2b.2c next | Gary chose 2b.2c next. Licensing's audit found an unauditable web app (no lockfile) and test tooling in the sign-in service's image; Better Auth has 23 advisories in 20 months, 8 on one day |
 | 2026-10-12 | ADR-063 Accepted: the response times (critical 2 days, high 7), no remote for now, customers by email, the tooling fixed now; Postgres 16 → 18.6 (19 waits for its release and RDS) | Gary: "Happy with your recommendation, let's fix everything we can", and 16 was two majors behind. Before release there's no customer data, so a major upgrade is cheapest now; it's rehearsed by dump and load |
 | 2026-10-12 | 2b.2c done: the local database moved to Postgres 18.6 and every end-to-end run recorded on it; the event store library moved first (phase 23, PR #35); what 18 offers is 16.9, deferred | Gary: "Should we upgrade DCB event store first? … I think we should" and "This should be deferred". The library carries the event store, so it was proven on 18 before the data moved |
+| 2026-10-12 | ADR-064 Accepted: an open design question is researched with the authorities of its own discipline; the index is `docs/DESIGN-AUTHORITIES.md` | Gary: Axon, Emmett and Marten only when a question is specific to events; otherwise the relevant design authorities, competitors or inspirations, indexed by discipline, not comprehensive at first |
+| 2026-10-12 | ADR-065 Proposed: navigation from the model (flows along the timeline, a menu of entities from a tag register, areas for the rest), widening Gap 1 | Gary: a broader concern than two links; people understand a system by its entities, which the DCB tags name. In licensing 4 of 11 tags are entities, so the register gives each tag a kind |
 
 ## Progress
 
