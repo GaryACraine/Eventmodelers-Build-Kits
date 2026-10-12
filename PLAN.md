@@ -803,20 +803,25 @@ model and build only what's ours.
                  loop found nothing to change, since pages link through each other's `page.path`.
                - Found: `sandbox-setup.mjs` fails on a freshly reset sandbox database until the app has created its
                  tables.
-          **NEXT (Gary, 2026-10-12), before step 4: who may activate an organisation (ADR-066 Accepted).** A person
+          ✅ **Done 2026-10-12: who may activate an organisation (ADR-066 Accepted).** A person
           who holds no role in any organisation may activate (everyone else is invited, and accepting assigns a
           role). A decision model over the person's roles by `userId` replaces `OwnsOrganisation`, and
           `organisationWasActivated` loses its unmodelled `userId` tag (the drift). The same day's Proposed version
           (domain claim and ask to join, PR #275) was replaced: Gary wants it simple, and contractors' domains vary.
           - [x] ADR-066 and the authorities row (SaaS tenancy and onboarding).
-          - [ ] Licensing model: replace activate organisation (spec: given `userWasAssignedToRole` for the same user →
-            "You already belong to an organisation"; decision input `userWasAssignedToRole`), only while the loop
-            waits; commit and test, then export chapter 1 last.
-          - [ ] Gary runs the loop; tests, a concurrent-activation test, an e2e case (an owner's second activation
-            refused) recorded in `e2e/`; journeys mock and sandbox.
+          - ✅ Licensing: `0de3780` (the tag), `8c4e8a3` (the model: three new specs), exported; the loop built the
+            backend (`f85150a`, `HoldsAnyRole`, with a test of two activations at once). Its UI blocked on two web
+            tests left stale by step 3's `navigation.json` (GetStarted checked a menu link; the kit's `App.test`
+            expected "Home"), fixed in `d825866` and planned again (`3a2a76b`); UI built `bbd82b7`. Backend 457, web
+            113 pass; the rule mutation-checked (3 refusal tests catch it).
+          - ✅ Proven `a27598f`: owner chain 20/20 (the owner's second activation 422; two at once by a new person, 201
+            and 409, one organisation), recorded as security evidence; journeys mock (11.7s) and sandbox (17.9s) pass.
+          - Found: step 3 was recorded done with those two web tests failing (the menu came with the export, after the
+            web tests had run). Kit: `App.test` checks the header, not the menu. emcli: `spec step add --seed-examples`
+            copies a command's generated fields into the `when` step, and nothing removes a step's field.
           - Later, with chapters 3 to 5: their role-removal events join the decision model. With invitations: decide
             whether a pending invitation refuses activation.
-          4. Then: planning rows (event-model skill, `plan-change`) and a manual section; distil the draft
+          4. **NEXT:** planning rows (event-model skill, `plan-change`) and a manual section; distil the draft
              `navigation.md` and `build-screen`'s one-row rule now that licensing has been through steps 1 to 3.
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
        `plan-change` and `job-scope` count as proven once a change with users goes through expand, switch,
