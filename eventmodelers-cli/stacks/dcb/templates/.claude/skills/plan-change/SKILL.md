@@ -202,6 +202,16 @@ the tags exactly, so it fails until the producer's same-name replacement is buil
   holds rebuilds no slice: the API reads the map when it starts. A route whose permission no role holds can't be
   called by anyone (completeness errors). Give the permission before the route is built, so its tests can sign in as
   a role that holds it.
+- **Navigation** (ADR-065: `element next`, `element area`, `emcli id`) is the model too:
+  - **where a screen leads, its mockup or its page route:** on a built slice, the export re-queues that screen's UI
+    alone (the backend stays as built);
+  - **a register entry (kind, label, parent), a page's area, or the role map:** rebuilds nothing. The export rewrites
+    `web/src/navigation.json`, which the layout reads. Run `emcli navigation` before and after: an id that stops
+    being an entity takes its list out of the menu;
+  - **a slice that brings an id** registers it in the same change (`emcli id set`; a new entity names its parent);
+    a new screen leads somewhere and sits in the menu, an area, or `--none`;
+  - **a list of the person's own** ("My Organisations") needs its events tagged with the person's id. A built event
+    without that tag follows "Changing an event's tags" above.
 - **A role's sign-in level** (ADR-056 D3: `second-factor` or `not-by-email`, `emcli role sign-in`; not in emcli until
   2b.2d builds it) is in the role map too: changing it rebuilds no slice. The API asks for the stronger factor by
   step-up (401 `insufficient_user_authentication`). The tests of a route that role can call sign in with a matching
@@ -274,3 +284,4 @@ The full text is in the kit repo (`eventmodelers-cli/stacks/dcb/ADR.md`):
 | 059 | A context's events are its own: other contexts read its published read models or translate its published events. |
 | 056 | Account security: a role's sign-in level is enforced by the API (step-up); account screens come with the kit; policies and evidence live in `security/`. |
 | 061 | Between contexts: pull a published event (default), push a fact, push a request to act, ask synchronously. |
+| 065 | Navigation from the model: flows along the timeline, a menu of entities from the id register, areas for the rest. |

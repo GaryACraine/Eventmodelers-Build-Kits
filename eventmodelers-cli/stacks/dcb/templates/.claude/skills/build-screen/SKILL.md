@@ -328,6 +328,9 @@ Load more, sees both rows, and sees the button gone.
   const navigate = useNavigate()
   <ActivateOrganisationForm onActivated={(sent) => navigate(generatePath("/organisations/:organisationId", { organisationId: sent.organisationId }))} />
   ```
+  The form's callback passes `{ ...body, ...data }` (what was sent, and a 201's generated fields). Another
+  system's part of the page (ADR-044) calls it after its command is sent, like any form. The next page may be
+  another slice's, not built yet: the move is still built, and the page test checks the URL it goes to.
 - **Offer an action only to who may use it (ADR-065):** a command whose declaration is a permission
   (`apiEndpoint` / `api`, e.g. `checkout:report`) is offered only when `useAllowed(page.path, "<command>",
   <organisationId from the route>)` (`@/lib/navigation`) is true; leave out the organisation on a page without one.
@@ -337,14 +340,11 @@ Load more, sees both rows, and sees the button gone.
   const allowed = useAllowed(page.path, "reportCheckoutCompleted", organisationId)
   {allowed && <ReportCheckoutCompletedForm organisationId={organisationId} />}
   ```
-- **A list of the person's own with one row opens it** (draft, ADR-065; proven by licensing's My Organisations):
-  a list page whose read model is keyed by a session value (`page.params` `from: "session"`, no route id) and
-  that holds exactly one row goes straight to that row's page, `navigate(generatePath(<row page route>, row),
-  { replace: true })`, so Back doesn't return to it. No rows: the mockup's empty state. Several: the list. Its page
-  test covers one row (it opens the row's page) and two (it lists them).
-  The form's callback passes `{ ...body, ...data }` (what was sent, and a 201's generated fields). Another
-  system's part of the page (ADR-044) calls it after its command is sent, like any form. The next page may be
-  another slice's, not built yet: the move is still built, and the page test checks the URL it goes to.
+- **A list of the person's own with one row opens it** (ADR-065; licensing's My Organisations): a list page whose
+  read model is keyed by a session value (`page.params` `from: "session"`, no route id) and that holds exactly one
+  row goes straight to that row's page, `navigate(generatePath(<row page route>, row), { replace: true })`, so Back
+  doesn't return to it. No rows: the mockup's empty state. Several: the list. Its page test covers one row (it opens
+  the row's page) and two (it lists them).
 - **A new page with `:id`:** the pages already built that list or create that entity now lead to it: give their
   list a `linkTo` and their create form an `onCreated` navigation (`generatePath(route, { id })`), and update their
   page tests. A create form whose card has `next` already goes where `next` says: leave it. Only page files change for this, never another slice's folder.
