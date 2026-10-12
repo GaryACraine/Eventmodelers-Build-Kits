@@ -5415,6 +5415,10 @@ can't accept). Event sourcing for decision 5 (a decision folds what is pending; 
    Accepting goes to the organisation's page.
 8. **Expiry by a delayed workflow** (ADR-042, as decided for chapter 10): inviting starts a Temporal workflow due at
    `expiresAt`. It records `invitationHasExpired` only if the invitation is still pending.
+9. **A member sees the organisation, without the admin's parts** (Gary, 2026-10-12): engineers hold
+   `organisation:read`, so the organisation's page they land on after accepting shows its overview. A page shows a
+   part only to who may read it (`useCanRead`), as it offers an action only to who may use it (`useAllowed`,
+   ADR-065): the pending invitations need `invitation:list`.
 
 **Alternatives considered:**
 - **Anyone with the link may accept.** Rejected: a forwarded or leaked email would grant access.

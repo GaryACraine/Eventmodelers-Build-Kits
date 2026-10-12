@@ -154,6 +154,19 @@ export function useStartPath(from: Navigation | undefined = navigation): string 
     return first ? ("items" in first ? first.items[0]?.path : first.path) : undefined
 }
 
+/**
+ * May the person read what needs `api` (a read model's declaration, e.g. `invitation:list`), in `organisation` when the
+ * page's route names one? A page shows a part only then (ADR-068), as it offers an action only by `useAllowed`. Not
+ * shown while the answer is on its way, so a part never asks the API for what it would refuse; everything with the stub
+ * sign-in.
+ */
+export function useCanRead(api: string, organisation?: string): boolean {
+    const { signedIn } = useSessionState()
+    const permissions = usePermissions(organisation)   // nothing is held until the answer arrives
+    if (permissions === undefined) return true
+    return allows(api, permissions, signedIn)
+}
+
 /** A path on this site, never another origin */
 const local = (path: string | null | undefined): path is string => !!path && path.startsWith("/") && !path.startsWith("//")
 
