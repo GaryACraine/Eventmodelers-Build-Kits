@@ -803,7 +803,14 @@ model and build only what's ours.
                  loop found nothing to change, since pages link through each other's `page.path`.
                - Found: `sandbox-setup.mjs` fails on a freshly reset sandbox database until the app has created its
                  tables.
-          4. **NEXT:** planning rows (event-model skill, `plan-change`) and a manual section; distil the draft
+          **NEXT (Gary, 2026-10-12), before step 4: who may activate an organisation.** Today any registered,
+          signed-in person may (`activateOrganisation` is `self`) and becomes its owner (ADR-051); the code already
+          refuses a second organisation per owner (`OwnsOrganisation`, tagged `userId: activatedBy`, which the model
+          doesn't show). Gary wants something creative. A limit is a rule in the command (one per person, invitation
+          only, approval by the platform admin, ...), not a permission: nobody holds a role before the organisation
+          exists. Research it with the right authorities (ADR-064: SaaS onboarding and identity), design it as an ADR,
+          and fix the `organisationWasActivated` tag drift on the way.
+          4. Then: planning rows (event-model skill, `plan-change`) and a manual section; distil the draft
              `navigation.md` and `build-screen`'s one-row rule now that licensing has been through steps 1 to 3.
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
        `plan-change` and `job-scope` count as proven once a change with users goes through expand, switch,
@@ -814,9 +821,6 @@ model and build only what's ours.
       (found 2026-10-12). Settle when the event is next touched.
     - **The platform admin's list of every organisation** (`organisation:list`): a later page; until then a platform
       admin with no membership sees an empty Organisations.
-    - **Open question (Gary, 2026-10-12): who may activate an organisation.** Today any registered, signed-in
-      person may (`self`), and becomes its owner (ADR-051). Gary wants to revisit it later and find something
-      creative; a limit would be a rule in the command (one per person, invitation only, approval), not a permission.
     - **emcli:**
       - `slice remove` doesn't warn when the slice is built;
       - an export limited by `--chapter` drops another chapter's index entries whose slice ids changed (a
