@@ -538,9 +538,8 @@ model and build only what's ours.
                 draft auth role-sync slices (item 6).
              6. **Proven in licensing:** journeys on mock and sandbox, a refused role checked.
           3. **2b.2b SSO for on-premises customers:** check Better Auth's SSO plugin against Entra ID or Okta.
-          4. **2b.2c NEXT: Security releases** (ADR-063, Accepted 2026-10-12): advisory alerts on `better-auth`,
-             pinned versions, a patch path for on-premises installs. Steps 1 and 2 done; step 3 waits only on the local
-             database's move to Postgres 18 and the end-to-end runs on it.
+          4. ✅ **2b.2c Security releases** (ADR-063, Accepted 2026-10-12; done 2026-10-12): advisory alerts on
+             `better-auth`, pinned versions, a patch path for on-premises installs.
              - **Found in licensing (2026-10-11):**
                - the web app has no lockfile, so it can't be audited;
                - the sign-in service's image keeps vitest, vite and tinypool (an optional peer of `better-auth`), so
@@ -573,15 +572,22 @@ model and build only what's ours.
                 - recorded on Postgres 18.6 test containers: backend 440 (3 skipped), auth 32/32, web 96/96;
                 - the audit `--strict` passes (0 in what runs, `braces` accepted);
                 - the image check: no tooling, `better-auth` loads, runs as `node`;
-                - `security:check` 32 policies, 0 warnings.
-                - **Left:** move the local database to 18 (dump and load, manual §22.8, rehearsed), then the owner
-                  chain and the journeys on it.
+                - `security:check` 32 policies, 0 warnings;
+                - **the local database moved to 18.6** (`0acb738`), by dump and load (manual §22.8): every table in the
+                  four databases has the same row count (88 tables), and the event sequence continues. The old volume
+                  and the dump are kept until Gary removes them;
+                - **on it, recorded:** the owner chain 17/17, and the journeys 2/2 on the mock and 2/2 on the sandbox;
+                - the sign-in service rebuilt from the new Dockerfile: runs as `node`, no test tooling, and its signing
+                  key carried over.
              4. **The Postgres upgrade path:**
                 - **now, before release:** local and on-premises, dump and load; our cloud, RDS blue/green (14.8);
                 - **from now on:** the newest major RDS supports, once its first minor releases are out. Each upgrade is
                   a security release's procedure (the evidence re-run), never a loop job;
-                - **next:** Postgres 19, after its release (aimed at the end of October 2026) and RDS support.
-                  `dcb-event-store` tests on 17 and its examples on 16: a library PR for Gary.
+                - **next:** Postgres 19, after its release (aimed at the end of October 2026) and RDS support;
+                - **the library first:** `dcb-event-store` phase 23 moves its tests, docs and examples from 17 and 16 to
+                  18.6 ([PR #35](https://github.com/GaryACraine/dcb-event-store/pull/35), for Gary to merge). 947 tests
+                  pass; the quick bench is unchanged beyond noise;
+                - **what 18 offers us:** 16.9 (deferred).
           5. ✅ **2b.2d: the account security lifecycle (ADR-056, Accepted 2026-10-11).** Steps 1 to 9 done (2026-10-11).
              - **The decisions** (D1–D14, in ADR-056 "Decided"):
                - **D1:** a role's sign-in requirement is enforced in our API by step-up (`amr` in the token; 401
@@ -1327,6 +1333,26 @@ model and build only what's ours.
 - [ ] **16.8 Voice modelling** (15.7, fulfilling 13.6), **deferred until the model is established** (Gary): a
   spoken-style transcript of the established model, replayed through `event-model` in a fresh project, and the
   result diffed against 16.3's model; the gaps feed the skill.
+- [ ] **16.9 What Postgres 18 offers us** (**deferred**, Gary 2026-10-12: "make a note… I don't want to address it
+  now"). We moved to 18.6 for support and security (ADR-063), and nothing needs a new feature yet: the library's 947
+  tests and the quick bench pass unchanged. A first, high-level look, from most to least likely to pay:
+
+  | Feature (Postgres 18) | Where it could help us | Value | Effort |
+  |---|---|---|---|
+  | **Asynchronous I/O** (`io_method`: `worker` by default, `io_uring` on Linux) | reading the event log from a position: a projection's rebuild, a consumer catching up, `live-report` folds; vacuum of large tables | high for rebuilds; free | settings only, then a bench |
+  | **B-tree skip scan** (a multi-column index used without its first column) | the event store's type and tag lookups, and read-model queries, may need fewer indexes | medium | review the indexes against query plans |
+  | **`OR`/`IN` lists turned into `= ANY`** and faster hash joins and `GROUP BY` | queries by several tags or keys, read-model queries | medium; free | none (planner) |
+  | **`uuidv7()`** (time-ordered ids) | `message_id` and read-model keys inserted in order, so their indexes stay compact. Idempotency keys stay `uuidv5` (they must be deterministic) | medium at volume | the library generates ids in Node (the `uuid` package has v7 too) |
+  | **`OLD` and `NEW` in `RETURNING`** | a projection's upsert knowing whether it inserted or updated, in one round trip; inbox de-duplication | low–medium | a library change |
+  | **Temporal keys** (`WITHOUT OVERLAPS`, `PERIOD` foreign keys) | read models with periods, e.g. one active trial or subscription per organisation | low: our rules live in deciders (DCB), not constraints | — |
+  | **`casefold()`** | comparing emails without case (`PlatformAdmins` is keyed by email; ADR-062 wants ids there anyway) | low | — |
+  | **Upgrades:** `pg_upgrade` keeps planner statistics; data checksums on by default for new clusters | on-premises major upgrades become faster. A cluster made by 16 has no checksums, so a `pg_upgrade` from it needs `--no-data-checksums`; dump and load (§22.8) avoids this | medium, for on-premises | release notes |
+  | **Operations:** `EXPLAIN ANALYZE` shows buffers by default, more I/O statistics (`pg_stat_io`, per backend) | finding slow read models and consumers | medium | a runbook (14.8) |
+  | **Security:** MD5 passwords deprecated; OAuth sign-in to the database | already SCRAM (the image's default); in our cloud, RDS IAM sign-in is the likelier choice | low | check on-premises docs say SCRAM |
+
+  **When taken up:** bench async I/O on a rebuild (`event-store-bench`, and licensing's own replay), then review the
+  event store's indexes with skip scan in mind; both are library phases, compared against Emmett first
+  (`UPSTREAM.md`). RDS supports 18 from 18.1, so each finding applies in our cloud too.
 - **The stack stays** (Gary asked, 2026-09-29, whether Paddle's Next.js starter means moving to Next.js with SSR):
   - Paddle.js is a browser library and runs in a client-side React app.
   - SSR needs a running server, so it would rule out plain S3 hosting. Next.js's static export works on S3, but
@@ -4650,6 +4676,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-11 | ADR-056 step 9: evidence rows name tests by file and test name, checked to exist (warn only); a recorded run is never replaced (repeats numbered) | D14 asks for evidence that is easy to find and current. Checking names, not only files, catches a renamed test. Keeping every run, failures included, is what makes the record trustworthy: the first design replaced the day's log, which would have hidden a failed API run behind the passing one |
 | 2026-10-11 | ADR-063 Proposed: security releases (lockfiles everywhere, the sign-in path pinned exactly, run-time-only images, `security:audit` as the release gate, a release of digest-pinned images for on-premises); 2b.2d closed, 2b.2c next | Gary chose 2b.2c next. Licensing's audit found an unauditable web app (no lockfile) and test tooling in the sign-in service's image; Better Auth has 23 advisories in 20 months, 8 on one day |
 | 2026-10-12 | ADR-063 Accepted: the response times (critical 2 days, high 7), no remote for now, customers by email, the tooling fixed now; Postgres 16 → 18.6 (19 waits for its release and RDS) | Gary: "Happy with your recommendation, let's fix everything we can", and 16 was two majors behind. Before release there's no customer data, so a major upgrade is cheapest now; it's rehearsed by dump and load |
+| 2026-10-12 | 2b.2c done: the local database moved to Postgres 18.6 and every end-to-end run recorded on it; the event store library moved first (phase 23, PR #35); what 18 offers is 16.9, deferred | Gary: "Should we upgrade DCB event store first? … I think we should" and "This should be deferred". The library carries the event store, so it was proven on 18 before the data moved |
 
 ## Progress
 
