@@ -190,6 +190,14 @@ describe("a forgotten password (ADR-056 D4)", () => {
 describe("a verification link that expired (ADR-056 D12)", () => {
     afterEach(() => vi.restoreAllMocks())
 
+    it("keeps where the person was going when it sends a new link", async () => {
+        const again = vi.spyOn(signInService, "sendVerificationEmail").mockResolvedValue(ok())
+        inRouter(<LinkExpired />, "/get-started?next=%2Finvitations%2Fi1&error=TOKEN_EXPIRED")
+        await userEvent.type(screen.getByLabelText("Email"), "o@example.com")
+        await userEvent.click(screen.getByRole("button", { name: "Send me a new link" }))
+        expect(again).toHaveBeenCalledWith("o@example.com", "/get-started?next=%2Finvitations%2Fi1")
+    })
+
     it("shows above the page it landed on, and sends a new link back to that page", async () => {
         const again = vi.spyOn(signInService, "sendVerificationEmail").mockResolvedValue(ok())
         inRouter(<LinkExpired />, "/get-started?error=TOKEN_EXPIRED")

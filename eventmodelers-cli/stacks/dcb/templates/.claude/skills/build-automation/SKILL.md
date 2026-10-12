@@ -165,6 +165,25 @@ and error means, how to never do the work twice, and the mock. Use the provider'
 production will use. `package.json` can't change in a slice commit (blocked-paths): if the SDK isn't installed, block
 the job, asking for it (`npm install <sdk>`) to be added.
 
+### Sending an email (ADR-068): the kit is the provider
+
+An automation whose work is an email (an invitation) is external like any other: a workflow per item, an activity
+that sends, then our command records that it was sent and closes the item. There's no provider skill: the kit's
+`src/shared/email.ts` is the provider.
+- **Setup:** `emailSender(emailConfig())` in `src/index.ts`, passed to the activities (`email: SendEmail`); links use
+  `emailConfig().appUrl` (`${appUrl}/invitations/${invitationId}`, the page's route from the model). Locally every
+  email lands in Mailpit (http://localhost:8025), which is also the mock: there's no other.
+- **Answers:** a sent email is the result. Any thrown error is technical (retried by Temporal), except the address
+  refused (SMTP `responseCode` 550, 551 or 553; SES's `MessageRejected`), which is `nonRetryable` with type `"address"`: the
+  workflow records it as stalled, as for any refusal a person must look at.
+- **Never twice:** email has no idempotency key. The workflow id (`invitation-email:<invitationId>`) keeps one
+  workflow per item, and the activity's retries can at worst send it again after a timeout, which is acceptable for
+  an email. Record the command right after the send, in its own activity.
+- **The email's words** come from the slice's description; plain text, no HTML.
+- **Tests:** activities with a `SendEmail` stub (what was sent: to, subject, the link); the workflow with Temporal's
+  test environment, as for any external automation. An end-to-end script reads Mailpit's API
+  (`GET /api/v1/search?query=to:<address>`).
+
 ### `workflow.ts`: deterministic, no I/O
 
 ```typescript

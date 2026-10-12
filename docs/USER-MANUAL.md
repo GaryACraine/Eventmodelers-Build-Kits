@@ -2157,6 +2157,11 @@ that needs a permission only organisation roles hold (the API would refuse them 
 signed out. In licensing that's Organisations, the person's own organisations. With only one, it opens straight away
 on the organisation's Dashboard, so people land on their organisation.
 
+**After signing up**, a new person registers first, wherever they started (ADR-068). The page where they register is
+the one whose command makes the id the rest of the app reads from the session (Get Started's `registerUser` makes
+`userId`). `emcli navigation` names it (*After signing up: /get-started*). From there they go on to the page they came
+from: an invitation they opened from its email, say, or Get Started's own next page when they came from the start.
+
 ### 13.11 The things people work with: the id register
 
 The menu's items are **entities**: the things people look at, list and act on (organisations, invitations). They

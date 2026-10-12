@@ -331,6 +331,14 @@ Load more, sees both rows, and sees the button gone.
   The form's callback passes `{ ...body, ...data }` (what was sent, and a 201's generated fields). Another
   system's part of the page (ADR-044) calls it after its command is sent, like any form. The next page may be
   another slice's, not built yet: the move is still built, and the page test checks the URL it goes to.
+- **The registration page goes on to where the person was going (ADR-068):** on the page `navigation.json` names
+  `register` (Get Started), a person who has just signed up arrives with `?next=` (an invitation they opened, say).
+  After its command, go there when it's set, else to the card's `next`:
+  ```tsx
+  const returnTo = useReturnTo()   // @/lib/navigation: ?next=, a path on this site, or undefined
+  <RegisterUserForm onRegistered={() => navigate(returnTo ?? activateOrganisation.path)} />
+  ```
+  Its page test covers both: with `?next=/somewhere` it goes there, without it to the card's `next`.
 - **Offer an action only to who may use it (ADR-065):** a command whose declaration is a permission
   (`apiEndpoint` / `api`, e.g. `checkout:report`) is offered only when `useAllowed(page.path, "<command>",
   <organisationId from the route>)` (`@/lib/navigation`) is true; leave out the organisation on a page without one.

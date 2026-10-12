@@ -5363,3 +5363,72 @@ conflicting command the same way), for the server half. The client half is the k
   `useSubmitOnce`, a double-press test) and `build-state-change` (the option, a race test); `AGENT.md`.
 - Licensing: its routes take the option and its forms the hook (a kit pattern, by hand); activate organisation's
   race answers 201 and 422.
+
+### ADR-068: Invitations: the invited email accepts, accepting assigns at once, and a pending invitation holds its seats
+
+**Status:** **Accepted, 2026-10-12 (Gary).** Gary chose each recommendation below, and asked whether a seat should be
+allocated by its own event before the invitee accepts. It needn't be: decision 5.
+**Date:** 2026-10-12
+**Authorities consulted (ADR-064):** SaaS tenancy and onboarding (`docs/DESIGN-AUTHORITIES.md`): Better Auth's
+organization plugin (accepting needs a session whose email matches the invitation; a pending invitation can be
+cancelled; 48 hours by default) and Auth0 Organizations (7 days by default; an account other than the invited one
+can't accept). Event sourcing for decision 5 (a decision folds what is pending; no compensating events).
+
+**Context:**
+- After ADR-066 an owner can activate an organisation, but nobody can join one. Licensing's chapters 2 (invite), 10
+  (expire) and 11 (withdraw) were stormed on 2026-10-01: events and hotspots only. Chapter 23 (the expiry setting,
+  7 days) is built.
+- The storm predates ADR-058 to 060. Its `userSignedUp` is the sign-in service's event (ADR-059: not ours to read),
+  and its `authRoleWasAssigned` was the role sync, which ADR-060 replaced: the API reads Memberships through its
+  role lookup.
+- ADR-037 decision 3: an invitation names the roles and seat types it offers, holds those seats while pending, and
+  is refused when there's no free seat of a type it offers.
+
+**Decision:**
+1. **Only the invited email may accept** ("This invitation is for another email address"). The email is the
+   session's (the sign-in service verifies it), never the request's. The link alone grants nothing, so a forwarded
+   email can't be used.
+2. **Accepting records everything in one decision:** `invitationWasAccepted`, then one `userWasAssignedToRole` per
+   offered role and one `seatWasAssigned` per offered seat type. This replaces the 2026-10-01 hotspot (an automation
+   assigning them): the held seat becomes an assigned one in the same append, so there's no moment when it is
+   neither, and no to-do list.
+3. **One organisation per person, for now:** accepting is refused when the person already holds a role in any
+   organisation ("You already belong to an organisation"), by the same decision model as ADR-066. A pending
+   invitation doesn't stop the person activating an organisation of their own (ADR-066's open question); it just
+   can't be accepted after that.
+4. **Licensing sends the email itself, by automation** (ADR-039): a to-do list of invitations not yet emailed; the
+   work sends through a backend email sender (SES in our cloud, SMTP locally, the same setup as the sign-in
+   service's), and `invitationWasEmailed` closes the item. The sign-in service stays about signing in.
+5. **A pending invitation holds its seats, with no allocation event.** `memberWasInvited` already records the intent:
+   it names the seat types. The invite decision counts, per type: free = allowed (the trial's seats) − assigned
+   (`seatWasAssigned`) − held (invited, and not yet accepted, expired or withdrawn). At zero the invitation is
+   refused ("No free web seat"), and the append condition stops two invitations taking the last seat at once. An
+   invitation's end (accepted, expired, withdrawn) releases its hold by being recorded, so nothing is rolled back.
+   A separate `seatWasAllocated` would need an "allocation released" for each ending: the same fact twice. Until
+   the owner's own web seat is assigned (the trial's automation), the invite counts it as taken.
+6. **Who may invite:** the owner and admins: `invitation:create`, `invitation:list` and `invitation:withdraw` in the
+   role map. An invitation offers `admin` and `engineer`, never `owner` (chapter 5 hands ownership over). Inviting an
+   email that already has a pending invitation: nothing happens (ADR-050).
+7. **The invitee's way in:** the email links the invitation's page (`/invitations/:invitationId`, in no menu). A
+   signed-out person signs up or signs in, carrying the page as `next`. A new person registers on Get Started
+   (identity), which then goes on to `next` when it was given one, and to its own next page (Activate) otherwise.
+   Accepting goes to the organisation's page.
+8. **Expiry by a delayed workflow** (ADR-042, as decided for chapter 10): inviting starts a Temporal workflow due at
+   `expiresAt`. It records `invitationHasExpired` only if the invitation is still pending.
+
+**Alternatives considered:**
+- **Anyone with the link may accept.** Rejected: a forwarded or leaked email would grant access.
+- **An automation assigns the roles and seats** (the 2026-10-01 hotspot). Rejected: a seat would have to stay held
+  until its assignment lands, and each invitation would need a to-do list.
+- **A `seatWasAllocated` event at invitation** (Gary's question). Not needed: the invitation is the allocation, and
+  its end is the release.
+- **The sign-in service sends the email** (a request between contexts, ADR-061). Rejected: it would learn about
+  invitations, which are licensing's.
+
+**Consequences:**
+- Kit: a backend email sender (`src/shared/email.ts`, `EMAIL_FROM`, SMTP or SES, `APP_URL` for links), how an
+  automation's work uses it (`build-automation`); a page that follows sign-up honours `?next=` (`build-screen`).
+- Licensing: chapters 2, 10 and 11 modelled and built; `organisationId` (and on accepting, `userId`) tagged on the
+  invitation events; `invitee signed up` and `member auth role was assigned` removed.
+- Later: buying more seats (chapter 6) raises the allowance; removing a member (chapter 4) frees a seat; contractors
+  in several organisations stay deferred (ADR-066).
