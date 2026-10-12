@@ -2,7 +2,7 @@
 
 Who to consult on an open design question, by the discipline it belongs to (ADR-064). Find the question's discipline
 first, then read and compare that row's authorities before recommending. An event-sourcing framework is consulted
-on a question about events, not on one about menus.
+on a question about event sourcing, not on one about menus.
 
 This isn't a full list. A row is added when a question first needs it, and an authority is added when one turns out
 to be the right precedent. Each row names the ADRs that have already used it.

@@ -4909,14 +4909,15 @@ everything we can", and Postgres moves to 18 (19 is still a beta).
 ### ADR-064: An open design question is researched with the authorities of its own discipline
 
 **Status:** **Accepted, 2026-10-12 (Gary).** Gary: when we have an open research question, we only refer to Axon,
-Emmett and Marten when it's specific to events; otherwise we consult the appropriate design authorities, competitors
-or inspirations, with an index of them by discipline.
+Emmett and Marten when it's specific to event sourcing; otherwise we consult the appropriate design authorities,
+competitors or inspirations, with an index of them by discipline. Corrected the same day (Gary): event sourcing, not
+events.
 **Date:** 2026-10-12
 
 **Context:**
 - **The rule until now** (2026-10-06, in working practice rather than an ADR): answer a design question by comparing
-  Axon 5, Emmett, Marten and Dilger's book first. It worked for events: Marten's daemon caps were the precedent for
-  ADR-047, and Axon's `@EventTag` for ADR-048.
+  Axon 5, Emmett, Marten and Dilger's book first. It worked for event sourcing: Marten's daemon caps were the
+  precedent for ADR-047, and Axon's `@EventTag` for ADR-048.
 - **It doesn't fit every question.** Gap 1 (links between pages, ADR-065) is about UI navigation, and none of those
   four has anything to say about menus. Other questions already went to their own authorities without a rule saying
   so: ADR-056 to NIST SP 800-63B and OWASP, ADR-063 to GitHub's advisory database.
@@ -4925,8 +4926,9 @@ or inspirations, with an index of them by discipline.
 1. **An open design question is researched with the authorities of its discipline:** standards and guides first,
    then the products and frameworks that solved the same problem (competitors and inspirations). Compare them before
    recommending, and note each one's design reason and what copying it would cost us.
-2. **Axon 5, Emmett, Marten and the book are the authorities for event sourcing and event modelling.** Other
-   questions consult them only where the question touches events.
+2. **Axon 5, Emmett and Marten are the authorities for event sourcing** (consistency, the store, projections,
+   processors, upcasting), and Dilger's book for event sourcing and event modelling. Other questions consult them
+   only on the part that is event sourcing. A question doesn't become one because events are involved.
 3. **The index is `docs/DESIGN-AUTHORITIES.md`:** a row per discipline, with its standards and guides, its
    inspirations and competitors, where a local copy is kept, and the ADRs that used it. It starts with the
    disciplines met so far. A row is added when a question first needs it.
@@ -4971,7 +4973,7 @@ task-based UI; event modelling (`docs/DESIGN-AUTHORITIES.md`).
   | `organisationId` | 28 / 7 / 7 | **an entity:** the customer's organisation |
   | `invitationId` | 4 / 0 / 0 | **an entity**, belonging to an organisation |
   | `subscriptionId` | 9 / 2 / 1 | **an entity**, Paddle's id for the organisation's subscription |
-  | `sub`, `userId` | 10 / 2 / 2 and 2 / 2 / 0 | **one entity, two names:** the person (`sub` from sign-in, `userId` ours); always the signed-in person's |
+  | `sub`, `userId` | 10 / 2 / 2 and 2 / 2 / 0 | **one person, an id from each side of a boundary:** `sub` is the sign-in service's (Better Auth's), `userId` is identity's own, which licensing uses. Identity's registration maps one to the other |
   | `settingsId` | 2 / 2 / 1 | **a singleton:** the system settings (ADR-043) |
   | `email` | 1 / 0 / 1 | **a lookup:** a person found by email |
   | `paddleEventId`, `transactionId`, `syncId`, `upToPaddleEventId` | | **another system's ids, or bookkeeping:** never a page anyone navigates to |
@@ -5023,12 +5025,24 @@ task-based UI; event modelling (`docs/DESIGN-AUTHORITIES.md`).
   they're keyed by, as Gary says.
 - **A central record of the tags is useful beyond the menu.** Tags are global, the store finds events by them, and
   ADR-048's impact check needs every user of a tag. Today a tag is only an id flag on each field (`idAttribute`), so
-  nothing lists them, names their kind or catches two names for one thing.
+  nothing lists them, names their kind or says which context owns them.
 - **It's flaky in five places unless the record says more than "this is a tag":**
   1. **Not every tag is an entity.** In licensing, 7 of 11 aren't: lookups, another system's ids, bookkeeping. Each
      tag needs a kind.
-  2. **Two names, one entity.** `sub` and `userId` are the same person. The record needs an alias, or the menu shows
-     the same thing twice.
+  2. **One person, two ids.** `sub` and `userId` both name the person, so the menu could show them twice. **Resolved
+     by the context map (Gary), not by an alias:**
+     - `sub` is the sign-in service's id, and `userId` is identity's own;
+     - identity's registration is the anti-corruption layer between them: `registerUser` takes `sub` from the session,
+       generates `userId`, and `userWasRegistered` carries both;
+     - licensing reads identity's published `MyAccount` (`sub` → `userId`, ADR-059) to turn a token's `sub` into
+       the `userId` its members and seats carry (ADR-055 part 2).
+
+     So each tag has one owner: `sub` is external to both contexts (the sign-in service's), and `userId` is
+     identity's, reused downstream by licensing. The register records the owner. Only the owner's entity can be a
+     menu item, and other contexts reach it through the translation that already exists.
+     **Found on the way:** licensing's model still holds `userSignedUp` and `authRoleWasAssigned` tagged with `sub`.
+     These are the deferred role sync's slices and an older copy of identity's event, so they're for ADR-059's review
+     when that area is next touched, not for this ADR.
   3. **Belonging.** An invitation and a subscription belong to an organisation. Tags don't say so (a command carrying
      both ids doesn't make one the parent). Without a parent, each would become a top-level menu item.
   4. **"Mine" or "all".** An owner sees *their* organisation; a platform admin sees every organisation. The same
@@ -5058,7 +5072,9 @@ task-based UI; event modelling (`docs/DESIGN-AUTHORITIES.md`).
      - *lookup* (found by, never shown);
      - *external* (another system's id, ADR-052/053);
      - *system* (bookkeeping).
-   - It also records aliases (`userId` = `sub`).
+   - It records the context that owns each tag (the context map at the level of ids). Another context's tag is
+     marked as theirs and reached through that context's published read model or event (ADR-059, ADR-061), never
+     aliased: an anti-corruption layer translates at the boundary, as identity's registration does for `sub`.
    - **emcli drafts the register from the ID attributes** and suggests each tag's kind. `completeness` warns about an
      unregistered tag, and about a page keyed by a tag that isn't an entity.
    - **The menu:**
@@ -5099,7 +5115,7 @@ task-based UI; event modelling (`docs/DESIGN-AUTHORITIES.md`).
 - **A menu written by hand** (`navigation.ts`). Rejected: every slice with a page would edit one shared file, which
   vertical slices avoid, and it drifts from the model.
 - **Entities from tags, with no register.** Rejected: in licensing, 7 of 11 tags would become menu items that mean
-  nothing to anyone, and `sub` and `userId` would appear twice.
+  nothing to anyone, and the sign-in service's `sub` would sit beside the person it identifies.
 - **Aggregates as the entities.** Not available: DCB has none (ADR-003). The tags are the nearest thing, which is
   why they're the starting point.
 - **A full site map edited by people** (Power Apps). Kept as a later override: a derived default first, as Power Apps
