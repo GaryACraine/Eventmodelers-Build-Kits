@@ -859,6 +859,9 @@ model and build only what's ours.
             had skipped Get Started.
           - [x] Licensing `a5a091b`…`8755864`: the sender, the web libs, Get Started goes on to `?next=` (by hand, a
             kit pattern change), skills (kit-drift 0). Backend 462, web 121.
+          - Later, with chapters 1b, 6 and 7: their seat events join the invite decision's count of seats bought. A
+            seat reduction beats a pending invitation (Gary, 2026-10-12: the owner isn't willing to pay for them);
+            how is designed with chapter 7.
           - [ ] The model: chapters 2, 10, 11 (emcli), completeness and navigation clean; Gary's go-ahead to export.
           - [ ] The loop builds; then `e2e/invitations.mjs`, the journey (mock and sandbox), security evidence.
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
