@@ -753,6 +753,15 @@ model and build only what's ours.
              - emcli to fix: the re-queue reason says "mockup changed" when only the next page changed.
           2. The register: `emcli id`, drafted from the id flags, with completeness checks; commands placed by
              their ids (D7); the draft `event-model` reference `navigation.md`.
+             - ✅ emcli `b9e5b0f` (2026-10-12): `id draft|list|show|set|confirm|remove`, kept on pull; warnings only
+               once a model has a register; `id show` lists an entity's commands (create, action, relationship,
+               mine, none). 491 tests; mutation-checked (parent rule, session ids, generated vs external). The
+               `event-model` skill has a draft Navigate mode (`references/navigation.md`).
+             - On a scratch copy of licensing the draft gets 9 of 11 right; Gary to settle: `transactionId`
+               (drafted entity; Paddle's?), `subscriptionId` (external, system not named: Paddle?), `userId`'s
+               label (User or Person?), `invitationId`'s parent (organisation?). Then register licensing.
+             - Step 1 in licensing: report checkout completed rebuilt (`6f1a50a`, goes to the Dashboard);
+               activate organisation Done with nothing to change; register user waits for the identity context.
           3. The menu and areas: `navigation.json`, `Layout.tsx` by permission, licensing's "my organisations".
           4. Planning rows (event-model skill, `plan-change`) and a manual section.
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
