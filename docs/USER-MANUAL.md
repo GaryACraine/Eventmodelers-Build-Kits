@@ -2119,6 +2119,40 @@ this student*), and My bookmarks listed the course.
 `.build-kit/.slices/<context>/index.json` shows the slice `Planned` with `"concerns": { "backend": { "status":
 "Done" }, "ui": { "status": "Planned" } }`, its `slice.json` with `"buildScreen": "changed"` (or `"added"`).
 
+### 13.10 The menu, and who sees what
+
+The app's menu comes from the model, like the routes (ADR-065). Every export writes `web/src/navigation.json`;
+nobody edits it, and no slice touches the layout. Ask the skill *"what will the menu look like?"* (`emcli
+navigation`):
+
+```text
+Menu:
+  Organisations  /organisations (new: /organisations/new)   needs self
+  Reports
+    Enrolment Report  /enrolment-report   needs report:read
+Account menu: the kit's Your account, then: nothing of the model's
+```
+
+- **The things people work with come first:** each entity in the id register with a list page ("Organisations").
+  Its create page is offered on the list, and its one-thing pages are reached from the list or a flow.
+- **Then the areas:** pages about no one thing (a report, settings). A page goes in its context's area unless you
+  say *"put the report under Reports"* (`element area … --in Reports`).
+- **The account menu is the kit's**, the same in every app: signed out, *Sign in* and *Sign up*; signed in, your
+  email opens *Your account* (email, password, the authenticator app, passkeys, where you're signed in) and *Sign
+  out*. A page of your own joins it with *"put my profile in the account menu"* (`--in account`). A page only a
+  flow or an emailed link opens stays out of every menu (`--none`): Get Started, Email Changed.
+
+**Who sees what follows the role map** (ADR-060). The menu names permissions, never roles: each page needs what its
+reads need (`organisation:read`), and each action what its command needs (`checkout:report`). The app asks the API
+which the person holds (`GET /my-permissions`) and shows only those. A page about one organisation counts the
+roles held there; any other page counts only platform roles, as the API does. So an owner sees Organisations and
+the checkout action; an admin sees the organisation without the checkout; nobody sees a page whose permission no
+role holds. Change who sees what by changing the role map (`emcli role grant`), never the menu. Hiding is a
+courtesy: the API refuses anyway.
+
+The export warns about a page nothing leads to, a permission no role holds, and a page without `:organisationId`
+that needs a permission only organisation roles hold (the API would refuse them all there).
+
 ---
 
 ## 14. Working with git: branches, commits and merges

@@ -769,6 +769,20 @@ model and build only what's ours.
              - Step 1 in licensing: report checkout completed rebuilt (`6f1a50a`, goes to the Dashboard);
                activate organisation Done with nothing to change; register user waits for the identity context.
           3. The menu and areas: `navigation.json`, `Layout.tsx` by permission, licensing's "my organisations".
+             - ✅ Design settled in ADR-065 "How step 3 is built" (Gary, 2026-10-12): permissions, never roles, in
+               navigation (aligned with ADR-060's role map); the account and security pages are the kit's utility
+               navigation (reserved area `account`).
+             - ✅ emcli `057bd93`, `b747362`: `navigation.json` at export (in a project with `web/`), `element area
+               --in/--none/--clear`, `emcli navigation`; warnings (a page nothing leads to, a permission no role holds,
+               an organisation-only permission on a page without the tenant key). 512 tests, mutation-checked.
+               Fixed on the way: `idLabels` made "Cour" of `courses`.
+             - ✅ kit: `GET /my-permissions` (`held`, same lookup and map as `requirePermission`), `lib/navigation.ts`
+               (`useMenu`, `useAllowed`), `Layout.tsx` (the menu, then the account menu; Sign in / Sign up signed
+               out), `build-screen` (offer an action by `useAllowed`), manual §13.10. Mutation-checked.
+             - ✅ Licensing `d31a311`: kit update, Get Started and Email Changed `--none`; journeys pass on the mock
+               (12.7s) and the sandbox (17.4s). The menu stays empty until "my organisations" is built.
+             - NEXT: licensing's "my organisations" (a list read model keyed by the person, `self`), planned with
+               Gary through `plan-change`, then exported (his go-ahead) for the loop.
           4. Planning rows (event-model skill, `plan-change`) and a manual section.
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
        `plan-change` and `job-scope` count as proven once a change with users goes through expand, switch,
@@ -4719,6 +4733,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-12 | ADR-065 Proposed: navigation from the model (flows along the timeline, a menu of entities from a tag register, areas for the rest), widening Gap 1 | Gary: a broader concern than two links; people understand a system by its entities, which the DCB tags name. In licensing 4 of 11 tags are entities, so the register gives each tag a kind |
 | 2026-10-12 | ADR-065 Accepted: `emcli id` (one register of tag keys for the event store, each key's kind, owner context and parent); licensing's "my organisations"; entities then areas; flow links first; an event with several entities' tags stays unowned (the register classifies keys, a page belongs to its route's entity) | Gary: tags are global, queried from anywhere in the store; some events carry several entities' tags; `sub`/`userId` settled by the context map; `tag` would clash with emcli's element labels |
 | 2026-10-12 | ADR-065 D7: a command belongs to the entities its ids name (held id → that entity's page; generated → a create on the list or parent; two entities → a relationship; session → mine); navigation guidance is a draft reference in `event-model`, not a skill of its own | Gary: yes to D7, and asked whether to invest in a skill. Navigation is decided while modelling, so it lives with the modelling skill and is distilled once proven |
+| 2026-10-12 | ADR-065 step 3 design: navigation names permissions, never roles (the same `resource:action` as `api/roles.json`; scope from the page's tenant key; `GET /my-permissions` from the API's own lookup); account and security pages are the kit's utility navigation (area `account`). Who may activate an organisation stays open | Gary: navigation touches security, so it must cross-reference each role's granular permissions; cross-cutting auth pages are independent of slices, so decide them up front; activation to be revisited creatively later |
 
 ## Progress
 
