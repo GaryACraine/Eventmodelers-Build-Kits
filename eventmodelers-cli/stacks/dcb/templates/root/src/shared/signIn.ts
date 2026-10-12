@@ -1,6 +1,6 @@
 import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose"
 import { sendProblem, type WebApiSetup } from "@dcb-es/event-store-express"
-import { decide, meets, roleMap as roleMapFromFile, type RoleLookup, type RoleMap, type SignInLevel } from "./permissions.js"
+import { decide, held, meets, roleMap as roleMapFromFile, type RoleLookup, type RoleMap, type SignInLevel } from "./permissions.js"
 
 /** Express's response, as the library's router types it (the project may resolve another copy of express's types) */
 type ApiResponse = Parameters<typeof sendProblem>[0]
@@ -92,8 +92,27 @@ export function configureSignIn({
                 refuse(res, "The token is invalid or has expired: sign in again.")
             }
         })
+        // What the signed-in person may use, for the web app's menu and actions (ADR-065 step 3): never the check itself
+        router.get(MY_PERMISSIONS, requireSession([]), async (req, res) => {
+            const map = (res.locals["roleMap"] as RoleMap | undefined) ?? roleMapFromFile()
+            const rolesOf = res.locals["roleLookup"] as RoleLookup | undefined
+            if (!map || !rolesOf) return void res.json({ permissions: [] })
+            const who = signedInOf(res)!
+            const lookup = res.locals["sessionLookup"] as SessionLookup | undefined
+            const session: Session = { sub: who.sub, email: who.email, ...((lookup && (await lookup(who.sub))) ?? {}) }
+            const named = (req.query as Record<string, unknown>)[map.tenantKey]
+            const tenant = typeof named === "string" && named ? named : undefined
+            res.json({ permissions: held(map, await rolesOf({ sub: who.sub, email: who.email, session }, tenant), tenant) })
+        })
     }
 }
+
+/**
+ * The kit's route for the permissions the signed-in person holds (ADR-065): `GET /my-permissions`, and
+ * `?organisationId=` (the tenant key) for those they hold in that organisation. `{ permissions: ["organisation:read"] }`.
+ * An organisation they hold no role in answers an empty list, never whether it exists.
+ */
+export const MY_PERMISSIONS = "/my-permissions"
 
 const sessions = new WeakMap<object, Session>()
 

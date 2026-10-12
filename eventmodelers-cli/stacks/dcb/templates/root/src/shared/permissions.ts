@@ -86,3 +86,17 @@ export function decide(map: RoleMap, caller: CallerRoles, permission: string, fa
     if (!tenant) return "forbidden"
     return caller.organisation.length === 0 ? "not-found" : "forbidden"
 }
+
+/**
+ * The permissions this caller holds (ADR-065 step 3): platform roles' everywhere, and organisation roles' in the
+ * organisation `tenant` names. The same roles `decide` grants with, whatever the sign-in level: a permission held only
+ * at a stronger level is still listed, since using it asks the person to step up. The web app shows what's listed
+ * (its menu, a page's actions); the API still decides every request.
+ */
+export function held(map: RoleMap, caller: CallerRoles, tenant?: string): string[] {
+    const roles = [
+        ...caller.platform.filter(role => map.roles[role]?.scope === "platform"),
+        ...(tenant ? caller.organisation.filter(role => map.roles[role]?.scope === "organisation") : [])
+    ]
+    return [...new Set(roles.flatMap(role => map.roles[role].permissions))].sort()
+}

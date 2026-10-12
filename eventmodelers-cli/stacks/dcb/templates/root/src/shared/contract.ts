@@ -19,8 +19,8 @@
 
 type Json = Record<string, any>
 
-/** Routes the app serves that aren't the model's: the event feed and the document itself. */
-export const INFRASTRUCTURE = ["/events", "/openapi.json"]
+/** Routes the app serves that aren't the model's: the event feed, the document itself, and the person's permissions (ADR-065). */
+export const INFRASTRUCTURE = ["/events", "/openapi.json", "/my-permissions"]
 
 /** A schema reduced to what the typed client sees. */
 export type Shape =

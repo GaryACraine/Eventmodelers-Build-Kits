@@ -2,7 +2,7 @@ import { describe, test, expect, beforeAll } from "vitest"
 import supertest from "supertest"
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT, type CryptoKey } from "jose"
 import { getApplication } from "@dcb-es/event-store-express"
-import type { RoleLookup, RoleMap } from "./permissions.js"
+import { held, type RoleLookup, type RoleMap } from "./permissions.js"
 import { configureSignIn, readModelLookup, requirePermission, requireSession, sessionOf, signedInOf, signInSettings, type SignInSettings } from "./signIn.js"
 
 // Tokens as the sign-in service issues them (Better Auth's JWT plugin: EdDSA, `sub`, `email`, `email_verified`, and
@@ -178,6 +178,41 @@ describe("the API's sign-in check (ADR-037, ADR-055)", () => {
         test("runs for a platform role in any organisation, and where none is named", async () => {
             expect((await agent().get("/seats/org-2").set("Authorization", await as("sub-ops"))).status).toBe(200)
             expect((await agent().get("/notifications").set("Authorization", await as("sub-ops"))).status).toBe(200)
+        })
+
+        describe("what the person may use, for the web app (GET /my-permissions, ADR-065)", () => {
+            const mine = async (sub: string, query = "", amr?: string[]) =>
+                agent().get(`/my-permissions${query}`).set("Authorization", await as(sub, amr))
+
+            test("lists platform roles' permissions everywhere, and none of an organisation's without one named", async () => {
+                expect((await mine("sub-ops")).body).toEqual({ permissions: ["notification:list", "seat:read"] })
+                expect((await mine("sub-7f3a")).body).toEqual({ permissions: [] })
+            })
+
+            test("adds the roles held in the organisation the tenant key names, and nothing for one with no role", async () => {
+                expect((await mine("sub-7f3a", "?organisationId=org-4")).body).toEqual({ permissions: ["seat:assign", "seat:read"] })
+                expect((await mine("sub-7f3a", "?organisationId=org-3")).body).toEqual({ permissions: [] })
+                expect((await mine("sub-7f3a", "?organisationId=org-2")).body).toEqual({ permissions: [] })
+            })
+
+            test("counts a role only in its own scope, and organisation roles only where one is named", () => {
+                expect(held(roleMap, { platform: ["owner"], organisation: [] })).toEqual([])
+                expect(held(roleMap, { platform: [], organisation: ["owner"] })).toEqual([])
+                expect(held(roleMap, { platform: [], organisation: ["owner"] }, "org-1")).toEqual(["seat:assign", "seat:read"])
+                expect(held(roleMap, { platform: ["platformAdmin"], organisation: ["platformAdmin"] }, "org-1")).toEqual(["notification:list", "seat:read"])
+            })
+
+            test("lists a permission held only at a stronger sign-in: using it asks to step up", async () => {
+                const res = await mine("sub-7f3a", "?organisationId=org-1", ["pwd", "email-otp"])
+                expect(res.status).toBe(200)
+                expect(res.body).toEqual({ permissions: ["seat:assign", "seat:read"] })
+            })
+
+            test("needs someone signed in, and lists nothing where permissions aren't configured", async () => {
+                expect((await agent().get("/my-permissions")).status).toBe(401)
+                const bare = await agent(settings, {}).get("/my-permissions").set("Authorization", await as("sub-ops"))
+                expect(bare.body).toEqual({ permissions: [] })
+            })
         })
 
         describe("how strongly the caller signed in (ADR-056)", () => {

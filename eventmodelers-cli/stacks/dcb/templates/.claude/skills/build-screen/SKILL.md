@@ -296,7 +296,8 @@ Load more, sees both rows, and sees the button gone.
   }
   ```
   `path` = `page.route`; `session` = the `page.params` with `from: "session"` (omit if none); `nav: true` when the
-  route has no `:param`.
+  route has no `:param`. The menu itself comes from `src/navigation.json`, which emcli writes at export (ADR-065):
+  never edit it or the layout to add a page; `nav` only links pages until the first export writes it.
 - **Existing page:** add this slice's part, leave the other parts alone, and bring `page` in line with slice.json
   if the route or params changed.
 - **Order of the parts:** as the mockups show them. A card whose mockup wraps a neighbouring slice's region
@@ -315,6 +316,15 @@ Load more, sees both rows, and sees the button gone.
   // slice.json screens[].next: "Choose How to Start", after activateOrganisation; organisationId from the command
   const navigate = useNavigate()
   <ActivateOrganisationForm onActivated={(sent) => navigate(generatePath("/organisations/:organisationId", { organisationId: sent.organisationId }))} />
+  ```
+- **Offer an action only to who may use it (ADR-065):** a command whose declaration is a permission
+  (`apiEndpoint` / `api`, e.g. `checkout:report`) is offered only when `useAllowed(page.path, "<command>",
+  <organisationId from the route>)` (`@/lib/navigation`) is true; leave out the organisation on a page without one.
+  Never test for a role: roles live only in `api/roles.json`, and the API still decides. Its page test renders it
+  once allowed and once not (answer `GET /my-permissions` with MSW).
+  ```tsx
+  const allowed = useAllowed(page.path, "reportCheckoutCompleted", organisationId)
+  {allowed && <ReportCheckoutCompletedForm organisationId={organisationId} />}
   ```
   The form's callback passes `{ ...body, ...data }` (what was sent, and a 201's generated fields). Another
   system's part of the page (ADR-044) calls it after its command is sent, like any form. The next page may be

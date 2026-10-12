@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from "react-router"
 import type { PageInfo } from "@/lib/page"
+import { navigation as fromModel, useMenu, type MenuItem, type Navigation } from "@/lib/navigation"
 import { useSessionState } from "@/lib/session"
 import { LinkExpired } from "@/lib/sign-in"
 import { cn } from "@/lib/utils"
@@ -9,38 +10,110 @@ export interface LayoutContext {
     nav: PageInfo[]
 }
 
-/** The frame around every page: a header with the pages marked `nav` and who is signed in, and the page below it. */
-export function Layout({ nav }: { nav: PageInfo[] }) {
-    const { session, signOut, mode } = useSessionState()
-    const signedIn = Object.entries(session)
-    // Real sign-in shows who is signed in by their email (emcli's account-header starter); the stub, its typed IDs
-    const who = mode === "better-auth" ? session.email : signedIn.map(([key, value]) => `${key} ${value}`).join(", ")
-    const link = ({ isActive }: { isActive: boolean }) =>
-        cn("text-sm text-muted-foreground hover:text-foreground", isActive && "text-foreground font-semibold")
+const link = ({ isActive }: { isActive: boolean }) =>
+    cn("text-sm text-muted-foreground hover:text-foreground", isActive && "text-foreground font-semibold")
+
+/** A group of links under one name (an area with several pages, the account menu), opened by its name */
+function Group({ name, label, children }: { name: string; label?: string; children: React.ReactNode }) {
+    return (
+        <details className="relative">
+            <summary className="cursor-pointer list-none text-sm text-muted-foreground hover:text-foreground" aria-label={label}>
+                {name}
+            </summary>
+            <ul className="absolute right-0 z-10 mt-2 min-w-48 rounded-md border bg-card p-2 shadow-md">{children}</ul>
+        </details>
+    )
+}
+
+const Item = ({ item }: { item: MenuItem }) => (
+    <li className="px-2 py-1">
+        <NavLink to={item.path} end className={link}>
+            {item.title}
+        </NavLink>
+    </li>
+)
+
+/**
+ * The frame around every page: the menu, the account menu, and the page below it.
+ *
+ * The menu comes from the model (`src/navigation.json`, ADR-065): the entities, then the areas, holding only what the
+ * signed-in person may use. Until the model's first export writes it, the pages marked `nav` are linked instead.
+ * The account menu is the kit's (utility navigation, ADR-065): signed out, Sign in and Sign up; signed in, the
+ * person's email opens Your account, the model's account pages, and Sign out.
+ */
+export function Layout({ nav, navigation = fromModel }: { nav: PageInfo[]; navigation?: Navigation }) {
+    const { session, signOut, mode, signedIn } = useSessionState()
+    const menu = useMenu(navigation)
+    const typed = Object.entries(session)
     return (
         <div className="min-h-screen">
             <header className="border-b bg-card">
                 <nav className="mx-auto flex max-w-5xl items-center gap-6 px-6 py-3">
                     <span className="font-semibold">App</span>
-                    {nav.map((page) => (
-                        <NavLink key={page.path} to={page.path} end className={link}>
-                            {page.title}
-                        </NavLink>
-                    ))}
-                    {signedIn.length > 0 && (
-                        <span className="ml-auto flex items-center gap-3 text-sm text-muted-foreground">
-                            {mode === "better-auth" ? (
-                                <NavLink to="/account" className={link} title="Your account">
-                                    {who}
-                                </NavLink>
+                    {menu
+                        ? menu.menu.map((m) =>
+                              "items" in m ? (
+                                  m.items.length === 1 ? (
+                                      <NavLink key={m.area} to={m.items[0].path} end className={link}>
+                                          {m.items[0].title}
+                                      </NavLink>
+                                  ) : (
+                                      <Group key={m.area} name={m.area}>
+                                          {m.items.map((item) => (
+                                              <Item key={item.path} item={item} />
+                                          ))}
+                                      </Group>
+                                  )
+                              ) : (
+                                  <NavLink key={m.path} to={m.path} end className={link}>
+                                      {m.title}
+                                  </NavLink>
+                              )
+                          )
+                        : nav.map((page) => (
+                              <NavLink key={page.path} to={page.path} end className={link}>
+                                  {page.title}
+                              </NavLink>
+                          ))}
+                    <span className="ml-auto flex items-center gap-3 text-sm text-muted-foreground">
+                        {mode === "better-auth" ? (
+                            signedIn ? (
+                                <Group name={session.email ?? "Your account"} label="Your account">
+                                    <Item item={{ title: "Your account", path: "/account" }} />
+                                    {menu?.account.map((item) => <Item key={item.path} item={item} />)}
+                                    <li className="px-2 py-1">
+                                        <button type="button" className="text-sm underline hover:text-foreground" onClick={signOut}>
+                                            Sign out
+                                        </button>
+                                    </li>
+                                </Group>
                             ) : (
-                                who
-                            )}
-                            <button type="button" className="underline hover:text-foreground" onClick={signOut}>
-                                Sign out
-                            </button>
-                        </span>
-                    )}
+                                <>
+                                    <NavLink to="/sign-in" className={link}>
+                                        Sign in
+                                    </NavLink>
+                                    <NavLink to="/sign-up" className={link}>
+                                        Sign up
+                                    </NavLink>
+                                </>
+                            )
+                        ) : (
+                            // The stub: the typed IDs, the model's account pages, and Sign out
+                            typed.length > 0 && (
+                                <>
+                                    {typed.map(([key, value]) => `${key} ${value}`).join(", ")}
+                                    {menu?.account.map((item) => (
+                                        <NavLink key={item.path} to={item.path} className={link}>
+                                            {item.title}
+                                        </NavLink>
+                                    ))}
+                                    <button type="button" className="underline hover:text-foreground" onClick={signOut}>
+                                        Sign out
+                                    </button>
+                                </>
+                            )
+                        )}
+                    </span>
                 </nav>
             </header>
             <main className="mx-auto max-w-5xl px-6 py-8">
