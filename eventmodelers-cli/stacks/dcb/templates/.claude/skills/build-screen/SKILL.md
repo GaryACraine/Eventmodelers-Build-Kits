@@ -326,6 +326,11 @@ Load more, sees both rows, and sees the button gone.
   const allowed = useAllowed(page.path, "reportCheckoutCompleted", organisationId)
   {allowed && <ReportCheckoutCompletedForm organisationId={organisationId} />}
   ```
+- **A list of the person's own with one row opens it** (draft, ADR-065; proven by licensing's My Organisations):
+  a list page whose read model is keyed by a session value (`page.params` `from: "session"`, no route id) and
+  that holds exactly one row goes straight to that row's page, `navigate(generatePath(<row page route>, row),
+  { replace: true })`, so Back doesn't return to it. No rows: the mockup's empty state. Several: the list. Its page
+  test covers one row (it opens the row's page) and two (it lists them).
   The form's callback passes `{ ...body, ...data }` (what was sent, and a 201's generated fields). Another
   system's part of the page (ADR-044) calls it after its command is sent, like any form. The next page may be
   another slice's, not built yet: the move is still built, and the page test checks the URL it goes to.

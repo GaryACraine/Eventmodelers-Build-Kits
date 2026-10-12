@@ -6,7 +6,7 @@ import { Layout } from "@/Layout"
 import { server } from "@/mocks/server"
 import { apiUrl } from "./api"
 import { signInService } from "./auth-client"
-import { allows, forgetPermissions, pageAllowed, type Navigation } from "./navigation"
+import { allows, forgetPermissions, pageAllowed, useStartPath, type Navigation } from "./navigation"
 import { SessionProvider } from "./session"
 
 // The menu from the model (ADR-065): permissions, never roles, and what the API says the person holds
@@ -84,5 +84,40 @@ describe("what the menu offers (ADR-065)", () => {
         expect(within(nav).getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/sign-in")
         expect(within(nav).getByRole("link", { name: "Sign up" })).toHaveAttribute("href", "/sign-up")
         expect(within(nav).queryByText("Organisations")).toBeNull()
+    })
+})
+
+describe("where the start page sends the person (ADR-065)", () => {
+    afterEach(() => vi.restoreAllMocks())
+
+    const Probe = ({ from }: { from: Navigation }) => <output>{useStartPath(from) ?? "stay"}</output>
+    function startFor(user: { email: string } | null, permissions: string[], from: Navigation = navigation) {
+        forgetPermissions()
+        vi.spyOn(signInService, "useSession").mockReturnValue({ data: user && { user: { id: `sub-${user.email}`, ...user } }, isPending: false } as never)
+        server.use(http.get(apiUrl("/my-permissions"), () => HttpResponse.json({ permissions })))
+        render(
+            <SessionProvider mode="better-auth" remember={false}>
+                <Probe from={from} />
+            </SessionProvider>
+        )
+        return screen.getByRole("status")
+    }
+
+    it("opens the first menu item the person may use, once their permissions are known", async () => {
+        const out = startFor({ email: "owner@contractor.example" }, [])
+        // nothing until the API has answered: it never opens a page it may hide a moment later
+        expect(out).toHaveTextContent("stay")
+        await vi.waitFor(() => expect(out).toHaveTextContent("/organisations"))
+    })
+
+    it("skips what the person may not use", async () => {
+        const supportFirst: Navigation = { ...navigation, menu: [navigation.menu[1], navigation.menu[0]] }
+        const out = startFor({ email: "ops@example.com" }, ["settings:read"], supportFirst)
+        await vi.waitFor(() => expect(out).toHaveTextContent("/settings"))
+        expect(out).not.toHaveTextContent("/notifications")
+    })
+
+    it("sends someone signed out to Sign in", () => {
+        expect(startFor(null, [])).toHaveTextContent("/sign-in")
     })
 })

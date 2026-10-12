@@ -2917,6 +2917,18 @@ deciders.
 - **Open:** tags built before this rule without an id in the model (`organisationWasActivated`'s `userId`,
   `paddleNotificationReceived`'s `subscriptionId`) are declared in the model when their slices are next replaced.
 
+**Addendum (Gary, 2026-10-12): a tag names a thing, never a value with few options.** Tag an event with the ids of
+the things it's about (an organisation, a person): keys with many values, the register's entities (ADR-065). Not
+with a value that has only a few options, such as `roleId` (owner, admin, engineer), even when a rule checks it:
+- each `(type, tag)` pair is a lock, so every owner assignment on the platform would wait on every other;
+- a read matches an event with any one of the query's tags, so `{ organisationId, roleId: owner }` reads every
+  organisation's owners, and a fold that doesn't filter by organisation counts them;
+- the rule already holds within the thing's own tag: `HasOwner` and `HoldsRole` fold the organisation's
+  assignments and check `roleId` in the data, under the append condition.
+
+`userWasAssignedToRole` gained the `userId` tag on this basis (licensing `d35e117`, before release): a person's own
+organisations are read by it.
+
 ### ADR-049: A decisive answer to our own call is a fact, recorded at once; the provider's event of it is a repeat
 
 **Status:** **Accepted, 2026-10-07 (Gary),** after the sandbox proved the version match. Proposed the same day:
