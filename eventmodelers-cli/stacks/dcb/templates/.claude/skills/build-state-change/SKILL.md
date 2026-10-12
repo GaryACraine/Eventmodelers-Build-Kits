@@ -26,8 +26,8 @@ From the slice definition, extract:
 - **sliceName** — the slice title (used for directory name and type aliases)
 - **context** — the bounded context (used to find `Events.ts`)
 - **commands[]** — list of commands with their data fields
-- **commands[0].api** — the endpoint the model declares (ADR-058 point 1): a permission (`seat:assign`), `self` or
-  `anonymous`. **Absent: the command has no endpoint.** Only automations issue it, in-process, through its decider
+- **commands[0].api** — the endpoint the model declares (ADR-058 point 1): a permission (`seat:assign`), `self`,
+  `link` (ADR-068) or `anonymous`. **Absent: the command has no endpoint.** Only automations issue it, in-process, through its decider
   (`import { …Decider } from "../<slice>/decider.js"`). Then skip Steps 6, 7, 8b and 9, and test it with Step 8's
   in-process form. Never add a route the model didn't declare: the `api-contract` check rejects a route the contract
   doesn't have.
@@ -364,6 +364,7 @@ File: `src/contexts/{context}/slices/{slicename}/route.ts`
 |---|---|---|
 | a permission (`seat:assign`) | `requirePermission("seat:assign", [/* its session keys, if any */])` | 401 not signed in; 404 in an organisation the caller has no role in; 403 a member without the permission (ADR-060); 401 step-up when the role needs a stronger sign-in (ADR-056). The organisation is the role map's tenant key (`organisationId`) in the path or body |
 | `self` | `requireSession([/* its session keys */])` (below) | 401; 403 register first |
+| `link` | `requireSession([/* its session keys, if any */])`: signed in, with the id from the link in the body (ADR-068). The decider checks what the person may do with it (an invitation: the invited email) | 401; 403 register first |
 | `anonymous` | none | — |
 
 `requirePermission` and `requireSession` come from `../../../../shared/signIn.js`. A permission route reads its

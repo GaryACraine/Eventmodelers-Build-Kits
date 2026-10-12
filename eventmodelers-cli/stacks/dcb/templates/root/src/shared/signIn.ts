@@ -12,7 +12,8 @@ type ApiResponse = Parameters<typeof sendProblem>[0]
  * `signedInOf(res)`.
  *
  *   - no `Authorization` header → passes through: a route says who may call it (ADR-058 point 1), with
- *     `requirePermission` (a permission), `requireSession` (self: the signed-in person's own values), or nothing
+ *     `requirePermission` (a permission), `requireSession` (self: the signed-in person's own values; link: anyone
+ *     signed in, holding an id a link carried, ADR-068), or nothing
  *     (anonymous). A command or read model the model doesn't declare has no route at all;
  *   - a valid token → `signedInOf(res)` is `{ sub, email }`;
  *   - a token that fails any check, or sign-in isn't configured → 401, nothing else runs.

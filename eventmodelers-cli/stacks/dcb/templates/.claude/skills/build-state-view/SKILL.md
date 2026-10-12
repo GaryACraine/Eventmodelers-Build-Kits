@@ -250,6 +250,8 @@ has settled every choice here. Transcribe it and don't invent parameters, operat
   GET and every query, where the path's `:organisationId` is known. Never `router.use(…)`: it runs before the path
   is matched, so the guard can't see the organisation;
 - `self`: its session key;
+- `link` (ADR-068): `guard: requireSession([])`, signed in; it's read by the id the link carried (an invitation's
+  page). Anyone signed in with the id may read it, so it shows only what the link's recipient needs;
 - `anonymous`: no guard.
 
 Its tests sign in with the caller's roles, as `build-state-change` Step 8 says. **Absent: no endpoint.** Only automations read it,
