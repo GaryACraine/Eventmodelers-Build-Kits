@@ -4905,3 +4905,220 @@ everything we can", and Postgres moves to 18 (19 is still a beta).
   automation) both found the key missing, so one append conflicted and failed. Each now looks for the key again after
   a conflict. The tests make both look before either appends, so they fail every time without the fix. Before, the
   race showed only now and then (once in three full runs on Postgres 18).
+
+### ADR-064: An open design question is researched with the authorities of its own discipline
+
+**Status:** **Accepted, 2026-10-12 (Gary).** Gary: when we have an open research question, we only refer to Axon,
+Emmett and Marten when it's specific to events; otherwise we consult the appropriate design authorities, competitors
+or inspirations, with an index of them by discipline.
+**Date:** 2026-10-12
+
+**Context:**
+- **The rule until now** (2026-10-06, in working practice rather than an ADR): answer a design question by comparing
+  Axon 5, Emmett, Marten and Dilger's book first. It worked for events: Marten's daemon caps were the precedent for
+  ADR-047, and Axon's `@EventTag` for ADR-048.
+- **It doesn't fit every question.** Gap 1 (links between pages, ADR-065) is about UI navigation, and none of those
+  four has anything to say about menus. Other questions already went to their own authorities without a rule saying
+  so: ADR-056 to NIST SP 800-63B and OWASP, ADR-063 to GitHub's advisory database.
+
+**Decision:**
+1. **An open design question is researched with the authorities of its discipline:** standards and guides first,
+   then the products and frameworks that solved the same problem (competitors and inspirations). Compare them before
+   recommending, and note each one's design reason and what copying it would cost us.
+2. **Axon 5, Emmett, Marten and the book are the authorities for event sourcing and event modelling.** Other
+   questions consult them only where the question touches events.
+3. **The index is `docs/DESIGN-AUTHORITIES.md`:** a row per discipline, with its standards and guides, its
+   inspirations and competitors, where a local copy is kept, and the ADRs that used it. It starts with the
+   disciplines met so far. A row is added when a question first needs it.
+4. **An ADR names the authorities it consulted,** and the index's row names the ADR.
+
+**Alternatives considered:**
+- **Keep the event-sourcing four for every question.** Rejected: on a UI question they give no answer, and the
+  research looks done when it isn't.
+- **A complete index up front.** Rejected (Gary): it doesn't have to be comprehensive at first. Rows earn their place
+  when a question needs them.
+
+**Consequences:**
+- Research on a question starts by naming its discipline, then reads that row.
+- A question that spans disciplines reads every row it touches. For example, ADR-065's navigation reads UI
+  navigation and object-based UI, and event modelling for the timeline.
+
+### ADR-065: Navigation from the model: flows along the timeline, a menu of entities, and areas for the rest (open)
+
+**Status:** **Proposed, 2026-10-12.** Gary widened Gap 1 (links between pages) to navigation as a whole: how commands,
+queries and subscriptions gather under menu items, in a vertical-slice build. His first thought, appraised below: people
+understand a system by its entities, which DCB's tags name, so a central record of the tags could give the menu.
+**Date:** 2026-10-12
+**Authorities consulted (ADR-064):** UI navigation and information architecture; object-based UI; CQRS and
+task-based UI; event modelling (`docs/DESIGN-AUTHORITIES.md`).
+
+**Context:**
+- **Gap 1** (found in 16.3a's sandbox journey, 2026-10-08): nothing leads from Get Started to Activate Organisation, or
+  from the checkout to the dashboard. The journey uses the nav for the first and types the dashboard's URL for the
+  second (`e2e/journey/owner-starts-a-trial.journey.ts`, steps 3 and 6).
+- **What the kit does today:**
+  - **A page** is every screen card with the same title in one context. emcli derives its route from the IDs it
+    shows or takes: `courseId` → `/courses/:courseId` (keyed), `/courses` (a list), `/courses/new` (a create).
+    Otherwise the route comes from the title (emcli `page.ts`).
+  - **The header** links every page without a route parameter, flat, in path order (`nav: true`, `Layout.tsx`).
+  - **Links between pages:** only two kinds. A create form goes to the new entity's page, and a list's row opens the
+    entity's page (`build-screen` step 7). Nothing else leads anywhere: no "next step" after a command, no grouping,
+    no order, and a menu item shows whether or not the person may use the page.
+- **Licensing's ID attributes (DCB tags), all 11:**
+
+  | Tag | Users (events / commands / read models) | What it is |
+  |---|---|---|
+  | `organisationId` | 28 / 7 / 7 | **an entity:** the customer's organisation |
+  | `invitationId` | 4 / 0 / 0 | **an entity**, belonging to an organisation |
+  | `subscriptionId` | 9 / 2 / 1 | **an entity**, Paddle's id for the organisation's subscription |
+  | `sub`, `userId` | 10 / 2 / 2 and 2 / 2 / 0 | **one entity, two names:** the person (`sub` from sign-in, `userId` ours); always the signed-in person's |
+  | `settingsId` | 2 / 2 / 1 | **a singleton:** the system settings (ADR-043) |
+  | `email` | 1 / 0 / 1 | **a lookup:** a person found by email |
+  | `paddleEventId`, `transactionId`, `syncId`, `upToPaddleEventId` | | **another system's ids, or bookkeeping:** never a page anyone navigates to |
+
+  So 4 of the 11 name things a person works with. Navigation can't be inferred from tags alone.
+- **The licensing timeline already holds the forward path.** "1. Owner starts a trial" reads Activate Organisation →
+  Choose How to Start → Dashboard, which is exactly Gap 1's second link. The first link (Get Started → Activate)
+  crosses from identity's chapter 0 into licensing's chapter 1, so no single chapter shows it.
+
+**Research:**
+- **Three directions of navigation** (Material Design 3):
+  - *lateral:* between top-level destinations, through the primary menu;
+  - *forward:* down the hierarchy (a list to an item) or through the steps of a flow;
+  - *reverse:* back.
+
+  Rosenfeld and Morville make the same split: global, local and contextual navigation. Nielsen Norman Group adds that
+  the menu shows where you are (failing to is "probably the single most common mistake" on menus), and that visible
+  menus beat hidden ones.
+- **Organisation schemes** (Rosenfeld and Morville): a menu groups by object, by task or by audience. Object-based
+  schemes suit applications people return to. Task-based schemes suit flows done once.
+- **Object-oriented UX** (Sophia Prater, ORCA): find the objects people think in, their relationships, the calls to
+  action on each, and their attributes. Navigation follows the objects and their relationships. A call to action
+  belongs to the object it acts on. This is Gary's thought, as a design method.
+- **Naked Objects** (Pawson; Apache Causeway): the UI is generated from the domain objects. A menu lists the object
+  types, each object's page lists its actions, and relationships are links. Its known weakness: an object model alone
+  makes a poor flow for a task done once, such as onboarding. Causeway adds explicit menus and services for that.
+- **Generated admin UIs** (react-admin, Refine):
+  - a *resource* (an entity) gets a list, create, edit and show page;
+  - the menu has one item per resource with a list page, unless it's hidden;
+  - Refine nests a resource under a `parent` and checks `canAccess` before showing its item.
+- **Power Apps model-driven apps:** a site map of area → group → subarea. A default is generated, and people edit it.
+- **Task-based UI** (Greg Young, CQRS): a command is an intent ("change the email", "assign a seat"), not an edit of a
+  record. Under an entity's page, the entity's commands appear as actions, never as one edit form.
+- **GOV.UK Design System:**
+  - *one thing per page* for flows;
+  - a *task list* for flows done over several sittings;
+  - *service navigation* for the service's top-level areas.
+- **DCB** ([dcb.events](https://dcb.events)): a tag is any key an event is found by. Entity ids are the usual case,
+  but the specification's own examples also tag for uniqueness (a username). This matches licensing: tags are mostly
+  entities, with exceptions.
+- **Event modelling** (Dymitruk; Dilger): the model is a storyboard, read left to right. The screens in a flow's
+  timeline are the order a person sees them. Dilger notes the model doesn't say where a person goes after an error
+  ("do we redirect the user somewhere for help?"); ADR-038 makes each outcome its own chapter.
+
+**Appraisal of the proposal (entities from the tags):**
+- **It holds, as the backbone of the menu.** Every authority above that builds menus from a model (OOUX, Naked
+  Objects, react-admin, Refine, Power Apps) builds them from entities. emcli already infers entities from ID
+  attributes for page routes. Commands gather around the entity they act on, and simple queries around the entity
+  they're keyed by, as Gary says.
+- **A central record of the tags is useful beyond the menu.** Tags are global, the store finds events by them, and
+  ADR-048's impact check needs every user of a tag. Today a tag is only an id flag on each field (`idAttribute`), so
+  nothing lists them, names their kind or catches two names for one thing.
+- **It's flaky in five places unless the record says more than "this is a tag":**
+  1. **Not every tag is an entity.** In licensing, 7 of 11 aren't: lookups, another system's ids, bookkeeping. Each
+     tag needs a kind.
+  2. **Two names, one entity.** `sub` and `userId` are the same person. The record needs an alias, or the menu shows
+     the same thing twice.
+  3. **Belonging.** An invitation and a subscription belong to an organisation. Tags don't say so (a command carrying
+     both ids doesn't make one the parent). Without a parent, each would become a top-level menu item.
+  4. **"Mine" or "all".** An owner sees *their* organisation; a platform admin sees every organisation. The same
+     entity is a single item for one role and a list for another. The person's own entities come from a read model
+     keyed by who they are. Licensing has none for organisations yet (`MyAccount`, keyed by `sub`, holds only
+     `userId` and `email`), so the journey carries the organisation's id from activation.
+  5. **Not every page is about one entity.** Flows (Get Started → Activate → Choose How to Start) are tasks, not
+     objects. Reports and dashboards span many entities, and settings are a singleton. An entity menu alone can't
+     place them, as Gary noted for reports.
+- **So: entities for the menu, with a register that classifies the tags; the timeline for flows; and areas for what
+  belongs to no entity.**
+
+**Proposal:**
+1. **Flows: forward along the timeline.**
+   - In a process chapter (one flow, ADR-038), a screen whose command succeeds leads to the next page in the chapter's
+     timeline (cards with the page's own title are skipped, since they're the same page).
+   - Where a command's success is reported by another system (the checkout, ADR-044), the next page comes once it's
+     reported.
+   - Chapters can't show a flow that continues in another chapter, or in another context (Get Started → Activate). So
+     a screen may name its next page explicitly (`element next`). The same property says "none".
+   - It's derived at export, and build-screen builds it into the page as a link or a move after success.
+2. **Entities: the menu, from a tag register.**
+   - Each context records its tags once, in the model (emcli `tag`).
+   - **Each tag has a kind:**
+     - *entity*, with a label ("Organisation", "Organisations") and an optional *parent* entity;
+     - *singleton* (settings);
+     - *lookup* (found by, never shown);
+     - *external* (another system's id, ADR-052/053);
+     - *system* (bookkeeping).
+   - It also records aliases (`userId` = `sub`).
+   - **emcli drafts the register from the ID attributes** and suggests each tag's kind. `completeness` warns about an
+     unregistered tag, and about a page keyed by a tag that isn't an entity.
+   - **The menu:**
+     - one item per top-level entity that has a list page, or a page of the person's own;
+     - an entity with a parent appears on its parent's page, not in the menu;
+     - an entity's page offers its commands as actions (task-based), and its keyed read models as its sections.
+3. **Areas: for what belongs to no entity.**
+   - A page with no entity key goes in an area: a report, a dashboard over many entities, settings, support's queues.
+     The area is the page's own property, defaulting to its context.
+   - The menu shows the entities first, then the areas (a GOV.UK service navigation, or Power Apps' areas).
+4. **Subscriptions follow the same rule.** A page's live or waiting read model (ADR-013, ADR-022) belongs to the
+   entity it's keyed by, or to the area of its page. A person's own to-do items, such as stalled work for an admin
+   (ADR-032), form an area of their own.
+5. **The menu shows only what the person may use.** An item shows when the person's permissions allow its page's
+   reads (ADR-060's map, `api/roles.json`). It's derived, never listed per role.
+6. **Built like the API contract (ADR-029), never edited by slices.**
+   - emcli writes the whole of navigation at export (`web/src/navigation.json`): the menu, each page's next page,
+     each entity's parent, and the areas.
+   - The layout and the pages read it. No slice edits a shared menu file, so slices stay independent (the reason
+     `routes.tsx` already finds pages itself).
+7. **Planning** (the `event-model` skill and `plan-change`):
+   - a slice that introduces an ID registers its tag and kind when it's planned;
+   - a new entity names its parent;
+   - a page names its area when it has no entity;
+   - completeness warns about a page nothing leads to (no menu item, no list, no previous step), and about a flow
+     screen with no next page that isn't its chapter's end.
+
+**Open questions for Gary:**
+1. **The register's home:** in the model, per context (`workspace.json`, via `emcli tag`), as proposed? Or derived
+   only, with nothing recorded?
+2. **"Mine" for an owner:** a read model of the person's organisations, keyed by `sub`, so that the menu's
+   "Organisation" opens theirs (one) or asks which (several)? Nothing would then carry the id from one page to the next.
+3. **Grouping:** entities first and areas after, or areas as the top level, with entities inside them (Power Apps'
+   area → group)?
+4. **Step 1 first:** build the flow links (Gap 1 itself) first, and the register and menu second?
+
+**Alternatives considered:**
+- **A menu written by hand** (`navigation.ts`). Rejected: every slice with a page would edit one shared file, which
+  vertical slices avoid, and it drifts from the model.
+- **Entities from tags, with no register.** Rejected: in licensing, 7 of 11 tags would become menu items that mean
+  nothing to anyone, and `sub` and `userId` would appear twice.
+- **Aggregates as the entities.** Not available: DCB has none (ADR-003). The tags are the nearest thing, which is
+  why they're the starting point.
+- **A full site map edited by people** (Power Apps). Kept as a later override: a derived default first, as Power Apps
+  itself generates one.
+- **Fixing licensing's two pages by hand.** Rejected (Gary): the next project would have the same gap.
+
+**Consequences (if accepted):**
+- **emcli:**
+  - `tag` (the register and its draft);
+  - `element next`;
+  - a page's area;
+  - `navigation.json` at export;
+  - completeness checks.
+- **Kit:**
+  - `build-screen` builds the next-page move;
+  - `Layout.tsx` renders the menu from `navigation.json` by permission;
+  - the event-model skill and `plan-change` gain the planning rows;
+  - the manual gains a section.
+- **Licensing:**
+  - its tags are registered;
+  - Gap 1's links are built;
+  - the journey stops typing the dashboard's URL and stops using the nav for Activate.

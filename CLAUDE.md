@@ -10,6 +10,7 @@ board/platform is retired in this fork: don't call its API or MCP tools.
 | Path | What |
 |---|---|
 | `PLAN.md` | the living plan: phases, tasks, findings, Decisions Log. Read the top phase before starting work. |
+| `docs/DESIGN-AUTHORITIES.md` | who to consult on a design question, by discipline (ADR-064) |
 | `docs/USER-MANUAL.md` | the manual (verified by replaying it in `~/Projects/course-enrollment`) |
 | `eventmodelers-cli/stacks/dcb/` | the DCB kit: scaffold (`templates/root`), build skills (`templates/.claude/skills/build-*`), loop config (`templates/build-kit`) |
 | `eventmodelers-cli/shared/` | files every kit installs (see `shared/SKILLS-STATUS.md`) |
@@ -32,4 +33,7 @@ board/platform is retired in this fork: don't call its API or MCP tools.
   change supersedes from the project's `.build-kit/learnings/` (ADR-028), and restart the loop if `ralph.js` changed.
 - **Planning rules live in the DCB kit's `plan-change` skill** (installed in every project, where the ADRs are
   not). An ADR that changes how a slice, event or endpoint may be changed updates `plan-change` in the same PR.
+- **Research a design question with its own discipline's authorities** (`docs/DESIGN-AUTHORITIES.md`, ADR-064):
+  Axon, Emmett and Marten for questions about events, the UI authorities for UI questions, and so on. Add a row
+  when a question first needs one.
 - Record decisions in `PLAN.md`'s Decisions Log with the reason, and tick tasks as they land.
