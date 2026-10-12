@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { useSearchParams } from "react-router"
 import { api } from "./api"
 import { useSessionState } from "./session"
 
@@ -9,7 +10,9 @@ import { useSessionState } from "./session"
  * - `menu`: each top-level entity's list ("Organisations", with its create page), then each area's pages;
  * - `account`: the model's pages for the account menu, after the kit's own (Your account, Sign out);
  * - `pages`: every page by route, with the **permissions** its reads and commands need: the same `resource:action`
- *   strings the API checks and `api/roles.json` grants, or `self` (anyone signed in), or `anonymous`. Never roles.
+ *   strings the API checks and `api/roles.json` grants, or `self` (anyone signed in), or `anonymous`. Never roles;
+ * - `register`: the page where a person who has just signed up registers (ADR-068). Sign-up goes there, carrying
+ *   the page the person came from as `?next=`, and the page goes on to it after its command (`useReturnTo`).
  *
  * What the person holds comes from the API (`GET /my-permissions`, `?organisationId=` on an organisation's pages),
  * from the same role map and lookup as every permission route. Hiding is a courtesy: the API still refuses.
@@ -42,6 +45,7 @@ export interface Navigation {
     menu: (MenuItem | MenuArea)[]
     account: MenuItem[]
     pages: Record<string, NavigationPage>
+    register?: string
 }
 
 // Absent until the first export that writes it: the layout then falls back to the pages marked `nav`
@@ -148,4 +152,25 @@ export function useStartPath(from: Navigation | undefined = navigation): string 
     if (loading || !menu) return undefined
     const first = menu.menu[0]
     return first ? ("items" in first ? first.items[0]?.path : first.path) : undefined
+}
+
+/** A path on this site, never another origin */
+const local = (path: string | null | undefined): path is string => !!path && path.startsWith("/") && !path.startsWith("//")
+
+/**
+ * Where the verification link of a sign-up lands (ADR-068): the registration page, carrying `next` unless it's the
+ * start page or the registration page itself. A model with no registration page lands on `next` itself.
+ */
+export function afterSignUp(next: string, from: Navigation | undefined = navigation): string {
+    const register = from?.register
+    if (!register) return next
+    if (next === "/" || next === register || next.startsWith(`${register}?`)) return register
+    return `${register}?next=${encodeURIComponent(next)}`
+}
+
+/** The page a registration page goes on to: `?next=` when sign-up carried one, else undefined (its own next page) */
+export function useReturnTo(): string | undefined {
+    const [params] = useSearchParams()
+    const next = params.get("next")
+    return local(next) ? next : undefined
 }

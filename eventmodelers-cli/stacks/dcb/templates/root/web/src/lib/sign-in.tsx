@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { EMAIL_CHANGED_PAGE, messageOf, signInService, type SecondFactorMethod, type ServiceError } from "./auth-client"
 import { useSessionState } from "./session"
+import { afterSignUp } from "./navigation"
 
 /**
  * The sign-in screens (ADR-055, ADR-056, ADR-057): the sign-in system's, provided by the kit, never built by the loop.
@@ -13,7 +14,8 @@ import { useSessionState } from "./session"
  * Each call is Better Auth's, through `signInService`.
  *
  * `next` is the page to return to: the protected page that asked for sign-in, carried through Sign Up, where it
- * becomes the verification link's `callbackURL` (verifying signs the person in and lands them there).
+ * becomes the verification link's `callbackURL` (verifying signs the person in and lands them there). A new person
+ * goes by the registration page first (`afterSignUp`, ADR-068), which then goes on to `next`.
  *
  * Signing in takes the password and then a second factor (ADR-056 D2): the code we email, or the authenticator app's
  * code, a backup code or a passkey for someone who has those (they're never offered the emailed code, D4a). A passkey
@@ -245,7 +247,7 @@ export function SignUpForm({ next }: { next: string }) {
         event.preventDefault()
         setBusy(true)
         setError(undefined)
-        const { error } = await signInService.signUpWithEmail({ name, email, password, callbackURL: next })
+        const { error } = await signInService.signUpWithEmail({ name, email, password, callbackURL: afterSignUp(next) })
         setBusy(false)
         if (error) setError(messageOf(error as ServiceError, "Couldn't sign up. Try again."))
         else setSent(email)
@@ -304,7 +306,7 @@ export function NewPassword({ id, value, onChange }: { id: string; value: string
 function CheckEmail({ email, next, onWrongAddress }: { email: string; next: string; onWrongAddress: () => void }) {
     const [again, setAgain] = useState<string>()
     const sendAgain = async () => {
-        const { error } = await signInService.sendVerificationEmail(email, next)
+        const { error } = await signInService.sendVerificationEmail(email, afterSignUp(next))
         setAgain(error ? messageOf(error as ServiceError, "Couldn't send it. Try again.") : "We've sent it again.")
     }
     return (
@@ -462,7 +464,11 @@ export function LinkExpired() {
 
     const submit = async (event: FormEvent) => {
         event.preventDefault()
-        const { error } = await signInService.sendVerificationEmail(email, pathname)
+        // The same landing page, `?next=` and all, without the link's error
+        const keep = new URLSearchParams(params)
+        keep.delete("error")
+        const again = keep.size > 0 ? `${pathname}?${keep}` : pathname
+        const { error } = await signInService.sendVerificationEmail(email, again)
         setSent(error ? messageOf(error as ServiceError, "Couldn't send it. Try again.") : `We've sent a new link to ${email}.`)
     }
     return (

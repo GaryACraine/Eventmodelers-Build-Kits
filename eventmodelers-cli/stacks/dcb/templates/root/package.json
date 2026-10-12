@@ -27,6 +27,7 @@
     },
     "dependencies": {
         "@asteasolutions/zod-to-openapi": "^7.0.0",
+        "@aws-sdk/client-sesv2": "^3.1148.0",
         "@dcb-es/event-store": "file:../dcb-event-store/packages/event-store",
         "@dcb-es/event-store-express": "file:../dcb-event-store/packages/event-store-express",
         "@dcb-es/event-store-postgres": "file:../dcb-event-store/packages/event-store-postgres",
@@ -39,6 +40,7 @@
         "@temporalio/workflow": "1.24.0",
         "express": "^5.1.0",
         "jose": "^6.2.12",
+        "nodemailer": "^10.0.16",
         "pg": "^8.20.0",
         "uuid": "^11.0.0",
         "zod": "^3.0.0"
@@ -48,6 +50,7 @@
         "@testcontainers/postgresql": "^12.2.0",
         "@types/express": "^5.0.6",
         "@types/node": "^25.0.0",
+        "@types/nodemailer": "^8.0.2",
         "@types/pg": "8.20.0",
         "@types/supertest": "^6.0.2",
         "supertest": "^7.1.0",

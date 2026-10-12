@@ -846,6 +846,21 @@ model and build only what's ours.
                where commands go). Licensing `5dacd13` (kit-drift 0).
              - Not built, and not needed: the ADR's "a flow screen with no next page that isn't its chapter's end".
                The next page is derived from the timeline, so a screen with none is the end of its lane's flow.
+       6. **NEXT (Gary, 2026-10-12): invitations, licensing's chapters 2, 10 and 11 (ADR-068 Accepted).** The invited
+          email accepts; accepting records the roles and seats in one decision; one organisation per person for now;
+          licensing emails the invitation by automation; a pending invitation holds its seats, with no allocation
+          event (Gary asked; the invitation is the allocation and its end the release); owner and admin invite.
+          - [x] ADR-068 and the authorities row.
+          - [x] Kit (PR #281): `src/shared/email.ts` (SMTP/SES, our deadline; a real send through Mailpit), 5 tests;
+            `build-automation` "Sending an email"; sign-up goes by the registration page carrying `next`
+            (`afterSignUp`, `useReturnTo`, an expired link keeps it), mutation-checked; `build-screen`'s rule.
+            emcli `1ac3f12`: `navigation.json` `register`, the page whose command generates an id others read from
+            the session (licensing: `/get-started`). This also registers a new person who signed up from `/`, who
+            had skipped Get Started.
+          - [x] Licensing `a5a091b`…`8755864`: the sender, the web libs, Get Started goes on to `?next=` (by hand, a
+            kit pattern change), skills (kit-drift 0). Backend 462, web 121.
+          - [ ] The model: chapters 2, 10, 11 (emcli), completeness and navigation clean; Gary's go-ahead to export.
+          - [ ] The loop builds; then `e2e/invitations.mjs`, the journey (mock and sandbox), security evidence.
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
        `plan-change` and `job-scope` count as proven once a change with users goes through expand, switch,
        contract in the loop.
@@ -4799,6 +4814,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-12 | ADR-066 Accepted: a person who holds no role in any organisation may activate one; `organisationWasActivated` loses its `userId` tag; replaces the same day's Proposed domain claim and ask to join | Gary: everyone other than the owner is invited explicitly, so someone not invited is the initiator; not by email domain (contractors' domains vary); not a platform admin's invite (it would couple them to onboarding); simple first |
 | 2026-10-12 | ADR-067 Accepted: every command card sends through `useSubmitOnce` and disables while pending; every route decides again after a conflict (`retry: { onConflict: true }`, dcb-event-store phase 24) | Gary: defend client side with simple hooks to disable buttons, as a default for anything command based. RHF's `isSubmitting` disables a render late; a button can't stop two tabs or a script, and Emmett, Marten and Axon decide again on a conflict |
 | 2026-10-12 | ADR-065 step 4 done: navigation guidance distilled (no longer a draft); `plan-change` and the hand-off's ready check gain navigation rows; manual §13.11; emcli places automation-only commands on no page and warns about a command on another entity's page | Licensing went through steps 1 to 3 (journeys pass), so the drafts stood on solid ground. The D7 warning was in the Accepted ADR but not yet in emcli, and `id show` listed automation-issued commands as page actions |
+| 2026-10-12 | ADR-068 Accepted: invitations. The invited email accepts; accepting assigns roles and seats in one decision; one organisation per person; licensing emails by automation; a pending invitation holds its seats (no `seatWasAllocated`); owner and admin invite; sign-up goes by the registration page | Gary chose each recommendation. On allocation, Gary asked whether to record it before acceptance: the invitation already records the intent and its end releases it, so a separate event would repeat both |
 
 ## Progress
 
