@@ -4926,8 +4926,10 @@ events.
 1. **An open design question is researched with the authorities of its discipline:** standards and guides first,
    then the products and frameworks that solved the same problem (competitors and inspirations). Compare them before
    recommending, and note each one's design reason and what copying it would cost us.
-2. **Axon 5, Emmett and Marten are the authorities for event sourcing** (consistency, the store, projections,
-   processors, upcasting), and Dilger's book for event sourcing and event modelling. Other questions consult them
+2. **Axon 5, Emmett, Marten and event-driven.io are the authorities for event sourcing** (consistency, the store,
+   projections, processors, upcasting), and Dilger's book for event sourcing and event modelling. event-driven.io is
+   Oskar Dudycz's (Emmett's author); its Event Sourcing, CQRS and Event-Driven Architecture categories are the ones
+   consulted (added by Gary, 2026-10-12). Other questions consult them
    only on the part that is event sourcing. A question doesn't become one because events are involved.
 3. **The index is `docs/DESIGN-AUTHORITIES.md`:** a row per discipline, with its standards and guides, its
    inspirations and competitors, where a local copy is kept, and the ADRs that used it. It starts with the
@@ -4945,11 +4947,12 @@ events.
 - A question that spans disciplines reads every row it touches. For example, ADR-065's navigation reads UI
   navigation and object-based UI, and event modelling for the timeline.
 
-### ADR-065: Navigation from the model: flows along the timeline, a menu of entities, and areas for the rest (open)
+### ADR-065: Navigation from the model: flows along the timeline, a menu of entities, and areas for the rest
 
-**Status:** **Proposed, 2026-10-12.** Gary widened Gap 1 (links between pages) to navigation as a whole: how commands,
-queries and subscriptions gather under menu items, in a vertical-slice build. His first thought, appraised below: people
-understand a system by its entities, which DCB's tags name, so a central record of the tags could give the menu.
+**Status:** **Accepted, 2026-10-12 (Gary)**, with the decisions below (D1 to D6); proposed the same day.
+Gary widened Gap 1 (links between pages) to navigation as a whole: how commands, queries and subscriptions gather
+under menu items, in a vertical-slice build. His first thought, appraised below: people understand a system by its
+entities, which DCB's tags name, so a central record of the tags could give the menu.
 **Date:** 2026-10-12
 **Authorities consulted (ADR-064):** UI navigation and information architecture; object-based UI; CQRS and
 task-based UI; event modelling (`docs/DESIGN-AUTHORITIES.md`).
@@ -5065,7 +5068,8 @@ task-based UI; event modelling (`docs/DESIGN-AUTHORITIES.md`).
      a screen may name its next page explicitly (`element next`). The same property says "none".
    - It's derived at export, and build-screen builds it into the page as a link or a move after success.
 2. **Entities: the menu, from a tag register.**
-   - Each context records its tags once, in the model (emcli `tag`).
+   - The model records every tag key once, in one register for the whole event store (`emcli id`, D1). The register
+     holds keys (`organisationId`), never values (`organisationId=org-123`).
    - **Each tag has a kind:**
      - *entity*, with a label ("Organisation", "Organisations") and an optional *parent* entity;
      - *singleton* (settings);
@@ -5075,6 +5079,22 @@ task-based UI; event modelling (`docs/DESIGN-AUTHORITIES.md`).
    - It records the context that owns each tag (the context map at the level of ids). Another context's tag is
      marked as theirs and reached through that context's published read model or event (ADR-059, ADR-061), never
      aliased: an anti-corruption layer translates at the boundary, as identity's registration does for `sub`.
+   - **Tags are global** (Gary): the store finds an event by its tags from any context. So the register is one list
+     for the store, and each key means one thing everywhere. A key two contexts use for different things is an error
+     the register shows.
+   - **An event may carry the tags of several entities** (Gary). In licensing, `trialWasStarted` carries
+     `organisationId`, `subscriptionId` and `paddleEventId`; in the course example, `subscribeStudent` carries a course
+     and a student. This is DCB's point (ADR-003): the event belongs to every entity it's tagged with, and ADR-025
+     gave a command no single owner for the same reason. So:
+     - **the register classifies keys, never events.** It doesn't place an event, a command or a read model under an
+       entity, so nothing has to pick one owner;
+     - **a page belongs to the entity in its route** (`:organisationId`). A command that carries several entities'
+       ids appears on whichever page a screen in the model puts it on, possibly more than one. The page supplies the
+       id in its route; the others come from the session, or are chosen on the screen;
+     - **shared tags suggest a relationship but never decide it.** Two entities tagged on the same events are related.
+       But whether one belongs to the other (an invitation to an organisation) or neither does (a person in several
+       organisations) isn't in the tags. So a parent is declared, and emcli may suggest one from tags that always
+       appear together.
    - **emcli drafts the register from the ID attributes** and suggests each tag's kind. `completeness` warns about an
      unregistered tag, and about a page keyed by a tag that isn't an entity.
    - **The menu:**
@@ -5102,14 +5122,35 @@ task-based UI; event modelling (`docs/DESIGN-AUTHORITIES.md`).
    - completeness warns about a page nothing leads to (no menu item, no list, no previous step), and about a flow
      screen with no next page that isn't its chapter's end.
 
-**Open questions for Gary:**
-1. **The register's home:** in the model, per context (`workspace.json`, via `emcli tag`), as proposed? Or derived
-   only, with nothing recorded?
-2. **"Mine" for an owner:** a read model of the person's organisations, keyed by `sub`, so that the menu's
-   "Organisation" opens theirs (one) or asks which (several)? Nothing would then carry the id from one page to the next.
-3. **Grouping:** entities first and areas after, or areas as the top level, with entities inside them (Power Apps'
-   area → group)?
-4. **Step 1 first:** build the flow links (Gap 1 itself) first, and the register and menu second?
+**Decisions (Gary, 2026-10-12):**
+- **D1, the register is recorded in the model, as `emcli id`.** It's one register for the event store, since tags
+  are global. It isn't called `tag`, because emcli's `element update --tags` already means classification labels
+  ("intake"), which have nothing to do with DCB tags. Here a DCB tag is always a field marked as an id.
+- **D2, "mine":** licensing gets a read model of a person's organisations, keyed by the person (`userId`, found from
+  the token's `sub` as for commands, ADR-055 part 2). The menu's "Organisation" opens the owner's own, or asks which
+  when there are several. Nothing then carries an id from one page to the next.
+- **D3, grouping:** entities first, then areas. Areas as the top level, with entities inside them (Power Apps'
+  area → group), stays a later option.
+- **D4, order:** the flow links first (they fix Gap 1 on their own), then the register and the menu.
+- **D5, two ids for one person are settled by the context map** (Gary): each key has one owning context, and an
+  anti-corruption layer translates at the boundary (decision 2 above; the appraisal's point 2).
+- **D6, events with several entities' tags** are handled as decision 2 says: the register classifies keys, and a page
+  belongs to its route's entity.
+
+**The build, in order:**
+1. **Flow links** (emcli, kit, licensing):
+   - each page's next page, derived from the timeline, with `element next` for a flow that continues elsewhere;
+   - `build-screen` builds it;
+   - licensing's two links;
+   - the journey stops using the nav and typing URLs.
+2. **The register:** `emcli id`, drafted from the id flags, with its completeness checks.
+3. **The menu and areas:**
+   - `navigation.json`;
+   - `Layout.tsx`, by permission;
+   - licensing's "my organisations".
+4. **Planning and the manual:**
+   - the event-model skill and `plan-change` rows;
+   - a manual section.
 
 **Alternatives considered:**
 - **A menu written by hand** (`navigation.ts`). Rejected: every slice with a page would edit one shared file, which
@@ -5122,9 +5163,9 @@ task-based UI; event modelling (`docs/DESIGN-AUTHORITIES.md`).
   itself generates one.
 - **Fixing licensing's two pages by hand.** Rejected (Gary): the next project would have the same gap.
 
-**Consequences (if accepted):**
+**Consequences:**
 - **emcli:**
-  - `tag` (the register and its draft);
+  - `id` (the register and its draft);
   - `element next`;
   - a page's area;
   - `navigation.json` at export;
