@@ -735,10 +735,14 @@ model and build only what's ours.
        4. **Split "start trial checkout"** (screen, then Paddle's event), replacing the built slice, when that area is
           next touched.
        5. **NEXT (Gary, 2026-10-12): Gap 1, links between pages, widened to navigation as a whole (ADR-065,
-          Proposed).** Flows lead forward along the chapter's timeline, a menu of entities comes from a register of
-          the context's tags, and areas hold the pages that belong to no entity. Research went to the UI
-          authorities, not the event-sourcing ones (ADR-064, `docs/DESIGN-AUTHORITIES.md`). Next: Gary's answers to
-          ADR-065's four open questions, then the build, flow links first.
+          Accepted).** Flows lead forward along the chapter's timeline; a menu of entities comes from one register
+          of the store's tag keys (`emcli id`; tags are global); areas hold the pages that belong to no entity.
+          Research went to the UI authorities, not the event-sourcing ones (ADR-064, `docs/DESIGN-AUTHORITIES.md`).
+          1. Flow links: the next page from the timeline, `element next`, `build-screen`, licensing's two links,
+             the journey without the nav or typed URLs.
+          2. The register: `emcli id`, drafted from the id flags, with completeness checks.
+          3. The menu and areas: `navigation.json`, `Layout.tsx` by permission, licensing's "my organisations".
+          4. Planning rows (event-model skill, `plan-change`) and a manual section.
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
        `plan-change` and `job-scope` count as proven once a change with users goes through expand, switch,
        contract in the loop.
@@ -4683,6 +4687,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-12 | 2b.2c done: the local database moved to Postgres 18.6 and every end-to-end run recorded on it; the event store library moved first (phase 23, PR #35); what 18 offers is 16.9, deferred | Gary: "Should we upgrade DCB event store first? … I think we should" and "This should be deferred". The library carries the event store, so it was proven on 18 before the data moved |
 | 2026-10-12 | ADR-064 Accepted: an open design question is researched with the authorities of its own discipline; the index is `docs/DESIGN-AUTHORITIES.md` | Gary: Axon, Emmett and Marten only when a question is specific to event sourcing (corrected the same day: not "events"); otherwise the relevant design authorities, competitors or inspirations, indexed by discipline, not comprehensive at first |
 | 2026-10-12 | ADR-065 Proposed: navigation from the model (flows along the timeline, a menu of entities from a tag register, areas for the rest), widening Gap 1 | Gary: a broader concern than two links; people understand a system by its entities, which the DCB tags name. In licensing 4 of 11 tags are entities, so the register gives each tag a kind |
+| 2026-10-12 | ADR-065 Accepted: `emcli id` (one register of tag keys for the event store, each key's kind, owner context and parent); licensing's "my organisations"; entities then areas; flow links first; an event with several entities' tags stays unowned (the register classifies keys, a page belongs to its route's entity) | Gary: tags are global, queried from anywhere in the store; some events carry several entities' tags; `sub`/`userId` settled by the context map; `tag` would clash with emcli's element labels |
 
 ## Progress
 
