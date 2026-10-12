@@ -810,6 +810,15 @@ model and build only what's ours.
           only, approval by the platform admin, ...), not a permission: nobody holds a role before the organisation
           exists. Research it with the right authorities (ADR-064: SaaS onboarding and identity), design it as an ADR,
           and fix the `organisationWasActivated` tag drift on the way.
+          - ✅ **ADR-066 Proposed 2026-10-12**, researched with a new authorities row (SaaS tenancy and onboarding:
+            Azure's tenant life cycle, Better Auth's organization plugin, Slack, Entra, WorkOS, Auth0). The proposal:
+            anyone signed in may activate once (D1); activation claims the person's company email domain, and a
+            second person from it is pointed to that organisation to **ask to join**, which the owner accepts as an
+            ordinary invitation (D2, D3); `platform admins only` as a per-deployment setting for on-premises and
+            contract customers (D4); a platform admin releases a squatted domain (D5); public mailboxes claim nothing
+            (D6); the tag drift fixed by renaming `activatedBy` to `userId --id` before release (D7).
+            **Waiting on Gary to settle D1 to D7**, then: model it in licensing (chapter 1 replacement, a new "asks
+            to join" chapter, the settings), `plan-change` and the manual.
           4. Then: planning rows (event-model skill, `plan-change`) and a manual section; distil the draft
              `navigation.md` and `build-screen`'s one-row rule now that licensing has been through steps 1 to 3.
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
@@ -818,7 +827,7 @@ model and build only what's ours.
   - **Open points from the work so far** (for Gary to prioritise):
     - **Model and code disagree on `organisationWasActivated`'s tags:** the code tags it `userId: activatedBy` (one
       organisation per owner, `OwnsOrganisation`); the model can't show it, since the field is `activatedBy`
-      (found 2026-10-12). Settle when the event is next touched.
+      (found 2026-10-12). Settle when the event is next touched. Proposed fix: ADR-066 D7 (rename to `userId --id`).
     - **The platform admin's list of every organisation** (`organisation:list`): a later page; until then a platform
       admin with no membership sees an empty Organisations.
     - **emcli:**
