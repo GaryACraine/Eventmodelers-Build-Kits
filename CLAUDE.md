@@ -34,6 +34,6 @@ board/platform is retired in this fork: don't call its API or MCP tools.
 - **Planning rules live in the DCB kit's `plan-change` skill** (installed in every project, where the ADRs are
   not). An ADR that changes how a slice, event or endpoint may be changed updates `plan-change` in the same PR.
 - **Research a design question with its own discipline's authorities** (`docs/DESIGN-AUTHORITIES.md`, ADR-064):
-  Axon, Emmett and Marten for questions about events, the UI authorities for UI questions, and so on. Add a row
+  Axon, Emmett and Marten for questions about event sourcing, the UI authorities for UI questions, and so on. Add a row
   when a question first needs one.
 - Record decisions in `PLAN.md`'s Decisions Log with the reason, and tick tasks as they land.
