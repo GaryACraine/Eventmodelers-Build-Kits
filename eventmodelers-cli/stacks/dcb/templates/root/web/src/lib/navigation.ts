@@ -78,6 +78,11 @@ export function forgetPermissions(): void {
  * With the stub sign-in (no tokens, development only) there's nothing to ask, so everything is offered: `undefined`.
  */
 export function usePermissions(organisation?: string): string[] | undefined {
+    return usePermissionState(organisation).permissions
+}
+
+/** `usePermissions`, and whether the answer is still on its way (nothing to wait for with the stub, or signed out) */
+function usePermissionState(organisation?: string): { permissions: string[] | undefined; loading: boolean } {
     const { signedIn, mode, session } = useSessionState()
     const asks = mode === "better-auth" && signedIn
     const key = organisation ?? ""
@@ -99,8 +104,9 @@ export function usePermissions(organisation?: string): string[] | undefined {
             current = false
         }
     }, [asks, key, organisation, session.sub])
-    if (mode !== "better-auth") return undefined
-    return asks && permissions?.key === key ? permissions.list : []
+    if (mode !== "better-auth") return { permissions: undefined, loading: false }
+    const answered = asks && permissions?.key === key
+    return { permissions: answered ? permissions.list : [], loading: asks && !answered }
 }
 
 /** The menu and the account menu, holding only what the person may use */
@@ -127,4 +133,19 @@ export function useAllowed(route: string, command: string, organisation?: string
     const action = page?.actions.find((a) => a.command === command)
     if (!action || permissions === undefined) return true
     return allows(action.api, permissions, signedIn)
+}
+
+/**
+ * Where the start page sends the person (ADR-065): the first menu item they may use, once their permissions are
+ * known; Sign in when they're signed out (real sign-in only). Undefined: stay (still finding out, or nothing to open).
+ */
+export function useStartPath(from: Navigation | undefined = navigation): string | undefined {
+    const { signedIn, mode, pending } = useSessionState()
+    const { loading } = usePermissionState()
+    const menu = useMenu(from)
+    if (!from || pending) return undefined
+    if (mode === "better-auth" && !signedIn) return "/sign-in"
+    if (loading || !menu) return undefined
+    const first = menu.menu[0]
+    return first ? ("items" in first ? first.items[0]?.path : first.path) : undefined
 }

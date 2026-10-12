@@ -781,13 +781,31 @@ model and build only what's ours.
                out), `build-screen` (offer an action by `useAllowed`), manual §13.10. Mutation-checked.
              - ✅ Licensing `d31a311`: kit update, Get Started and Email Changed `--none`; journeys pass on the mock
                (12.7s) and the sandbox (17.4s). The menu stays empty until "my organisations" is built.
-             - NEXT: licensing's "my organisations" (a list read model keyed by the person, `self`), planned with
-               Gary through `plan-change`, then exported (his go-ahead) for the loop.
+             - Licensing's "my organisations" (Gary, 2026-10-12: owners activate, everyone else is invited; one
+               organisation per person for now; the organisation's page is the landing page):
+               - ✅ Model `5e04017`: `MyOrganisations` (by `session:userId`, `self`, one row per organisation) on the
+                 Organisations list page `/organisations`; the Dashboard is the organisation's page
+                 (`/organisations/:organisationId`), Choose How to Start moves to `/start`. `emcli navigation`: the
+                 menu is Organisations, needing `self`; no warnings.
+               - ✅ `userWasAssignedToRole` tagged with `userId` (`d35e117`, outside the loop; ADR-048 addendum: a tag
+                 names a thing, so `roleId` stays data). Its producers, activate organisation and assign owner admin
+                 role, replaced with the same name; their tag tests fail until rebuilt, as expected (216 pass).
+               - ✅ Kit: the start page opens the first menu item the person may use (Sign in when signed out),
+                 waiting for the permissions; `build-screen` opens a person's only row (draft); `plan-change` says
+                 what to tag. Licensing `494bf0f`, web 104 tests, mutation-checked.
+               - NEXT: Gary's go-ahead to reset the local database and export chapter 1; after the loop, the
+                 journeys (Activate → `/start`; checkout → the Dashboard at `/organisations/:id`; signing in again
+                 lands on it).
           4. Planning rows (event-model skill, `plan-change`) and a manual section.
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
        `plan-change` and `job-scope` count as proven once a change with users goes through expand, switch,
        contract in the loop.
   - **Open points from the work so far** (for Gary to prioritise):
+    - **Model and code disagree on `organisationWasActivated`'s tags:** the code tags it `userId: activatedBy` (one
+      organisation per owner, `OwnsOrganisation`); the model can't show it, since the field is `activatedBy`
+      (found 2026-10-12). Settle when the event is next touched.
+    - **The platform admin's list of every organisation** (`organisation:list`): a later page; until then a platform
+      admin with no membership sees an empty Organisations.
     - **Open question (Gary, 2026-10-12): who may activate an organisation.** Today any registered, signed-in
       person may (`self`), and becomes its owner (ADR-051). Gary wants to revisit it later and find something
       creative; a limit would be a rule in the command (one per person, invitation only, approval), not a permission.
@@ -4734,6 +4752,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-12 | ADR-065 Accepted: `emcli id` (one register of tag keys for the event store, each key's kind, owner context and parent); licensing's "my organisations"; entities then areas; flow links first; an event with several entities' tags stays unowned (the register classifies keys, a page belongs to its route's entity) | Gary: tags are global, queried from anywhere in the store; some events carry several entities' tags; `sub`/`userId` settled by the context map; `tag` would clash with emcli's element labels |
 | 2026-10-12 | ADR-065 D7: a command belongs to the entities its ids name (held id → that entity's page; generated → a create on the list or parent; two entities → a relationship; session → mine); navigation guidance is a draft reference in `event-model`, not a skill of its own | Gary: yes to D7, and asked whether to invest in a skill. Navigation is decided while modelling, so it lives with the modelling skill and is distilled once proven |
 | 2026-10-12 | ADR-065 step 3 design: navigation names permissions, never roles (the same `resource:action` as `api/roles.json`; scope from the page's tenant key; `GET /my-permissions` from the API's own lookup); account and security pages are the kit's utility navigation (area `account`). Who may activate an organisation stays open | Gary: navigation touches security, so it must cross-reference each role's granular permissions; cross-cutting auth pages are independent of slices, so decide them up front; activation to be revisited creatively later |
+| 2026-10-12 | Licensing's landing page is the person's organisation: My Organisations by person (a list, opened directly with one row), the Dashboard as the organisation's page. `userWasAssignedToRole` tagged with `userId`, not `roleId` (ADR-048 addendum) | Gary: one organisation per person for now, owners activate and others are invited; a `roleId` tag would make one lock per role value across the platform, and the role checks already hold inside the organisation (decision models over events, under the append condition, not read models) |
 
 ## Progress
 

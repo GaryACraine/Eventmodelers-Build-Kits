@@ -2153,6 +2153,10 @@ courtesy: the API refuses anyway.
 The export warns about a page nothing leads to, a permission no role holds, and a page without `:organisationId`
 that needs a permission only organisation roles hold (the API would refuse them all there).
 
+**Where people land.** The start page (`/`) opens the first menu item the person may use, and Sign in when they're
+signed out. In licensing that's Organisations, the person's own organisations. With only one, it opens straight away
+on the organisation's Dashboard, so people land on their organisation.
+
 ---
 
 ## 14. Working with git: branches, commits and merges

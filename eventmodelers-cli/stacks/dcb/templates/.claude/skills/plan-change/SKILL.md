@@ -126,6 +126,10 @@ grep -rn "<tagKey>" src/contexts --include=decisionModels.ts --include=readModel
 | **Add a tag** | No query uses the new key for the event's type. If one does, it now finds the event: a decision folds more, a projection files it under more documents. | Replace that slice too |
 | **Remove a tag, rename its key or change its value** | Never: every query by the old tag stops finding the event | Expand (add the new tag), switch (replace each user), contract (remove the old one) |
 
+**What to tag** (ADR-048 addendum): the ids of the things the event is about, keys with many values (the register's
+entities). Never a value with few options (`roleId`): every event with that value would share one lock across the
+platform, and a query by it reads them all. Check such a value in the fold's data, inside the thing's own tag.
+
 Before release, the change to `Events.ts` is one commit outside the loop. The producer's integration test checks
 the tags exactly, so it fails until the producer's same-name replacement is built. Reset the local database.
 
