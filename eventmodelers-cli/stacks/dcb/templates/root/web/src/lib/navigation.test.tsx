@@ -48,6 +48,8 @@ describe("what the menu offers (ADR-065)", () => {
         expect(allows("anonymous", [], false)).toBe(true)
         expect(allows("self", [], false)).toBe(false)
         expect(allows("self", [], true)).toBe(true)
+        expect(allows("link", [], false)).toBe(false)
+        expect(allows("link", [], true)).toBe(true)
         expect(allows("notification:list", ["notification:list"], true)).toBe(true)
         expect(allows("notification:list", [], true)).toBe(false)
         expect(pageAllowed(navigation.pages["/settings"], ["notification:list"], true)).toBe(false)

@@ -10,7 +10,7 @@ import { useSessionState } from "./session"
  * - `menu`: each top-level entity's list ("Organisations", with its create page), then each area's pages;
  * - `account`: the model's pages for the account menu, after the kit's own (Your account, Sign out);
  * - `pages`: every page by route, with the **permissions** its reads and commands need: the same `resource:action`
- *   strings the API checks and `api/roles.json` grants, or `self` (anyone signed in), or `anonymous`. Never roles;
+ *   strings the API checks and `api/roles.json` grants, or `self` or `link` (anyone signed in), or `anonymous`. Never roles;
  * - `register`: the page where a person who has just signed up registers (ADR-068). Sign-up goes there, carrying
  *   the page the person came from as `?next=`, and the page goes on to it after its command (`useReturnTo`).
  *
@@ -52,10 +52,10 @@ export interface Navigation {
 const files = import.meta.glob<{ default: Navigation }>("../navigation.json", { eager: true })
 export const navigation: Navigation | undefined = Object.values(files)[0]?.default
 
-/** May someone holding `permissions` use what needs `api`? Anonymous always; `self` when signed in; else held. */
+/** May someone holding `permissions` use what needs `api`? Anonymous always; `self` and `link` when signed in; else held. */
 export function allows(api: string, permissions: readonly string[], signedIn: boolean): boolean {
     if (api === "anonymous") return true
-    if (api === "self") return signedIn
+    if (api === "self" || api === "link") return signedIn
     return signedIn && permissions.includes(api)
 }
 

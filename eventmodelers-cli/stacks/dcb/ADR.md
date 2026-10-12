@@ -4294,6 +4294,7 @@ kit's.
   | command, read model | none (the default) | none: automations call it in-process | — |
   | command, read model | `--api <resource:action>` | yes | a signed-in person whose role (or the platform admin) holds the permission in that organisation (ADR-060) |
   | command, read model | `--api self` | yes | any signed-in person, acting only on their own data through session values (ADR-055 part 2: `/my-account`, `/register-user`) |
+  | command, read model | `--api link` (added by ADR-068) | yes | any signed-in person holding an unguessable id an email carried (an invitation's page and its accept); the decision checks what they may do with it |
   | command, read model | `--api anonymous` | yes | anyone, not signed in (no case yet) |
   | external event | `--intake webhook` (ADR-053) | `POST /webhooks/<system>` | the other system, proven by its signature |
 
@@ -5409,7 +5410,11 @@ can't accept). Event sourcing for decision 5 (a decision folds what is pending; 
 6. **Who may invite:** the owner and admins: `invitation:create`, `invitation:list` and `invitation:withdraw` in the
    role map. An invitation offers `admin` and `engineer`, never `owner` (chapter 5 hands ownership over). Inviting an
    email that already has a pending invitation: nothing happens (ADR-050).
-7. **The invitee's way in:** the email links the invitation's page (`/invitations/:invitationId`, in no menu). A
+7. **The invitee's way in:** the email links the invitation's page (`/invitations/:invitationId`, in no menu). Its
+   read and the accept are declared `link` (Gary, 2026-10-12): anyone signed in holding the invitation's id, an
+   unguessable uuid only the email carries, as Better Auth does. `self` couldn't be used (it never takes an id from the
+   request), and a list keyed by the signed-in email would have put the email in plain-text tags, which crypto-shredding
+   (ADR-062) can't erase. The page shows only what the recipient needs, and accepting still requires the invited email. A
    signed-out person signs up or signs in, carrying the page as `next`. A new person registers on Get Started
    (identity), which then goes on to `next` when it was given one, and to its own next page (Activate) otherwise.
    Accepting goes to the organisation's page.
