@@ -747,9 +747,12 @@ model and build only what's ours.
                Activate → Choose How to Start (organisationId from the command) and checkout → Dashboard.
              - ✅ kit: `build-screen` builds `next` (never chooses a destination itself), page test per move;
                manual §13.9.
-             - Licensing: `element next` on Get Started → Activate Organisation (licensing), export (Gary's
-               go-ahead), the loop rebuilds the three screens, the journey updated.
-          2. The register: `emcli id`, drafted from the id flags, with completeness checks.
+             - Licensing: `element next` on Get Started → Activate Organisation (`09f0cd8`); exported 2026-10-12
+               (Gary's go-ahead): exactly 3 screens re-queued (activate organisation, report checkout completed;
+               register user when the loop is on identity). Then the journey is updated.
+             - emcli to fix: the re-queue reason says "mockup changed" when only the next page changed.
+          2. The register: `emcli id`, drafted from the id flags, with completeness checks; commands placed by
+             their ids (D7); the draft `event-model` reference `navigation.md`.
           3. The menu and areas: `navigation.json`, `Layout.tsx` by permission, licensing's "my organisations".
           4. Planning rows (event-model skill, `plan-change`) and a manual section.
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
@@ -4697,6 +4700,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-12 | ADR-064 Accepted: an open design question is researched with the authorities of its own discipline; the index is `docs/DESIGN-AUTHORITIES.md` | Gary: Axon, Emmett and Marten only when a question is specific to event sourcing (corrected the same day: not "events"); otherwise the relevant design authorities, competitors or inspirations, indexed by discipline, not comprehensive at first |
 | 2026-10-12 | ADR-065 Proposed: navigation from the model (flows along the timeline, a menu of entities from a tag register, areas for the rest), widening Gap 1 | Gary: a broader concern than two links; people understand a system by its entities, which the DCB tags name. In licensing 4 of 11 tags are entities, so the register gives each tag a kind |
 | 2026-10-12 | ADR-065 Accepted: `emcli id` (one register of tag keys for the event store, each key's kind, owner context and parent); licensing's "my organisations"; entities then areas; flow links first; an event with several entities' tags stays unowned (the register classifies keys, a page belongs to its route's entity) | Gary: tags are global, queried from anywhere in the store; some events carry several entities' tags; `sub`/`userId` settled by the context map; `tag` would clash with emcli's element labels |
+| 2026-10-12 | ADR-065 D7: a command belongs to the entities its ids name (held id → that entity's page; generated → a create on the list or parent; two entities → a relationship; session → mine); navigation guidance is a draft reference in `event-model`, not a skill of its own | Gary: yes to D7, and asked whether to invest in a skill. Navigation is decided while modelling, so it lives with the modelling skill and is distilled once proven |
 
 ## Progress
 
