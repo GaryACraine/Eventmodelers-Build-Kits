@@ -862,7 +862,19 @@ model and build only what's ours.
           - Later, with chapters 1b, 6 and 7: their seat events join the invite decision's count of seats bought. A
             seat reduction beats a pending invitation (Gary, 2026-10-12: the owner isn't willing to pay for them);
             how is designed with chapter 7.
-          - [ ] The model: chapters 2, 10, 11 (emcli), completeness and navigation clean; Gary's go-ahead to export.
+          - [x] The model (licensing `8501fca`, 25 slices planned): chapter 2 invite, the pending list and the
+            to-do lists, the invitation email (automation, record, stall), the invitation's page and accept; chapter
+            10 the expiry (delayed workflow); chapter 11 the withdrawal. Context events copy their origins (so a
+            slice waits on chapter 2's invite, not a draft). Along the way (Gary, 2026-10-12): engineers read the
+            organisation and a page shows a part only to who may read it (decision 9, `useCanRead`, PR #283); the
+            invitation's page and accept are declared `link` (decision 7, ADR-058's fourth declaration, PR #284,
+            emcli `8881701`), since `self` takes no id from a request and an email in plain-text tags couldn't be
+            erased (ADR-062). Licensing kit updates `4802a61`, `5b17963`.
+          - Found: `emcli dependency add` and `slice add --after` resolve names across every chapter (chapters 2, 10
+            and 11 share slice names), so the model used ids; a copy can't be marked across chapters whose index runs
+            the other way (chapter 1 is index 30), so chapter 2's context events stay plain (only scenarios use them).
+          - [ ] Gary's go-ahead to export chapters 2, 10 and 11 together.
+
           - [ ] The loop builds; then `e2e/invitations.mjs`, the journey (mock and sandbox), security evidence.
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
        `plan-change` and `job-scope` count as proven once a change with users goes through expand, switch,
