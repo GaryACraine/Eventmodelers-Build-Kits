@@ -738,7 +738,7 @@ model and build only what's ours.
           Accepted).** Flows lead forward along the chapter's timeline; a menu of entities comes from one register
           of the store's tag keys (`emcli id`; tags are global); areas hold the pages that belong to no entity.
           Research went to the UI authorities, not the event-sourcing ones (ADR-064, `docs/DESIGN-AUTHORITIES.md`).
-          1. Flow links: the next page from the timeline, `element next`, `build-screen`, licensing's two links,
+          1. ✅ **Done 2026-10-12, Gap 1 closed.** Flow links: the next page from the timeline, `element next`, `build-screen`, licensing's two links,
              the journey without the nav or typed URLs.
              - ✅ emcli `43ebf85` (2026-10-12): `deriveFlows` (the next page in the card's lane; none from a card
                without a command or from another system's screen), `element next --to/--none/--clear`,
@@ -750,7 +750,11 @@ model and build only what's ours.
              - Licensing: `element next` on Get Started → Activate Organisation (`09f0cd8`); exported 2026-10-12
                (Gary's go-ahead): exactly 3 screens re-queued (activate organisation, report checkout completed;
                register user when the loop is on identity). Then the journey is updated.
-             - emcli to fix: the re-queue reason says "mockup changed" when only the next page changed.
+             - ✅ emcli `bc664c6`: the re-queue reason says "screen changed (its mockup, page route or where it leads)".
+             - ✅ The loop: report checkout completed `6f1a50a`, register user `de671f9` (identity), activate
+               organisation Done with nothing to change. Journeys (licensing `5453e09`): mock and sandbox pass, the
+               trial without the nav or a typed URL. Account security had read My Account on Get Started, which the
+               page now leaves; it goes back to it.
           2. The register: `emcli id`, drafted from the id flags, with completeness checks; commands placed by
              their ids (D7); the draft `event-model` reference `navigation.md`.
              - ✅ emcli `b9e5b0f` (2026-10-12): `id draft|list|show|set|confirm|remove`, kept on pull; warnings only
@@ -760,6 +764,8 @@ model and build only what's ours.
              - On a scratch copy of licensing the draft gets 9 of 11 right; Gary to settle: `transactionId`
                (drafted entity; Paddle's?), `subscriptionId` (external, system not named: Paddle?), `userId`'s
                label (User or Person?), `invitationId`'s parent (organisation?). Then register licensing.
+             - ✅ Licensing's register (`3b27e48`, Gary): Paddle's `transactionId` and `subscriptionId`; "User" kept
+               (Person would need a `personId`, too wide a change); invitations belong to organisations. No warnings.
              - Step 1 in licensing: report checkout completed rebuilt (`6f1a50a`, goes to the Dashboard);
                activate organisation Done with nothing to change; register user waits for the identity context.
           3. The menu and areas: `navigation.json`, `Layout.tsx` by permission, licensing's "my organisations".
