@@ -286,6 +286,22 @@ test('extension-additive: a query block ends at the next top-level describe', ()
   assert.match(v[0].reason, /have 1 test\(\.\.\.\) block\(s\) but the extension declares 2/);
 });
 
+test('extension-additive: a replacement (rebuild) may remove what its model removed, and nothing else', () => {
+  const before = READ_MODEL.replace('"courseWasRegistered"', '"courseWasRegistered",\n        "courseWasClosed"')
+    .replace('evolve: (doc, { event }) => doc', 'evolve: (doc, { event }) => {\n        switch (event.type) {\n            case "courseWasClosed":\n                return null\n        }\n        return doc\n    }')
+  const replacing = (rebuild) => {
+    const root = repo({ ...EXT, specifications: [], ...(rebuild ? { rebuild } : {}) }, { readModel: before });
+    edit(root, RM, (s) => s.replace('"courseWasClosed"', '"courseWasArchived"').replace('case "courseWasClosed":', 'case "courseWasArchived":'));
+    edit(root, RT, (s) => s + EXT_KEYED);
+    return extensionAdditive(root);
+  };
+  // the model removed courseWasClosed's link and added courseWasArchived: the replacement swaps them
+  assert.deepStrictEqual(replacing({ changes: ['replaces the built slice in this folder (ADR-046)', 'CourseSeats: links removed hydrates courseWasClosed (inbound)', 'courseWasArchived: new'] }), []);
+  // a rebuild that didn't remove it, or no rebuild at all: still refused
+  assert.ok(replacing({ changes: ['courseWasArchived: new'] }).some((v) => /removed\/changed line: "courseWasClosed"/.test(v.reason)));
+  assert.ok(replacing(undefined).length > 0);
+});
+
 // --- spec-coverage --------------------------------------------------------------------------
 
 test('spec-coverage: query tests count towards the slice file', () => {

@@ -7,7 +7,9 @@
 //  1. Slice-folder changes stay inside the origin's folder (or the extension's own).
 //  2. The origin's definition — readModel.ts (fold form) or projection.ts (imperative form) —
 //     only grows: no removed lines, except a line that is re-added with a trailing comma
-//     (appending after the last canHandle entry or lookup).
+//     (appending after the last canHandle entry or lookup). A same-name replacement queued before release
+//     (slice.json `rebuild`, ADR-046) may also remove what the model removed: a line naming only events or links
+//     its `rebuild.changes` say are removed.
 //  3. The origin's route.tests.ts has the extension's top-level blocks — describe("{extension title}"),
 //     or describe.each(...)("{extension title} (%s)") in fold form, plus a
 //     describe.each(queryTypes(...))("{extension title}: {query} (%s)") block per query its specs run —
@@ -73,7 +75,20 @@ function testsInDescribe(content, title) {
   return blocks.length === 0 ? null : blocks.reduce((sum, b) => sum + b.tests, 0);
 }
 
-function removedLines(repoRoot, file) {
+/** The events a queued replacement's model removed: "<name>: removed", "links removed hydrates <name>" */
+function removedByRebuild(slice) {
+  const changes = slice.rebuild?.changes ?? [];
+  const names = new Set();
+  for (const c of changes) {
+    const removed = /^(\w+): removed$/.exec(c);
+    if (removed) names.add(removed[1]);
+    const link = /links removed \w+ (\w+)/.exec(c);
+    if (link) names.add(link[1]);
+  }
+  return names;
+}
+
+function removedLines(repoRoot, file, replaced = new Set()) {
   let diff;
   try {
     diff = execSync(`git diff HEAD -U0 --no-color -- "${file}"`, { cwd: repoRoot, encoding: 'utf8' });
@@ -87,6 +102,8 @@ function removedLines(repoRoot, file) {
   const addedNames = new Set(addedLines.flatMap(quotedNames));
   return removed.filter((line) => {
     if (line === '' || added.has(`${line},`)) return false;
+    const named = quotedNames(line);
+    if (replaced.size > 0 && named.length > 0 && named.every((n) => replaced.has(n))) return false;
     // A canHandle array reformatted to append (e.g. one-line → one-per-line) is still additive
     // as long as every event name the removed line held is re-added.
     const names = quotedNames(line);
@@ -130,10 +147,11 @@ module.exports = {
 
       for (const definition of [`${origin}/readModel.ts`, `${origin}/projection.ts`]) {
         if (!ctx.changes.some((c) => c.path === definition)) continue;
-        for (const line of removedLines(ctx.repoRoot, definition)) {
+        for (const line of removedLines(ctx.repoRoot, definition, removedByRebuild(slice))) {
           violations.push({
             path: definition,
-            reason: `extension slices only add to the origin's read model — removed/changed line: ${line}`,
+            reason: `extension slices only add to the origin's read model — removed/changed line: ${line}` +
+              (slice.rebuild ? ' (a replacement may remove only what its rebuild.changes say the model removed)' : ''),
           });
         }
       }
