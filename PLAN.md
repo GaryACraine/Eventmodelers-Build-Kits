@@ -883,6 +883,8 @@ model and build only what's ours.
             sandbox (all journeys 3/3); security AC-11 recorded. Backend 605, web 162.
           - Found and fixed: the header's Sign up carried no `next`, losing an invitation (kit PR #287); a built
             test expected an engineer's 403 until decision 9 (licensing `2a4df69`; `plan-change` now says to look).
+          - Found, open: slices of the same title in different chapters clash only at export (renamed by hand);
+            emcli should warn when such a slice is planned. Taken up with ADR-069's emcli work.
           - Gary's idea (2026-10-13): pages composed from the model, slices contributing parts, so no slice edits a
             page (the shared page file is where slices collide). **NEXT: ADR-069 Proposed** (plan approved).
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
