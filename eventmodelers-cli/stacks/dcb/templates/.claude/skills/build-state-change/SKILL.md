@@ -68,23 +68,24 @@ export const {eventName} = ({
 })
 ```
 
-Tag key selection:
+**The tags are the model's, never yours (ADR-071).** Each event in slice.json has `eventTags`: the keys the model
+decided, in order, an `optional` one tagged only when the event carries it. Write a new event's factory with exactly
+those:
 
-Tags are free-form `Record<string, string>` key-value pairs — not a type system. The convention
-for choosing tag keys:
+```ts
+tags: Tags.fromObj({ organisationId, userId })                                   // eventTags: organisationId, userId
+tags: Tags.fromObj({ organisationId, ...(paddleEventId ? { paddleEventId } : {}) }) // paddleEventId optional
+```
 
-- **`idAttribute` fields are tag keys.** In slice.json, fields marked `idAttribute: true` on an
-  event are the entity identity fields. Use these as tag keys. Example: `courseId`, `studentId`.
-  An event's tags are part of its definition (ADR-048): tag with **every** id field the model marks, and if a read
-  model or query needs a tag the model doesn't mark, block the job and say so (the model changes first).
-- **An event recorded from another system** also carries that system's ids as tags (ADR-040, ADR-048). The
-  provider skill names them (Paddle: `paddleEventId`, and `subscriptionId` when known).
-- **Single-entity events** tag with the entity's ID:
-  `Tags.fromObj({ courseId })` — all course events are scoped to one course.
-- **Multi-entity events** tag with ALL participating entity IDs:
-  `Tags.fromObj({ courseId, studentId })` — subscription events correlate a student and a course.
-- **Global index tags** use a fixed sentinel value when you need a global counter across all
-  entities: `Tags.fromObj({ studentNumberIndex: "global" })`.
+- Never add, drop or rename a tag, and never copy another event's tags (licensing's `seatWasReleased` once copied
+  `seatWasAssigned`'s and lost the person). The commit guard refuses a new factory whose tags differ from `eventTags`
+  (`event-tags`).
+- **If a rule can't find what it needs by the tags it's given** (a decision model would read a whole organisation to
+  find one person's events), block the job with `request-feedback` and say which event needs which tag: the model
+  changes, through `plan-change` ("Changing an event's tags").
+- **An event already in `Events.ts`** keeps its factory: its tags change only by a deliberate change outside the loop.
+- **An event recorded from another system** has that system's ids among its `eventTags` (the model marks them,
+  ADR-048); the provider skill says where each comes from.
 
 If the project has a `src/shared/Tags.ts` with tag key constants (e.g. `TAG_COURSE_ID = "courseId"`),
 prefer importing and using those constants over inline strings for consistency across slices.
@@ -807,7 +808,7 @@ src/contexts/{context}/
 
 - [ ] Every field in `commands[].fields` has a corresponding field in `command.ts` — no invented fields, none missing
 - [ ] Every event in `events[]` has a type + factory in `Events.ts` — names match exactly
-- [ ] Every `EventHandlerWithState` uses `Tags.fromObj(...)` matching the entity's tag key, not a stream name
+- [ ] Every new event factory's `tags` are exactly its `eventTags` (ADR-071); every `EventHandlerWithState` reads by those tags, not a stream name
 - [ ] Every entry in `specifications[]` maps to a `test(...)` block in `route.tests.ts` AND in `route.integration.tests.ts`
 - [ ] `decider()` handlers object keys match the state properties used in `decide()`
 - [ ] No business rules, defaults, or constraints were added that do not appear in slice.json `description` or `comments`

@@ -112,8 +112,13 @@ grep -rlE '"/<route>"' src
 
 Replace each (same name), so the loop seeds their tests with the event instead.
 
-### Changing an event's tags (ADR-048)
-An event's tags are its id fields (`emcli element field set … --id`). An event recorded from another system also
+### Changing an event's tags (ADR-048, ADR-071)
+Tags are a modelling decision, never the loop's (ADR-071): the model marks them, planning appraises them against
+each slice's scenarios (`slice status … planned` prints how each event a rule reads is found, and WARNS when it
+carries a key of the rule untagged), and the loop writes exactly slice.json's `eventTags`. The reference is dcb.events
+(`~/Projects/dcb-events/docs/topics/tags.md`). Once stored, an event keeps the tags it was written with: after release a
+new tag reaches only new events (DCB), so a rule relying on it must also read by the old one, or the store is migrated
+(open). An event's tags are its id fields (`emcli element field set … --id`). An event recorded from another system also
 carries that system's ids (Paddle: `paddleEventId`, `subscriptionId`). A read finds an event with **any** of a query
 item's tags; an append condition conflicts with one that has **all** of its tags. So first find who uses the tag:
 

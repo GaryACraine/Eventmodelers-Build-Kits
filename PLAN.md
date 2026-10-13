@@ -938,7 +938,12 @@ model and build only what's ours.
               slice.json.) Gary: the seat events keep the person, and the deeper fault is the loop choosing tags at all.
               **ADR-071 Accepted** 2026-10-13 (Gary): tags are modelled, appraised against the slice's specifications at
               planning, and the loop is told them exactly (slice.json `tags`, a commit check); dcb.events is the
-              knowledge base (PR #299). Next: emcli, the kit, and licensing's seat tags exported with accept
+              knowledge base (PR #299). **Built:** emcli `87f19f9` (`eventTags` in slice.json, out of the build
+              fingerprint; the appraisal at planning and in `completeness`: licensing has exactly 4 warnings, assign
+              owner web seat and remove member reading `seatWasAssigned` without the person, and `trialWasStarted`
+              drawn with fewer ids in two draft chapters; tests mutation-checked); kit: `build-state-change` writes
+              exactly `eventTags`, the `event-tags` commit check refuses a new factory that differs (node tests,
+              mutation-checked), `plan-change` points here. Next: licensing's seat tags, exported with accept
               invitation's fix.
             - Found: chapters follow prooph board's order, which emcli can't change (the board's API has no reorder),
               and copies follow chapter order: chapter 4 (index 3) couldn't extend chapter 1's lists (index 30). Chapter 4
