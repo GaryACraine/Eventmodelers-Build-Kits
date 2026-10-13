@@ -2,6 +2,7 @@ import { describe, test, expect, beforeAll, afterAll } from "vitest"
 import { fileURLToPath } from "node:url"
 import { startTemporalTestServer, withWorker, type TemporalTestServer } from "@test/temporalHarness"
 import {
+    activitiesOf,
     ensureSchedule,
     startWorker,
     temporalClient,
@@ -16,6 +17,18 @@ import { defineSchedule } from "./automations.js"
 
 // Nothing listens here: Temporal "down"
 const UNREACHABLE = "127.0.0.1:1"
+
+describe("activitiesOf", () => {
+    test("merges every automation's activities", () => {
+        const one = { recordPaid: async () => {} }
+        const two = { recordInvitationEmailed: async () => {} }
+        expect(Object.keys(activitiesOf(one, two))).toEqual(["recordPaid", "recordInvitationEmailed"])
+    })
+
+    test("stops at a name two automations define: the worker would run only one", () => {
+        expect(() => activitiesOf({ recordStalled: async () => {} }, { recordStalled: async () => {} })).toThrow(/Two automations define the activity "recordStalled"/)
+    })
+})
 
 describe("temporalConfig", () => {
     test("gives every call to Temporal a deadline of 5 s, unless TEMPORAL_CALL_TIMEOUT_MS says otherwise", () => {

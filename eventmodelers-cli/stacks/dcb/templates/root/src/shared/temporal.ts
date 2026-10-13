@@ -279,6 +279,27 @@ export interface RunningWorker {
 }
 
 /**
+ * Every automation's activities, as one worker runs them. Temporal finds an activity by its name alone, so two
+ * automations defining the same name would leave one calling the other's (licensing: the trial cancellation's
+ * `recordStalled` ran the invitation email's). Name each activity after its automation (`recordTrialCancellationStalled`);
+ * a name defined twice stops the app at start, naming it.
+ *
+ *   const activities = activitiesOf(paymentRequestActivities({ … }), invitationEmailActivities({ … }))
+ */
+export function activitiesOf(...groups: object[]): Record<string, unknown> {
+    const merged: Record<string, unknown> = {}
+    for (const group of groups) {
+        for (const [name, activity] of Object.entries(group)) {
+            if (name in merged) {
+                throw new Error(`Two automations define the activity "${name}": the worker would run only one of them. Name each after its automation`)
+            }
+            merged[name] = activity
+        }
+    }
+    return merged
+}
+
+/**
  * Run a worker for the task queue until `stop()`. Its workflows are bundled once. If Temporal can't be reached, or
  * the worker fails, it waits and starts again (1 s, doubling to 60 s), logging why.
  */
