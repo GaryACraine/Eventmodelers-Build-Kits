@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ApiError, api, command } from "@/lib/api"
 import type { components } from "@/lib/api-types"
+import type { FormPart } from "@/lib/parts"
 import { idempotent, useSubmitOnce } from "@/lib/submit"
 import { useWrites } from "@/lib/writes"
 
@@ -23,7 +24,7 @@ const RegisterCourseSchema = z.object({
  * Sends `POST /register-course` (slice.json `apiEndpoint`) once per press (`useSubmitOnce`); a rejection shows the
  * backend's message.
  */
-export function RegisterCourseForm({ onRegistered }: { onRegistered?: (course: RegisterCourse) => void }) {
+export function RegisterCourseForm({ onDone }: FormPart<RegisterCourse>) {
     const { recordWrite } = useWrites()
     const {
         register,
@@ -39,7 +40,7 @@ export function RegisterCourseForm({ onRegistered }: { onRegistered?: (course: R
             const { position } = await command(api.POST("/register-course", { body, headers: idempotent(key) }))
             await recordWrite(position)
             reset()
-            onRegistered?.(body)
+            onDone?.(body)
         }).catch((error) =>
             setError("root", { message: error instanceof ApiError ? error.message : "Something went wrong. Try again." })
         )

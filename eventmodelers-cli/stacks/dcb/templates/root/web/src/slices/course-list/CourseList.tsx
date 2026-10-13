@@ -1,6 +1,7 @@
 import { Link } from "react-router"
 import { LoadMore } from "@/components/LoadMore"
 import { api, read } from "@/lib/api"
+import type { ViewPart } from "@/lib/parts"
 import type { components } from "@/lib/api-types"
 import { usePagedList } from "@/lib/paging"
 import { useWrites } from "@/lib/writes"
@@ -12,7 +13,7 @@ type Course = components["schemas"]["Course"]
  * (slice.json `apiEndpoint`), a page at a time with Load more (ADR-026). An async read model, so each page waits for
  * the last write. `linkTo` (from the page) makes each row a link to the course.
  */
-export function CourseList({ linkTo }: { linkTo?: (course: Course) => string }) {
+export function CourseList({ linkTo }: ViewPart<Course>) {
     const { afterLastWrite } = useWrites()
     const courses = usePagedList({
         queryKey: ["course-list"],

@@ -893,10 +893,40 @@ model and build only what's ours.
             refuses a slice touching a page. Authorities: a new "UI composition" row (micro-frontends, Backstage,
             VS Code, Shopify, Salesforce). **Accepted 2026-10-13 (Gary), as written**, with no escape hatch
             (left to our judgement: every page so far is one column of parts).
-          - [ ] **ADR-069 build:** emcli (parts in `navigation.json`, the placement warning, the same-title warning),
-            then the kit (`Page`, `index.ts` parts, routes from `navigation.json`, the commit-scope check,
-            `build-screen`, `plan-change`, manual §13), then licensing's migration, web tests and journeys on the
-            mock and the sandbox, then a new part on the Dashboard built without touching a page.
+          - [x] **ADR-069 built and proven 2026-10-13.**
+            - emcli `8bbc98c`, `56777c2`, `6b56488`: each page's parts in `navigation.json` (`parts.ts`: slice,
+              component, gate, props from route/session/row, row slot from mockup nesting, `next`, list links,
+              heading), `emcli navigation` lists them and warns about a part it can't place. Derived parts match
+              licensing's 7 hand-built pages and course-enrollment's Course Page exactly; mutation-checked (12 rules).
+            - Kit (this PR): `ModelPage` renders a page from its parts (a part of a slice not built yet waits);
+              `routes.tsx` builds the model's routes from `navigation.json` (a page file for one is an error);
+              `FormPart`/`ViewPart` (`onDone`; `row`, `linkTo`, `onlyOne`, `createPath`); `parts.test.ts` (every
+              built slice exports what the model names) runs at each screen commit; `web-scope` refuses a page in a
+              screen commit; `build-screen` Step 7 is now "export the parts"; `plan-change`, manual §13.9. The
+              example app's pages moved to its `navigation.json`. Template web 109 tests (and 87 after
+              `start-empty.sh`); `ModelPage` mutation-checked (14 rules).
+            - Licensing `15040a2`…`f8e1232`: kit update, an `index.ts` per slice, `navigation.json` with parts (as
+              the export writes it) and the 7 page files removed, callbacks renamed `onDone`/`row`/`createPath`;
+              8 superseded UI lessons pruned. Web 164; journeys mock 3/3 and sandbox 3/3 with no page file
+              (recorded). The guard refuses a page in a slice commit (checked in licensing).
+            - [ ] **Next proof:** a new part on an existing page built by the loop without touching a page (e.g.
+              chapter 4's Remove in each member row of the overview). Needs a modelled slice and Gary's export.
+          - Found: same-title slices in different chapters clashed only at export. Closed in emcli: `completeness`
+            gives the later one an ERROR, so planning holds it back. It found 17 future clashes in licensing's draft
+            chapters 6 to 19 (to retitle when they're planned).
+          - Found: a page asked for a session key its own command makes (Get Started's `userId`; licensing's loop had
+            learnt it as a lesson). Closed in emcli: a page's `session` leaves out ids its commands generate (tested).
+          - Found: a model page that needs sign-in but reads no session key (Activate Organisation) would have shown
+            its form signed out. Closed in the kit: `needsSignIn` (anything not `anonymous`) puts `RequireSession` round
+            it (tested).
+          - Found: a screen's fingerprint held its route and `next`, so a page-only change rebuilt its parts. Closed
+            in emcli: the fingerprint is the mockups; one from before is read as built when the slice is as it was
+            (no licensing screen re-queued: dry run).
+          - Found: the journey's proxy to the sign-in service failed on a connection reset (sandbox run). Closed in
+            licensing's `e2e/journey/browser.ts` (the only journeys): a GET or HEAD is sent once more.
+          - Found, open: the kit's example app is modelled before the id register (its list's key is `id`), so its
+            Courses rows don't link and Course Form stays after registering. Taken up when the example is next
+            refreshed (with the pattern library, below).
           - Later, its own ADR (Gary, 2026-10-13): **a pattern library for the parts** (a detail card, a list table,
             a form card, an empty state, a row action), so a part is put together from named patterns rather than
             each job restyling the mockup by hand. After ADR-069, which fixes what a part is; the pattern library
@@ -4856,6 +4886,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-12 | ADR-065 step 4 done: navigation guidance distilled (no longer a draft); `plan-change` and the hand-off's ready check gain navigation rows; manual §13.11; emcli places automation-only commands on no page and warns about a command on another entity's page | Licensing went through steps 1 to 3 (journeys pass), so the drafts stood on solid ground. The D7 warning was in the Accepted ADR but not yet in emcli, and `id show` listed automation-issued commands as page actions |
 | 2026-10-12 | ADR-068 Accepted: invitations. The invited email accepts; accepting assigns roles and seats in one decision; one organisation per person; licensing emails by automation; a pending invitation holds its seats (no `seatWasAllocated`); owner and admin invite; sign-up goes by the registration page | Gary chose each recommendation. On allocation, Gary asked whether to record it before acceptance: the invitation already records the intent and its end releases it, so a separate event would repeat both |
 | 2026-10-13 | ADR-069 Accepted: pages composed from the model. emcli writes each page's parts into `navigation.json`; slices export parts with one signature per kind; the kit's `Page` renders them; a commit-scope check stops a slice editing a page; no hand-written override | Gary's idea: the shared page file is where slices collide, and everything it holds is in the model already. The escape hatch was left to our judgement: every page so far is one column of parts, and a new need belongs in the model and `Page`, not a project's page file |
+| 2026-10-13 | ADR-069 built: a part of a slice not built yet waits on its page; every form reports back through `onDone`, every list takes `row`, `linkTo`, `onlyOne`, `createPath`; a page needs sign-in unless all it reads and does is `anonymous`; a screen's fingerprint is its mockups only | Each UI job builds one slice while the model already names the others' parts; one name per callback lets the page be generic; Activate Organisation would otherwise show its form signed out; a route or flow is the page's, so changing it must not rebuild parts |
 | 2026-10-13 | Sign-up lessons kept in the model and the kit, not a new skill: emcli warns when a real sign-in's model has no page (or several) that registers a new person (`b74a430`); the `event-model` navigation reference gains "Arriving signed out" (registration, pages an email opens are `link`); `provider-better-auth` says every way into sign-in carries the page; a template test walks the whole chain (PR #289, mutation-checked; licensing `60d6f91`) | Gary asked what to encapsulate after the invitation journey found the header's Sign up losing the page. Signing in is kit code nothing per project varies, so a skill would steer nothing; the joins between its steps needed a test, and the model's part (where people register) a warning |
 
 ## Progress

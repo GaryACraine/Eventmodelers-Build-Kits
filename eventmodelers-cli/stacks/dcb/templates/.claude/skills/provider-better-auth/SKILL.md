@@ -62,7 +62,7 @@ The kit does this; a slice never builds or changes it:
   sends a new one to the same page, `next` and all.
 - **A new person registers first:** sign-up's verification link lands on the registration page that `navigation.json`
   names (`register`), carrying `next` (`afterSignUp`); that page goes on to `next` after its command
-  (`useReturnTo`, `build-screen`). Without a registration page, it lands on `next` itself.
+  (the kit's `ModelPage`, ADR-069). Without a registration page, it lands on `next` itself.
 - **The model says which page registers** (`emcli navigation` shows it, and warns when none or several could).
 - **Its test:** `web/src/lib/signed-out.test.tsx` walks the chain (a page → sign in's Sign up → the verification
   link's landing → back). A change to any step keeps it passing; a journey (`member-joins` in licensing) runs it

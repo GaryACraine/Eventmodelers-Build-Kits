@@ -5,7 +5,7 @@ import { afterWrite, api, apiUrl, command, positionOf, read, ApiError } from "./
 import { server } from "./mocks/server"
 
 describe("the app shell", () => {
-    it("renders the header around the pages in src/pages/", async () => {
+    it("renders the header around the pages", async () => {
         render(<App initialPath="/" />)
         // The menu is the model's once an export writes src/navigation.json (ADR-065), so the shell is checked here,
         // not the menu's items or the start page (lib/navigation.test.tsx covers the menu)

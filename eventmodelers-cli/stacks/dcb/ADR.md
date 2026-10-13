@@ -5451,7 +5451,10 @@ can't accept). Event sourcing for decision 5 (a decision folds what is pending; 
 
 **Status:** **Accepted, 2026-10-13 (Gary), as written.** Gary's idea: build the UI from components rather than
 pages, so vertical slices stay additive, and decide who owns a page. He left the escape hatch (decision 7) to our
-judgement, if its absence would cause a lot of friction. It wouldn't, so there is none.
+judgement, if its absence would cause a lot of friction. It wouldn't, so there is none. **Built and proven
+2026-10-13** (PLAN 16, ADR-069 build): emcli, the kit, and licensing's 7 pages, whose journeys pass on the mock and
+Paddle's sandbox with no page file. Built along the way: a part of a slice not built yet waits on its page, and a
+page needs sign-in unless everything it reads and does is `anonymous`.
 **Date:** 2026-10-13
 **Authorities consulted (ADR-064):** UI composition (`docs/DESIGN-AUTHORITIES.md`, a new row):
 - **Cam Jackson, "Micro Frontends"** (martinfowler.com): a container application composes the page from a

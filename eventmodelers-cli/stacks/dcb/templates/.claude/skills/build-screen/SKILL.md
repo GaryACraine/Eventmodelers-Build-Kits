@@ -1,6 +1,6 @@
 ---
 name: build-screen
-description: Builds a slice's screen in web/ (React) from slice.json's screens[] — a form per submitted command, a view per displayed read model, MSW handlers and tests from the scenarios — and puts it on its page
+description: Builds a slice's screen in web/ (React) from slice.json's screens[] — a form per submitted command, a view per displayed read model, MSW handlers and tests from the scenarios — and exports them as the slice's parts (index.ts). The page is the model's (navigation.json, ADR-069): never written or edited here
 ---
 
 # Build Screen (DCB `web/`)
@@ -17,8 +17,13 @@ slice.json, the screen of a built slice was added or changed (see "A screen adde
 the job ends, its concern's status is set in `index.json`: `concerns.ui` Done, or Blocked with the reason.
 
 The reference is the kit's example app: `web/src/slices/{register-course,course-list,course-details,
-subscribe-student,student-details}/` and `web/src/pages/` (Course Form, Courses, Course Page, My Courses), built
-from the screens in `tests/enrollment-proof/slices/*/slice.json`. Copy its patterns.
+subscribe-student,student-details}/`, each exporting its parts from `index.ts`, built from the screens in
+`tests/enrollment-proof/slices/*/slice.json`; its pages are `web/src/navigation.json`. Copy its patterns.
+
+**The page is never yours (ADR-069).** emcli writes each page's parts into `web/src/navigation.json` at export, and
+the kit's `ModelPage` (`src/lib/model-page.tsx`) renders them: the order, who sees each part, the ids it gets, the
+forms in a list's rows, where the person goes after a command, the heading. This skill builds the slice's parts and
+exports them; nothing else. `emcli navigation` (or `navigation.json`) shows the page this slice's parts are on.
 
 ---
 
@@ -31,8 +36,8 @@ Each `screens[]` entry with a `mockup` is one screen card:
 | `dependencies` with `connectionType: "submits"` (OUTBOUND, COMMAND) | a **form** per command |
 | `dependencies` with `connectionType: "displays"` (INBOUND, READMODEL) | a **view** per read model |
 | `mockup.html` | the markup, 1:1: elements, classes, headings, labels, button text |
-| `page` = `{ title, route, params, slices }` | the page this card is part of, its client route, where each ID comes from, and the slices that make it up (timeline order) |
-| `next` = `{ title, context, route, params, on }` | where the person goes once this card's command (`on`) succeeds, and where each ID of that route comes from (ADR-065); absent, they stay |
+| `page` = `{ title, route, params, slices }` | the page this card is part of, and where each ID comes from (the page gives them as props) |
+| `next` = `{ title, context, route, params, on }` | where the page goes once this card's command (`on`) succeeds: the page does it, after the form's `onDone` |
 | `commands[]` / `readmodels[]` | fields, `apiEndpoint` (the API path), `readModelType`, `queries` |
 | `specifications[]` | the examples for mock data and tests, and the rejections the screen shows |
 
@@ -53,7 +58,7 @@ yours to build: emcli makes no job for it, and the kit's scaffold provides Sign 
 into the page.
 
 **Two kinds of route, never mixed:**
-- `page.route` (`/courses/:courseId`) is the URL people see. Only the page file uses it.
+- `page.route` (`/courses/:courseId`) is the URL people see. Only the kit's page uses it; a part never does.
 - `apiEndpoint` (`/course-details/{courseId}`, `/subscribe-student`) is what the code calls, through
   `web/src/lib/api.ts`. The two share ID names only: the `:courseId` of the route is the `courseId` sent to the API.
 
@@ -62,11 +67,10 @@ into the page.
 ```
 web/src/slices/{slicename}/          ← the slice's folder name in .build-kit/.slices/{context}/{slicename}/
 ├── {Command}Form.tsx                  one per submitted command
-├── {ReadModel}View.tsx                one per displayed read model (a list: {ReadModel}.tsx / {Query}List.tsx)
+├── {ReadModel}View.tsx                one per displayed read model
+├── index.ts                           the slice's parts, by the names navigation.json gives (Step 7)
 ├── handlers.ts                        MSW handlers for every API path the slice's components call
 └── *.test.tsx                         a test file per component, a test per specification
-web/src/pages/{PageTitle}.tsx          the page (PascalCase of page.title), created or extended
-web/src/pages/{PageTitle}.test.tsx     the page put together
 web/src/lib/api-types.ts               regenerated, never edited
 web/src/providers/{name}/              another system's browser library behind a module of ours (ADR-044): only when
                                        the slice names that system, as its provider skill says
@@ -75,10 +79,11 @@ web/src/providers/{name}/              another system's browser library behind a
 An **extension** slice (`extends` in slice.json) builds its backend in its origin's folder, but its screen is its
 own: `web/src/slices/{its own slicename}/`.
 
-Nothing else changes: not `App.tsx`, `Layout.tsx`, `routes.tsx` (it finds pages itself), `src/lib/*` (but
-`api-types.ts`), `src/mocks/*` (they find `handlers.ts` themselves), `src/components/ui/*`, config or any
-`package.json`. The commit guard rejects it (`web-scope`). If the screen can't be built without such a change (a
-missing shadcn component, a library), invoke `request-feedback` and stop.
+Nothing else changes: never a page (`src/pages/`, `src/navigation.json`: the model's), not `App.tsx`,
+`Layout.tsx`, `routes.tsx`, `src/lib/*` (but `api-types.ts`), `src/mocks/*` (they find `handlers.ts` themselves),
+`src/components/ui/*`, config or any `package.json`. The commit guard rejects it (`web-scope`). If the screen can't
+be built without such a change (a missing shadcn component, a library, a page that needs more than its parts), invoke
+`request-feedback` and stop: the model or the kit changes, not the page.
 
 ---
 
@@ -104,7 +109,7 @@ Where each field of the command comes from:
 | The field | In the form |
 |---|---|
 | bound by a visible `data-field` input in the mockup | typed: a React Hook Form input, validated by Zod |
-| bound by `<input type="hidden" data-field="…">` | a prop: the page has it (a route param, `page.params` `from: "route"`) |
+| bound by `<input type="hidden" data-field="…">` | a prop: the page gives it (its route, or the row of the list the form is drawn in) |
 | `mapping: "session:<key>"` | **not sent:** the API takes it from the token (ADR-055 part 2); it isn't in the contract's body. The page is still behind `RequireSession` (it needs someone signed in), and may show `useSession()[key]` |
 | `generated: true` | not sent: the backend makes it, and a 201 returns it |
 | `mapping: "derived:<another system's browser library> …"` (e.g. `derived:Paddle.js checkout.completed data.transaction_id`) | what that library gave back, through the provider's module: see "A value from another system's browser library" below |
@@ -144,13 +149,16 @@ const RegisterCourseSchema = z.object({
       run(async (key) => {
           const { position } = await command(api.POST("/register-course", { body, headers: idempotent(key) }))
           await recordWrite(position)      // useWrites(): refetches the views, remembers the position
-          onRegistered?.(body)             // a callback prop for the page (e.g. go to the new course)
+          onDone?.(body)                   // the page's: it goes where the model says (next)
       }).catch((error) => setError("root", { message: error instanceof ApiError ? error.message : "Something went wrong. Try again." }))
   )
   // <Button type="submit" disabled={pending}>
   ```
-  A 201's generated fields are `command(...).data`: pass them to the callback. The form's tests include one
-  that presses twice before React renders (`fireEvent.click` twice) and expects one request.
+  **Every form takes `FormPart<Done>` (`@/lib/parts`):** `({ courseId, onDone }: { courseId: string } &
+  FormPart<SubscribeStudent>)`, its ids then `onDone`, never a callback of its own name. Call `onDone({ ...body,
+  ...data })` once the command succeeds: what was sent and a 201's generated fields (`command(...).data`), so the page
+  can fill the next page's ids. The form's tests include one that presses twice before React renders
+  (`fireEvent.click` twice) and expects one request, and one that `onDone` gets what was sent.
 - A rejection is an `ApiError` carrying the backend's Problem-JSON `detail`: show `error.message` in a
   `<p role="alert">` (RHF: `setError("root", { message })`). A field error shows under its input.
 - Ids and labels: `id="{command}-{field}"`, `<Label htmlFor>` with the mockup's label text.
@@ -227,8 +235,13 @@ if (course.isError) return <p role="alert">{course.error.message}</p>
   // … {courses.rows.map(…)} … <LoadMore list={courses} />
   ```
   A `data-list` naming a `List` field comes whole with its document: `.map` over that field, no paging.
-- A list row that should open another page gets a `linkTo` prop (`(row) => string`) from the page. The view never
-  knows page routes.
+- **Every list view takes `ViewPart<Row>` (`@/lib/parts`)** beside its ids, and uses what the page gives; it never
+  knows page routes:
+  - `row?: (row) => ReactNode`: another slice's action in each row (Withdraw), in a last column with an empty
+    header, only when given;
+  - `linkTo?: (row) => string`: the row opens its page, a `<Link>` on the cell the mockup shows first;
+  - `onlyOne?: (row) => void`: called (in an effect) when the list holds exactly one row;
+  - `createPath?: string`: where the empty state's "New …" link goes (the mockup's empty-state text).
 - `queryKey`: the read model's kebab name, then its key or query name and parameters.
 
 ## Step 4 — The mockup, 1:1
@@ -277,117 +290,56 @@ A test file per component, `describe("{slice title}")`, rendered with `renderWit
 | a 400 for a typed field | fill the form without it (or with the invalid value): the field's message shows, and nothing is sent |
 | one the screen can't produce (a 400 for a session or route value, or a range the `<select>` can't send) | no test; a comment naming the specification and why |
 
-**Page tests** (`src/pages/<Page>.test.tsx`) render the whole page, which may stack several cards with lists (a
-course's students, its comments). Find a card's rows `within` that card, by its heading
-(`within(screen.getByRole("heading", { name: "Comments" }).parentElement!)`), never with a page-wide
-`findByRole("listitem")`, which breaks as soon as another card adds a list.
+**No page tests.** The page is the kit's: `src/lib/model-page.test.tsx` covers how parts are put together, and
+the journeys cover the pages for real. A part's own tests cover what it gives the page: a form's `onDone` gets `{
+...body, ...data }`; a list view renders `row(r)` in each row when given, links rows with `linkTo`, and calls
+`onlyOne` with one row and not with two. A view with several lists finds a list's rows `within` its own card, by its
+heading, never with a view-wide `findByRole("listitem")`.
 
 Every paged list also gets **"Load more adds the next page"**: `server.use(...)` answers the first request (no
 `cursor`) with a row and a cursor, and the request with that cursor with another row and none; the test clicks
 Load more, sees both rows, and sees the button gone.
 
-## Step 7 — The page
+## Step 7 — Export the parts
 
-`page.title` → `web/src/pages/{PascalCase}.tsx`. Another slice on the same page may have created it already.
+`web/src/slices/{slicename}/index.ts` exports this slice's parts, by the names `navigation.json` gives them on the
+page (`emcli navigation` lists them): `{Command}Form` for a submitted command (`inviteMember` →
+`InviteMemberForm`), `{ReadModel}View` for a displayed read model. A component named otherwise is exported under
+that name.
 
-- **New page:**
-  ```tsx
-  // slice.json screens[].page: "Course Page", from the slices "Course Details" and "Subscribe Student";
-  // params: courseId from the route, studentId from the session.
-  export const page: PageInfo = { path: "/courses/:courseId", title: "Course Page", session: ["studentId"] }
+```ts
+// This slice's parts (ADR-069): the page puts them where navigation.json says.
+export { InviteMemberForm } from "./InviteMemberForm"
+export { CourseList as CourseListView } from "./CourseList"
+```
 
-  export default function CoursePage() {
-      const { courseId } = useParams<"courseId">()
-      return (
-          <>
-              <CourseDetailsView courseId={courseId!} />
-              <SubscribeStudentForm courseId={courseId!} />
-          </>
-      )
-  }
-  ```
-  `path` = `page.route`; `session` = the `page.params` with `from: "session"` (omit if none); `nav: true` when the
-  route has no `:param`. The menu itself comes from `src/navigation.json`, which emcli writes at export (ADR-065):
-  never edit it or the layout to add a page; `nav` only links pages until the first export writes it.
-- **Existing page:** add this slice's part, leave the other parts alone, and bring `page` in line with slice.json
-  if the route or params changed.
-- **Order of the parts:** as the mockups show them. A card whose mockup wraps a neighbouring slice's region
-  (`data-slice`) around its own part puts that neighbour where the region is (Course Page: the course details
-  above the Subscribe button). Otherwise, `page.slices` order.
-- The page wires things together: route params (`useParams`) and session values (`useSession`) become props;
-  callbacks go where people expect (a create form navigates to the new entity's page, if a page with that `:id`
-  exists; a list's `linkTo` points at it). A page's own heading from the mockup (`<h1>` outside any part) lives
-  here.
-- **Where a card leads (`next`, ADR-065):** once the card's command succeeds, the page goes to `next.route`. emcli
-  derives it from the chapter's timeline (or the modeller set it), so never choose a destination yourself, and
-  never lead anywhere for a card without `next`. Each of `next.params` comes from where it says:
-  `"route"` from this page's `useParams()`, `"command"` from the form's callback (the body sent plus a 201's
-  generated fields), `"session"` from `useSession()`.
-  ```tsx
-  // slice.json screens[].next: "Choose How to Start", after activateOrganisation; organisationId from the command
-  const navigate = useNavigate()
-  <ActivateOrganisationForm onActivated={(sent) => navigate(generatePath("/organisations/:organisationId", { organisationId: sent.organisationId }))} />
-  ```
-  The form's callback passes `{ ...body, ...data }` (what was sent, and a 201's generated fields). Another
-  system's part of the page (ADR-044) calls it after its command is sent, like any form. The next page may be
-  another slice's, not built yet: the move is still built, and the page test checks the URL it goes to.
-- **The registration page goes on to where the person was going (ADR-068):** on the page `navigation.json` names
-  `register` (Get Started), a person who has just signed up arrives with `?next=` (an invitation they opened, say).
-  After its command, go there when it's set, else to the card's `next`:
-  ```tsx
-  const returnTo = useReturnTo()   // @/lib/navigation: ?next=, a path on this site, or undefined
-  <RegisterUserForm onRegistered={() => navigate(returnTo ?? activateOrganisation.path)} />
-  ```
-  Its page test covers both: with `?next=/somewhere` it goes there, without it to the card's `next`.
-- **Offer an action only to who may use it (ADR-065):** a command whose declaration is a permission
-  (`apiEndpoint` / `api`, e.g. `checkout:report`) is offered only when `useAllowed(page.path, "<command>",
-  <organisationId from the route>)` (`@/lib/navigation`) is true; leave out the organisation on a page without one.
-  Never test for a role: roles live only in `api/roles.json`, and the API still decides. Its page test renders it
-  once allowed and once not (answer `GET /my-permissions` with MSW).
-  ```tsx
-  const allowed = useAllowed(page.path, "reportCheckoutCompleted", organisationId)
-  {allowed && <ReportCheckoutCompletedForm organisationId={organisationId} />}
-  ```
-- **An action on each row of another slice's list (ADR-068):** every list view takes an optional
-  `rowAction?: (row) => ReactNode` and renders it in a last column (no header) when given. A card whose mockup puts
-  its command inside the rows of a list another slice's view renders (withdraw invitation's form in Pending
-  invitations) never draws its own copy of the list: its form takes the row's ids as props, and the page fills the
-  list's slot, `<OrganisationInvitationsView organisationId={…} rowAction={(row) => <WithdrawInvitationForm
-  organisationId={…} invitationId={row.invitationId} />} />`. Only the page file changes outside this slice's folder.
-  A list built before this rule has no slot yet: block, asking for it to be added (a one-line change to that view).
-- **Show a part only to who may read it (ADR-068):** on a page whose parts need different permissions (the
-  organisation's page: its overview needs `organisation:read`, its pending invitations `invitation:list`), a view
-  whose read model's declaration is a permission renders only when `useCanRead("<resource:action>", <organisationId
-  from the route>)` (`@/lib/navigation`) is true, so an engineer sees the overview without the admin's parts. Nothing
-  shows until the person's permissions arrive, so a part never asks for what the API would refuse. Its page test
-  renders it once allowed and once not (answer `GET /my-permissions` with MSW).
-- **A list of the person's own with one row opens it** (ADR-065; licensing's My Organisations): a list page whose
-  read model is keyed by a session value (`page.params` `from: "session"`, no route id) and that holds exactly one
-  row goes straight to that row's page, `navigate(generatePath(<row page route>, row), { replace: true })`, so Back
-  doesn't return to it. No rows: the mockup's empty state. Several: the list. Its page test covers one row (it opens
-  the row's page) and two (it lists them).
-- **A new page with `:id`:** the pages already built that list or create that entity now lead to it: give their
-  list a `linkTo` and their create form an `onCreated` navigation (`generatePath(route, { id })`), and update their
-  page tests. A create form whose card has `next` already goes where `next` says: leave it. Only page files change for this, never another slice's folder.
-- `{PageTitle}.test.tsx`: `render(<App initialPath="…" session={…} />)` shows the page at its route with this
-  slice's part, and the flow the page exists for (submit → the view updates, a row → its page). A card with `next`
-  gets **"after {command}, it goes to {next title}"**: submit, then expect the next page's heading if its page file
-  exists, or else the router's location (`await waitFor(() => expect(router.state.location.pathname).toBe("/…"))`
-  with `createMemoryRouter(routes, { initialEntries: ["…"] })`).
+That's all the page needs from you. **What the page does, never you** (`ModelPage`): puts the parts in the mockups'
+order; shows a part only to who may use it (`useAllowed`) or read it (`useCanRead`); gives each part its ids (route,
+session, row); puts a form drawn in another slice's list rows into that list's `row` slot; after `onDone`, goes to
+`next` (on the registration page, to `?next=` first); on an entity's list page, gives a list its `linkTo`,
+`createPath` and `onlyOne`; shows the page's heading.
+
+- **This card's command is drawn inside another slice's list rows** (Withdraw in Pending invitations): build only
+  the form, taking the row's ids as props, never a copy of the list. The page puts it in each row. If that list's
+  view (another slice's) has no `row` prop yet, block with `request-feedback` asking for it (a few lines in that
+  view): never edit another slice's folder.
+- **A part the page shows differently from the mockup** (a heading, an order, a part only some people see): it's
+  the model's, not yours. Block with `request-feedback` naming what the model should say.
+- `src/lib/parts.test.ts` checks that every built slice exports the parts `navigation.json` names; it runs at commit.
 
 ## Step 8 — Verify, check, commit
 
 1. **Against slice.json:** every field the forms send and the views show is in slice.json; every rejection test
    uses a `SPEC_ERROR` title verbatim; every `api.GET`/`api.POST` path is an `apiEndpoint` of this slice.
-2. `cd web && npx tsc -b && npx vitest run src/slices/{slicename} src/pages`.
+2. `cd web && npx tsc -b && npx vitest run src/slices/{slicename} src/lib/parts.test.ts`.
 3. Commit the screen on its own (the backend is its own job, before or after this one):
    ```bash
-   git add web/src/slices/{slicename} web/src/pages web/src/lib/api-types.ts   # and web/src/providers/{name}, if this slice made or changed it
+   git add web/src/slices/{slicename} web/src/lib/api-types.ts   # and web/src/providers/{name}, if this slice made or changed it
    git commit -m "feat: [Slice Name] screen"
    ```
-   The pre-commit guard runs `blocked-paths`, `web-scope` (only these paths, one slice, tests present),
-   `api-types` (the types are what the contract generates) and `web-tests` (typecheck, the slice's and the pages'
-   tests).
+   The pre-commit guard runs `blocked-paths`, `web-scope` (only these paths, one slice, tests present, never a
+   page), `api-types` (the types are what the contract generates) and `web-tests` (typecheck, the slice's tests and
+   `parts.test.ts`).
 
 ## A screen added or changed (`buildScreen`)
 
@@ -396,10 +348,10 @@ backend is built and committed. Don't touch it; build only the screen.
 
 - **`"added"`:** the slice had no mockup when it was built, so it has no `web/src/slices/{slicename}/` yet. Build it
   as new, Steps 1–8.
-- **`"changed"`:** its mockup, or its page's route, changed. Rebuild the slice's folder to match slice.json as it
-  is now, Steps 1–8. Read what's there first, and keep what still matches:
+- **`"changed"`:** its mockup changed (a page's route, order or flow is the model's, and rebuilds nothing). Rebuild
+  the slice's folder to match slice.json as it is now, Steps 1–8. Read what's there first, and keep what still
+  matches:
   - markup, labels and fields follow the new mockup 1:1 (Step 4); drop what it no longer has;
   - the slice's own `*.test.tsx` are this skill's output, not a contract: update them to the new mockup, still a
     test per specification (the rule against editing tests is about the backend's `*.tests.ts`);
-  - a changed `page.route`: the page's `page.path`, and the links other pages make to it (Step 7).
 - Commit as in Step 8: `feat: [Slice Name] screen`.

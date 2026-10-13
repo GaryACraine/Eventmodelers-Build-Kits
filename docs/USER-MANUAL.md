@@ -2000,8 +2000,23 @@ board.
 
 ### 13.9 When the loop builds your screens
 
-The loop builds a slice's UI in `web/` from its mockup: a form per command the screen submits, a view per read
-model it displays, and the page the card is on (its route from §13's page routes).
+The loop builds a slice's UI in `web/` from its mockup: a form per command the screen submits and a view per read
+model it displays, the slice's **parts**.
+
+**The model owns the pages** (ADR-069). Nobody writes a page, and no slice edits one. When you export, emcli writes
+each page into `web/src/navigation.json`: the slices' parts in the order your mockups draw them, who sees each one,
+where each part gets its ids, and where the page goes after a command. The web app renders the page from that. So
+what you draw is what the page does:
+- *"Put the Withdraw button in each row of Pending invitations."* The skill draws the button inside the list's rows
+  on withdraw's card; the page puts it in every row, with that row's invitation.
+- *"Show the invite form above the pending invitations."* The order follows the mockups, so the skill redraws the
+  cards; nothing is rebuilt.
+- *"Only admins should see the pending invitations."* That's the role map: a part shows only to who holds its
+  permission (§13.10).
+
+`emcli navigation` lists each page's parts (*"OrganisationInvitationsView, if allowed invitation:list; in each row:
+WithdrawInvitationForm"*), and warns about one it can't place: a button drawn in the rows of a list the card doesn't
+show, or a read model whose own slice has no screen showing it (nothing would build it).
 
 **Where each screen leads** (ADR-065). Once a screen's command succeeds, the person goes on to the next page in the
 chapter's timeline, in the same lane: the chapter is one flow, so the timeline already says what comes next. In
@@ -2013,8 +2028,8 @@ timeline can't show it:
   --context licensing`.
 - *"Stay on the page after saving."* The skill runs `--none` on that card.
 
-`emcli element route --all` shows each card's `next:`. A change of next page rebuilds that screen's UI, as a changed
-mockup does.
+`emcli element route --all` shows each card's `next:`. A change of next page rebuilds nothing: the page reads it from
+`navigation.json` at the next export.
 
 A slice's **backend** and its **UI** are two jobs, each with its own status, like the backend and frontend
 tasks of one story on a team. Each is its own job with its own routine and commit checks: the backend
@@ -2039,8 +2054,9 @@ what will happen. What happens in each situation:
 | a new slice whose screen has no mockup yet | builds the backend only. The skill (and the export) tell you the screen waits for a mockup; nothing is held back | nothing now. Ask for the mockup whenever you're ready (*"Draft the Course Form."*) |
 | a mockup with an error (a binding that names nothing in the model) | builds the backend; the UI waits. The export says *"its UI only; the backend isn't held back"* | the skill tells you what's wrong and fixes the mockup; the UI is handed over then |
 | a built slice gets its mockup later | builds that UI only. The backend stays as built | ask the skill for the mockup. It pushes, commits the model and hands it over, and says *"the loop will build Course Form's UI only"* |
-| a built screen's mockup changes, or its page route | rebuilds that UI only, to the new mockup | ask for the change (*"Put help text under the capacity field."*). The skill hands it over the same way |
-| a page made of several slices' cards (Course Page) | each slice's UI adds its own part to the page | nothing |
+| a built screen's mockup changes | rebuilds that UI only, to the new mockup | ask for the change (*"Put help text under the capacity field."*). The skill hands it over the same way |
+| a page's route, its order, where it leads, who sees a part | rebuilds nothing: the export rewrites `navigation.json`, and the page follows it | ask for the change; the skill exports when you say so |
+| a page made of several slices' cards (Course Page) | each slice's UI builds its own part; the page puts them together from the model | nothing |
 | the UI fails its checks | the UI is **Blocked**; the backend stays **built**, and other slices go on building on it. The slice shows Blocked, its board details say which part | ask *"Why is register course blocked?"* The skill reads the reason, fixes the mockup or the model (or tells you what's wrong), and plans it again. The loop then builds only the UI |
 | the backend fails its checks | the backend is **Blocked**; the UI is still built, from the contract. Slices that need this backend wait | the same: ask the skill; after the fix, the backend is built |
 | you want the screens first (to show a client, or while the backend is being decided) | builds only UIs, from the contract: `eventmodelers run --local --concern ui`. Later `--concern backend` builds the backends (or plain `run --local`, both) | tell the skill *"build the screens first"*; it plans and hands over as usual and tells you which loop command to start |

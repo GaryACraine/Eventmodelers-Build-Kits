@@ -37,7 +37,8 @@ contract:check` shows every operation: match, pending (not built yet), differ.
   backend is Done), and nothing waits for a UI; `eventmodelers run --local --concern ui|backend` builds one
   discipline only. A backend job never touches `web/`, and a UI job never touches `src/`.
 - The UI job exists when slice.json has a `screens[]` entry with a `mockup`. It builds `web/src/slices/{slicename}/`
-  and the page the screen is on (`web/src/pages/`), and commits it on its own. A screen with no mockup isn't built:
+  and exports the slice's parts from its `index.ts`, and commits it on its own. The page is the model's: emcli writes
+  each page's parts into `web/src/navigation.json`, and the kit's `ModelPage` renders them (ADR-069). A screen with no mockup isn't built:
   the model adds the mockup later, and the export queues the UI then.
 - The UI calls the backend only through `web/src/lib/api.ts`, on slice.json's `apiEndpoint` paths.
   `web/src/lib/api-types.ts` is generated from the contract (`npm run gen:api`), never edited.
@@ -182,12 +183,13 @@ It loads every check under `.build-kit/lib/checks/` and rejects the commit if an
 A commit that touches `web/src/slices/{slicename}/` (a screen, from `build-screen`) gets its own checks instead,
 plus blocked-paths (which also covers `web/package.json` and its lockfile):
 
-- **web-scope** — everything staged is in that one slice's `web/src/slices/{slicename}/`, a page in
-  `web/src/pages/*.tsx`, the regenerated `web/src/lib/api-types.ts`, or a provider's module in
-  `web/src/providers/{name}/` (ADR-044); no backend file, nothing else in `web/`;
+- **web-scope** — everything staged is in that one slice's `web/src/slices/{slicename}/`, the regenerated
+  `web/src/lib/api-types.ts`, or a provider's module in `web/src/providers/{name}/` (ADR-044); never a page
+  (`web/src/pages/`, `web/src/navigation.json`: the model's, ADR-069), no backend file, nothing else in `web/`;
   and the slice's folder has a `*.test.tsx`
 - **api-types** — `web/src/lib/api-types.ts` is exactly what `gen:api` generates from `api/openapi.json`
-- **web-tests** — `web/` typechecks (`tsc -b`) and the tests of the slice, the pages and a changed provider's module pass
+- **web-tests** — `web/` typechecks (`tsc -b`) and the tests of the slice, a changed provider's module and
+  `src/lib/parts.test.ts` (every built slice exports the parts `navigation.json` names) pass
   (MSW, no backend)
 
 The hook lives in `.githooks/`, added by `eventmodelers init --hooks` (or `eventmodelers init-hooks` later); `npm install`'s

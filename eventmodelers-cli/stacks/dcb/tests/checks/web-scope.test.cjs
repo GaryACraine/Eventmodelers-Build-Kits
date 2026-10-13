@@ -42,12 +42,19 @@ function commit(root, files) {
 
 const SLICE = 'web/src/slices/register-course';
 
-test('a screen commit: its slice folder, the pages it composes and the generated types', () => {
+test('a screen commit: its slice folder (its parts in index.ts) and the generated types', () => {
   const r = commit(repo(), [
-    `${SLICE}/RegisterCourseForm.tsx`, `${SLICE}/RegisterCourseForm.test.tsx`, `${SLICE}/handlers.ts`,
-    'web/src/pages/CourseForm.tsx', 'web/src/lib/api-types.ts',
+    `${SLICE}/RegisterCourseForm.tsx`, `${SLICE}/RegisterCourseForm.test.tsx`, `${SLICE}/handlers.ts`, `${SLICE}/index.ts`,
+    'web/src/lib/api-types.ts',
   ]);
   assert.ok(r.ok, r.output);
+});
+
+test('a screen commit never touches a page: the model owns them (ADR-069)', () => {
+  const r = commit(repo(), [`${SLICE}/Form.tsx`, `${SLICE}/Form.test.tsx`, 'web/src/pages/CourseForm.tsx', 'web/src/navigation.json']);
+  assert.ok(!r.ok);
+  assert.match(r.output, /web\/src\/pages\/CourseForm\.tsx — \[web-scope\] a page: the model owns every page \(ADR-069\)/);
+  assert.match(r.output, /web\/src\/navigation\.json — \[web-scope\] a page: the model owns every page/);
 });
 
 test('a screen commit may bring a provider\'s module (web/src/providers/{name}/, ADR-044)', () => {
