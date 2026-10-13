@@ -5449,8 +5449,9 @@ can't accept). Event sourcing for decision 5 (a decision folds what is pending; 
 
 ### ADR-069: Pages composed from the model: slices contribute parts, and no slice edits a page
 
-**Status:** **Proposed, 2026-10-13.** Gary's idea (2026-10-13): build the UI from components rather than pages, so
-vertical slices stay additive, and decide who owns a page. Gary decides.
+**Status:** **Accepted, 2026-10-13 (Gary), as written.** Gary's idea: build the UI from components rather than
+pages, so vertical slices stay additive, and decide who owns a page. He left the escape hatch (decision 7) to our
+judgement, if its absence would cause a lot of friction. It wouldn't, so there is none.
 **Date:** 2026-10-13
 **Authorities consulted (ADR-064):** UI composition (`docs/DESIGN-AUTHORITIES.md`, a new row):
 - **Cam Jackson, "Micro Frontends"** (martinfowler.com): a container application composes the page from a
@@ -5534,7 +5535,10 @@ which page a card is on, its order, and its nesting are already drawn there.
    `web/src/pages/` or `navigation.json`. The guard enforces it, so no rule in a skill has to.
 7. **A layout beyond one column of parts becomes a model property when it's first needed** (a page in two columns,
    or tabs), read by `Page`. There's no hand-written override for a model page, because it would bring the collision
-   back.
+   back. Gary allowed one if going without it caused a lot of friction. It shouldn't: every page built so far
+   (licensing's 7, the template's 4) is one column of parts, and each of their special behaviours is already one
+   of Step 7's rules, which `Page` applies. If a page ever needs more, emcli and `Page` gain the property (closing
+   the gap at its root), rather than the project gaining a page file.
 
 **Alternatives considered:**
 - **Keep page files, with more rules (today).** It works, but each new kind of composition becomes another rule that

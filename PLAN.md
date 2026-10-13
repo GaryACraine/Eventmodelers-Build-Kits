@@ -891,8 +891,16 @@ model and build only what's ours.
             into `navigation.json` (slice, component, gate, props' sources, slot, `next`); slices export parts from
             `index.ts` with one signature per kind (`onDone`); a kit `Page` renders them; a commit-scope check
             refuses a slice touching a page. Authorities: a new "UI composition" row (micro-frontends, Backstage,
-            VS Code, Shopify, Salesforce). **NEXT: Gary decides**; if accepted, emcli, then the kit, then
-            licensing's migration and journeys.
+            VS Code, Shopify, Salesforce). **Accepted 2026-10-13 (Gary), as written**, with no escape hatch
+            (left to our judgement: every page so far is one column of parts).
+          - [ ] **ADR-069 build:** emcli (parts in `navigation.json`, the placement warning, the same-title warning),
+            then the kit (`Page`, `index.ts` parts, routes from `navigation.json`, the commit-scope check,
+            `build-screen`, `plan-change`, manual §13), then licensing's migration, web tests and journeys on the
+            mock and the sandbox, then a new part on the Dashboard built without touching a page.
+          - Later, its own ADR (Gary, 2026-10-13): **a pattern library for the parts** (a detail card, a list table,
+            a form card, an empty state, a row action), so a part is put together from named patterns rather than
+            each job restyling the mockup by hand. After ADR-069, which fixes what a part is; the pattern library
+            decides what a part is made of.
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
        `plan-change` and `job-scope` count as proven once a change with users goes through expand, switch,
        contract in the loop.
@@ -4847,6 +4855,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-12 | ADR-067 Accepted: every command card sends through `useSubmitOnce` and disables while pending; every route decides again after a conflict (`retry: { onConflict: true }`, dcb-event-store phase 24) | Gary: defend client side with simple hooks to disable buttons, as a default for anything command based. RHF's `isSubmitting` disables a render late; a button can't stop two tabs or a script, and Emmett, Marten and Axon decide again on a conflict |
 | 2026-10-12 | ADR-065 step 4 done: navigation guidance distilled (no longer a draft); `plan-change` and the hand-off's ready check gain navigation rows; manual §13.11; emcli places automation-only commands on no page and warns about a command on another entity's page | Licensing went through steps 1 to 3 (journeys pass), so the drafts stood on solid ground. The D7 warning was in the Accepted ADR but not yet in emcli, and `id show` listed automation-issued commands as page actions |
 | 2026-10-12 | ADR-068 Accepted: invitations. The invited email accepts; accepting assigns roles and seats in one decision; one organisation per person; licensing emails by automation; a pending invitation holds its seats (no `seatWasAllocated`); owner and admin invite; sign-up goes by the registration page | Gary chose each recommendation. On allocation, Gary asked whether to record it before acceptance: the invitation already records the intent and its end releases it, so a separate event would repeat both |
+| 2026-10-13 | ADR-069 Accepted: pages composed from the model. emcli writes each page's parts into `navigation.json`; slices export parts with one signature per kind; the kit's `Page` renders them; a commit-scope check stops a slice editing a page; no hand-written override | Gary's idea: the shared page file is where slices collide, and everything it holds is in the model already. The escape hatch was left to our judgement: every page so far is one column of parts, and a new need belongs in the model and `Page`, not a project's page file |
 | 2026-10-13 | Sign-up lessons kept in the model and the kit, not a new skill: emcli warns when a real sign-in's model has no page (or several) that registers a new person (`b74a430`); the `event-model` navigation reference gains "Arriving signed out" (registration, pages an email opens are `link`); `provider-better-auth` says every way into sign-in carries the page; a template test walks the whole chain (PR #289, mutation-checked; licensing `60d6f91`) | Gary asked what to encapsulate after the invitation journey found the header's Sign up losing the page. Signing in is kit code nothing per project varies, so a skill would steer nothing; the joins between its steps needed a test, and the model's part (where people register) a warning |
 
 ## Progress
