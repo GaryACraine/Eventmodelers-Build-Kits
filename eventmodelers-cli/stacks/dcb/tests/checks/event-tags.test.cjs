@@ -50,12 +50,12 @@ test('a new factory missing a tag, or adding one, is refused', () => {
   assert.equal(run(root).length, 1);
 });
 
-test('an optional tag is a conditional spread, and must be one', () => {
-  const root = repo([{ key: 'organisationId' }, { key: 'paddleEventId', optional: true }]);
+test('a conditional tag is refused, whatever the model says: every tag is always present', () => {
+  const root = repo([{ key: 'organisationId' }, { key: 'paddleEventId' }]);
   add(root, factory('seatWasReleased', 'organisationId, ...(d.paddleEventId ? { paddleEventId: d.paddleEventId } : {})'));
-  assert.deepStrictEqual(run(root), []);
+  assert.match(run(root)[0].reason, /seatWasReleased tags paddleEventId only when present: every tag is always present/);
   add(root, factory('seatWasReleased', 'organisationId, paddleEventId'));
-  assert.match(run(root)[0].reason, /paddleEventId \(when present\)/);
+  assert.deepStrictEqual(run(root), []);
 });
 
 test('an existing factory is left alone (its tags change only by a deliberate change), and an event the model gives no tags isn\'t checked', () => {

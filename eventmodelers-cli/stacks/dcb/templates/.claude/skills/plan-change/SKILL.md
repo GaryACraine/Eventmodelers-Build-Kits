@@ -115,7 +115,9 @@ Replace each (same name), so the loop seeds their tests with the event instead.
 ### Changing an event's tags (ADR-048, ADR-071)
 Tags are a modelling decision, never the loop's (ADR-071): the model marks them, planning appraises them against
 each slice's scenarios (`slice status … planned` prints how each event a rule reads is found, and WARNS when it
-carries a key of the rule untagged), and the loop writes exactly slice.json's `eventTags`. The reference is dcb.events
+carries a key of the rule untagged), and the loop writes exactly slice.json's `eventTags`. Every tag is always present:
+an id an event only sometimes has is data, and something that must find events by it gets the fact that always has it
+as its own event (licensing: `paddleNotificationTranslated`). The reference is dcb.events
 (`~/Projects/dcb-events/docs/topics/tags.md`). Once stored, an event keeps the tags it was written with: after release a
 new tag reaches only new events (DCB), so a rule relying on it must also read by the old one, or the store is migrated
 (open). An event's tags are its id fields (`emcli element field set … --id`). An event recorded from another system also
