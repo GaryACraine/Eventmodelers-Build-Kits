@@ -5638,7 +5638,9 @@ it decides; what was decided earlier is folded, never rolled back).
 
 **Status:** **Accepted, 2026-10-13 (Gary).** Gary: "Event tagging is part of the modelling discipline, not the
 implementation. Tell, don't ask Ralph"; and at planning "make sure that the tags that have been selected from the ID
-properties support the specifications as defined in the slice".
+properties support the specifications as defined in the slice". **Built and proven 2026-10-13:** emcli exports
+`eventTags` and appraises them at planning; the kit tells the loop and checks it; licensing's seat events tag the
+person, its rules read by their own keys, and its tests, e2e and journeys pass.
 **Date:** 2026-10-13
 **Authorities consulted (ADR-064):** event sourcing and DCB: dcb.events, "Tags" ("whenever a hard constraint depends on
 an event being included in a Decision Model, the necessary tags must be present"; tags should select exactly the events
