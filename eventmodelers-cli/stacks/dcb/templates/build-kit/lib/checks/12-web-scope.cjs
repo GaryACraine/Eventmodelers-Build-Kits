@@ -10,7 +10,7 @@
 //                                first screen that needs it and shared by the others
 //
 // Nothing else: never a page (web/src/pages/, web/src/navigation.json: the model owns them, ADR-069), not the app
-// shell, web/src/lib/, the mocks, the ui components or config, and no backend file (the backend step commits on its
+// shell, web/src/lib/, the mocks, the kit's components (web/src/components/: ui atoms and patterns, ADR-072) or config, and no backend file (the backend step commits on its
 // own). The slice's folder also needs a test.
 
 const fs = require('fs');
@@ -18,6 +18,7 @@ const path = require('path');
 
 const WEB_SLICE = /^web\/src\/slices\/([^/]+)\//;
 const PAGES = /^web\/src\/(pages\/|navigation\.json$)/;
+const COMPONENTS = /^web\/src\/components\//;
 const ALLOWED = [
   /^web\/src\/lib\/api-types\.ts$/,   // generated client types
   /^web\/src\/providers\/[^/]+\//,     // another system's browser library, behind our module (ADR-044)
@@ -44,6 +45,13 @@ module.exports = {
         continue;
       }
       if (ALLOWED.some((r) => r.test(p))) continue;
+      if (COMPONENTS.test(p)) {
+        violations.push({
+          path: p,
+          reason: 'the kit\'s components (web/src/components/: the ui atoms, the patterns, ADR-072): a part uses them and never changes them. If a part needs one that isn\'t there, block with request-feedback: the kit adds it',
+        });
+        continue;
+      }
       if (PAGES.test(p)) {
         violations.push({
           path: p,

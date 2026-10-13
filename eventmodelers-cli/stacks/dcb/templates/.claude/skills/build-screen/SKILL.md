@@ -20,6 +20,16 @@ The reference is the kit's example app: `web/src/slices/{register-course,course-
 subscribe-student,student-details}/`, each exporting its parts from `index.ts`, built from the screens in
 `tests/enrollment-proof/slices/*/slice.json`; its pages are `web/src/navigation.json`. Copy its patterns.
 
+**A part is put together from the kit's patterns (ADR-072), never restyled by hand.** `@/components/patterns`
+holds every piece parts share, each with its states and accessibility built in: `ViewCard` (a read's loading, still
+updating, empty and error states), `FormCard` (the error first and focused, sending, done, confirm), `Field` and
+`ChoiceGroup` (labels, hints, errors named by their inputs), `SummaryList` (key facts), `DataTable` (rows named,
+actions column, empty, Load more), `RowAction` (a row's command, named by its row) and `Value` (dates, money, codes,
+lists by type). A part writes the mockup's words and order with these, and never its own alert, status line, read
+states, `<table>`, `<dl>`, `<fieldset>`, inline style or colour: the commit check `web-patterns` refuses them, naming
+the pattern. The patterns are the kit's: never edit `src/components/` (`web-scope`). A part no pattern fits: block
+with `request-feedback`.
+
 **The page is never yours (ADR-069).** emcli writes each page's parts into `web/src/navigation.json` at export, and
 the kit's `ModelPage` (`src/lib/model-page.tsx`) renders them: the order, who sees each part, the ids it gets, the
 forms in a list's rows, where the person goes after a command, the heading. This skill builds the slice's parts and
@@ -81,8 +91,9 @@ own: `web/src/slices/{its own slicename}/`.
 
 Nothing else changes: never a page (`src/pages/`, `src/navigation.json`: the model's), not `App.tsx`,
 `Layout.tsx`, `routes.tsx`, `src/lib/*` (but `api-types.ts`), `src/mocks/*` (they find `handlers.ts` themselves),
-`src/components/ui/*`, config or any `package.json`. The commit guard rejects it (`web-scope`). If the screen can't
-be built without such a change (a missing shadcn component, a library, a page that needs more than its parts), invoke
+`src/components/*` (the ui atoms and the patterns), config or any `package.json`. The commit guard rejects it
+(`web-scope`). If the screen can't be built without such a change (a missing pattern or shadcn component, a library,
+a page that needs more than its parts), invoke
 `request-feedback` and stop: the model or the kit changes, not the page.
 
 ---
@@ -133,10 +144,12 @@ const RegisterCourseSchema = z.object({
   `optional: true` → `.optional()`. Add the constraints the slice's specifications state (a rejection like
   "Rating must be between 1 and 5", a required text), so a 400 scenario is caught before anything is sent. `satisfies z.ZodType<Body>` when every body field is typed;
   when some come from props or the session, `satisfies z.ZodType<Pick<Body, "rating">>` over the typed ones.
-- A mockup `<select>` is a native `<select>` (`.mock-card` styles it; there's no shadcn Select), with
-  `register(name, { valueAsNumber: true })` for a number and `defaultValues` for the mockup's `selected` option.
-- A mockup `<textarea>` is a native `<textarea>` too (no shadcn Textarea), registered as a string. It starts
-  empty: its text in the mockup is the example value, not a default.
+- Each typed field is a `Field` (`id="{command}-{field}"`, the mockup's label, `error={errors.x?.message}`,
+  `{...register(…)}`). A mockup `<select>` is `<Field control="select">` with its `<option>`s, with
+  `register(name, { valueAsNumber: true })` for a number and `defaultValues` for the mockup's `selected` option. A
+  mockup `<textarea>` is `<Field control="textarea">`, registered as a string; it starts empty (its text in the
+  mockup is the example value, not a default). A mockup group of checkboxes or radios (a `fieldset`) is a
+  `ChoiceGroup` with the mockup's legend and options.
 - `useForm({ resolver: zodResolver(Schema) })`. A form with nothing typed (only props and session) is a plain
   `<form onSubmit>` with `useState` for done / error.
 - **Every command is sent through `useSubmitOnce` (`@/lib/submit`, ADR-067), and its button is disabled while
@@ -150,18 +163,31 @@ const RegisterCourseSchema = z.object({
           const { position } = await command(api.POST("/register-course", { body, headers: idempotent(key) }))
           await recordWrite(position)      // useWrites(): refetches the views, remembers the position
           onDone?.(body)                   // the page's: it goes where the model says (next)
-      }).catch((error) => setError("root", { message: error instanceof ApiError ? error.message : "Something went wrong. Try again." }))
+      }).catch((error) => setError("root", { message: errorText(error) }))
   )
-  // <Button type="submit" disabled={pending}>
+  // <FormCard title="Register course" submit="Register course" onSubmit={submit} pending={pending}
+  //           error={errors.root?.message} done={done && "Course registered."}> <Field … /> </FormCard>
   ```
+  `FormCard` is the mockup's `form.mock-card`: its heading (`title`, or `label` when the mockup has none), the
+  error at the top (focused), the button with the mockup's words (`submit`), "Sending…" while `pending`, and the
+  `done` line (a success's words, from the mockup or the scenario). A form with nothing typed passes a plain
+  handler (`(e) => { e.preventDefault(); run(…) }`) and keeps `done`/`error` in `useState`.
   **Every form takes `FormPart<Done>` (`@/lib/parts`):** `({ courseId, onDone }: { courseId: string } &
   FormPart<SubscribeStudent>)`, its ids then `onDone`, never a callback of its own name. Call `onDone({ ...body,
   ...data })` once the command succeeds: what was sent and a 201's generated fields (`command(...).data`), so the page
   can fill the next page's ids. The form's tests include one that presses twice before React renders
   (`fireEvent.click` twice) and expects one request, and one that `onDone` gets what was sent.
-- A rejection is an `ApiError` carrying the backend's Problem-JSON `detail`: show `error.message` in a
-  `<p role="alert">` (RHF: `setError("root", { message })`). A field error shows under its input.
-- Ids and labels: `id="{command}-{field}"`, `<Label htmlFor>` with the mockup's label text.
+- A rejection is an `ApiError` carrying the backend's Problem-JSON `detail`. **The words shown are always
+  `errorText(error)`** (`@/lib/api`): the rejection's own, or "Something went wrong. Try again.", never an
+  exception's text. They go in `FormCard`'s `error` (RHF: `setError("root", { message })`). A field's error goes in
+  its `Field`.
+- **A command slice.json marks `confirm`** (the consequence a person accepts before something that can't be undone,
+  ADR-072) asks first: `FormCard`'s `confirm={{ question, consequence, confirm }}`, or `RowAction`'s `confirm={{
+  consequence, confirm }}`, with the consequence verbatim (a named constant) and `confirm` = the command's name in
+  words ("Remove member"). A command without `confirm` never asks.
+- **A form drawn in another slice's list rows** (Remove in each member row) is a `RowAction` alone: the mockup's
+  button words as `action`, `onAct` sending the command through `run`, its `pending` and `error`. Its name includes
+  the row (the `DataTable` it sits in gives it).
 
 ### A value from another system's browser library (ADR-044): a draft, on first use
 
@@ -184,8 +210,8 @@ configuration and its mock.
   await recordWrite(position)
   ```
   The mockup's `<form data-command="…">` is still the form: its button, its hidden fields as props.
-- **A failure of the other system's part** (it couldn't open) is shown like a rejection: `error.message` in a
-  `<p role="alert">`.
+- **A failure of the other system's part** (it couldn't open) is shown like a rejection: `errorText(error)` in
+  `FormCard`'s `error`.
 - **The other system's part goes where the mockup puts it:** an element with the class the provider skill names
   (`<div className="checkout-frame" />`), and beside it what the provider's module reports for showing (for Paddle,
   what will be charged).
@@ -205,13 +231,22 @@ const course = useQuery({
     queryKey: ["course-details", courseId],
     queryFn: () => read(api.GET("/course-details/{courseId}", { params: { path: { courseId } }, headers: afterLastWrite() }))
 })
-if (course.isPending) return <p className="text-sm text-muted-foreground">Loading…</p>
-if (course.isError) return <p role="alert">{course.error.message}</p>
+return (
+    <ViewCard title="Course" read={course}>
+        {(c) => <SummaryList rows={[["Title", c.title], ["Capacity", <Value of={c.capacity} type="Int" />]]} />}
+    </ViewCard>
+)
 ```
 
+- `ViewCard` is the mockup's `section.mock-card` and its heading; it shows loading, still updating and the alert
+  itself, and the data once there. A view showing several cards uses `ReadStates` once, around them.
 - A read model whose document is created by its first event (an aggregate, e.g. ratings) answers 404 until
-  then. For such a view a 404 (`error instanceof ApiError && error.status === 404`) is the empty state, one line
-  in the card ("No ratings yet."), not an alert. Any other error is still the alert.
+  then. For such a view, give `empty` (the empty state, NN/g): what isn't there yet, in the mockup's words or the
+  model's ("No ratings yet."), and, when the page gives `createPath`, the way to fill it (`action: { label, to:
+  createPath }`). A list with no rows shows the same `empty` (`DataTable`'s, or `isEmpty`).
+- Key facts (a mockup `<dl>`) are a `SummaryList`; every value by its field's type is a `Value` (`type` from
+  slice.json: `Date`, `DateTime`, `Int`…, `Money` with its currency, `labels` for a coded value the mockup shows in
+  words). An id is never shown as a fact unless the mockup shows it.
 
 - **Read-your-writes, by `readModelType`:** absent or `database-projected` (async) → `headers: afterLastWrite()`.
   `inline-projected` and `live-report` are current when the command returns: **no headers**.
@@ -221,8 +256,8 @@ if (course.isError) return <p role="alert">{course.error.message}</p>
   "available courses"), as a named constant with a comment saying so.
 - A `data-list` naming a **query** of the read model, or a list read model (`listElement`), is a **paged list**
   (ADR-026): `usePagedList` (`src/lib/paging.ts`) fetches a page at a time with `limit` and `cursor` beside the
-  query's own parameters in `params.query`, `rows` are the pages so far, and `<LoadMore list={…} />`
-  (`src/components/LoadMore.tsx`) goes under them:
+  query's own parameters in `params.query`, `rows` are the pages so far, and `DataTable`'s `more={…}`
+  puts Load more under them:
   ```tsx
   const courses = usePagedList({
       queryKey: ["course-seats", "available-courses", minRemainingSeats],
@@ -232,29 +267,42 @@ if (course.isError) return <p role="alert">{course.error.message}</p>
               headers: afterLastWrite()          // async read models only, as for any view
           }))
   })
-  // … {courses.rows.map(…)} … <LoadMore list={courses} />
+  // <ViewCard title="Courses" read={courses}>{() => <DataTable rows={courses.rows} … more={courses} />}</ViewCard>
   ```
   A `data-list` naming a `List` field comes whole with its document: `.map` over that field, no paging.
-- **Every list view takes `ViewPart<Row>` (`@/lib/parts`)** beside its ids, and uses what the page gives; it never
+- **A list is a `DataTable`** (the mockup's `table[data-list]`): its `columns` are the mockup's, in order, each
+  `{ header, cell }`; the first column names the row (a row header, so make it the thing's name, as the mockup's
+  first cell).
+- **Every list view takes `ViewPart<Row>` (`@/lib/parts`)** beside its ids, and hands it to the `DataTable`; it never
   knows page routes:
-  - `row?: (row) => ReactNode`: another slice's action in each row (Withdraw), in a last column with an empty
-    header, only when given;
-  - `linkTo?: (row) => string`: the row opens its page, a `<Link>` on the cell the mockup shows first;
+  - `row?: (row) => ReactNode`: another slice's action in each row (Withdraw): `DataTable`'s `actions`;
+  - `linkTo?: (row) => string`: the row opens its page: `DataTable`'s `linkTo` (the first cell links);
   - `onlyOne?: (row) => void`: called (in an effect) when the list holds exactly one row;
-  - `createPath?: string`: where the empty state's "New …" link goes (the mockup's empty-state text).
+  - `createPath?: string`: where the empty state's "New …" link goes: `empty.action.to`.
 - `queryKey`: the read model's kebab name, then its key or query name and parameters.
 
-## Step 4 — The mockup, 1:1
+## Step 4 — The mockup, through the patterns
 
-The mockup is the markup. For each part this slice builds, take its region of `mockup.html` and write it as JSX:
+The mockup gives the words and the order; the patterns give the markup. For each part this slice builds, take its
+region of `mockup.html` and write it with the pattern each shape stands for:
 
-- keep the elements, their order, `class` → `className`, headings, labels, button text and static words
-  ("places", "Signed in as");
-- drop every `data-*` attribute and the example values: a `data-field` element shows the data, a `data-list`
-  repeats its first item per row (`key` = the row's ID attribute);
-- inputs become `<Input>` / `<Label>`, buttons `<Button>` (`src/components/ui/`), a `form` keeps `mock-card`;
-- add only what behaviour needs: loading, the alert, a field error, a success `role="status"` line, an empty-list
-  line.
+| In the mockup (emcli's drafts draw these) | In the part |
+|---|---|
+| `form.mock-card`, its `h2` and button | `FormCard` (`title`, `submit` = the button's words) |
+| a `label` and its `input` / `select` / `textarea` | `Field` (`control` for a select or textarea) |
+| a `fieldset` of checkboxes or radios | `ChoiceGroup` (`legend`, `options`) |
+| `section.mock-card` and its `h2`, showing a read model | `ViewCard` (`title`), or `ReadStates` around several cards |
+| a `dl` of `dt`/`dd` | `SummaryList`, each value a `Value` |
+| a `table[data-list]` | `DataTable` (`columns` in the mockup's order) |
+| a command's button drawn in another slice's row | `RowAction` |
+| an `h1`, a paragraph, static words ("places", "Signed in as") | as written, with `className` from the mockup |
+
+- Keep the mockup's headings, labels, button text and static words exactly; drop every `data-*` attribute and the
+  example values: a `data-field` element shows the data, a `data-list` repeats per row (`rowKey` = the row's id).
+- Style only with the mockup's classes and the design system's tokens (`text-muted-foreground`): never
+  `style={{ … }}` or a colour.
+- Add nothing the patterns don't already: they hold loading, the alert, field errors, the success line, the empty
+  state.
 
 ## Step 5 — Mock data: `handlers.ts`
 
@@ -338,7 +386,7 @@ session, row); puts a form drawn in another slice's list rows into that list's `
    git commit -m "feat: [Slice Name] screen"
    ```
    The pre-commit guard runs `blocked-paths`, `web-scope` (only these paths, one slice, tests present, never a
-   page), `api-types` (the types are what the contract generates) and `web-tests` (typecheck, the slice's tests and
+   page or a kit component), `web-patterns` (the part is made of patterns, ADR-072), `api-types` (the types are what the contract generates) and `web-tests` (typecheck, the slice's tests and
    `parts.test.ts`).
 
 ## A screen added or changed (`buildScreen`)
@@ -351,7 +399,8 @@ backend is built and committed. Don't touch it; build only the screen.
 - **`"changed"`:** its mockup changed (a page's route, order or flow is the model's, and rebuilds nothing). Rebuild
   the slice's folder to match slice.json as it is now, Steps 1–8. Read what's there first, and keep what still
   matches:
-  - markup, labels and fields follow the new mockup 1:1 (Step 4); drop what it no longer has;
+  - markup, labels and fields follow the new mockup through the patterns (Step 4); drop what it no longer has. A
+    part built before the patterns (ADR-072) is rewritten onto them as it's rebuilt;
   - the slice's own `*.test.tsx` are this skill's output, not a contract: update them to the new mockup, still a
     test per specification (the rule against editing tests is about the backend's `*.tests.ts`);
 - Commit as in Step 8: `feat: [Slice Name] screen`.

@@ -15,7 +15,7 @@ describe("Course List", () => {
 
     it("puts the page's action for each course in a last column (ADR-069)", async () => {
         renderWithProviders(<CourseList row={(course) => <button>Bookmark {course.title}</button>} />)
-        const row = (await screen.findByRole("cell", { name: "Math" })).closest("tr")!
+        const row = (await screen.findByRole("rowheader", { name: "Math" })).closest("tr")!
         expect(within(row).getByRole("button", { name: "Bookmark Math" })).toBeInTheDocument()
     })
 
@@ -31,10 +31,10 @@ describe("Course List", () => {
             })
         )
         renderWithProviders(<CourseList />)
-        expect(await screen.findByRole("cell", { name: "Math" })).toBeInTheDocument()
+        expect(await screen.findByRole("rowheader", { name: "Math" })).toBeInTheDocument()
         await userEvent.click(screen.getByRole("button", { name: "Load more" }))
-        expect(await screen.findByRole("cell", { name: "Art" })).toBeInTheDocument()
-        expect(screen.getByRole("cell", { name: "Math" })).toBeInTheDocument()
+        expect(await screen.findByRole("rowheader", { name: "Art" })).toBeInTheDocument()
+        expect(screen.getByRole("rowheader", { name: "Math" })).toBeInTheDocument()
         expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument()
         expect(cursors).toEqual([null, "c1"])
     })

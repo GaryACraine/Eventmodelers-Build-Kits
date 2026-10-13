@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
+import { EmptyState, ViewCard } from "@/components/patterns"
 import { api, read } from "@/lib/api"
 import { useWrites } from "@/lib/writes"
 
@@ -13,21 +14,24 @@ export function StudentDetailsView({ studentId }: { studentId: string }) {
         queryKey: ["student-details", studentId],
         queryFn: () => read(api.GET("/student-details/{studentId}", { params: { path: { studentId } }, headers: afterLastWrite() }))
     })
-    if (student.isPending) return <p className="text-sm text-muted-foreground">Loading…</p>
-    if (student.isError) return <p role="alert">{student.error.message}</p>
-
-    const { name, subscribedCourses } = student.data
     return (
-        <section className="mock-card">
-            <p>
-                Signed in as <strong>{name}</strong>
-            </p>
-            <ul>
-                {subscribedCourses.map((course) => (
-                    <li key={course.courseId}>{course.title}</li>
-                ))}
-            </ul>
-            {subscribedCourses.length === 0 && <p className="text-sm text-muted-foreground">No courses yet.</p>}
-        </section>
+        <ViewCard read={student}>
+            {({ name, subscribedCourses }) => (
+                <>
+                    <p>
+                        Signed in as <strong>{name}</strong>
+                    </p>
+                    {subscribedCourses.length === 0 ? (
+                        <EmptyState empty={{ message: "No courses yet.", action: { label: "Find a course", to: "/courses" } }} />
+                    ) : (
+                        <ul>
+                            {subscribedCourses.map((course) => (
+                                <li key={course.courseId}>{course.title}</li>
+                            ))}
+                        </ul>
+                    )}
+                </>
+            )}
+        </ViewCard>
     )
 }
