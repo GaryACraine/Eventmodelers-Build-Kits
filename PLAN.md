@@ -917,7 +917,24 @@ model and build only what's ours.
               members row of the Dashboard) and the overview, Memberships and My Organisations extended; activate
               organisation, invite member and accept invitation replaced under their names with a removed member's
               scenario; seven slices planned. A dry run queues the three replacements' backends only (their screens
-              stay built) and remove member's backend and UI. **NEXT: Gary's export**, then the loop.
+              stay built) and remove member's backend and UI.
+            - [x] **Built and proven 2026-10-13.** Exported (Gary's go-ahead); the loop built all seven, none blocked.
+              **ADR-069's loop proof:** remove member's screen commit (`1b1778d`) is its slice's folder and the
+              regenerated API types, no page; the Dashboard shows Remove in each members row from `navigation.json`.
+              Licensing backend 633, web 174; `e2e/members/removal.mjs` 16/16 (the removed person's next request is
+              refused at once: 404, the organisation hidden as from anyone outside it; the overview frees the seat;
+              they may accept again, and activate once removed again); the member-joins journey removes through
+              the Remove button, mock and sandbox 3/3; security AC-12 (licensing `0cb8d28`).
+            - Found: accept invitation's "holds a role anywhere" stayed a yes/no (wrong once one of two roles is
+              removed, i.e. chapter 3), because I gave it only the "removed from every role" scenario. Closed: the
+              model (accept invitation replaced again with "still holding another role: refused", licensing
+              `3c497e4`, planned, **waiting for Gary's export**), and `plan-change` (a new event joining a rule several
+              slices hold reaches each through the same scenarios).
+            - Found: `seatWasReleased` is tagged by organisation only, though the model (and ADR-070) say organisation
+              and person; nothing compares the code's tags with the model's ids. A survey of licensing found two
+              more: `refusedTrialWasCancelled` lacks its `paddleEventId` tag, and `userWasAssignedToRole` has different
+              id fields in different slices of the model. Open, for Gary: which side moves, and the checks
+              (below).
             - Found: chapters follow prooph board's order, which emcli can't change (the board's API has no reorder),
               and copies follow chapter order: chapter 4 (index 3) couldn't extend chapter 1's lists (index 30). Chapter 4
               was recreated (a new chapter is added last). emcli's refusal now says the ways round it (`67c1e62`).
