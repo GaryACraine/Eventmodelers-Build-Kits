@@ -1,10 +1,10 @@
 'use strict';
 
 // An event's tags are the model's (ADR-071): slice.json gives each event its `eventTags`, and a new event factory in
-// src/contexts/{context}/Events.ts is written with exactly those, an optional one as a conditional spread
-// (`...(paddleEventId ? { paddleEventId } : {})`). Only a factory this commit adds is checked: an existing one changes
-// only by a deliberate tag change outside the loop (plan-change). An event no slice.json gives `eventTags` (an export
-// from before ADR-071) isn't checked.
+// src/contexts/{context}/Events.ts is written with exactly those, every one on every instance: never a conditional
+// spread (`...(x ? { x } : {})`). Only a factory this commit adds is checked: an existing one changes only by a
+// deliberate tag change outside the loop (plan-change). An event no slice.json gives `eventTags` (an export from before
+// ADR-071) is still refused a conditional tag.
 
 const fs = require('fs');
 const path = require('path');
@@ -46,13 +46,13 @@ function modelTags(repoRoot, context) {
       continue;
     }
     for (const e of slice.events ?? []) {
-      if (Array.isArray(e.eventTags) && !out[e.title]) out[e.title] = e.eventTags.map((t) => ({ key: t.key, optional: !!t.optional }));
+      if (Array.isArray(e.eventTags) && !out[e.title]) out[e.title] = e.eventTags.map((t) => ({ key: t.key, optional: false }));
     }
   }
   return out;
 }
 
-const describe = (tags) => tags.map((t) => t.key + (t.optional ? ' (when present)' : '')).sort().join(', ') || 'none';
+const describe = (tags) => tags.map((t) => t.key).sort().join(', ') || 'none';
 
 module.exports = {
   name: 'event-tags',
@@ -71,7 +71,16 @@ module.exports = {
       const existing = factoryTags(before);
       const model = modelTags(ctx.repoRoot, context);
       for (const [name, tags] of Object.entries(factoryTags(after))) {
-        if (existing[name] || !model[name]) continue;
+        if (existing[name]) continue;
+        const conditional = tags.filter((t) => t.optional).map((t) => t.key);
+        if (conditional.length > 0) {
+          violations.push({
+            path: file,
+            reason: `${name} tags ${conditional.join(', ')} only when present: every tag is always present (ADR-071), since a rule reads by it before it appends. Make it data, or ask the model for the fact that always has it`,
+          });
+          continue;
+        }
+        if (!model[name]) continue;
         if (describe(tags) !== describe(model[name])) {
           violations.push({
             path: file,

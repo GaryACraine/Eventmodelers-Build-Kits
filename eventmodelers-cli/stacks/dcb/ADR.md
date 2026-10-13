@@ -5662,8 +5662,12 @@ theirs, and re-tagging is "controversial and rarely necessary").
 
 **Decision (recommended):**
 1. **The model decides every event's tags, at modelling time.** They are its id fields (ADR-048), plus another
-   system's ids on an event recorded from it; an id the event only sometimes carries is an optional tag. The same event
-   has the same tags wherever it's drawn.
+   system's ids on an event recorded from it, and **every instance carries every one of them** (amended 2026-10-13,
+   Gary: "you need a tag to support decision making before an append and therefore you should be able to rely on it
+   being there"). An id the event only sometimes has is data; when something must find events by it, the fact that
+   always has it is its own event (licensing's refused trial cancelled at Paddle: the notification's outcome,
+   `paddleNotificationTranslated`, is recorded beside it). dcb.events agrees: tags are a consistency mechanism, not
+   classification. The same event has the same tags wherever it's drawn.
 2. **At planning, the tags are appraised against the slice's specifications.** A write slice's rule is about its
    command's keys (its id fields, and any field naming an entity in the id register). Every event a scenario gives that
    rule must be found by those keys: when the event carries one of the rule's keys but isn't tagged with it, the rule
@@ -5672,9 +5676,9 @@ theirs, and re-tagging is "controversial and rarely necessary").
    tags it's read by) and warns on both, naming the scenario; it also warns about a tag with few values (`roleId`) and
    about one event tagged differently in two places. Warnings never block (the existing rule): the modeller settles
    each, by tagging, or by saying why the rule reads more.
-3. **The loop is told, never asked.** slice.json gives each event its `tags` (optional ones marked); the build skills
-   write the factory's tags from it exactly (an optional one as a conditional spread). The commit guard refuses a
-   slice commit that adds an event factory whose tags differ from slice.json's.
+3. **The loop is told, never asked.** slice.json gives each event its `eventTags`; the build skills write the factory's
+   tags from it exactly, never a conditional one. The commit guard refuses a slice commit that adds an event factory
+   whose tags differ from slice.json's, or are conditional.
 4. **Changing an event's tags is a modelling decision with its own route** (`plan-change`, ADR-048), never something
    the loop does. Before release: add a tag when no query is affected, else expand, switch, contract, and reset the
    local database. After release it's open: events already stored keep their tags (DCB), so a decision that starts

@@ -82,7 +82,7 @@ export function toNotification(body: unknown, receivedAt: Date = new Date()): No
         id: event.event_id,
         event: {
             event: { type: "paddleNotificationReceived", data },
-            tags: Tags.fromObj({ paddleEventId: event.event_id, ...(typeof subscriptionId === "string" ? { subscriptionId } : {}) })
+            tags: Tags.fromObj({ paddleEventId: event.event_id })
         }
     }
 }
@@ -90,12 +90,15 @@ export function toNotification(body: unknown, receivedAt: Date = new Date()): No
 
 - `payload` is the body **as it arrived**: never reshape it. The translation reads what it needs from it.
 - `subscriptionId` is `data.id` for a `subscription.*` event and `data.subscription_id` for a `transaction.*` one
-  (which can be null: then there's no such field or tag).
-- **Every event of ours recorded from a Paddle notification** (it carries `paddleEventId`: `trialWasStarted`,
-  `paddleNotificationSkipped`, …) is tagged `paddleEventId`, and `subscriptionId` when it has one, as well as its own
-  entity's id (ADR-040, ADR-048). The untranslated notifications list finds an outcome by `paddleEventId`, and the
-  deciders read a subscription's events by `subscriptionId`. The model marks both as ids; if it doesn't, block the
-  job and say so.
+  (which can be null: then there's no such field). It's data, never a tag here: a notification doesn't always have one,
+  and every tag is always present (ADR-071).
+- **Every tag is always present (ADR-071), so a notification's outcome is its own fact.** An event that only comes
+  from a Paddle notification (`trialWasStarted`, `paddleNotificationSkipped`) is tagged `paddleEventId`, with
+  `subscriptionId` and its own entity's id where it always has them (ADR-040, ADR-048). A fact that can also come from
+  our own call (the refused trial cancelled at Paddle, ADR-049) is tagged only by what it always has; when a
+  notification leads to it, the decision also records the notification's outcome, `paddleNotificationTranslated`
+  (tagged `paddleEventId`), beside `paddleNotificationSkipped`. The untranslated notifications list closes an item on
+  either. Write exactly the model's `eventTags`; if a rule can't find what it needs, block the job and say so.
 - **The types we translate** are a constant of the module (`subscription.created`, `.trialing`, `.activated`,
   `.updated`, `.past_due`, `.canceled`, `transaction.completed`). The fetch asks for those only, and the notification
   destination subscribes to the same list. A type the slices' descriptions add goes there.

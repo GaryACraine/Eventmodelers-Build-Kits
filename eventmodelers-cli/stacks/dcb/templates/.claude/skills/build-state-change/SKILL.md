@@ -69,13 +69,15 @@ export const {eventName} = ({
 ```
 
 **The tags are the model's, never yours (ADR-071).** Each event in slice.json has `eventTags`: the keys the model
-decided, in order, an `optional` one tagged only when the event carries it. Write a new event's factory with exactly
-those:
+decided, in order, each on every instance. Write a new event's factory with exactly those:
 
 ```ts
-tags: Tags.fromObj({ organisationId, userId })                                   // eventTags: organisationId, userId
-tags: Tags.fromObj({ organisationId, ...(paddleEventId ? { paddleEventId } : {}) }) // paddleEventId optional
+tags: Tags.fromObj({ organisationId, userId })   // eventTags: organisationId, userId
 ```
+
+- **Every tag is always present:** never a conditional spread (`...(x ? { x } : {})`). A tag is what a rule reads
+  before it appends and what a read model files by, so it must be there on every instance. An id the event only
+  sometimes has is data in its fields, not a tag.
 
 - Never add, drop or rename a tag, and never copy another event's tags (licensing's `seatWasReleased` once copied
   `seatWasAssigned`'s and lost the person). The commit guard refuses a new factory whose tags differ from `eventTags`
