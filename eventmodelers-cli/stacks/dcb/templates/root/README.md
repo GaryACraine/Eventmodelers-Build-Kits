@@ -55,8 +55,8 @@ npm run dev:mock    # no backend: mock responses from the scenarios
 ```
 
 The example app has a frontend too: Course Form (`/courses/new`), Courses (`/courses`), Course Page
-(`/courses/:courseId`) and My Courses (`/my-courses`), in `web/src/pages/` and `web/src/slices/`. It's the pattern
-the `build-screen` skill copies. `scripts/start-empty.sh` removes it with the example backend.
+(`/courses/:courseId`) and My Courses (`/my-courses`): each slice's parts in `web/src/slices/`, put on their pages
+by `web/src/navigation.json` (ADR-069). It's the pattern the `build-screen` skill copies. `scripts/start-empty.sh` removes it with the example backend.
 
 ## Sign-in (`auth/`)
 

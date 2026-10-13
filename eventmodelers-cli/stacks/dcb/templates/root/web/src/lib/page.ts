@@ -1,10 +1,9 @@
 /**
- * What a page file tells the app about itself. Every `src/pages/<Page>.tsx` exports one as `page`, next to its
- * default component, and `src/routes.tsx` finds it: no page is listed by hand.
+ * What a page tells the app about itself. The model's pages come from `src/navigation.json` (ADR-069); each of the
+ * kit's own in `src/pages/<Page>.tsx` (Home) exports one as `page`, next to its default component, and
+ * `src/routes.tsx` finds it: no page is listed by hand.
  *
- * The values come from slice.json's `screens[].page` (emcli derives them from the screen's contract):
- *
- *   export const page: PageInfo = { path: "/courses/:courseId", title: "Course Page", session: ["studentId"] }
+ *   export const page: PageInfo = { path: "/", title: "Home", nav: true }
  *
  * `path` is the page's client route: entity-shaped, for people. It is never the API's path (ADR-025): a page
  * calls the API through `src/lib/api.ts` with the paths in slice.json's `apiEndpoint`.

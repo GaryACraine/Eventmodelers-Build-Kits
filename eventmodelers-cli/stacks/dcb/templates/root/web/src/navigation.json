@@ -1,0 +1,116 @@
+{
+  "tenantKey": "organisationId",
+  "entities": {},
+  "menu": [
+    {
+      "area": "Enrollment",
+      "items": [
+        {
+          "title": "Course Form",
+          "path": "/courses/new"
+        },
+        {
+          "title": "Courses",
+          "path": "/courses"
+        },
+        {
+          "title": "My Courses",
+          "path": "/my-courses"
+        }
+      ]
+    }
+  ],
+  "account": [],
+  "pages": {
+    "/courses/new": {
+      "title": "Course Form",
+      "heading": "New course",
+      "context": "enrollment",
+      "area": "Enrollment",
+      "tenant": false,
+      "reads": [],
+      "actions": [],
+      "parts": [
+        {
+          "slice": "register-course",
+          "component": "RegisterCourseForm",
+          "kind": "form",
+          "command": "registerCourse",
+          "props": {}
+        }
+      ]
+    },
+    "/courses": {
+      "title": "Courses",
+      "heading": "Courses",
+      "context": "enrollment",
+      "area": "Enrollment",
+      "tenant": false,
+      "reads": [],
+      "actions": [],
+      "parts": [
+        {
+          "slice": "course-list",
+          "component": "CourseListView",
+          "kind": "view",
+          "readModel": "CourseList",
+          "props": {}
+        }
+      ]
+    },
+    "/courses/:courseId": {
+      "title": "Course Page",
+      "context": "enrollment",
+      "area": "Enrollment",
+      "tenant": false,
+      "reads": [],
+      "actions": [],
+      "session": [
+        "studentId"
+      ],
+      "parts": [
+        {
+          "slice": "course-details",
+          "component": "CourseDetailsView",
+          "kind": "view",
+          "readModel": "CourseDetails",
+          "props": {
+            "courseId": "route"
+          }
+        },
+        {
+          "slice": "subscribe-student",
+          "component": "SubscribeStudentToCourseForm",
+          "kind": "form",
+          "command": "subscribeStudentToCourse",
+          "props": {
+            "courseId": "route"
+          }
+        }
+      ]
+    },
+    "/my-courses": {
+      "title": "My Courses",
+      "heading": "My courses",
+      "context": "enrollment",
+      "area": "Enrollment",
+      "tenant": false,
+      "reads": [],
+      "actions": [],
+      "session": [
+        "studentId"
+      ],
+      "parts": [
+        {
+          "slice": "student-details",
+          "component": "StudentDetailsView",
+          "kind": "view",
+          "readModel": "StudentDetails",
+          "props": {
+            "studentId": "session"
+          }
+        }
+      ]
+    }
+  }
+}

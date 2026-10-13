@@ -6,8 +6,8 @@
 # slices, keeps the generic event feed and the OpenAPI document (/openapi.json, filled by each
 # slice as it's built), and resets Events.ts and src/index.ts to empty wiring (`readModels` and
 # `imperative` arrays started by startReadModels, CORS, and no routes but those two).
-# The example's frontend goes too: web/'s pages (all but Home), its slices, and the generated API types, and so
-# does its API contract (api/openapi.json): your model's export writes yours.
+# The example's frontend goes too: its slices, its pages (web/src/navigation.json, ADR-069) and their tests, and the
+# generated API types, and so does its API contract (api/openapi.json): your model's export writes yours.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -21,6 +21,7 @@ cp scripts/empty/Events.ts src/contexts/enrollment/Events.ts
 cp scripts/empty/index.ts src/index.ts
 
 find web/src/pages -type f ! -name Home.tsx -delete
+rm -f web/src/navigation.json web/src/example.test.tsx
 rm -rf web/src/slices && mkdir -p web/src/slices && touch web/src/slices/.gitkeep
 cp scripts/empty/api-types.ts web/src/lib/api-types.ts
 rm -f api/openapi.json

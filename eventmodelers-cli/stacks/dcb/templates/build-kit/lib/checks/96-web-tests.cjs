@@ -1,8 +1,9 @@
 'use strict';
 
-// A screen commit must leave web/ typechecking, and the tests of the slice's web/ folder, of the pages and
-// of a provider's module it changed (web/src/providers/{name}/) must pass (answered by MSW, no backend
-// needed). Skipped once the commit is already rejected.
+// A screen commit must leave web/ typechecking, and the tests of the slice's web/ folder and of a provider's
+// module it changed (web/src/providers/{name}/) must pass (answered by MSW, no backend needed), with the kit's
+// check that every built slice exports the parts the model puts on its pages (src/lib/parts.test.ts, ADR-069).
+// Skipped once the commit is already rejected.
 
 const fs = require('fs');
 const path = require('path');
@@ -42,10 +43,10 @@ module.exports = {
       return [{ path: '(web: tsc -b)', reason: `web/ doesn't typecheck:\n${failure(err)}` }];
     }
     try {
-      run(`npx vitest run ${[...dirs, 'src/pages'].map((d) => `"${d}"`).join(' ')}`);
+      run(`npx vitest run ${[...dirs, 'src/lib/parts.test.ts'].map((d) => `"${d}"`).join(' ')}`);
       return [];
     } catch (err) {
-      return [{ path: [...dirs].map((d) => `web/${d}`).join(', ') || 'web/src/pages', reason: `screen tests failed:\n${failure(err)}` }];
+      return [{ path: [...dirs].map((d) => `web/${d}`).join(', ') || 'web/src/lib/parts.test.ts', reason: `screen tests failed:\n${failure(err)}` }];
     }
   },
 };

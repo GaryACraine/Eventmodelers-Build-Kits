@@ -205,12 +205,16 @@ the tags exactly, so it fails until the producer's same-name replacement is buil
   (licensing's organisation overview expected an engineer's 403 until engineers gained `organisation:read`, ADR-068):
   find them (`grep -rl '"<role>"' src --include='*.tests.ts'`) and update them by hand, in their own commit, before
   the export.
-- **Navigation** (ADR-065: `element next`, `element area`, `emcli id`) is the model too:
-  - **where a screen leads, its mockup or its page route:** on a built slice, the export re-queues that screen's UI
-    alone (the backend stays as built);
-  - **a register entry (kind, label, parent), a page's area, or the role map:** rebuilds nothing. The export rewrites
-    `web/src/navigation.json`, which the layout reads. Run `emcli navigation` before and after: an id that stops
-    being an entity takes its list out of the menu;
+- **Navigation and pages** (ADR-065, ADR-069: `element next`, `element area`, `element route`, `emcli id`) are the
+  model too. **The model owns every page**: never edit one by hand, and a page that needs something its parts can't
+  give is a model change (or a kit one), never a page file:
+  - **a screen's mockup:** on a built slice, the export re-queues that screen's UI alone (the backend stays as built);
+  - **where a screen leads, its page route, the order of a page's parts, its heading, a register entry (kind, label,
+    parent), a page's area, or the role map:** rebuilds nothing. The export rewrites `web/src/navigation.json`, which
+    the layout and the kit's page read. Run `emcli navigation` before and after: it shows each page's parts and
+    warns about one it can't place; an id that stops being an entity takes its list out of the menu;
+  - **a button moved into (or out of) another slice's list rows** changes its mockup (its form takes the row's ids):
+    that screen's UI is re-queued; the list's view needs the `row` slot (every list view has it, `build-screen`);
   - **a slice that brings an id** registers it in the same change (`emcli id set`; a new entity names its parent);
     a new screen leads somewhere and sits in the menu, an area, or `--none`;
   - **a list of the person's own** ("My Organisations") needs its events tagged with the person's id. A built event
@@ -288,3 +292,4 @@ The full text is in the kit repo (`eventmodelers-cli/stacks/dcb/ADR.md`):
 | 056 | Account security: a role's sign-in level is enforced by the API (step-up); account screens come with the kit; policies and evidence live in `security/`. |
 | 061 | Between contexts: pull a published event (default), push a fact, push a request to act, ask synchronously. |
 | 065 | Navigation from the model: flows along the timeline, a menu of entities from the id register, areas for the rest. |
+| 069 | Pages composed from the model: slices export parts, emcli writes each page's parts, the kit renders them; no slice edits a page. |

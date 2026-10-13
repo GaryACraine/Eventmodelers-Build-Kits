@@ -12,13 +12,36 @@ import { useSessionState } from "./session"
  * - `pages`: every page by route, with the **permissions** its reads and commands need: the same `resource:action`
  *   strings the API checks and `api/roles.json` grants, or `self` or `link` (anyone signed in), or `anonymous`. Never roles;
  * - `register`: the page where a person who has just signed up registers (ADR-068). Sign-up goes there, carrying
- *   the page the person came from as `?next=`, and the page goes on to it after its command (`useReturnTo`).
+ *   the page the person came from as `?next=`, and the page goes on to it after its command (`useReturnTo`);
+ * - each page's `parts` (ADR-069): the slices' forms and views in order, which `ModelPage` renders. No slice edits a
+ *   page: the model owns it.
  *
  * What the person holds comes from the API (`GET /my-permissions`, `?organisationId=` on an organisation's pages),
  * from the same role map and lookup as every permission route. Hiding is a courtesy: the API still refuses.
  */
+/**
+ * One slice's part of a page (ADR-069): `web/src/slices/<slice>/index.ts` exports `component`. Its `props` are the
+ * ids it takes and where the page gets each; a gated part shows only to who may use it (`action`, by command) or read
+ * it (`read`); a form's `next` is where the page goes once its command succeeds; a view's `links` open a row's page,
+ * the new page, and the only row of the person's own list; `row` holds the forms put in each of the view's rows.
+ */
+export interface PagePart {
+    slice: string
+    component: string
+    kind: "form" | "view"
+    command?: string
+    readModel?: string
+    gate?: { action: string } | { read: string }
+    props: Record<string, "route" | "row" | "session">
+    next?: { route: string; params: Record<string, "route" | "command" | "session"> }
+    links?: { row?: string; create?: string; onlyOne?: boolean }
+    row?: PagePart[]
+}
+
 export interface NavigationPage {
     title: string
+    /** Its `<h1>`, when the mockups draw one that binds nothing */
+    heading?: string
     context: string
     entity?: string
     shape?: "one" | "list" | "new" | "other"
@@ -28,6 +51,10 @@ export interface NavigationPage {
     tenant: boolean
     reads: string[]
     actions: { command: string; api: string }[]
+    /** The session keys it reads: the page asks for them (the stub sign-in) before it shows */
+    session?: string[]
+    /** What it shows, in order (ADR-069); absent in a navigation.json written before it */
+    parts?: PagePart[]
 }
 export interface MenuItem {
     title: string
@@ -128,7 +155,8 @@ export function useMenu(from: Navigation | undefined = navigation): { menu: Navi
 
 /**
  * Whether the person may use a command on this page (to offer its action): the command's permission, checked in the
- * organisation the page names. A page's own build calls it: `useAllowed("/organisations/:organisationId", "reportCheckoutCompleted", organisationId)`.
+ * organisation the page names: `useAllowed("/organisations/:organisationId", "reportCheckoutCompleted", organisationId)`.
+ * A page of the model gets this from `ModelPage` (a part's `gate`, ADR-069); the kit's own pages call it.
  */
 export function useAllowed(route: string, command: string, organisation?: string): boolean {
     const { signedIn } = useSessionState()

@@ -7,7 +7,7 @@ The loop has chosen the job: **"Your task" above names the slice.** Build exactl
 ## Context Boundary (READ FIRST — NON-NEGOTIABLE)
 
 - **ONLY** read slices inside `.build-kit/.slices/<currentContext>/` (the context in "Your task").
-- Work only in `web/src/slices/<slicename>/`, the pages its screen is on (`web/src/pages/`) and the generated `web/src/lib/api-types.ts`. Nothing else in `web/`, and nothing outside it.
+- Work only in `web/src/slices/<slicename>/` (its parts, exported from `index.ts`) and the generated `web/src/lib/api-types.ts`. Never a page: the model owns them (`web/src/navigation.json`, ADR-069). Nothing else in `web/`, and nothing outside it.
 
 ## Your Task
 

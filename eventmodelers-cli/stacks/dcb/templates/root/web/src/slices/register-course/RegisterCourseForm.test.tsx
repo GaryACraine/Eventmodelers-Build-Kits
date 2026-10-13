@@ -8,9 +8,9 @@ import { RegisterCourseForm } from "./RegisterCourseForm"
 
 // Scenario examples: slice.json "Register Course" (c1, Math, 30).
 
-function renderForm(onRegistered = vi.fn()) {
-    renderWithProviders(<RegisterCourseForm onRegistered={onRegistered} />)
-    return onRegistered
+function renderForm(onDone = vi.fn()) {
+    renderWithProviders(<RegisterCourseForm onDone={onDone} />)
+    return onDone
 }
 
 async function fill({ id, title, capacity }: { id?: string; title?: string; capacity?: string }) {
@@ -29,9 +29,9 @@ describe("Register Course", () => {
                 return new HttpResponse(null, { status: 204, headers: { ETag: '"1"' } })
             })
         )
-        const onRegistered = renderForm()
+        const onDone = renderForm()
         await fill({ id: "c1", title: "Math", capacity: "30" })
-        await vi.waitFor(() => expect(onRegistered).toHaveBeenCalledWith({ id: "c1", title: "Math", capacity: 30 }))
+        await vi.waitFor(() => expect(onDone).toHaveBeenCalledWith({ id: "c1", title: "Math", capacity: 30 }))
         expect(body).toEqual({ id: "c1", title: "Math", capacity: 30 })
     })
 
@@ -44,24 +44,24 @@ describe("Register Course", () => {
                 )
             )
         )
-        const onRegistered = renderForm()
+        const onDone = renderForm()
         await fill({ id: "c1", title: "Math", capacity: "30" })
         expect(await screen.findByRole("alert")).toHaveTextContent("Course with id c1 already exists")
-        expect(onRegistered).not.toHaveBeenCalled()
+        expect(onDone).not.toHaveBeenCalled()
     })
 
     it("asks for the capacity when it's missing, without sending", async () => {
-        const onRegistered = renderForm()
+        const onDone = renderForm()
         await fill({ id: "c1", title: "Math" })
         expect(await screen.findByText("Required")).toBeInTheDocument()
-        expect(onRegistered).not.toHaveBeenCalled()
+        expect(onDone).not.toHaveBeenCalled()
     })
 
     it("refuses a capacity of zero, without sending", async () => {
-        const onRegistered = renderForm()
+        const onDone = renderForm()
         await fill({ id: "c1", title: "Math", capacity: "0" })
         expect(await screen.findByText("At least 1")).toBeInTheDocument()
-        expect(onRegistered).not.toHaveBeenCalled()
+        expect(onDone).not.toHaveBeenCalled()
     })
 
     it("sends once however fast it's pressed, with one Idempotency-Key, and disables the button meanwhile", async () => {
@@ -74,7 +74,7 @@ describe("Register Course", () => {
                 return new HttpResponse(null, { status: 204, headers: { ETag: '"1"' } })
             })
         )
-        const onRegistered = renderForm()
+        const onDone = renderForm()
         await userEvent.type(screen.getByLabelText("Course ID"), "c1")
         await userEvent.type(screen.getByLabelText("Title"), "Math")
         await userEvent.type(screen.getByLabelText("Capacity"), "30")
@@ -85,7 +85,7 @@ describe("Register Course", () => {
         await vi.waitFor(() => expect(button).toBeDisabled())
         await vi.waitFor(() => expect(keys).toHaveLength(1))
         answer()
-        await vi.waitFor(() => expect(onRegistered).toHaveBeenCalledTimes(1))
+        await vi.waitFor(() => expect(onDone).toHaveBeenCalledTimes(1))
         expect(keys[0]).toMatch(/^[0-9a-f-]{36}$/)
         expect(button).not.toBeDisabled()
     })
