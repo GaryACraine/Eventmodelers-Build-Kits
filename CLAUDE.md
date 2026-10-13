@@ -37,3 +37,14 @@ board/platform is retired in this fork: don't call its API or MCP tools.
   Axon, Emmett and Marten for questions about event sourcing, the UI authorities for UI questions, and so on. Add a row
   when a question first needs one.
 - Record decisions in `PLAN.md`'s Decisions Log with the reason, and tick tasks as they land.
+- **Close every gap at its root, unprompted.** When a test, a journey, a loop block, a by-hand fix or the user's
+  question shows that the model, emcli, a skill, the kit's code or the manual let something wrong through, fixing the
+  one case isn't done. Before calling the work done, ask where the next project would hit it again, and close it
+  there:
+  - **emcli** (a check, a warning, a derived value), when the model could have said it or caught it;
+  - **a skill** (`event-model`, a build skill, `plan-change`), when an agent lacked the rule;
+  - **the kit's code and a template test**, when every project needs the same behaviour;
+  - **the manual**, when a person needs to know it.
+
+  Record each gap in `PLAN.md` ("Found: …") with where it was closed, or why it stays open and when it's taken up. A
+  fix only in the project (licensing) is a workaround until the kit or emcli has it.
