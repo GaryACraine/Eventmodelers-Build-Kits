@@ -5573,3 +5573,63 @@ which page a card is on, its order, and its nesting are already drawn there.
   a new slice that adds a part to the Dashboard has to build without touching a page.
 - **Lost:** per-page code. A page with a one-off behaviour waits for a model property, and the renderer that reads
   it.
+
+### ADR-070: Removing a member: owner and admins remove, one decision releases everything, and removal reaches every count
+
+**Status:** **Accepted, 2026-10-13 (Gary), as written.** Licensing's chapter 4, modelled to prove ADR-069 with the
+loop (a new part on an existing page, built without touching a page).
+**Date:** 2026-10-13
+**Authorities consulted (ADR-064):** SaaS tenancy and onboarding: Better Auth's organization plugin (an owner and
+admins may remove members, a member may not; an admin can't change the owner; leaving is its own call,
+`leaveOrganization`, apart from `removeMember`). Event sourcing for decisions 4 and 6 (one decision appends every fact
+it decides; what was decided earlier is folded, never rolled back).
+
+**Context:**
+- Chapter 4 was stormed on 2026-10-01, before ADR-058 to 060: `seatWasReleased`, `userWasRemovedFromRole`,
+  `memberWasRemoved`, and `authRoleWasRemoved` (the role sync that ADR-060 replaced with the API's role lookup). Its
+  decided hotspot (ADR-037): the owner can't be removed, and removing a member releases their roles and seats.
+- What a member holds is folded in several built places. The role lookup the API checks (`Memberships`); the
+  organisation's overview (its members list); My Organisations; the invite decision's free seats (ADR-068 decision
+  5); and "holds a role in any organisation", which activating (ADR-066) and accepting (ADR-068 decision 3) refuse
+  on. ADR-068 left these for chapters 3 to 5: "removing a member (chapter 4) frees a seat".
+
+**Decision (recommended):**
+1. **The owner and admins may remove a member** (`member:remove` in the role map); an engineer may not. An admin may
+   remove another admin, as in Better Auth.
+2. **The owner can't be removed** ("Hand ownership over first": chapter 5).
+3. **Nobody removes themselves here** ("You can't remove yourself"). Leaving is its own flow, later, as Better Auth
+   keeps it.
+4. **One decision records everything, in one append:** `userWasRemovedFromRole` for each role the member holds,
+   `seatWasReleased` for each seat, then `memberWasRemoved`. It's ADR-068's accept the other way round, with no moment
+   when a member is half removed, and no automation or to-do list. Each event is tagged with the organisation and the
+   person, like `userWasAssignedToRole`.
+5. **Removing someone who isn't a member does nothing** (ADR-050): 200, nothing recorded.
+6. **Removal reaches every count:**
+   - The role lookup: their next request is refused, whatever token they hold.
+   - The overview's members list and My Organisations: they're gone from both.
+   - Their seats return to the free count: an invitation can take them.
+   - They hold no role, so they may activate an organisation or accept another invitation.
+
+   The three lists gain the events as extensions in chapter 4 (copies). The three built deciders (activate
+   organisation, accept invitation, invite member) are replaced under the same names (`plan-change`, before
+   release), so the loop rebuilds them to fold the new events.
+7. **On the page:** Remove in each row of the organisation overview's members list, drawn inside its rows (ADR-069's
+   row slot), shown to who holds `member:remove`. The owner's row offers it too, and the API's refusal is shown: the
+   page can't tell one row from another, and the API decides anyway.
+8. **`authRoleWasRemoved` goes** (ADR-060), as `authRoleWasAssigned` went in ADR-068. The invitations the removed
+   admin sent stay: they're the organisation's.
+
+**Alternatives considered:**
+- **Only `memberWasRemoved`, folded as "all their roles and seats are gone".** One event, but every fold would learn a
+  second way to lose a role, and chapter 3 (changing roles and seats) needs the per-role and per-seat events anyway.
+- **An automation releases the roles and seats after `memberWasRemoved`** (the storm's order). Rejected for the same
+  reason as ADR-068 decision 2: until it runs, the member would be removed yet still hold a seat and a role.
+- **Hide Remove on the owner's row.** That would need a per-row rule in the model and the page, for one row the API
+  already refuses.
+
+**Consequences:**
+- Licensing chapter 4: a write slice `remove member` (screen card on the Dashboard: Remove in each members row), the
+  three list extensions, and the same-name replacements of activate organisation, accept invitation and invite
+  member, each with a scenario for a removed member. The role map grants `member:remove` to owner and admin.
+- Chapters 3 and 5 later reuse `userWasRemovedFromRole` and `seatWasReleased`, already folded everywhere.
+- No email to the removed person yet (a notice, like ADR-056's, can follow).
