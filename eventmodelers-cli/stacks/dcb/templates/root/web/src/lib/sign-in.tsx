@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { EMAIL_CHANGED_PAGE, messageOf, signInService, type SecondFactorMethod, type ServiceError } from "./auth-client"
 import { useSessionState } from "./session"
-import { afterSignUp } from "./navigation"
+import { afterSignUp, type Navigation } from "./navigation"
 
 /**
  * The sign-in screens (ADR-055, ADR-056, ADR-057): the sign-in system's, provided by the kit, never built by the loop.
@@ -235,7 +235,9 @@ export function SecondFactorForm({ methods, onStartAgain }: { methods: SecondFac
 }
 
 /** Signing up: name, email and password, then "check your email" (the email must be verified before signing in). */
-export function SignUpForm({ next }: { next: string }) {
+export function SignUpForm({ next, navigation }: { next: string; navigation?: Navigation }) {
+    // Where the verification link lands: the registration page carrying `next`, or `next` (ADR-068)
+    const landing = afterSignUp(next, navigation)
     const [name, setName] = useState("")
     const [email, setEmail] = useState("")
     const [password, setPassword] = useState("")
@@ -247,13 +249,13 @@ export function SignUpForm({ next }: { next: string }) {
         event.preventDefault()
         setBusy(true)
         setError(undefined)
-        const { error } = await signInService.signUpWithEmail({ name, email, password, callbackURL: afterSignUp(next) })
+        const { error } = await signInService.signUpWithEmail({ name, email, password, callbackURL: landing })
         setBusy(false)
         if (error) setError(messageOf(error as ServiceError, "Couldn't sign up. Try again."))
         else setSent(email)
     }
 
-    if (sent) return <CheckEmail email={sent} next={next} onWrongAddress={() => setSent(undefined)} />
+    if (sent) return <CheckEmail email={sent} landing={landing} onWrongAddress={() => setSent(undefined)} />
     return (
         <form className="mock-card" onSubmit={submit} aria-label="Sign up">
             <h2>Create your account</h2>
@@ -303,10 +305,10 @@ export function NewPassword({ id, value, onChange }: { id: string; value: string
 }
 
 /** "Check your email", with the link sent again on request (D12) */
-function CheckEmail({ email, next, onWrongAddress }: { email: string; next: string; onWrongAddress: () => void }) {
+function CheckEmail({ email, landing, onWrongAddress }: { email: string; landing: string; onWrongAddress: () => void }) {
     const [again, setAgain] = useState<string>()
     const sendAgain = async () => {
-        const { error } = await signInService.sendVerificationEmail(email, afterSignUp(next))
+        const { error } = await signInService.sendVerificationEmail(email, landing)
         setAgain(error ? messageOf(error as ServiceError, "Couldn't send it. Try again.") : "We've sent it again.")
     }
     return (
@@ -495,10 +497,10 @@ export function SignInPage() {
     return <SignInForm next={next} />
 }
 
-/** `/sign-up` */
-export function SignUpPage() {
+/** `/sign-up`; `navigation` is the model's (`navigation.json`), given only by tests */
+export function SignUpPage({ navigation }: { navigation?: Navigation }) {
     const [params] = useSearchParams()
-    return <SignUpForm next={nextPath(params.get("next"))} />
+    return <SignUpForm next={nextPath(params.get("next"))} navigation={navigation} />
 }
 
 /** The current page, as `next` for a sign-in form shown in its place (`RequireSession`) */
