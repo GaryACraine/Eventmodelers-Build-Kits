@@ -11,9 +11,10 @@ type Course = components["schemas"]["Course"]
 /**
  * Course List: the rows of the "Courses" screen (mockup: `table data-list="CourseList"`). Reads `GET /course-list`
  * (slice.json `apiEndpoint`), a page at a time with Load more (ADR-026). An async read model, so each page waits for
- * the last write. `linkTo` (from the page) makes each row a link to the course.
+ * the last write. `linkTo` (from the page) makes each row a link to the course; `row` puts another slice's action in
+ * each row, in a last column (ADR-069).
  */
-export function CourseList({ linkTo }: ViewPart<Course>) {
+export function CourseList({ linkTo, row }: ViewPart<Course>) {
     const { afterLastWrite } = useWrites()
     const courses = usePagedList({
         queryKey: ["course-list"],
@@ -30,6 +31,7 @@ export function CourseList({ linkTo }: ViewPart<Course>) {
                     <tr>
                         <th>Course</th>
                         <th>Capacity</th>
+                        {row && <th />}
                     </tr>
                 </thead>
                 <tbody>
@@ -37,6 +39,7 @@ export function CourseList({ linkTo }: ViewPart<Course>) {
                         <tr key={course.id}>
                             <td>{linkTo ? <Link to={linkTo(course)}>{course.title}</Link> : course.title}</td>
                             <td>{course.capacity}</td>
+                            {row && <td>{row(course)}</td>}
                         </tr>
                     ))}
                 </tbody>

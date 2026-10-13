@@ -912,8 +912,29 @@ model and build only what's ours.
             - [ ] **Next proof:** a new part on an existing page built by the loop without touching a page:
               chapter 4's Remove in each member row of the overview. **ADR-070 Proposed** 2026-10-13 (removing a
               member: owner and admins, the owner can't be removed, nobody removes themselves, one decision
-              releases roles and seats, removal reaches every count). **Accepted as written** (Gary, 2026-10-13); then
-              model, export, the loop.
+              releases roles and seats, removal reaches every count). **Accepted as written** (Gary, 2026-10-13).
+              **Modelled** 2026-10-13 (licensing `a98fabb`): chapter 4 recreated last; remove member (Remove in each
+              members row of the Dashboard) and the overview, Memberships and My Organisations extended; activate
+              organisation, invite member and accept invitation replaced under their names with a removed member's
+              scenario; seven slices planned. A dry run queues the three replacements' backends only (their screens
+              stay built) and remove member's backend and UI. **NEXT: Gary's export**, then the loop.
+            - Found: chapters follow prooph board's order, which emcli can't change (the board's API has no reorder),
+              and copies follow chapter order: chapter 4 (index 3) couldn't extend chapter 1's lists (index 30). Chapter 4
+              was recreated (a new chapter is added last). emcli's refusal now says the ways round it (`67c1e62`).
+              Open: a real reorder waits for the board's API.
+            - Found: a hidden id in each row of a list (the row slot's way to pass the row) was warned as a missing
+              input, on withdraw's card too. Closed in emcli's screen check (`eedc47c`).
+            - Found: an event drawn plainly in another chapter for its scenarios errored as having no source. Closed in
+              emcli: it's checked where a command records it (`8612a4e`); licensing's whole-model errors fell from 224
+              to 124.
+            - Found: a same-name replacement re-queued its screen though its mockup hadn't changed. Closed in emcli's
+              export: it keeps the replaced slice's built screen (`751e990`).
+            - Found: the ADR-069 migration gave the row slot only to the list that had a row action. Closed: licensing's
+              overview and My Organisations (`7356881`, `8876fce`) and the kit's example list take `row`;
+              `build-screen` already requires it of every new list.
+            - Considered and rejected: making a scenario's events prerequisites at hand-off. It wouldn't change the
+              loop's build order, and an event several slices record would make every user wait for all of them; the
+              loop already defines an event type the first time a scenario needs it (invitations round).
           - Found: same-title slices in different chapters clashed only at export. Closed in emcli: `completeness`
             gives the later one an ERROR, so planning holds it back. It found 17 future clashes in licensing's draft
             chapters 6 to 19 (to retitle when they're planned).
