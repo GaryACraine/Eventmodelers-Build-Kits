@@ -954,6 +954,20 @@ model and build only what's ours.
               wasn't; Gary asked whether its `paddleEventId` mattered, and it does: it closes the Paddle translation's
               to-do item). Closed: the `event-tags` check reads a conditional spread as an optional tag (tested).
             - Open: changing an event's tags after release (stored events keep theirs: a new version or a migration).
+            - **Amended 2026-10-13 (Gary): no conditional tags.** "You need a tag to support decision making before an
+              append and therefore you should be able to rely on it being there." licensing had two, neither used by a
+              decision: `paddleNotificationReceived`'s `subscriptionId` (dropped; it's data) and
+              `refusedTrialWasCancelled`'s `paddleEventId`, which only closed the Paddle translation's to-do item.
+              That was two facts in one event, so the notification's outcome is now its own,
+              `paddleNotificationTranslated` (always tagged `paddleEventId`). dcb.events agrees: tags are a
+              consistency mechanism, not classification. emcli refuses an optional event id and errors on one
+              (`6650608`); the appraisal never counts an optional command field as a rule key (`1d47a74`); the kit's
+              check refuses a conditional tag (PR #303).
+            - Found: the `extension-additive` check refused a same-name replacement of an extension that must drop a
+              link the model removed (cancellation notification settled: the to-do list no longer closes on
+              `refusedTrialWasCancelled`); the loop blocked and stashed its work. Closed in the kit: a queued
+              replacement may remove a line naming only what its `rebuild.changes` say the model removed (tests,
+              mutation-checked).
             - Found: chapters follow prooph board's order, which emcli can't change (the board's API has no reorder),
               and copies follow chapter order: chapter 4 (index 3) couldn't extend chapter 1's lists (index 30). Chapter 4
               was recreated (a new chapter is added last). emcli's refusal now says the ways round it (`67c1e62`).
