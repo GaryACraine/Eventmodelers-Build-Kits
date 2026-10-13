@@ -5446,3 +5446,127 @@ can't accept). Event sourcing for decision 5 (a decision folds what is pending; 
   for them, so when a reduction leaves fewer seats than are assigned and held, the pending invitations lose their
   holds, never the reduction. How (accepting refused for want of a seat, or the excess invitations withdrawn) is
   designed with chapter 7.
+
+### ADR-069: Pages composed from the model: slices contribute parts, and no slice edits a page
+
+**Status:** **Accepted, 2026-10-13 (Gary), as written.** Gary's idea: build the UI from components rather than
+pages, so vertical slices stay additive, and decide who owns a page. He left the escape hatch (decision 7) to our
+judgement, if its absence would cause a lot of friction. It wouldn't, so there is none.
+**Date:** 2026-10-13
+**Authorities consulted (ADR-064):** UI composition (`docs/DESIGN-AUTHORITIES.md`, a new row):
+- **Cam Jackson, "Micro Frontends"** (martinfowler.com): a container application composes the page from a
+  configuration of routes and parts, and holds what is common to every page (the header, the sign-in token). Each
+  part is reached through one fixed render function: "the key contract between the container application and the
+  micro frontends". Parts should communicate as little as possible, through what the container passes them and the
+  URL.
+- **Backstage's extensions:** each extension declares where it attaches (a parent and that parent's input), and
+  the app assembles the tree from those declarations. Data flows one way, from a child's outputs to its parent's
+  inputs, and the parent decides how to render them. Enabling and order come from configuration, and conditions on
+  permissions are applied when the tree is prepared.
+- **VS Code's contribution points:** extensions declare views and menu items as JSON in their `package.json`
+  ("static declarations"). VS Code merges every extension's declarations into the UI, and a `when` clause decides
+  visibility.
+- **Shopify's checkout UI extensions and Salesforce's Lightning App Builder:** an extension names the targets it can
+  render in. Where it actually goes is set by a person in an editor (the merchant's checkout editor; App Builder's
+  regions and visibility filters), never by the extension's code.
+
+They agree on four points. Contributors declare what they offer and where it may go. The host composes. Placement
+and visibility are configuration, not contributor code. No contributor edits the host. Our editor is the model:
+which page a card is on, its order, and its nesting are already drawn there.
+
+**Context:**
+- Each slice's UI job builds its parts in its own folder (`web/src/slices/<slice>/…Form.tsx`, `…View.tsx`). It
+  then **edits the shared page file** (`web/src/pages/<Page>.tsx`) to place them. That file is where slices
+  collide. Licensing's Dashboard is edited by four slices (invite member, organisation invitations, withdraw
+  invitation, organisation overview).
+- Withdraw invitation's UI blocked (2026-10-12): its form sits in each row of a list that another slice renders. The
+  `rowAction` slot (PR #286) fixed that case. It was the seventh rule in `build-screen`'s Step 7, after: order by the
+  mockup, gates (`useAllowed`), parts by permission (`useCanRead`), `next`, `?next=` on the registration page, and
+  a one-row list that opens its row. Each rule is applied by hand, in each page, by an agent.
+- **Everything a page holds is in the model already.**
+  - The route and where each id comes from: `slice.json` `screens[].page`.
+  - Which parts, and in what order: the screens sharing a title, and their mockups (`data-slice` regions).
+  - Who sees each part: `navigation.json` `pages[route].reads` and `actions`.
+  - Where a part leads: `next`.
+  - The registration page: `navigation.json` `register`.
+  - An action per row: the card's command drawn inside another slice's `data-list` rows.
+
+  `navigation.json` already lists every page of the model (licensing: 7), keyed by route.
+- **The parts' callbacks have no fixed names.** Licensing's five forms that report back use four:
+  `onActivated`, `onRegistered`, `onAccepted` and `onCompleted`. A page has to know each part's own API.
+
+**Decision (recommended):**
+1. **The model owns every page, and no slice edits one.** A page is the screen cards that share a title. emcli
+   writes what the page holds, and the kit renders it. The model's pages leave `web/src/pages/`. The kit's own pages
+   (sign-in, the account page, Home) stay as code.
+2. **emcli writes each page's parts into `navigation.json`'s `pages`**, at export, beside the title, reads and actions
+   it already writes there. Each part has:
+   - `slice`, and its `component`: a form for a submitted command, a view for a displayed read model.
+   - `gate`: `{ "action": "<command>" }` (`useAllowed`) or `{ "read": "<resource:action>" }` (`useCanRead`). A part
+     declared `self`, `link` or `anonymous` has no gate.
+   - `props`: each id, and where it comes from: `route`, `session`, or `row`.
+   - `slot`: the page's `body`, or `{ "row": "<list part>" }` when the card's command is drawn in another slice's
+     list rows.
+   - `next`: as `slice.json`'s `next` today, with the route and each param's source (`route`, `command`, `session`).
+
+   A page also has its `heading` (the mockup's `<h1>` outside any part, if there is one) and its `session` keys.
+   `register` stays where it is.
+   - **Order** is the mockups' order (`data-slice` regions), or else the timeline's.
+   - **A list's links** come from the model: a row opens its entity's page, if there is one. The empty list links to
+     the menu's `create`. A list of the person's own with one row opens that row.
+3. **A slice exports its parts from `web/src/slices/<slice>/index.ts`, with one signature per kind.**
+   - **A form** takes `{ <ids>, onDone }`. `onDone` receives `{ ...body, ...data }`: what was sent, plus a 201's
+     generated fields.
+   - **A view** takes `{ <ids>, row?, linkTo?, onlyOne?, createPath? }`.
+
+   One name for each callback replaces today's four. The kit's types give the signature, so a part that doesn't fit
+   fails `tsc`.
+4. **The kit's `Page` renders a page from its entry.** It reads route params and session values, then gates each
+   part. It fills the row slots and puts the list links in place. After a part's `onDone`, it moves on: to `next`,
+   or to `?next=` on the registration page. `routes.tsx` builds the model's routes from `navigation.json`, and
+   finds parts by a glob of `slices/*/index.ts`, as it finds pages now.
+5. **Tests:**
+   - The renderer is tested once, in the template, against a fixture: gates, slots, `next`, `?next=`, the one-row
+     list, and the heading.
+   - A kit test walks the project's `navigation.json`. It fails when a part names a slice or component that isn't
+     exported, or a prop that no source gives.
+   - A slice job writes its part tests only. The journeys remain the end-to-end proof.
+6. **The loop holds the line:** a commit-scope check (`scope: 'web'`) refuses a slice's commit that touches
+   `web/src/pages/` or `navigation.json`. The guard enforces it, so no rule in a skill has to.
+7. **A layout beyond one column of parts becomes a model property when it's first needed** (a page in two columns,
+   or tabs), read by `Page`. There's no hand-written override for a model page, because it would bring the collision
+   back. Gary allowed one if going without it caused a lot of friction. It shouldn't: every page built so far
+   (licensing's 7, the template's 4) is one column of parts, and each of their special behaviours is already one
+   of Step 7's rules, which `Page` applies. If a page ever needs more, emcli and `Page` gain the property (closing
+   the gap at its root), rather than the project gaining a page file.
+
+**Alternatives considered:**
+- **Keep page files, with more rules (today).** It works, but each new kind of composition becomes another rule that
+  every UI job reads, and each job rewrites a file that other slices own. The cost recurs with every page.
+- **emcli writes the page files (`.tsx`), marked generated.** These would be readable and type-checked. But emcli
+  would then write React, and every change to how pages behave would need an emcli change and a re-export of every
+  page. With a renderer, emcli writes only data, as it does for `slice.json`, `navigation.json` and
+  `api/roles.json`. The kit's code then owns the behaviour, with its own tests.
+- **A separate `pages.json`.** It would hold the same content. But `navigation.json` already holds every page, keyed
+  by route, with its reads and actions, and the app already loads it.
+- **Placement in the slice's code** (Backstage's `attachTo` in `index.ts`). Placement is already in the model: the
+  card's page title and the mockup's nesting. Writing it in code as well would make a second source of truth.
+- **Micro-frontends proper** (each part deployed and loaded at run time). That would be out of scale for one team and
+  one build. We take the composition, not the deployment.
+
+**Consequences:**
+- **emcli:**
+  - Parts in `navigation.json`, with the slot taken from the mockup's nesting, and tests (mutation-checked).
+  - A warning when a card can't be placed: its command is drawn in rows that no slice's list displays.
+  - The open gap from ADR-068: same-title slices in different chapters are warned of at planning, not at export.
+- **Kit:**
+  - Code: `Page`, parts found by glob, and `routes.tsx` built from `navigation.json`. `PageInfo` and the template's
+    four page files go, and the course template's slices gain `index.ts`.
+  - Skills and docs: `build-screen`'s Step 7 becomes "export your parts". `plan-change`: a page change is a model
+    change, then a re-export. Manual §13.
+  - The commit-scope check, and `rowAction` folds into the view's `row` slot.
+- **Licensing:** a one-off migration by hand (a kit change). Its 7 model pages go, each slice gains `index.ts`, and
+  the callbacks are renamed to `onDone`. Then the web tests and journeys run on the mock and the sandbox. After that,
+  a new slice that adds a part to the Dashboard has to build without touching a page.
+- **Lost:** per-page code. A page with a one-off behaviour waits for a model property, and the renderer that reads
+  it.
