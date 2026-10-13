@@ -5699,8 +5699,9 @@ theirs, and re-tagging is "controversial and rarely necessary").
 
 ### ADR-072: A pattern library for the parts: a part is put together from the kit's patterns, never restyled by hand
 
-**Status:** **Proposed, 2026-10-13**, for Gary's review. Asked for by Gary (2026-10-13), after ADR-069: "make sure we
-align with a relevant design authority and also good UI/UX principles".
+**Status:** **Accepted, 2026-10-13 (Gary), as written**, with `--confirm` as a model property (decision 4). Asked for
+by Gary (2026-10-13), after ADR-069: "make sure we align with a relevant design authority and also good UI/UX
+principles".
 **Date:** 2026-10-13
 **Authorities consulted (ADR-064):** UI patterns, forms and accessibility (`docs/DESIGN-AUTHORITIES.md`, a new row):
 - **Brad Frost, *Atomic Design*:** a UI is a hierarchy. Atoms (a button, an input) make molecules and organisms (a
@@ -5755,7 +5756,7 @@ The last row is the model's, not the code's: those read models carry no name to 
 nothing is shared. Each job reinvents the pieces, the reviewer can't see the drift, and the fixes (above) would have to be
 made 14 times, then again in every new part.
 
-**Decision (proposed):**
+**Decision:**
 1. **Four layers (Atomic Design), each with one owner.**
    - **Atoms:** `web/src/components/ui/` (shadcn/ui), as now.
    - **Patterns:** a new folder, `web/src/components/patterns/`.
