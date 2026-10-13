@@ -103,6 +103,11 @@ What it needs instead:
 **The loop works one context at a time** (`.build-kit/.slices/current_context.json`). After the export, switch it with
 `eventmodelers activate-context` to build the other context's slices, then switch back.
 
+**A command whose events change can break the tests of an automation that issues it**, when they assert what was
+recorded (licensing: translate paddle notification expected only `refusedTrialWasCancelled` until the notification's
+outcome was recorded beside it). Planning names the built automations that issue the slice's command ("Issued by …"):
+update those tests in their own commit (`chore: [<slice>] …`), or replace that slice too.
+
 **A route that gains sign-in breaks other slices' tests that call it** to set up their data. In licensing, start
 options posted to `/activate-organisation`. Find them first:
 

@@ -968,6 +968,10 @@ model and build only what's ours.
               `refusedTrialWasCancelled`); the loop blocked and stashed its work. Closed in the kit: a queued
               replacement may remove a line naming only what its `rebuild.changes` say the model removed (tests,
               mutation-checked).
+            - Found: a command's new event broke the test of an automation that issues it (translate paddle
+              notification asserted exactly what the cancellation recorded). Fixed by hand in licensing (`ee20842`);
+              closed in emcli (planning names the built automations that issue a write slice's command, `builtIssuers`)
+              and `plan-change`.
             - Found: chapters follow prooph board's order, which emcli can't change (the board's API has no reorder),
               and copies follow chapter order: chapter 4 (index 3) couldn't extend chapter 1's lists (index 30). Chapter 4
               was recreated (a new chapter is added last). emcli's refusal now says the ways round it (`67c1e62`).
