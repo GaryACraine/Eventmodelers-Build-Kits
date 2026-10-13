@@ -17,6 +17,7 @@ import { configureJsonBody } from "./shared/inbox.js"
 import { poolSize, startReadModels, type ReadModel, type StoredProjectionRegistration } from "./shared/readModels.js"
 import { automationProcessors, type Automation, type ScheduleDefinition } from "./shared/automations.js"
 import {
+    activitiesOf,
     startWorker,
     temporalClient,
     temporalConfig,
@@ -87,7 +88,7 @@ await runSetup({ eventStore, pool }, setup)
 
 // The external automations' activities (each slice's `activities.ts`), run by the Temporal worker in this process
 // with the workflows in `workflows.ts`. No activities, no worker.
-const activities = {}
+const activities = activitiesOf()
 const worker =
     Object.keys(activities).length > 0
         ? startWorker({ config: temporal, workflowsPath: fileURLToPath(new URL("./workflows.js", import.meta.url)), activities })

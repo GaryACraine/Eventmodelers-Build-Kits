@@ -972,6 +972,14 @@ model and build only what's ours.
               notification asserted exactly what the cancellation recorded). Fixed by hand in licensing (`ee20842`);
               closed in emcli (planning names the built automations that issue a write slice's command, `builtIssuers`)
               and `plan-change`.
+            - Found (by the trial-cancellation e2e, not run since invitations): **a real bug** — both the trial
+              cancellation and the invitation email had an activity `recordStalled`; `index.ts` spread every
+              automation's activities into one object, so the invitation email's won, and a cancellation Paddle refused
+              was never recorded stalled (an "invitation-email-stalled" alert with the wrong ids instead). Fixed in
+              licensing (each renamed after its automation, `e68ad4b`, `8bdb488`); closed in the kit: `activitiesOf`
+              (`src/shared/temporal.ts`) stops the app at start on a name two automations define (template test), the
+              wiring uses it, and `build-automation` names every activity after its automation. Proven: trial
+              cancellation, settled chain, Paddle Sync, owner chain, journeys mock and sandbox (licensing `4acc808`).
             - Found: chapters follow prooph board's order, which emcli can't change (the board's API has no reorder),
               and copies follow chapter order: chapter 4 (index 3) couldn't extend chapter 1's lists (index 30). Chapter 4
               was recreated (a new chapter is added last). emcli's refusal now says the ways round it (`67c1e62`).

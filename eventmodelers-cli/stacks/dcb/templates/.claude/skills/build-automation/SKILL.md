@@ -205,7 +205,7 @@ const { chargeCard } = proxyActivities<PaymentRequestActivities>({
 // Recording in our own store: retried until it succeeds (our database back is the only fix). A command our rules
 // refuse (an order cancelled meanwhile) is an answer, not an outage: never retried. A command whose intent already
 // holds (the order already paid) decides nothing (ADR-050): a success, with nothing to catch
-const { recordPaid, recordFailed, recordStalled } = proxyActivities<PaymentRequestActivities>({
+const { recordPaymentPaid, recordPaymentFailed, recordPaymentStalled } = proxyActivities<PaymentRequestActivities>({
     startToCloseTimeout: "30 seconds",
     retry: {
         initialInterval: "1 second",
@@ -221,11 +221,11 @@ export async function paymentRequest(input: PaymentRequestInput): Promise<void> 
         answer = await chargeCard(input)
     } catch (err) {
         // Temporal gave up: the outcome is unknown. Record a stall, never a decline (ADR-032)
-        await recordStalled(input.orderId, input.attempt, stallOf(err))
+        await recordPaymentStalled(input.orderId, input.attempt, stallOf(err))
         return
     }
-    if (answer.outcome === "paid") await recordPaid(input.orderId, input.attempt)
-    else await recordFailed(input.orderId, input.attempt, answer)
+    if (answer.outcome === "paid") await recordPaymentPaid(input.orderId, input.attempt)
+    else await recordPaymentFailed(input.orderId, input.attempt, answer)
 }
 
 /** configuration: a non-retryable failure of that type; unavailable: retryable ones ran out, or timed out; else unknown */
@@ -251,6 +251,11 @@ The workflow runs in Temporal's sandbox and is replayed from its history:
 
 ### `activities.ts`: the calls
 
+**Name every activity after its automation** (`recordPaymentStalled`, never `recordStalled`). One worker runs every
+automation's activities, and Temporal finds an activity by its name alone: two automations with the same name leave
+one running the other's (licensing's trial cancellation once recorded its stalls through the invitation email's).
+`activitiesOf` in `src/index.ts` stops the app at start when a name is defined twice.
+
 ```typescript
 import type { EventStore } from "@dcb-es/event-store"
 import type { Pool } from "pg"
@@ -269,14 +274,14 @@ export function paymentRequestActivities(deps: { eventStore: EventStore; pool: P
     const alert = deps.alert ?? defaultAlert
     return {
         async chargeCard(input: PaymentRequestInput): Promise<ChargeAnswer> { /* the provider skill's call and reading */ },
-        recordPaid: (orderId: string, attempt: number) =>
+        recordPaymentPaid: (orderId: string, attempt: number) =>
             issueOnce(deps, `payment-result:${orderId}:${attempt}`, markOrderPaidDecider, { type: "markOrderPaid", data: { orderId } }),
-        recordFailed: (orderId: string, attempt: number, answer: Extract<ChargeAnswer, { outcome: "declined" }>) =>
+        recordPaymentFailed: (orderId: string, attempt: number, answer: Extract<ChargeAnswer, { outcome: "declined" }>) =>
             issueOnce(deps, `payment-result:${orderId}:${attempt}`, markOrderPaymentFailedDecider, {
                 type: "markOrderPaymentFailed",
                 data: { orderId, attempt, reason: answer.reason, kind: answer.kind, code: answer.code, card: answer.card }
             }),
-        async recordStalled(orderId: string, attempt: number, stall: { category: string; error: string }) {
+        async recordPaymentStalled(orderId: string, attempt: number, stall: { category: string; error: string }) {
             await issueOnce(deps, `payment-stalled:${orderId}:${attempt}`, markPaymentStalledDecider, {
                 type: "markPaymentStalled",
                 data: { orderId, attempt, ...stall }
@@ -349,11 +354,12 @@ it has finished, does nothing. A later attempt (a retry after a stall, the custo
 
 - `src/workflows.ts`: add **one line** (in the slice commit; the file only grows):
   `export { paymentRequest } from "./contexts/restaurant/slices/requestpayment/workflow.js"`
-- `src/index.ts` (the wiring commit): add the automation to `automations`, and its activities to `activities`:
+- `src/index.ts` (the wiring commit): add the automation to `automations`, and its activities to `activitiesOf(...)`
+  (`src/shared/temporal.ts`), which refuses a name another automation already uses:
   ```typescript
-  const activities = {
-      ...paymentRequestActivities({ eventStore, pool, gateway: braintreeGateway() })   // the provider skill's gateway
-  }
+  const activities = activitiesOf(
+      paymentRequestActivities({ eventStore, pool, gateway: braintreeGateway() })   // the provider skill's gateway
+  )
   ```
 
 ### The mock of the outside system
