@@ -167,6 +167,11 @@ the tags exactly, so it fails until the producer's same-name replacement is buil
 
 - **Each slice holds its own rules.** If two slices need the same rule, write it in both: duplication is the
   price of independence. Never make one slice call into another's code.
+- **A new event that joins a rule several slices hold reaches each through the same scenarios.** Each slice's code
+  is built only from its own scenarios, so give every one of them the same cases: in licensing, "holds a role
+  anywhere" (activate organisation, accept invitation) needed both "removed from every role: allowed" and "still
+  holding another role: refused" (ADR-070); accept invitation, given only the first, folded a yes/no that the second
+  would have caught. Find the holders with `grep -rl "<the rule's decision model>" src/contexts`.
 - **Own command or not** is a judgement for each case. Two slices that `produce` the same event from one command
   is the sign to look (emcli `completeness` warns about it). Give one its own command, or keep the rules in one
   slice.
