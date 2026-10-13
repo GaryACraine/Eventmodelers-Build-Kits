@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react"
+import { screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
 import { apiUrl } from "@/lib/api"
@@ -11,6 +11,12 @@ describe("Course List", () => {
         renderWithProviders(<CourseList linkTo={(course) => `/courses/${course.id}`} />)
         expect(await screen.findByRole("link", { name: "Math" })).toHaveAttribute("href", "/courses/c1")
         expect(screen.getByRole("cell", { name: "30" })).toBeInTheDocument()
+    })
+
+    it("puts the page's action for each course in a last column (ADR-069)", async () => {
+        renderWithProviders(<CourseList row={(course) => <button>Bookmark {course.title}</button>} />)
+        const row = (await screen.findByRole("cell", { name: "Math" })).closest("tr")!
+        expect(within(row).getByRole("button", { name: "Bookmark Math" })).toBeInTheDocument()
     })
 
     it("shows the first page, and Load more adds the next one below it until there are no more", async () => {
