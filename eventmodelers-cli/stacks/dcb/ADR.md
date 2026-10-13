@@ -5576,8 +5576,8 @@ which page a card is on, its order, and its nesting are already drawn there.
 
 ### ADR-070: Removing a member: owner and admins remove, one decision releases everything, and removal reaches every count
 
-**Status:** **Proposed, 2026-10-13.** Licensing's chapter 4, modelled to prove ADR-069 with the loop (a new part on
-an existing page, built without touching a page). Gary decides.
+**Status:** **Accepted, 2026-10-13 (Gary), as written.** Licensing's chapter 4, modelled to prove ADR-069 with the
+loop (a new part on an existing page, built without touching a page).
 **Date:** 2026-10-13
 **Authorities consulted (ADR-064):** SaaS tenancy and onboarding: Better Auth's organization plugin (an owner and
 admins may remove members, a member may not; an admin can't change the owner; leaving is its own call,
