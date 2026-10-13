@@ -933,8 +933,12 @@ model and build only what's ours.
             - Found: `seatWasReleased` is tagged by organisation only, though the model (and ADR-070) say organisation
               and person; nothing compares the code's tags with the model's ids. A survey of licensing found two
               more: `refusedTrialWasCancelled` lacks its `paddleEventId` tag, and `userWasAssignedToRole` has different
-              id fields in different slices of the model. Open, for Gary: which side moves, and the checks
-              (below).
+              id fields in different slices of the model. (Corrected: `refusedTrialWasCancelled` matches, its
+              `paddleEventId` tag is conditional and load-bearing; `userWasAssignedToRole`'s difference was an old
+              slice.json.) Gary: the seat events keep the person, and the deeper fault is the loop choosing tags at all.
+              **ADR-071 Proposed** 2026-10-13: tags are modelled, appraised against the slice's specifications at
+              planning, and the loop is told them exactly (slice.json `tags`, a commit check). Gary decides; then
+              emcli, the kit, and licensing's seat tags exported with accept invitation's fix.
             - Found: chapters follow prooph board's order, which emcli can't change (the board's API has no reorder),
               and copies follow chapter order: chapter 4 (index 3) couldn't extend chapter 1's lists (index 30). Chapter 4
               was recreated (a new chapter is added last). emcli's refusal now says the ways round it (`67c1e62`).
