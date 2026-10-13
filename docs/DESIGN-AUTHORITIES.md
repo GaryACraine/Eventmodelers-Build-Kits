@@ -15,8 +15,8 @@ to be the right precedent. Each row names the ADRs that have already used it.
 
 | Discipline | Standards and guides | Inspirations and competitors | Local | Used in |
 |---|---|---|---|---|
-| **Event sourcing, DCB and event-driven architecture** (consistency, tags, projections, processors, upcasting, messaging between services) | [dcb.events](https://dcb.events) (the DCB specification); Oskar Dudycz, event-driven.io: [Event Sourcing](https://event-driven.io/en/category/event-sourcing/), [CQRS](https://event-driven.io/en/category/cqrs/) and [Event-Driven Architecture](https://event-driven.io/en/category/event-driven-architecture/) | Axon 5; Emmett; Marten (its async daemon) | Axon jars: `~/.m2/repository/org/axonframework`, Gary's `generator-axon5-scratch`. Emmett: `~/Projects/emmett` (`src/docs/guides`) | ADR-003, 031, 047, 048, 059, 061 |
-| **Event modelling** (chapters, slices, specifications, the timeline) | Adam Dymitruk, [eventmodeling.org](https://eventmodeling.org); Martin Dilger, *Understanding Eventsourcing* | prooph board | The book: `/Volumes/SD/e-books/eventmodeling-and-eventsourcing (1).pdf` (read with PyMuPDF) | ADR-031 |
+| **Event sourcing, DCB and event-driven architecture** (consistency, tags, projections, processors, upcasting, messaging between services) | [dcb.events](https://dcb.events), the DCB knowledge base (below); Oskar Dudycz, event-driven.io: [Event Sourcing](https://event-driven.io/en/category/event-sourcing/), [CQRS](https://event-driven.io/en/category/cqrs/) and [Event-Driven Architecture](https://event-driven.io/en/category/event-driven-architecture/) | Axon 5; Emmett; Marten (its async daemon) | dcb.events: `~/Projects/dcb-events/docs` (the site's source). Axon jars: `~/.m2/repository/org/axonframework`, Gary's `generator-axon5-scratch`. Emmett: `~/Projects/emmett` (`src/docs/guides`) | ADR-003, 031, 047, 048, 059, 061 |
+| **Event modelling** (chapters, slices, specifications, the timeline; with DCB, each rule's tags and consistency boundary) | Adam Dymitruk, [eventmodeling.org](https://eventmodeling.org); Martin Dilger, *Understanding Eventsourcing*; [dcb.events](https://dcb.events) for DCB modelling (below) | prooph board | The book: `/Volumes/SD/e-books/eventmodeling-and-eventsourcing (1).pdf` (read with PyMuPDF) | ADR-031 |
 | **Domain modelling and contexts** (bounded contexts, integration between them) | Eric Evans, *Domain-Driven Design*; Vaughn Vernon, *Implementing DDD* | Axon 5 (integration events) | | ADR-059, 061 |
 | **CQRS and task-based UI** (commands as intent, not edits) | Greg Young; Udi Dahan; event-driven.io's [CQRS](https://event-driven.io/en/category/cqrs/) category | | | ADR-065 |
 | **UI navigation and information architecture** (menus, wayfinding, flows, grouping) | Nielsen Norman Group ([nngroup.com](https://www.nngroup.com)); Rosenfeld, Morville and Arango, *Information Architecture* (4th ed.); [Material Design 3: navigation](https://m3.material.io); Apple Human Interface Guidelines; [GOV.UK Design System](https://design-system.service.gov.uk) (service navigation, task list, one thing per page) | | | ADR-065 |
@@ -31,6 +31,24 @@ to be the right precedent. Each row names the ADRs that have already used it.
 | **Durable work and timers** | Temporal's documentation | | | ADR-031, 033, 042 |
 | **Personal data and erasure** | GDPR, and the Isle of Man's data protection law | Axon's data protection module; Marten's masking (not yet compared) | | ADR-062 |
 | **Databases** | PostgreSQL's documentation and release notes; AWS RDS | | | ADR-001, 054, 063 |
+
+## dcb.events: the knowledge base for DCB modelling
+
+[dcb.events](https://dcb.events) is the reference for Dynamic Consistency Boundaries, which our event store implements.
+It's both a knowledge base (read it when modelling a rule) and a design authority (cite it in an ADR, ADR-064). A full
+copy of the site's source is at `~/Projects/dcb-events` (`git -C ~/Projects/dcb-events pull` refreshes it); its pages
+are Markdown under `docs/`:
+
+| Question | Read |
+|---|---|
+| What a rule may read and what it conflicts with: decision models, queries, append conditions | `docs/specification.md` |
+| Which tags an event carries, how fine, and changing them later | `docs/topics/tags.md` |
+| A rule across several things (a seat and a person, a course and a student) | `docs/examples/course-subscriptions.md` |
+| Something unique (an email, a name), or a gapless number | `docs/examples/unique-username.md`, `invoice-number.md` |
+| A value that changes under a decision (a price, a setting) | `docs/examples/dynamic-product-price.md` |
+| A one-time token, or the same request twice | `docs/examples/opt-in-token.md`, `prevent-record-duplication.md` |
+| Aggregates and projections in DCB terms | `docs/topics/aggregates.md`, `projections.md`, `examples/event-sourced-aggregate.md` |
+| Common questions | `docs/faq.md` |
 
 **Rows to add when a question first needs them:** accessibility (WCAG 2.2), testing, deployment and operations,
 observability.
