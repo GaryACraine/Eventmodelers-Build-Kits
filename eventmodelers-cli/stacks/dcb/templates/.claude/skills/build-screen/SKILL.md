@@ -348,6 +348,13 @@ Load more, sees both rows, and sees the button gone.
   const allowed = useAllowed(page.path, "reportCheckoutCompleted", organisationId)
   {allowed && <ReportCheckoutCompletedForm organisationId={organisationId} />}
   ```
+- **An action on each row of another slice's list (ADR-068):** every list view takes an optional
+  `rowAction?: (row) => ReactNode` and renders it in a last column (no header) when given. A card whose mockup puts
+  its command inside the rows of a list another slice's view renders (withdraw invitation's form in Pending
+  invitations) never draws its own copy of the list: its form takes the row's ids as props, and the page fills the
+  list's slot, `<OrganisationInvitationsView organisationId={…} rowAction={(row) => <WithdrawInvitationForm
+  organisationId={…} invitationId={row.invitationId} />} />`. Only the page file changes outside this slice's folder.
+  A list built before this rule has no slot yet: block, asking for it to be added (a one-line change to that view).
 - **Show a part only to who may read it (ADR-068):** on a page whose parts need different permissions (the
   organisation's page: its overview needs `organisation:read`, its pending invitations `invitation:list`), a view
   whose read model's declaration is a permission renders only when `useCanRead("<resource:action>", <organisationId
