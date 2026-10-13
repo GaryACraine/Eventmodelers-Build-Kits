@@ -909,8 +909,10 @@ model and build only what's ours.
               the export writes it) and the 7 page files removed, callbacks renamed `onDone`/`row`/`createPath`;
               8 superseded UI lessons pruned. Web 164; journeys mock 3/3 and sandbox 3/3 with no page file
               (recorded). The guard refuses a page in a slice commit (checked in licensing).
-            - [ ] **Next proof:** a new part on an existing page built by the loop without touching a page (e.g.
-              chapter 4's Remove in each member row of the overview). Needs a modelled slice and Gary's export.
+            - [ ] **Next proof:** a new part on an existing page built by the loop without touching a page:
+              chapter 4's Remove in each member row of the overview. **ADR-070 Proposed** 2026-10-13 (removing a
+              member: owner and admins, the owner can't be removed, nobody removes themselves, one decision
+              releases roles and seats, removal reaches every count). Gary decides; then model, export, the loop.
           - Found: same-title slices in different chapters clashed only at export. Closed in emcli: `completeness`
             gives the later one an ERROR, so planning holds it back. It found 17 future clashes in licensing's draft
             chapters 6 to 19 (to retitle when they're planned).
