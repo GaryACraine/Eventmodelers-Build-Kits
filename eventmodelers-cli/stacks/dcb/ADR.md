@@ -5633,3 +5633,60 @@ it decides; what was decided earlier is folded, never rolled back).
   member, each with a scenario for a removed member. The role map grants `member:remove` to owner and admin.
 - Chapters 3 and 5 later reuse `userWasRemovedFromRole` and `seatWasReleased`, already folded everywhere.
 - No email to the removed person yet (a notice, like ADR-056's, can follow).
+
+### ADR-071: Tags are modelled and appraised against the specifications at planning; the loop is told them, never asked
+
+**Status:** **Accepted, 2026-10-13 (Gary).** Gary: "Event tagging is part of the modelling discipline, not the
+implementation. Tell, don't ask Ralph"; and at planning "make sure that the tags that have been selected from the ID
+properties support the specifications as defined in the slice".
+**Date:** 2026-10-13
+**Authorities consulted (ADR-064):** event sourcing and DCB: dcb.events, "Tags" ("whenever a hard constraint depends on
+an event being included in a Decision Model, the necessary tags must be present"; tags should select exactly the events
+a decision needs, since broader ones block unrelated decisions; new events may carry new tags while older ones keep
+theirs, and re-tagging is "controversial and rarely necessary").
+
+**Context:**
+- ADR-048 made an event's tags its id fields (`--id`), with its addendum on what to tag (the things the event is about,
+  never a value with few options), and `plan-change` has "Changing an event's tags". But the tags stay implicit:
+  slice.json carries `idAttribute` per field, never "tag exactly these"; the build skills leave room to interpret;
+  nothing compares the code with the model; and nobody checks that the tags let each rule read what it needs.
+- **What went wrong (licensing, chapter 4):** the loop wrote `seatWasReleased` tagged by organisation only, though the
+  model said organisation and person. It copied the built `seatWasAssigned`, which was modelled without the person. So
+  remove member's rule, "the seats this person holds", reads the organisation's whole seat history and filters by
+  person in its fold (`HeldSeats`).
+- **What went right, after a fix:** "holds a role anywhere" (activating, accepting) works only because
+  `userWasAssignedToRole` gained the `userId` tag (licensing `d35e117`, before release); the Paddle translation closes
+  its to-do item and recognises "already done" through `paddleEventId`, an optional tag.
+
+**Decision (recommended):**
+1. **The model decides every event's tags, at modelling time.** They are its id fields (ADR-048), plus another
+   system's ids on an event recorded from it; an id the event only sometimes carries is an optional tag. The same event
+   has the same tags wherever it's drawn.
+2. **At planning, the tags are appraised against the slice's specifications.** A write slice's rule is about its
+   command's keys (its id fields, and any field naming an entity in the id register). Every event a scenario gives that
+   rule must be found by those keys: when the event carries one of the rule's keys but isn't tagged with it, the rule
+   would read too much (all the organisation's seats, to find one person's), and when it carries none of them, the rule
+   can't find it by any key it has. emcli shows each planned slice's appraisal (rule keys, each given event and the
+   tags it's read by) and warns on both, naming the scenario; it also warns about a tag with few values (`roleId`) and
+   about one event tagged differently in two places. Warnings never block (the existing rule): the modeller settles
+   each, by tagging, or by saying why the rule reads more.
+3. **The loop is told, never asked.** slice.json gives each event its `tags` (optional ones marked); the build skills
+   write the factory's tags from it exactly (an optional one as a conditional spread). The commit guard refuses a
+   slice commit that adds an event factory whose tags differ from slice.json's.
+4. **Changing an event's tags is a modelling decision with its own route** (`plan-change`, ADR-048), never something
+   the loop does. Before release: add a tag when no query is affected, else expand, switch, contract, and reset the
+   local database. After release it's open: events already stored keep their tags (DCB), so a decision that starts
+   relying on a new tag misses older events unless it also reads by the old one, or the store is migrated.
+
+**Alternatives considered:**
+- **A check only on the code** (the factory's tags equal the model's ids). It stops the loop choosing, but not a model
+  that tags too little for its own rules, which is how `seatWasAssigned` was born.
+- **emcli generates `Events.ts` itself.** Deterministic, but emcli would write code; telling the loop exactly and
+  checking it keeps emcli writing contracts only (as ADR-069 kept pages).
+
+**Consequences:**
+- emcli: `tags` per event in slice.json; the appraisal at `slice status … planned` and in `completeness`; tests.
+- Kit: the build skills (state change, automation, wherever a factory is written) take `tags` as given; a commit check
+  (`22-event-tags`) with tests; `plan-change` and the `event-model` skill point here.
+- Licensing: `seatWasAssigned` and `seatWasReleased` tag organisation and person (model, then one `Events.ts` commit
+  outside the loop, their producers replaced, the local database reset), exported with accept invitation's fix.
