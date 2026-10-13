@@ -201,7 +201,10 @@ the tags exactly, so it fails until the producer's same-name replacement is buil
 - **The role map** (ADR-060: `emcli role …`, written to `api/roles.json`) is the model too, but changing what a role
   holds rebuilds no slice: the API reads the map when it starts. A route whose permission no role holds can't be
   called by anyone (completeness errors). Give the permission before the route is built, so its tests can sign in as
-  a role that holds it.
+  a role that holds it. **Granting a permission can break a built test that signs in as that role to be refused**
+  (licensing's organisation overview expected an engineer's 403 until engineers gained `organisation:read`, ADR-068):
+  find them (`grep -rl '"<role>"' src --include='*.tests.ts'`) and update them by hand, in their own commit, before
+  the export.
 - **Navigation** (ADR-065: `element next`, `element area`, `emcli id`) is the model too:
   - **where a screen leads, its mockup or its page route:** on a built slice, the export re-queues that screen's UI
     alone (the backend stays as built);

@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from "react-router"
+import { NavLink, Outlet, useLocation } from "react-router"
 import type { PageInfo } from "@/lib/page"
 import { navigation as fromModel, useMenu, type MenuItem, type Navigation } from "@/lib/navigation"
 import { useSessionState } from "@/lib/session"
@@ -44,6 +44,10 @@ const Item = ({ item }: { item: MenuItem }) => (
 export function Layout({ nav, navigation = fromModel }: { nav: PageInfo[]; navigation?: Navigation }) {
     const { session, signOut, mode, signedIn } = useSessionState()
     const menu = useMenu(navigation)
+    // Signing in or up from the header comes back to this page (an invitation's, say: ADR-068), as the page's own form does
+    const { pathname, search } = useLocation()
+    const back = pathname === "/sign-in" || pathname === "/sign-up" ? new URLSearchParams(search).get("next") : pathname === "/" ? null : `${pathname}${search}`
+    const carry = back ? `?next=${encodeURIComponent(back)}` : ""
     const typed = Object.entries(session)
     return (
         <div className="min-h-screen">
@@ -89,10 +93,10 @@ export function Layout({ nav, navigation = fromModel }: { nav: PageInfo[]; navig
                                 </Group>
                             ) : (
                                 <>
-                                    <NavLink to="/sign-in" className={link}>
+                                    <NavLink to={`/sign-in${carry}`} className={link}>
                                         Sign in
                                     </NavLink>
-                                    <NavLink to="/sign-up" className={link}>
+                                    <NavLink to={`/sign-up${carry}`} className={link}>
                                         Sign up
                                     </NavLink>
                                 </>

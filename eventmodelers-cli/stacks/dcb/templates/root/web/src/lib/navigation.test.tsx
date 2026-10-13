@@ -87,6 +87,26 @@ describe("what the menu offers (ADR-065)", () => {
         expect(within(nav).getByRole("link", { name: "Sign up" })).toHaveAttribute("href", "/sign-up")
         expect(within(nav).queryByText("Organisations")).toBeNull()
     })
+
+    it("signed out on a page, signing in or up comes back to it (ADR-068: an invitation's link)", () => {
+        vi.spyOn(signInService, "useSession").mockReturnValue({ data: null, isPending: false } as never)
+        const header = (at: string) => {
+            const { unmount } = render(
+                <SessionProvider mode="better-auth" remember={false}>
+                    <MemoryRouter initialEntries={[at]}>
+                        <Layout nav={[]} navigation={navigation} />
+                    </MemoryRouter>
+                </SessionProvider>
+            )
+            const nav = screen.getByRole("navigation")
+            const hrefs = [within(nav).getByRole("link", { name: "Sign in" }), within(nav).getByRole("link", { name: "Sign up" })].map((l) => l.getAttribute("href"))
+            unmount()
+            return hrefs
+        }
+        expect(header("/invitations/i1")).toEqual(["/sign-in?next=%2Finvitations%2Fi1", "/sign-up?next=%2Finvitations%2Fi1"])
+        // on Sign in itself, the page it was carrying
+        expect(header("/sign-in?next=%2Finvitations%2Fi1")).toEqual(["/sign-in?next=%2Finvitations%2Fi1", "/sign-up?next=%2Finvitations%2Fi1"])
+    })
 })
 
 describe("where the start page sends the person (ADR-065)", () => {
