@@ -846,7 +846,7 @@ model and build only what's ours.
                where commands go). Licensing `5dacd13` (kit-drift 0).
              - Not built, and not needed: the ADR's "a flow screen with no next page that isn't its chapter's end".
                The next page is derived from the timeline, so a screen with none is the end of its lane's flow.
-       6. **NEXT (Gary, 2026-10-12): invitations, licensing's chapters 2, 10 and 11 (ADR-068 Accepted).** The invited
+       6. ✅ **Done 2026-10-13: invitations, licensing's chapters 2, 10 and 11 (ADR-068 Accepted).** The invited
           email accepts; accepting records the roles and seats in one decision; one organisation per person for now;
           licensing emails the invitation by automation; a pending invitation holds its seats, with no allocation
           event (Gary asked; the invitation is the allocation and its end the release); owner and admin invite.
@@ -873,9 +873,18 @@ model and build only what's ours.
           - Found: `emcli dependency add` and `slice add --after` resolve names across every chapter (chapters 2, 10
             and 11 share slice names), so the model used ids; a copy can't be marked across chapters whose index runs
             the other way (chapter 1 is index 30), so chapter 2's context events stay plain (only scenarios use them).
-          - [ ] Gary's go-ahead to export chapters 2, 10 and 11 together.
-
-          - [ ] The loop builds; then `e2e/invitations.mjs`, the journey (mock and sandbox), security evidence.
+          - [x] Exported 2026-10-12 (Gary's go-ahead), after titling the context slices by their chapter (one
+            folder per title). The loop built 23 of 25; withdraw's UI blocked (its form in another slice's list rows:
+            the `rowAction` slot, kit PR #286, licensing `4e18082`) and one slice was interrupted after committing
+            (its 15 tests passed; planned again, nothing to change). Both Done (`3722e7a`).
+          - [x] ✅ **Proven 2026-10-13** (licensing `d331fc2`): `e2e/invitations/invitations.mjs` 33/33 (holds, the
+            race 201/422, withdrawal, the email in Mailpit, the link alone grants nothing, accepting, one organisation
+            per person, the expiry workflow waiting in Temporal); the member-joins journey on the mock and Paddle's
+            sandbox (all journeys 3/3); security AC-11 recorded. Backend 605, web 162.
+          - Found and fixed: the header's Sign up carried no `next`, losing an invitation (kit PR #287); a built
+            test expected an engineer's 403 until decision 9 (licensing `2a4df69`; `plan-change` now says to look).
+          - Gary's idea (2026-10-13): pages composed from the model, slices contributing parts, so no slice edits a
+            page (the shared page file is where slices collide). **NEXT: ADR-069 Proposed** (plan approved).
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
        `plan-change` and `job-scope` count as proven once a change with users goes through expand, switch,
        contract in the loop.
