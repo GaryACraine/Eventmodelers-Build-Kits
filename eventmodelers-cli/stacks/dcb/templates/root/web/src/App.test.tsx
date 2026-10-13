@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react"
 import { http, HttpResponse } from "msw"
 import { App } from "./App"
-import { afterWrite, api, apiUrl, command, positionOf, read, ApiError } from "./lib/api"
+import { afterWrite, api, apiUrl, command, positionOf, read, retryRead, ApiError, STILL_UPDATING } from "./lib/api"
 import { server } from "./mocks/server"
 
 describe("the app shell", () => {
@@ -36,6 +36,22 @@ describe("the API client (answered by MSW)", () => {
         const result = await command(untyped.POST("/things", { body: { name: "x" } }))
         expect(result).toEqual({ data: { id: "t1" }, position: "42" })
         expect(key).toMatch(/^[0-9a-f-]{36}$/)
+    })
+
+    it("a read still catching up with the last write (504) says so, and is tried again until it has", async () => {
+        server.use(http.get(apiUrl("/things/t1"), () => HttpResponse.json({ title: "Gateway Timeout", status: 504 }, { status: 504 })))
+        const error = (await read(untyped.GET("/things/t1", { headers: afterWrite("42") })).catch((e: unknown) => e)) as ApiError
+        expect(error).toMatchObject({ status: 504, stillUpdating: true, message: STILL_UPDATING })
+        expect([0, 1, 2, 3, 4].map((failures) => retryRead(failures, error))).toEqual([true, true, true, true, true])
+        expect(retryRead(5, error)).toBe(false)
+    })
+
+    it("tries any other 5xx or a network error once, and a refusal never", () => {
+        const failed = new ApiError(500, { title: "Internal Server Error" })
+        expect([retryRead(0, failed), retryRead(1, failed)]).toEqual([true, false])
+        expect(retryRead(0, new TypeError("Failed to fetch"))).toBe(true)
+        expect(retryRead(0, new ApiError(404, { detail: "Course not found" }))).toBe(false)
+        expect(failed.stillUpdating).toBe(false)
     })
 
     it("a rejection throws ApiError with the Problem-JSON's detail", async () => {

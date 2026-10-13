@@ -932,6 +932,17 @@ model and build only what's ours.
             - Found: the ADR-069 migration gave the row slot only to the list that had a row action. Closed: licensing's
               overview and My Organisations (`7356881`, `8876fce`) and the kit's example list take `row`;
               `build-screen` already requires it of every new list.
+            - Gary asked (2026-10-13) whether the web app knows which read models are eventually consistent. It does,
+              at build time: views of `database-projected` read models send the last write's position and the API
+              waits for the projection to pass it (`preferWait` → `waitUntilProcessed`, ADR-013); `inline-projected`
+              ones are current when the command returns (ADR-021). For removal, the role lookup and My Organisations
+              are inline, so a removed person is refused at once.
+            - Found: a read whose wait ran out (504) showed as a failure after one retry. Closed in the kit's
+              `web/src/lib/api.ts`: `ApiError.stillUpdating`, the message "Still updating…", and `retryRead` tries it 5
+              more times (each waits again) before showing anything (template tests, mutation-checked).
+            - Open: other people's writes aren't waited for (another admin's open Dashboard, a view waiting on an
+              automation) until the view is fetched again (`refetchOnWindowFocus: false`). Options when it matters:
+              refetch on focus, polling, pushed changes (SSE). Nothing in chapter 4 needs it.
             - Considered and rejected: making a scenario's events prerequisites at hand-off. It wouldn't change the
               loop's build order, and an event several slices record would make every user wait for all of them; the
               loop already defines an event type the first time a scenario needs it (invitations round).
