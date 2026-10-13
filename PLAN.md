@@ -1028,6 +1028,10 @@ model and build only what's ours.
             a form card, an empty state, a row action), so a part is put together from named patterns rather than
             each job restyling the mockup by hand. After ADR-069, which fixes what a part is; the pattern library
             decides what a part is made of.
+            **ADR-072 Proposed 2026-10-13:** inventory of licensing's 14 parts (in the ADR), 7 patterns under
+            the UI patterns authorities (GOV.UK, NN/g, WCAG 2.2, Atomic Design; new DESIGN-AUTHORITIES row),
+            one error wording, `--confirm` from the model, names not ids (emcli warning), check `23-web-patterns`.
+            For Gary's review.
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
        `plan-change` and `job-scope` count as proven once a change with users goes through expand, switch,
        contract in the loop.

@@ -5696,3 +5696,154 @@ theirs, and re-tagging is "controversial and rarely necessary").
   (`22-event-tags`) with tests; `plan-change` and the `event-model` skill point here.
 - Licensing: `seatWasAssigned` and `seatWasReleased` tag organisation and person (model, then one `Events.ts` commit
   outside the loop, their producers replaced, the local database reset), exported with accept invitation's fix.
+
+### ADR-072: A pattern library for the parts: a part is put together from the kit's patterns, never restyled by hand
+
+**Status:** **Proposed, 2026-10-13**, for Gary's review. Asked for by Gary (2026-10-13), after ADR-069: "make sure we
+align with a relevant design authority and also good UI/UX principles".
+**Date:** 2026-10-13
+**Authorities consulted (ADR-064):** UI patterns, forms and accessibility (`docs/DESIGN-AUTHORITIES.md`, a new row):
+- **Brad Frost, *Atomic Design*:** a UI is a hierarchy. Atoms (a button, an input) make molecules and organisms (a
+  labelled field, a card), which templates and pages arrange. The pattern library is the workshop where those
+  pieces are built once and then reused, so that pages are assembled rather than drawn again.
+- **GOV.UK Design System:** one component for each recurring need, each with the rules for when to use it.
+  - A *summary list* (`<dl>`) is for key facts: one key and at least one value. Tabular data goes in a *table*.
+  - A row's action link carries visually hidden text so that it reads as "Change name", not "Change".
+  - Every validation error shows an *error message* by its field and an *error summary* at the top. Focus moves to
+    the summary.
+  - A success *notification banner* confirms something the person expected, when the journey goes on. A finished
+    journey gets a confirmation page instead.
+- **Nielsen Norman Group:**
+  - **Heuristics.** Visibility of system status (1), user control and freedom (3), consistency and standards (4),
+    error prevention (5), recognition rather than recall (6), and help users recognise, diagnose and recover from
+    errors (9).
+  - **Empty states** do three jobs: say the system's status, teach what goes there, and give a direct path to the
+    key task.
+  - **Confirmation dialogs.** Only use them before serious consequences that can't be undone, because overuse teaches
+    people to click through. Prefer undo where there is one. Name the item and the consequence, use buttons that say
+    the outcome ("Remove member" / "Keep member", never Yes/No), and don't make the destructive one the default.
+- **WCAG 2.2:**
+  - 1.3.1, info and relationships: labels, headings, and table headers that name their column.
+  - 2.4.6, headings and labels describe their purpose.
+  - 3.3.1 and 3.3.3: an error is identified in text and suggests a fix.
+  - 4.1.3, status messages: loading, success, results and errors are announced without moving focus. `role="status"`
+    is for loading and success, `role="alert"` for errors only. Overusing `alert` is a named failure.
+
+They agree:
+- build each recurring piece once, with its states and accessibility inside it;
+- give each piece a rule for when to use it;
+- show people the state of the system and a way forward;
+- confirm only what can't be undone.
+
+**Context: the inventory** (licensing's 14 parts, 2026-10-13; the kit's example has 5 of the same shapes). Each part
+is written by hand from its mockup (`build-screen` Step 4), so each one restates the same pieces, and they drift:
+
+| Piece | Parts with it | How they drift, and what's missing |
+|---|---|---|
+| Error line, `<p role="alert">` | 14 of 14 | 6 forms show a raw exception's text (`String(e)`, which can be a stack message); 2 show "Something went wrong. Try again."; the alert sits under the button, and focus never moves to it |
+| A card with a heading | 12 | 6 `form.mock-card`s and 6 `section.mock-card`s; the kit's `card.tsx` is unused |
+| A view's four states (loading, 404 as empty, error, data) | 6 views | a nested ternary written six times. The "Loading…" line has no `role="status"`. 5 of the 6 empty states only say "No … yet": only one gives the way forward (NN/g's third job) |
+| Success line, `role="status"` | 5 forms | the wording is written each time |
+| Key facts, `<dl>` | 4 | ids shown as facts ("Sub", "User ID", "Organisation ID"); raw ISO dates (`trialEndsAt`, `expiresAt`); role and seat ids shown as words ("engineer") |
+| Table | 3 | the kit's `table.tsx` is unused; the row-action column's header is an empty `<th />` with no name. One table is nested inside a `<dd>` |
+| A row's action (Remove, Withdraw) | 2 | the same button text on every row, so a screen reader hears "Remove, Remove, Remove". Removing a member, which can't be undone, isn't confirmed |
+| A field and its error | 2 forms | the error is a `<p>` that the input doesn't point to (no `aria-describedby`, no `aria-invalid`); checkbox groups are written as a bare `fieldset` |
+| Hand styling | 2 | `style={{ … }}` with a hard-coded `#6b7280` (StartOptions), against `learn-styleguide`'s own rule |
+| People see ids, not names | 3 | My Organisations links each organisation by its id; the overview's members are listed by `userId`; My Account shows the sign-in `sub` |
+
+The last row is the model's, not the code's: those read models carry no name to show. The rest happens because
+nothing is shared. Each job reinvents the pieces, the reviewer can't see the drift, and the fixes (above) would have to be
+made 14 times, then again in every new part.
+
+**Decision (proposed):**
+1. **Four layers (Atomic Design), each with one owner.**
+   - **Atoms:** `web/src/components/ui/` (shadcn/ui), as now.
+   - **Patterns:** a new folder, `web/src/components/patterns/`.
+   - **Parts:** a slice's own folder (ADR-069), put together from patterns and atoms only.
+   - **Pages:** `ModelPage`, composed from the model (ADR-069).
+
+   Atoms and patterns are the kit's: template-tested, copied by the kit update, and refused to a loop job by
+   `web-scope` (patterns are added to it). A part that needs a pattern the kit lacks blocks with `request-feedback`, as
+   a missing shadcn component does today. That case is a kit change.
+2. **The patterns: seven, each taken from the inventory, each following its authority.**
+
+   | Pattern | What it owns | Authority |
+   |---|---|---|
+   | `ViewCard` | A card and its heading, around a read's states. Loading is `role="status"` text. A database-projected read still updating says so (ADR-013's fence). The empty state gives the status, what goes here, and the path to fill it (`createPath`, the page's). Any other error is the alert. The data comes last. Takes the query's result and renders its children with the data | NN/g empty states; heuristic 1; WCAG 4.1.3 |
+   | `FormCard` | A card, its heading and its form. The error goes at the top, under the heading, and gets focus. The submit button shows that it's sending (`useSubmitOnce`'s `pending`, ADR-067). Success is `role="status"`, used only when the page stays: when the model gives `next`, the page goes on instead | GOV.UK error summary and notification banner; WCAG 3.3.1, 4.1.3 |
+   | `Field`, `ChoiceGroup` | A label, an optional hint and an input. The error sits under the input and is linked by `aria-describedby`, and the input gets `aria-invalid`. `ChoiceGroup` is a `fieldset` and `legend` holding checkboxes or radios | GOV.UK error message, checkboxes, radios; WCAG 1.3.1, 3.3.1 |
+   | `SummaryList` | Key facts as a `<dl>`, one key with at least one value each. A list value is a `<ul>` | GOV.UK summary list |
+   | `DataTable` | Columns with headers. The first cell links to the row's page (`linkTo`). The row-action column's header is named ("Actions", visually hidden). `LoadMore` under a paged list. Its own empty state, as for `ViewCard` | GOV.UK table; WCAG 1.3.1 |
+   | `RowAction` | A command's button in a row. Its accessible name includes the row ("Remove alex@example.com"). It asks first when the command is confirmed (decision 4) | GOV.UK's visually hidden link text; NN/g confirmation dialogs |
+   | `Value` | One value shown by its field's type: dates and times through `Intl` in the person's locale, money through `Intl` with its currency, lists as a list, a field with labelled values by its label | heuristics 4 and 6 |
+3. **One wording rule for errors.** `errorText(e)` gives an `ApiError`'s `detail`, which the backend writes for
+   people (Problem Details, ADR-005). Anything else gives "Something went wrong. Try again.". A raw exception's text
+   is never shown. The rule follows heuristic 9 and WCAG 3.3.3: rejection texts in the specifications already say
+   what to do, and a stack message doesn't.
+4. **What can't be undone is confirmed, and the model says what that is** (properties, not prose). The modeller
+   marks a command with the consequence a person must accept: `emcli element set <chapter> removeMember --confirm
+   "They lose access at once, and their seat is released."`. The command's own name gives the confirm button, and
+   "Cancel" is the other. Neither is the default. slice.json carries `confirm`, and `RowAction` and `FormCard` ask
+   with it. Only commands that can't be reversed are marked: a person removed has to be invited again, while a
+   withdrawn invitation can be sent again. Marking too much is the failure NN/g warns of, so emcli doesn't guess. The
+   `event-model` skill asks the modeller about each command that ends something.
+5. **People see names, not ids.**
+   - When a view's mockup shows an id field as text a person reads (a `data-field` naming an id-register entry,
+     outside a link's target), emcli warns at planning: show the thing's name, and carry it in the read model if it
+     isn't there. This follows heuristic 6, recognition rather than recall, and OOUX's objects shown as people know
+     them.
+   - Like every check, it's a warning. A support screen may need the id, and the modeller says so.
+   - Licensing's three cases become model work: My Organisations needs the organisation's name, the overview needs
+     each member's email, and My Account needs to drop `sub`.
+6. **The board and the app share the vocabulary, with no new mockup classes.**
+   - emcli's drafts already draw these shapes: `form.mock-card` → `FormCard`, `section.mock-card` with a `<dl>` →
+     `ViewCard` + `SummaryList`, `table[data-list]` → `DataTable`, a command drawn in a row → `RowAction`, an input
+     and its label → `Field`, and `fieldset` → `ChoiceGroup`.
+   - `build-screen` Step 4 becomes that mapping table. The mockup still gives the order, the headings, the labels
+     and the words.
+   - The patterns are styled once, with the design system's tokens (`design-system.css`). The board's wireframes keep
+     the same classes, so they still look like the app.
+7. **A commit check holds a part to the patterns** (`23-web-patterns`). A slice's `.tsx` part that a commit adds or
+   changes is refused when it writes any of these itself:
+   - a `role="alert"` or `role="status"`;
+   - an `isPending`/`isError` branch;
+   - a `<table>`, `<dl>` or `<fieldset>`;
+   - a `style={{`;
+   - a hex colour.
+
+   The refusal names the pattern to use. Tests are exempt. The check is deterministic, with no judgement about
+   looks: those stay with the mockup.
+8. **Rollout.**
+   - **The kit:** the patterns and their template tests, written to the authorities' rules above (e.g. focus moves
+     to the form's error, the row action's name includes the row, confirm asks before anything is sent).
+     `build-screen`, `web-scope` and the new check.
+   - **The kit's example app:** refreshed onto the patterns and the id register. This closes PLAN's open "the
+     example predates the id register".
+   - **Licensing:** the 14 parts are refitted by hand, outside the loop, as the patterns' proof against real parts.
+     Journeys run on the mock and the sandbox, with axe run in the journey where it already runs pages.
+   - **The loop's proof** is the next new screen it builds: its commit holds patterns only, and the check passes.
+
+**Alternatives considered:**
+- **Leave it to `build-screen`'s prose** ("show loading as …"). That is today's state: 14 parts, 14 versions.
+- **Generate each part from the mockup in emcli.** It's deterministic, but emcli would write code, and the mockup
+  can't say behaviour (ADR-069 and ADR-071 kept emcli to contracts). Patterns leave less for the loop to decide
+  without moving code into emcli.
+- **A third-party design system** (GOV.UK Frontend, Primer, Carbon) instead of our own patterns over shadcn/ui. Their
+  components carry their own look and markup, which the board's wireframes would have to copy. We take their rules,
+  not their code, and keep the one design system both the board and the app use.
+- **A confirmation dialog on every command that ends something**, with no model property: NN/g's dialog fatigue, and
+  a guess where the modeller knows.
+
+**Consequences:**
+- **Kit:**
+  - `web/src/components/patterns/` (7 patterns and their tests), and `errorText` in `lib/api.ts`;
+  - `build-screen` Step 2 to 4 rewritten around them;
+  - `web-scope` and `23-web-patterns`, with tests;
+  - the example app refreshed;
+  - the manual's screen chapter.
+- **emcli:** `--confirm` on a command (into slice.json), the id-shown warning at planning, and the `event-model`
+  skill's question about commands that end something. All with tests.
+- **Licensing:** the parts refitted (an outside-the-loop commit per slice, as the commit guard wants), `removeMember`
+  marked `--confirm`, the three name-not-id read model changes planned, and the journeys proved.
+- **Every new part is smaller.** It's the mockup's words and order, with the patterns holding the states and the
+  accessibility.
