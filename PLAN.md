@@ -943,8 +943,17 @@ model and build only what's ours.
               owner web seat and remove member reading `seatWasAssigned` without the person, and `trialWasStarted`
               drawn with fewer ids in two draft chapters; tests mutation-checked); kit: `build-state-change` writes
               exactly `eventTags`, the `event-tags` commit check refuses a new factory that differs (node tests,
-              mutation-checked), `plan-change` points here. Next: licensing's seat tags, exported with accept
-              invitation's fix.
+              mutation-checked), `plan-change` points here. **Proven in licensing 2026-10-13:** the seat events tag
+              the organisation and the person (model; `Events.ts` `552fc8d`, outside the loop; assign owner web seat
+              and remove member replaced; the local database's `public` schema reset, `auth` untouched), exported with
+              accept invitation's fix; the loop rebuilt all three (none blocked). accept invitation now folds the
+              roles held per organisation; remove member reads seats by organisation and person; stored seat events
+              carry both tags. Backend 634, web 174, removal 16/16, invitations, journeys mock and sandbox 3/3,
+              recorded (licensing `b4a48d7`). At planning every read is found by its rule's keys (no warnings).
+            - Found: my tag survey's pattern missed conditional tags (`refusedTrialWasCancelled` looked like drift and
+              wasn't; Gary asked whether its `paddleEventId` mattered, and it does: it closes the Paddle translation's
+              to-do item). Closed: the `event-tags` check reads a conditional spread as an optional tag (tested).
+            - Open: changing an event's tags after release (stored events keep theirs: a new version or a migration).
             - Found: chapters follow prooph board's order, which emcli can't change (the board's API has no reorder),
               and copies follow chapter order: chapter 4 (index 3) couldn't extend chapter 1's lists (index 30). Chapter 4
               was recreated (a new chapter is added last). emcli's refusal now says the ways round it (`67c1e62`).
