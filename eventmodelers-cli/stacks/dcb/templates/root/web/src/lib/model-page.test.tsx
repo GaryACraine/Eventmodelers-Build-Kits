@@ -6,7 +6,7 @@ import { createMemoryRouter, Link, RouterProvider } from "react-router"
 import { server } from "@/mocks/server"
 import { apiUrl } from "./api"
 import { signInService } from "./auth-client"
-import { ModelPage } from "./model-page"
+import { ModelPage, needsSignIn } from "./model-page"
 import { forgetPermissions, type Navigation } from "./navigation"
 import type { FormPart, SliceParts, ViewPart } from "./parts"
 import { SessionProvider } from "./session"
@@ -272,5 +272,17 @@ describe("a part the page can't find", () => {
         stub("/organisations/org-1", { slices: rest, built: ["invitemember"] })
         expect((await screen.findAllByText(/src\/slices\/invitemember\/index.ts doesn't export InviteMemberForm/)).length).toBeGreaterThan(0)
         vi.restoreAllMocks()
+    })
+})
+
+describe("who must be signed in to see a page (ADR-069)", () => {
+    it("anyone, when everything it reads and does is anonymous; else someone signed in", () => {
+        const page = (reads: string[], apis: string[], session?: string[]) =>
+            ({ title: "P", context: "c", tenant: false, reads, actions: apis.map((api) => ({ command: "c", api })), ...(session ? { session } : {}) })
+        expect(needsSignIn(page([], []))).toBe(false)
+        expect(needsSignIn(page(["anonymous"], ["anonymous"]))).toBe(false)
+        expect(needsSignIn(page([], ["self"]))).toBe(true)
+        expect(needsSignIn(page(["organisation:read"], []))).toBe(true)
+        expect(needsSignIn(page([], [], ["studentId"]))).toBe(true)
     })
 })

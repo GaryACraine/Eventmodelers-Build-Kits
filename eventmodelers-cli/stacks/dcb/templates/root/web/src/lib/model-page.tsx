@@ -65,6 +65,15 @@ export function ModelPage({
     )
 }
 
+/**
+ * Whether the page needs someone signed in: anything it reads or does is declared other than `anonymous` (a permission,
+ * `self`, `link`). Its session keys are asked for then too (the stub sign-in); with real sign-in, the sign-in form
+ * shows in its place until then.
+ */
+export function needsSignIn(page: NavigationPage): boolean {
+    return !!page.session?.length || [...page.reads, ...page.actions.map((a) => a.api)].some((api) => api !== "anonymous")
+}
+
 interface PartContext {
     parts: SliceParts
     built: ReadonlySet<string>

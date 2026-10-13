@@ -2,7 +2,7 @@ import type { ComponentType } from "react"
 import type { RouteObject } from "react-router"
 import { Layout } from "./Layout"
 import type { PageInfo } from "./lib/page"
-import { ModelPage } from "./lib/model-page"
+import { ModelPage, needsSignIn } from "./lib/model-page"
 import { navigation } from "./lib/navigation"
 import { RequireSession } from "./lib/session"
 import { signInMode } from "./lib/auth-client"
@@ -41,8 +41,13 @@ const fromModel: (PageInfo & { Component: ComponentType })[] = Object.entries(na
         path,
         title: page.title,
         nav: !path.includes(":"),
-        session: page.session,
-        Component: () => <ModelPage path={path} page={page} />
+        Component: needsSignIn(page)
+            ? () => (
+                  <RequireSession keys={page.session ?? []}>
+                      <ModelPage path={path} page={page} />
+                  </RequireSession>
+              )
+            : () => <ModelPage path={path} page={page} />
     }))
 
 export const pages: (PageInfo & { Component: ComponentType })[] = [...own, ...fromModel].sort((a, b) => a.path.localeCompare(b.path))
