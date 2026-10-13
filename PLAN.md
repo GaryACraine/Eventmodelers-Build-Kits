@@ -886,7 +886,13 @@ model and build only what's ours.
           - Found, open: slices of the same title in different chapters clash only at export (renamed by hand);
             emcli should warn when such a slice is planned. Taken up with ADR-069's emcli work.
           - Gary's idea (2026-10-13): pages composed from the model, slices contributing parts, so no slice edits a
-            page (the shared page file is where slices collide). **NEXT: ADR-069 Proposed** (plan approved).
+            page (the shared page file is where slices collide).
+          - [x] **ADR-069 Proposed** 2026-10-13 (pages composed from the model): emcli writes each page's parts
+            into `navigation.json` (slice, component, gate, props' sources, slot, `next`); slices export parts from
+            `index.ts` with one signature per kind (`onDone`); a kit `Page` renders them; a commit-scope check
+            refuses a slice touching a page. Authorities: a new "UI composition" row (micro-frontends, Backstage,
+            VS Code, Shopify, Salesforce). **NEXT: Gary decides**; if accepted, emcli, then the kit, then
+            licensing's migration and journeys.
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
        `plan-change` and `job-scope` count as proven once a change with users goes through expand, switch,
        contract in the loop.
