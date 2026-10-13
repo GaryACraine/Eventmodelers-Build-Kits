@@ -101,19 +101,38 @@ export const api = createClient<paths>({ baseUrl: API_BASE, fetch: (request) => 
 api.use(idempotency, signedIn)
 
 /** A rejected request: the backend's Problem-JSON (`title`, `detail`: a rejection's message) and the status. */
+/** What a read shows when its read model is still catching up with the person's last change (a 504) */
+export const STILL_UPDATING = "Still updating: your last change will show in a moment. Refresh if it doesn't."
+
 export class ApiError extends Error {
     readonly status: number
     readonly problem: Problem | undefined
     /** A 401 asking for a stronger sign-in that the person didn't give: the level it asked for */
     readonly stepUp: StepUpLevel | undefined
+    /**
+     * A 504: a read waiting for its read model to catch up with the last write (`afterWrite`, ADR-013) ran out of time.
+     * Not a failure: the change is recorded, and the read model shows it once it has caught up.
+     */
+    readonly stillUpdating: boolean
 
     constructor(status: number, problem: Problem | undefined, stepUp?: StepUpLevel) {
-        super(problem?.detail ?? problem?.title ?? `Request failed with status ${status}`)
+        super(status === 504 ? STILL_UPDATING : (problem?.detail ?? problem?.title ?? `Request failed with status ${status}`))
         this.name = "ApiError"
         this.status = status
         this.problem = problem
         this.stepUp = stepUp
+        this.stillUpdating = status === 504
     }
+}
+
+/**
+ * Whether a failed read is tried again (TanStack Query's `retry`): a read model still catching up with the last write
+ * (`stillUpdating`) up to 5 more times, each waiting again, so it's shown as soon as it has caught up and never as an
+ * error before then; any other 5xx or a network error once; a refusal (4xx) never, since it would be refused again.
+ */
+export function retryRead(failures: number, error: Error): boolean {
+    if (error instanceof ApiError && error.stillUpdating) return failures < 5
+    return !(error instanceof ApiError && error.status < 500) && failures < 1
 }
 
 export interface Problem {
