@@ -1,10 +1,8 @@
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { ApiError, api, command } from "@/lib/api"
+import { Field, FormCard } from "@/components/patterns"
+import { api, command, errorText } from "@/lib/api"
 import type { components } from "@/lib/api-types"
 import type { FormPart } from "@/lib/parts"
 import { idempotent, useSubmitOnce } from "@/lib/submit"
@@ -41,35 +39,20 @@ export function RegisterCourseForm({ onDone }: FormPart<RegisterCourse>) {
             await recordWrite(position)
             reset()
             onDone?.(body)
-        }).catch((error) =>
-            setError("root", { message: error instanceof ApiError ? error.message : "Something went wrong. Try again." })
-        )
+        }).catch((error) => setError("root", { message: errorText(error) }))
     )
 
     return (
-        <form className="mock-card" onSubmit={submit} noValidate>
-            <Label htmlFor="registerCourse-id">Course ID</Label>
-            <Input id="registerCourse-id" aria-invalid={!!errors.id} {...register("id")} />
-            {errors.id && <p className="text-sm text-destructive">{errors.id.message}</p>}
-            <Label htmlFor="registerCourse-title">Title</Label>
-            <Input id="registerCourse-title" aria-invalid={!!errors.title} {...register("title")} />
-            {errors.title && <p className="text-sm text-destructive">{errors.title.message}</p>}
-            <Label htmlFor="registerCourse-capacity">Capacity</Label>
-            <Input
+        <FormCard label="Register course" submit="Register course" onSubmit={submit} pending={pending} error={errors.root?.message}>
+            <Field id="registerCourse-id" label="Course ID" error={errors.id?.message} {...register("id")} />
+            <Field id="registerCourse-title" label="Title" error={errors.title?.message} {...register("title")} />
+            <Field
                 id="registerCourse-capacity"
+                label="Capacity"
                 type="number"
-                aria-invalid={!!errors.capacity}
+                error={errors.capacity?.message}
                 {...register("capacity", { valueAsNumber: true })}
             />
-            {errors.capacity && <p className="text-sm text-destructive">{errors.capacity.message}</p>}
-            {errors.root && (
-                <p role="alert" className="text-sm text-destructive">
-                    {errors.root.message}
-                </p>
-            )}
-            <Button type="submit" disabled={pending}>
-                Register course
-            </Button>
-        </form>
+        </FormCard>
     )
 }

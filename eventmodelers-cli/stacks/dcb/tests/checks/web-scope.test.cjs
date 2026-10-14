@@ -102,3 +102,10 @@ test('web-tests needs web/node_modules', () => {
   assert.deepStrictEqual(result.map((v) => v.path), ['web/']);
   assert.match(result[0].reason, /npm install/);
 });
+
+test('a screen commit never changes the kit\'s components: the ui atoms and the patterns (ADR-072)', () => {
+  const r = commit(repo(), [`${SLICE}/Form.tsx`, `${SLICE}/Form.test.tsx`, 'web/src/components/patterns/ViewCard.tsx', 'web/src/components/ui/button.tsx']);
+  assert.ok(!r.ok);
+  assert.match(r.output, /web\/src\/components\/patterns\/ViewCard\.tsx — \[web-scope\] the kit's components/);
+  assert.match(r.output, /web\/src\/components\/ui\/button\.tsx — \[web-scope\] the kit's components/);
+});

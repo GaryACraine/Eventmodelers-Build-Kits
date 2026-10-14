@@ -1,6 +1,6 @@
 import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { ApiError, api, command } from "@/lib/api"
+import { FormCard } from "@/components/patterns"
+import { api, command, errorText } from "@/lib/api"
 import type { FormPart } from "@/lib/parts"
 import { useSession } from "@/lib/session"
 import { idempotent, useSubmitOnce } from "@/lib/submit"
@@ -28,22 +28,10 @@ export function SubscribeStudentForm({ courseId, onDone }: { courseId: string } 
             await recordWrite(position)
             setState({ done: true })
             onDone?.(body)
-        }).catch((error) =>
-            setState({ error: error instanceof ApiError ? error.message : "Something went wrong. Try again." })
-        )
+        }).catch((error) => setState({ error: errorText(error) }))
     }
 
     return (
-        <form className="mock-card" onSubmit={submit}>
-            {state.error && (
-                <p role="alert" className="text-sm text-destructive">
-                    {state.error}
-                </p>
-            )}
-            {state.done && <p role="status">You're subscribed.</p>}
-            <Button type="submit" disabled={pending}>
-                Subscribe
-            </Button>
-        </form>
+        <FormCard label="Subscribe" submit="Subscribe" onSubmit={submit} pending={pending} error={state.error} done={state.done && "You're subscribed."} />
     )
 }

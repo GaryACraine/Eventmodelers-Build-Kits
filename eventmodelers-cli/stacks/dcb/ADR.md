@@ -5782,7 +5782,7 @@ made 14 times, then again in every new part.
    is never shown. The rule follows heuristic 9 and WCAG 3.3.3: rejection texts in the specifications already say
    what to do, and a stack message doesn't.
 4. **What can't be undone is confirmed, and the model says what that is** (properties, not prose). The modeller
-   marks a command with the consequence a person must accept: `emcli element set <chapter> removeMember --confirm
+   marks a command with the consequence a person must accept: `emcli element update <chapter> removeMember --confirm
    "They lose access at once, and their seat is released."`. The command's own name gives the confirm button, and
    "Cancel" is the other. Neither is the default. slice.json carries `confirm`, and `RowAction` and `FormCard` ask
    with it. Only commands that can't be reversed are marked: a person removed has to be invited again, while a

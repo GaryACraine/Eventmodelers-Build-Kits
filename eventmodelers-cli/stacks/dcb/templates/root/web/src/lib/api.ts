@@ -125,6 +125,17 @@ export class ApiError extends Error {
     }
 }
 
+/** What a person is shown when something fails that the backend didn't explain (ADR-072) */
+export const SOMETHING_WENT_WRONG = "Something went wrong. Try again."
+
+/**
+ * The words a person sees for a failure (ADR-072): a rejection's own message (the backend's Problem `detail`, written
+ * for people, e.g. a specification's rejection), or "Something went wrong. Try again.". Never an exception's own text.
+ */
+export function errorText(error: unknown): string {
+    return error instanceof ApiError ? error.message : SOMETHING_WENT_WRONG
+}
+
 /**
  * Whether a failed read is tried again (TanStack Query's `retry`): a read model still catching up with the last write
  * (`stillUpdating`) up to 5 more times, each waiting again, so it's shown as soon as it has caught up and never as an

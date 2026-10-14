@@ -1031,7 +1031,31 @@ model and build only what's ours.
             **ADR-072 Accepted 2026-10-13 (Gary, as written; PR #307):** inventory of licensing's 14 parts (in the ADR), 7 patterns under
             the UI patterns authorities (GOV.UK, NN/g, WCAG 2.2, Atomic Design; new DESIGN-AUTHORITIES row),
             one error wording, `--confirm` from the model, names not ids (emcli warning), check `23-web-patterns`.
-            Build: kit patterns + check, emcli `--confirm` + id warning, example app, licensing refit, loop proof.
+            **Built 2026-10-14:**
+            - Kit (PR #308): `web/src/components/patterns/` (ViewCard/ReadStates, FormCard, Confirm, Field/ChoiceGroup,
+              SummaryList, DataTable, RowAction, Value; 25 template tests, mutation-checked), `errorText`, the commit
+              check `23-web-patterns` and `web-scope` refusing `web/src/components/` (tests), `build-screen` around the
+              patterns, the example's 5 parts refitted (template web tests 136/136), manual §13.9.
+            - emcli `ee5e56c`: `element update --confirm` / `--clear-confirm` (a command only; a copy follows its
+              origin; exported; rebuilds the screen, never the backend; a slice asking nothing fingerprints as
+              before), a shown id warns (`shows userId, an id, as text`), drafts show names; `event-model` asks about
+              commands that end something. Tests mutation-checked.
+            - Licensing: kit update `78db529`, the 14 parts refitted by hand (one commit each, every one through the
+              new check), `110265a`, `171c83b`: web 199 tests, journeys mock and sandbox 3/3 (recorded).
+            - Next: the model (removeMember `--confirm`; the three names-not-ids: My Organisations' name, the
+              overview's member email, My Account without `sub`), exported with Gary's go-ahead: the loop's rebuild of
+              remove member's screen with the question is the loop proof.
+            - Found: a `FormCard` with a heading wasn't named by it, so the form wasn't a landmark (the account
+              journey lost Email changed's form). Closed in the kit: the heading names the form (template test,
+              mutation-checked).
+            - Found: the checkout's form had to draw Paddle's frame under its button, and `FormCard` had nowhere below
+              the button. Closed in the kit: `after` (template test).
+            - Found: ADR-072 and the skill named `emcli element set`, which doesn't exist (`element update`). Fixed in
+              both, and the flag was tried on a copy of licensing's model.
+            - Found, open: the journeys run no accessibility checker (ADR-072 assumed axe ran there). Adding
+              `@axe-core/playwright` to licensing's `e2e/journey` is a new dependency: for Gary.
+            - Changed on purpose: a failure that isn't the backend's rejection (Paddle's checkout not opening) now
+              shows "Something went wrong. Try again." instead of the exception's text (`errorText`).
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
        `plan-change` and `job-scope` count as proven once a change with users goes through expand, switch,
        contract in the loop.
