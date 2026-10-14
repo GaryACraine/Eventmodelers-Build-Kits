@@ -103,7 +103,20 @@ describe("FormCard: the error first, sending shown, confirm when the model says 
         expect(screen.getByRole("status")).toHaveTextContent("Sending…")
     })
 
-    it("names a form with no heading by its label", () => {
+    it("puts what the mockup draws under the button after it (another system's frame)", () => {
+        renderWithProviders(
+            <FormCard submit="Start my free trial" pending={false} onSubmit={() => {}} after={<div data-testid="frame" />}>
+                <p>Above</p>
+            </FormCard>
+        )
+        const button = screen.getByRole("button", { name: "Start my free trial" })
+        expect(button.compareDocumentPosition(screen.getByTestId("frame")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+        expect(button.compareDocumentPosition(screen.getByText("Above")) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy()
+    })
+
+    it("is named by its heading, or by its label when it has none (a form landmark)", () => {
+        renderWithProviders(<FormCard title="Email changed" submit="Use this address" pending={false} onSubmit={() => {}} />)
+        expect(screen.getByRole("form", { name: "Email changed" })).toBeInTheDocument()
         renderWithProviders(<FormCard label="Subscribe" submit="Subscribe" pending={false} onSubmit={() => {}} />)
         expect(screen.getByRole("form", { name: "Subscribe" })).toBeInTheDocument()
     })

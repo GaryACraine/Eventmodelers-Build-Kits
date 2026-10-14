@@ -2018,6 +2018,24 @@ what you draw is what the page does:
 WithdrawInvitationForm"*), and warns about one it can't place: a button drawn in the rows of a list the card doesn't
 show, or a read model whose own slice has no screen showing it (nothing would build it).
 
+**Every part looks and behaves the same way** (ADR-072). The loop builds each part from the kit's patterns, never
+by restyling the mockup by hand:
+- a card that shows "Loading…", then the data;
+- an empty state that says what's missing and links to where you'd fill it;
+- a form whose error shows at the top and takes the focus;
+- tables whose rows are named by their first column;
+- dates and money in the reader's own format.
+
+They follow GOV.UK's design system, Nielsen Norman Group and WCAG 2.2, so screen readers announce what changes, and a
+row's Remove button is heard as "Remove alex@example.com". Two things are yours to say in the model:
+- *"Removing a member can't be undone: ask first."* The skill marks the command with what the person accepts (`emcli
+  element update <chapter> removeMember --confirm "They lose access at once, and their seat is released."`). The page
+  then asks, naming the member, with **Remove member** and **Cancel**. Only mark what can't be reversed: an invitation
+  you withdraw can be sent again, so withdrawing doesn't ask. Asking every time teaches people to click through.
+- *"Show the member's email, not their id."* People know a thing by its name. A mockup showing an id as text gets a
+  warning (`shows userId, an id, as text`). The skill shows the name instead, adding it to the read model if it
+  isn't there.
+
 **Where each screen leads** (ADR-065). Once a screen's command succeeds, the person goes on to the next page in the
 chapter's timeline, in the same lane: the chapter is one flow, so the timeline already says what comes next. In
 licensing, Activate Organisation leads to Choose How to Start, and reporting the checkout leads to the Dashboard.

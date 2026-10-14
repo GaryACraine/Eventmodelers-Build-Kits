@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react"
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react"
 import { Button } from "@/components/ui/button"
 import { Confirm } from "./Confirm"
 
@@ -10,6 +10,7 @@ import { Confirm } from "./Confirm"
  * - **Sending:** the button is disabled while `pending` (`useSubmitOnce`, ADR-067) and says "Sending…" beside it, a
  *   status message (WCAG 4.1.3).
  * - **Done:** the success line, a status message, for a page that stays; a page with `next` goes on instead.
+ * - **After:** what the mockup draws under the button (another system's frame) goes in `after`.
  * - **Confirm:** a command the model marks `confirm` asks first, in the card (`Confirm`); `onSubmit` runs once it's
  *   confirmed.
  *
@@ -28,11 +29,12 @@ export function FormCard({
     done,
     confirm,
     card = true,
+    after,
     children
 }: {
     /** The mockup's heading (its `h2`) */
     title?: ReactNode
-    /** The form's name when it has no heading (`aria-label`) */
+    /** The form's name when it has no heading (`aria-label`); with one, the heading names it */
     label?: string
     /** The button's words, from the mockup */
     submit: string
@@ -45,8 +47,11 @@ export function FormCard({
     confirm?: { question: string; consequence: string; confirm: string }
     /** A form inside another card (a part of a view's card): no card of its own */
     card?: boolean
+    /** What the mockup draws under the button: another system's part of the page (Paddle's checkout frame, ADR-044) */
+    after?: ReactNode
     children?: ReactNode
 }) {
+    const heading = useId()
     const alert = useRef<HTMLParagraphElement>(null)
     const [asking, setAsking] = useState(false)
     const form = useRef<HTMLFormElement>(null)
@@ -67,8 +72,8 @@ export function FormCard({
     }
 
     return (
-        <form ref={form} className={card ? "mock-card" : undefined} aria-label={title ? undefined : label} onSubmit={submitted} noValidate>
-            {title && <h2>{title}</h2>}
+        <form ref={form} className={card ? "mock-card" : undefined} aria-labelledby={title ? heading : undefined} aria-label={title ? undefined : label} onSubmit={submitted} noValidate>
+            {title && <h2 id={heading}>{title}</h2>}
             {error && (
                 <p role="alert" ref={alert} tabIndex={-1} className="text-destructive">
                     {error}
@@ -90,6 +95,7 @@ export function FormCard({
                     {submit}
                 </Button>
             )}
+            {after}
             {pending && (
                 <p role="status" className="text-sm text-muted-foreground">
                     Sending…
