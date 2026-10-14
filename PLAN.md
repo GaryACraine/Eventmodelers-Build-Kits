@@ -1052,6 +1052,12 @@ model and build only what's ours.
               the button. Closed in the kit: `after` (template test).
             - Found: ADR-072 and the skill named `emcli element set`, which doesn't exist (`element update`). Fixed in
               both, and the flag was tried on a copy of licensing's model.
+            - Found: `--confirm` was set and written, then dropped the next time the model was read (the reader keeps
+              only what `schema.ts` names), so the dry run queued nothing; the unit tests built the workspace in memory
+              and missed it. Closed in emcli `760bdd3`: the schema, the pull and the push diff keep it, the card shows
+              "Asks first", and a test reads it through `WorkspaceSchema` (mutation-checked); `d3cdad5`: emcli's
+              CLAUDE.md lists every place a local-only element property goes. Licensing's model `178f23b`
+              (removeMember asks first): the dry run now queues remove member's UI only, its backend as built.
             - Found, open: the journeys run no accessibility checker (ADR-072 assumed axe ran there). Adding
               `@axe-core/playwright` to licensing's `e2e/journey` is a new dependency: for Gary.
             - Changed on purpose: a failure that isn't the backend's rejection (Paddle's checkout not opening) now
