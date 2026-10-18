@@ -5849,13 +5849,13 @@ made 14 times, then again in every new part.
 - **Every new part is smaller.** It's the mockup's words and order, with the patterns holding the states and the
   accessibility.
 
-### ADR-073: The first published event: identity publishes a person's contact details, and licensing's views read them (open)
+### ADR-073: The first published event: identity publishes a person's contact details, and licensing's views read them 
 
-**Status:** **Proposed, 2026-10-18.** Gary chose the direction (2026-10-18): the members on the Dashboard are shown
+**Status:** **Accepted, 2026-10-18 (Gary)**, with the recommendation: the published event is appended in the same
+write as identity's own event (point 2). Gary chose the direction the same day: the members on the Dashboard are shown
 by email, taken from identity's published event (ADR-061 pattern 1, `subscribed`), not from a copy licensing records
-and not from a second read of identity's API. This is the first use of ADR-061, so it settles what ADR-061 point 6
-left for the first use.
-The event's name was settled by Gary the same day: `userContactDetailsWereUpdated`, the wider one.
+and not from a second read of identity's API. He named the event `userContactDetailsWereUpdated`, the wider name.
+This is the first use of ADR-061, so it settles what ADR-061 point 6 left for the first use.
 **Date:** 2026-10-18
 **Builds on:**
 - ADR-059: a context's events are its own;
@@ -5887,7 +5887,7 @@ The event's name was settled by Gary the same day: `userContactDetailsWereUpdate
 - **ADR-061's table has the subscriber translate** a published event (a to-do list, an automation, its own command
   and event). That is for reacting. Here licensing only shows the value.
 
-**Proposed:**
+**Proposed (now the decision):**
 1. **Identity publishes one external event, `userContactDetailsWereUpdated`** (`userId`, `email`, `updatedAt`),
    tagged `userId`. It carries the person's **current contact details, whole**, every time (Dudycz's summary event),
    so a reader takes the latest and never merges partial updates. Today that is the email; a name or a phone joins it
@@ -5935,9 +5935,8 @@ The event's name was settled by Gary the same day: `userContactDetailsWereUpdate
    pre-release change). After release, a one-off command in identity would publish each person's current email. It
    isn't needed yet.
 
-**Question for Gary:**
-- **Appending with the decision (2) or mapping afterwards** (Dudycz's handler). The recommendation is appending it,
-  for the reason in 2.
+**Decision:** Accepted as proposed (Gary, 2026-10-18), appending with the decision (2) rather than mapping
+afterwards.
 
 **Alternatives considered:**
 - **Licensing records the email it already handles** (the invitation's, the owner's at activation). Rejected by
