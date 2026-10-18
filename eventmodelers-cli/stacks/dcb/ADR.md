@@ -5848,3 +5848,110 @@ made 14 times, then again in every new part.
   marked `--confirm`, the three name-not-id read model changes planned, and the journeys proved.
 - **Every new part is smaller.** It's the mockup's words and order, with the patterns holding the states and the
   accessibility.
+
+### ADR-073: The first published event: identity publishes a person's email, and licensing's views read it (open)
+
+**Status:** **Proposed, 2026-10-18.** Gary chose the direction (2026-10-18): the members on the Dashboard are shown
+by email, taken from identity's published event (ADR-061 pattern 1, `subscribed`), not from a copy licensing records
+and not from a second read of identity's API. This is the first use of ADR-061, so it settles what ADR-061 point 6
+left for the first use.
+**Date:** 2026-10-18
+**Builds on:**
+- ADR-059: a context's events are its own;
+- ADR-061: pull a published event (the default), intake `subscribed`, published events as API;
+- ADR-062: personal data in events (erasure);
+- ADR-072 decision 5: people see names, not ids.
+
+**Authorities consulted (ADR-064, event sourcing):**
+- **Oskar Dudycz** ([Internal and external events](https://event-driven.io/en/internal_external_events/)):
+  - internal events aren't published as they are. Other modules get a separate external event, a summary "that will
+    provide the complete information needed for other modules", built from the internal one (enriched, at its
+    position in the stream) and forwarded by a handler, an outbox or a subscription;
+  - readers use external events to "trigger their processes, or build read models". They needn't know the
+    producer's internals.
+- **Axon** ([From model to code](https://www.axoniq.io/blog/from-model-to-code-zoom-out)): the mapping between two
+  contexts is an event handler acting as an anti-corruption layer, placed in the downstream context. Projections are
+  event processors with their own position, reset to replay.
+- **Marten** ([Subscriptions](https://martendb.io/events/subscriptions)): publishing captured events onward is a
+  subscription in the background, kept apart from projections. With Wolverine, the outbox holds the message until the
+  transaction commits.
+
+**Context:**
+- **The Dashboard lists members by `userId`** (the overview's `members`), and so does remove member's Dashboard. The
+  email is identity's: `userWasRegistered` and `userEmailWasChanged` hold it, and both are private (ADR-059).
+- **Both of identity's events carry `sub`,** Better Auth's id, which no other context needs. They are tagged
+  `userId` (and `sub`).
+- **Licensing and identity share one event store** (one deployment), so ADR-061's intake is `subscribed`: no HTTP,
+  no outbox.
+- **ADR-061's table has the subscriber translate** a published event (a to-do list, an automation, its own command
+  and event). That is for reacting. Here licensing only shows the value.
+
+**Proposed:**
+1. **Identity publishes one external event, `userEmailWasSet`** (`userId`, `email`, `setAt`), tagged `userId`. It says "this person's email is now this". It isn't `userWasRegistered` or `userEmailWasChanged` marked
+   published: they carry `sub`, they are two shapes for one fact, and publishing them would make identity's internal
+   events its API (Dudycz). Its name is open (see the questions).
+2. **It is appended in the same decision as the internal event:** registering a user and changing an email each
+   record their own event and `userEmailWasSet`, in one append. In one event store, the append is the outbox:
+   both are there, or neither is. Dudycz's handler, mapping after the fact, is the alternative. It's needed only when
+   the external event needs state the decision doesn't have, which this one doesn't.
+3. **A subscriber may project a published event into a read model**, as a lookup, without translating it into
+   events of its own. It translates only when it must react (decide, act, keep its own record), as ADR-061 says.
+   ADR-059 point 1 ("no slice of another context projects them") then holds for private events only.
+   - Licensing's overview gains a lookup by `userId` folding `userEmailWasSet`'s email into each member: `members[]`
+     gains `email`. That's an extension slice (ADR-019), as My Organisations' name is.
+   - No licensing event holds the email, so licensing has no copy of its own to keep current or to erase. A changed
+     email shows at the next fold.
+4. **In the model (emcli):**
+   - `element update <event> --published` marks a published event. Only a published event may be copied into
+     another context. The copy is marked `--external <owner>` with intake `subscribed`, and may hydrate a read model
+     there.
+   - `completeness` errors on a copy of an unpublished event, on a copy whose fields differ from the original, and on
+     a published event a context copies but nothing of its own produces.
+   - `slice.json` marks the lookup's event as published by its owner, with its context.
+5. **In the kit:**
+   - **A published-events module per context:** `src/contexts/<context>/Published.ts`, the published events'
+     types and factories, nothing else. `Events.ts` re-exports them for the owner's own use.
+   - **The `context-events-private` check** allows `src/contexts/<other>/Published` and still refuses
+     `src/contexts/<other>/Events`.
+   - **`build-state-change`:** a command whose spec's `then` holds a published event appends it with the internal
+     one, from `Published.ts`.
+   - **`build-state-view`:** a lookup may fold another context's published event, imported from its `Published.ts`.
+   - **`plan-change`:** a published event is API from its first export. Any change is a new version (ADR-017/018),
+     even before release, since another context's code reads it.
+6. **Licensing's model:**
+   - **identity:** "register user" (chapter 0) and "change user email" (chapter 0f) are built, so each is replaced
+     with the same name (ADR-046) and records `userEmailWasSet` too. Their scenarios show it;
+   - **licensing:** an extension "organisation overview with emails" (chapter 1) adds `members[].email`. Its scenario
+     has identity's published event in its `given`. Both Dashboards show the email, and remove member's row action
+     reads "Remove alex@example.com" (ADR-072's `RowAction`).
+7. **Erasure (ADR-062 question 7):** the published event holds the email, so it is personal data like the internal
+   one, with the same subject (`userId`). Licensing keeps no copy in events, only in a read model, which is rebuilt.
+   Nothing more is decided here.
+8. **People registered before** have no published event. Before release, the local database is reset (as for every
+   pre-release change). After release, a one-off command in identity would publish each person's current email. It
+   isn't needed yet.
+
+**Questions for Gary:**
+- **The name:** `userEmailWasSet` is one fact, named for what happened (the email is now this). The alternative is
+  `userContactDetailsWereUpdated`, wider, so a name or a phone could join it later as a new version. The
+  recommendation is `userEmailWasSet`; contact details can be published as their own event when one is needed.
+- **Appending with the decision (2) or mapping afterwards** (Dudycz's handler). The recommendation is appending it,
+  for the reason in 2.
+
+**Alternatives considered:**
+- **Licensing records the email it already handles** (the invitation's, the owner's at activation). Rejected by
+  Gary: it goes stale when the email changes (chapter 0f), and it copies personal data into licensing's events.
+- **The Dashboard reads a list of people identity publishes** (ADR-059 (a)). Rejected: identity can't tell who may
+  see whose email, since it doesn't know organisations.
+- **Publishing `userWasRegistered` and `userEmailWasChanged` as they are.** Rejected (1).
+- **Licensing translates the published event into its own** (`memberEmailWasNoted`). Rejected for a value it only
+  shows: it adds an automation, a command and an event, and a copy of personal data, for nothing a lookup can't do.
+
+**Consequences:**
+- **emcli:** `--published`, cross-context copies of published events, completeness, slice.json, the `event-model`
+  skill's "Between contexts" from draft to rule. With tests.
+- **Kit:** `Published.ts`, the check, `build-state-change`, `build-state-view`, `plan-change`; template tests; the
+  manual's chapter on contexts.
+- **Licensing:** the model in 6, exported with Gary's go-ahead; the loop builds it. The journeys check that the
+  Dashboard shows the member's email, and a changed email (chapter 0f) shows on it.
+- **ADR-061** is proven for pattern 1 `subscribed`. The skills' drafts for it are distilled after the end-to-end run.
