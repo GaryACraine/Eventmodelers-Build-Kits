@@ -55,6 +55,22 @@ model and build only what's ours.
      a member" --context licensing`. The loop builds "my organisations with names" and "organisation overview with
      emails" (a lookup on identity's `Published.ts`) and re-queues five screens: start options, organisation overview,
      my organisations, remove member (its confirmation question, ADR-072's loop proof) and, from round 1, my account.
+  - **Rounds 1 and 2 ran 2026-10-18.** Round 1: register user, change user email, my account screen
+    (`750ab00`, `e7c1ab5`, `15d5c5b`; `Published.ts` as ADR-073 says). Round 2: the four screens built (`5e59d79`,
+    `0b5343e`, `c1a5cd8`, `23ad2ec`, remove member's confirmation included), and **both backend slices blocked**, rightly:
+    - **Found: a lookup never refreshed a document after it was shown.** "organisation overview with emails" changes the
+      email after the member's role and seat events; ADR-022 captured lookup values only when a primary event folded,
+      and `userContactDetailsWereUpdated` (tagged `userId`) never reaches a document keyed `organisationId`. ADR-073
+      point 3 had assumed it shows "at the next fold". **Closed at the root: ADR-074 Accepted 2026-10-18 (Gary, refresh
+      at write):** a lookup declares `refresh(doc, relatedId, entry)`; both runners keep which documents show each id
+      (`_{collection}_{lookup}_refs` stored, in memory live) and refresh them. Kit: `readModels.ts` and 3 template tests
+      (all three types, a capturing lookup unchanged, a rebuild), mutation-checked; `build-state-view`; a check,
+      `24-published-lookup-refresh` (a read model naming another context's published event declares `refresh`), with
+      tests; manual §11.1 and §22.9.
+    - **Found: the `extension-additive` check refused a first lookup** ("my organisations with names"): adding one
+      changes three lines (the define's lookups type, `evolve`'s `lookups`, the item gaining the field). **Closed at the
+      root:** a line re-added with tokens only inserted is growth (same first token, every old token in order); a
+      replaced token is still refused. Test and mutation-checked; `build-state-view` E2 says how.
   3. **Prove it:** licensing's backend and web tests; the journeys on the mock and the sandbox, now checking the
      Dashboard lists members by email and that a changed email (chapter 0f) shows there. Record in `e2e/`.
   4. **Then:** reset the local database if the rebuilds need it (pre-release, plan-change); distil the ADR-061/073
@@ -5089,6 +5105,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-13 | ADR-071 Accepted: an event's tags are decided in the model (its id fields, plus another system's ids; optional ones marked), appraised at planning against each slice's scenarios (every given event found by the rule's own keys), and told to the loop exactly (slice.json `tags`, a commit check); seat events tag the organisation and the person | The loop chose `seatWasReleased`'s tags by copying `seatWasAssigned`, itself modelled without the person, so remove member reads the whole organisation's seats. Gary: tagging is modelling, not implementation; tell the loop, don't ask. dcb.events: a decision's hard constraint needs its events' tags present, and tags should select exactly what it needs |
 | 2026-10-13 | Sign-up lessons kept in the model and the kit, not a new skill: emcli warns when a real sign-in's model has no page (or several) that registers a new person (`b74a430`); the `event-model` navigation reference gains "Arriving signed out" (registration, pages an email opens are `link`); `provider-better-auth` says every way into sign-in carries the page; a template test walks the whole chain (PR #289, mutation-checked; licensing `60d6f91`) | Gary asked what to encapsulate after the invitation journey found the header's Sign up losing the page. Signing in is kit code nothing per project varies, so a skill would steer nothing; the joins between its steps needed a test, and the model's part (where people register) a warning |
 | 2026-10-13 | ADR-072 Accepted: a part is put together from the kit's patterns (ViewCard, FormCard, Field/ChoiceGroup, SummaryList, DataTable, RowAction, Value), one error wording, `--confirm` from the model, names not ids (emcli warning), a commit check | Licensing's 14 parts restate the same pieces by hand and drift (raw exception text, unannounced loading, empty states with no way forward, unnamed row actions, an unconfirmed removal, ids for names). GOV.UK, NN/g, WCAG 2.2 and Atomic Design agree: build each recurring piece once with its states and accessibility, confirm only what can't be undone. Gary accepted the recommendations, incl. `--confirm` as a model property |
+| 2026-10-18 | ADR-074 Accepted: a lookup that can change declares `refresh(doc, relatedId, entry)`, and the runners refresh every document that shows a changed entry; always for another context's published event (check 24) | The loop blocked the overview's emails: ADR-022 captured lookup values only at the document's own events, so a changed email never showed. Gary chose refresh at write (Marten's fan-out, Axon's update-every-row) over a read-time join (queries couldn't use the email; the read path would leave the fold) and over licensing translating the event (rejected in ADR-073) |
 | 2026-10-18 | ADR-073 Accepted: identity publishes `userContactDetailsWereUpdated` (the current contact details whole, Gary's name; appended with the internal event, one append as the outbox); a subscriber may project a published event as a lookup without translating it; `--published`, `Published.ts`, the check allows it | The Dashboard lists members by id (ADR-072 decision 5). Gary chose the published event over a licensing copy (stale after an email change, personal data in licensing's events) and over reading identity's API (identity can't authorise by organisation). Dudycz: publish a designed external event, not internal ones; readers may build read models from it. Gary named it and accepted appending it in the same write |
 
 ## Progress

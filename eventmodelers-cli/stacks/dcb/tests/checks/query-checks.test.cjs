@@ -302,6 +302,25 @@ test('extension-additive: a replacement (rebuild) may remove what its model remo
   assert.ok(replacing(undefined).length > 0);
 });
 
+test('extension-additive: a first lookup grows lines by insertion; a rewritten line is still refused', () => {
+  const grow = (fn) => {
+    const root = repo({ ...EXT, specifications: [] });
+    edit(root, RM, fn);
+    edit(root, RT, (s) => s + EXT_KEYED);
+    return extensionAdditive(root);
+  };
+  // the loop's "my organisations with names": the define line gains the lookups type, evolve gains `lookups`
+  assert.deepStrictEqual(grow((s) => s
+    .replace('defineReadModel<CourseSeatsDoc>({', 'defineReadModel<CourseSeatsDoc, { titles: CourseTitle }>({')
+    .replace('evolve: (doc, { event }) => doc', 'lookups: { titles: { key: "courseId", canHandle: [], evolve: e => e } },\n    evolve: (doc, { event }, lookups) => doc')), []);
+  // a changed line (a token replaced as well as inserted) is refused
+  assert.ok(grow((s) => s.replace('evolve: (doc, { event }) => doc', 'evolve: (doc, { event }, lookups) => null'))
+    .some((v) => /removed\/changed line: evolve/.test(v.reason)));
+  // a removed line isn't excused by a longer line that starts differently (commented out)
+  assert.ok(grow((s) => s.replace('    type: "inline-projected",\n', '    // type: "inline-projected",\n'))
+    .some((v) => /removed\/changed line: type/.test(v.reason)));
+});
+
 // --- spec-coverage --------------------------------------------------------------------------
 
 test('spec-coverage: query tests count towards the slice file', () => {

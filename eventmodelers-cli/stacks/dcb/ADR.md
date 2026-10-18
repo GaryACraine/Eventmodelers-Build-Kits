@@ -463,7 +463,8 @@ cross-entity data, such as a student's name on a course, which stored projection
   that reference it. Read models that can't meet that stay in imperative form, as async or inline.
 - Live serves keyed GETs only. Its cost per request is two reads, sized by one entity's history plus its related
   entities' lookup events.
-- Lookup values are captured when a primary event is folded, as before, in every type.
+- Lookup values are captured when a primary event is folded, as before, in every type. *(Amended by ADR-074: and
+  refreshed on every document showing them when the lookup declares `refresh`.)*
 - Verified read-only on course-enrollment: the union read for CourseDetails c1 returned positions 1, 3, 5, 6, 7,
   8, 11, exactly the sequence the stored projection processed.
 
@@ -5904,7 +5905,8 @@ This is the first use of ADR-061, so it settles what ADR-061 point 6 left for th
    - Licensing's overview gains a lookup by `userId` folding `userContactDetailsWereUpdated`'s email into each member: `members[]`
      gains `email`. That's an extension slice (ADR-019), as My Organisations' name is.
    - No licensing event holds the email, so licensing has no copy of its own to keep current or to erase. A changed
-     email shows at the next fold.
+     email shows at the next fold. *(Corrected by ADR-074: it showed only at the organisation's next event. The
+     lookup now declares `refresh`, and a changed email shows when it's recorded.)*
 4. **In the model (emcli):**
    - `element update <event> --published` marks a published event. Only a published event may be copied into
      another context. The copy is marked `--external <owner>` with intake `subscribed`, and may hydrate a read model
@@ -5955,3 +5957,65 @@ afterwards.
 - **Licensing:** the model in 6, exported with Gary's go-ahead; the loop builds it. The journeys check that the
   Dashboard shows the member's email, and a changed email (chapter 0f) shows on it.
 - **ADR-061** is proven for pattern 1 `subscribed`. The skills' drafts for it are distilled after the end-to-end run.
+
+---
+
+### ADR-074: A lookup that can change refreshes the documents that show it
+
+**Status:** **Accepted, 2026-10-18 (Gary)**, as proposed: refresh at write.
+**Date:** 2026-10-18
+**Builds on:**
+- ADR-022: one definition, several runners; lookups;
+- ADR-073 point 3: a subscriber projects a published event as a lookup.
+
+**Authorities consulted (ADR-064, event sourcing):**
+- **Marten:** a multi-stream projection may route one event to many documents (custom grouping, "fan out"). A
+  person's changed details update every view that shows them.
+- **Axon:** a query-side event handler updates every row that holds the changed value (one `update … where userId`).
+  The view is current when the handler has run, not at the next unrelated event.
+
+**Context:**
+- **The loop blocked "organisation overview with emails"** (licensing, 2026-10-18), rightly. Its scenario changes
+  the email *after* the member's role and seat events, and expects the Dashboard to show the new email.
+- **ADR-022 captures lookup values when a primary event is folded.** A lookup event updates the lookup entry and
+  nothing else, so a document keeps the value it took until another event of its own key arrives. The overview is
+  keyed `organisationId`, and `userContactDetailsWereUpdated` is tagged `userId` only. It never reaches the overview.
+- **ADR-073 point 3 assumed otherwise** ("a changed email shows at the next fold"). That was wrong for the stored
+  types, and is wrong in the live runner too (it folds in position order the same way).
+- Until now every lookup held a value that doesn't change after it's shown (a course's title, an organisation's
+  name). A published event of current details is the first that does, and it won't be the last.
+
+**Proposed:**
+1. **A lookup may declare `refresh(doc, relatedId, entry)`:** a pure function that puts a changed entry on a document
+   that shows it (the overview: the member whose `userId` it is gets the new `email`). It returns the document unchanged
+   when the document doesn't show that id.
+2. **The runners call it.** When a lookup event changes an entry, every document that a primary event tagged with that
+   id has folded into is refreshed:
+   - **stored (async and inline):** a references collection `_{collection}_{lookup}_refs` (related id → document keys)
+     is written as primary events fold, and cleared with the rest on a rebuild;
+   - **live:** the single document being read, when its primary events carry the id.
+   The same functions over the same events in position order, so the types still give identical data (ADR-022).
+3. **When to declare it:** whenever the related entity can change after a document shows it. **Always** for another
+   context's published event (it carries *current* details, ADR-073). `build-state-view` says so, and a check refuses
+   a lookup that folds another context's `Published` event without `refresh`.
+4. **ADR-022's consequence is amended:** lookup values are captured when a primary event is folded, and refreshed
+   when the lookup declares `refresh`. **ADR-073 point 3** is corrected to "a changed email shows when it's
+   recorded" (for async, when the projection catches up).
+5. **The model is unchanged.** The extension's scenario already says what's needed. Nothing in emcli changes.
+
+**Alternatives considered:**
+- **Join at read time** (the document keeps `userId`, the route adds the email from the lookup when serving it).
+  Simpler, and always current. Rejected: a query couldn't filter or sort by the email (ADR-023's SQL runs on the
+  stored document), and the read path would differ from the fold, which ADR-022 keeps as the one place data is made.
+- **Licensing translates the event into its own, tagged `organisationId`, one per membership** (an automation and an
+  event). Rejected in ADR-073 for a value it only shows; it copies personal data into licensing's events.
+- **The imperative projection form** for this read model. Rejected: it loses switching types (ADR-022), and the next
+  read model showing a person's details would need the same by hand.
+
+**Consequences:**
+- **Kit:** `readModels.ts` (`refresh`, the references collection, both runners), template tests (stored, inline and
+  live give the same refreshed document; a rebuild clears references); `build-state-view`; the check; the manual's
+  read model chapter.
+- **Licensing:** the loop's block on "organisation overview with emails" is cleared after a kit update. It then
+  builds it with `refresh`.
+- **Cost:** a person in N organisations means N document writes per email change. Fine at this scale.

@@ -7,7 +7,9 @@
 //  1. Slice-folder changes stay inside the origin's folder (or the extension's own).
 //  2. The origin's definition — readModel.ts (fold form) or projection.ts (imperative form) —
 //     only grows: no removed lines, except a line that is re-added with a trailing comma
-//     (appending after the last canHandle entry or lookup). A same-name replacement queued before release
+//     (appending after the last canHandle entry or lookup), or one re-added with text only inserted
+//     into it (a first lookup: `defineReadModel<Doc>(` gains its lookups type, `evolve: (doc, { event })`
+//     gains `lookups`, a pushed item gains the lookup's field). A same-name replacement queued before release
 //     (slice.json `rebuild`, ADR-046) may also remove what the model removed: a line naming only events or links
 //     its `rebuild.changes` say are removed.
 //  3. The origin's route.tests.ts has the extension's top-level blocks — describe("{extension title}"),
@@ -100,8 +102,14 @@ function removedLines(repoRoot, file, replaced = new Set()) {
   const addedLines = lines.filter((l) => l.startsWith('+') && !l.startsWith('+++')).map((l) => l.slice(1).trim());
   const added = new Set(addedLines);
   const addedNames = new Set(addedLines.flatMap(quotedNames));
+  const grownInto = new Set();
   return removed.filter((line) => {
     if (line === '' || added.has(`${line},`)) return false;
+    const grown = addedLines.findIndex((a, i) => !grownInto.has(i) && onlyInsertedInto(line, a));
+    if (grown >= 0) {
+      grownInto.add(grown);
+      return false;
+    }
     const named = quotedNames(line);
     if (replaced.size > 0 && named.length > 0 && named.every((n) => replaced.has(n))) return false;
     // A canHandle array reformatted to append (e.g. one-line → one-per-line) is still additive
@@ -110,6 +118,21 @@ function removedLines(repoRoot, file, replaced = new Set()) {
     const arrayLine = /canHandle\s*:|^["'`][^"'`]+["'`]\s*,?\s*\]?\s*,?$/.test(line);
     return !(arrayLine && names.length > 0 && names.every((n) => addedNames.has(n)));
   });
+}
+
+const tokens = (line) => line.match(/[A-Za-z0-9_$]+|\S/g) ?? [];
+
+/**
+ * True when `after` is `before` with tokens only inserted: the same first token, and every token of `before`
+ * in order. A line that grows, not one that is rewritten.
+ */
+function onlyInsertedInto(before, after) {
+  const b = tokens(before);
+  const a = tokens(after);
+  if (b.length === 0 || a.length <= b.length || a[0] !== b[0]) return false;
+  let i = 0;
+  for (const t of a) if (i < b.length && t === b[i]) i++;
+  return i === b.length;
 }
 
 function quotedNames(line) {

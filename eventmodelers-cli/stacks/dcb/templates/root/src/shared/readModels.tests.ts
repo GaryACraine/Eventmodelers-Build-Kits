@@ -154,9 +154,9 @@ async function settle(pool: Pool, runtime: ReadModelRuntime, readModel: ReadMode
     }
 }
 
-async function readAs(type: ReadModelType, events: TaggedEvent[], id: string) {
+async function readAs(type: ReadModelType, events: TaggedEvent[], id: string, definition: ReadModel<any, any> = courseDetails) {
     const pool = await freshPool()
-    const readModel = withType(courseDetails, type)
+    const readModel = withType(definition, type)
     const runtime = await start(pool, readModel)
     for (const event of events) await runtime.eventStore.append({ events: event })
     await settle(pool, runtime, readModel)
@@ -286,6 +286,74 @@ describe("read-your-writes on an async read model", () => {
         await runtime.eventStore.append({ events: registerCourse("c1", "Math", 30) })
         const res = await agent.get("/courses/c1").set("If-None-Match", `"${await head()}"`).set("Prefer", "wait=1")
         expect(res.status).toBe(504)
+    })
+})
+
+// ADR-074: a lookup that can change refreshes the documents that show it. A student renamed after subscribing
+// shows the new name on every course listing them, in every type; a course that no longer lists them is unchanged.
+const renameStudent = (studentId: string, name: string) => e("studentWasRenamed", { studentId, name }, { studentId })
+const { projection: _projection, ...courseDetailsDefinition } = courseDetails
+const refreshingCourseDetails = defineReadModel<CourseDoc, { students: { name: string } }>({
+    ...courseDetailsDefinition,
+    name: "TestRefreshingCourseDetails",
+    collection: "test_refreshing_course_details",
+    lookups: {
+        students: {
+            key: "studentId",
+            canHandle: ["studentWasRegistered", "studentWasRenamed"],
+            evolve: (_, { event }) => ({ name: (event.data as { name: string }).name }),
+            refresh: (doc, studentId, entry) => ({
+                ...doc,
+                subscribedStudents: doc.subscribedStudents.map(s => (s.studentId === studentId ? { ...s, name: entry?.name ?? null } : s))
+            })
+        }
+    }
+})
+const renamed = [...history, renameStudent("s1", "Ada Lovelace"), renameStudent("s2", "Grace Hopper")]
+
+describe("a refreshing lookup updates the documents that show a changed entry (ADR-074)", () => {
+    test.each(READ_MODEL_TYPES)("%s", async type => {
+        expect(await readAs(type, renamed, "c1", refreshingCourseDetails)).toEqual({
+            ...expectedC1,
+            subscribedStudents: [
+                { studentId: "s1", name: "Ada Lovelace" },
+                { studentId: "s3", name: "Linus" }
+            ]
+        })
+        // s2 left c1 (still unchanged there), and is renamed on c2
+        expect(await readAs(type, renamed, "c2", refreshingCourseDetails)).toEqual({
+            courseId: "c2", title: "History", capacity: 20, subscribedStudents: [{ studentId: "s2", name: "Grace Hopper" }]
+        })
+    })
+
+    test("without refresh, a document keeps the value it took when folded (ADR-022)", async () => {
+        const capturing = defineReadModel<CourseDoc, { students: { name: string } }>({
+            ...refreshingCourseDetails,
+            name: "TestCapturingCourseDetails",
+            collection: "test_capturing_course_details",
+            lookups: { students: { ...refreshingCourseDetails.lookups!.students, refresh: undefined } }
+        })
+        expect(await readAs("database-projected", renamed, "c1", capturing)).toEqual(expectedC1)
+    })
+
+    test("a rebuild clears what each document shows and refreshes it again", async () => {
+        const pool = await freshPool()
+        const first = await start(pool, refreshingCourseDetails)
+        for (const event of renamed) await first.eventStore.append({ events: event })
+        await settle(pool, first, refreshingCourseDetails)
+        await first.stop()
+
+        const rebuilt = { ...refreshingCourseDetails, version: 2 }
+        const again = defineReadModel<CourseDoc, { students: { name: string } }>(rebuilt)
+        const second = await start(pool, again)
+        await second.eventStore.append({ events: renameStudent("s3", "Linus Torvalds") })
+        await second.eventStore.append({ events: renameStudent("s2", "Admiral Hopper") })
+        await settle(pool, second, again)
+        expect(((await second.reader(again)("c1")) as CourseDoc).subscribedStudents).toEqual([
+            { studentId: "s1", name: "Ada Lovelace" },
+            { studentId: "s3", name: "Linus Torvalds" }
+        ])
+        expect(((await second.reader(again)("c2")) as CourseDoc).subscribedStudents).toEqual([{ studentId: "s2", name: "Admiral Hopper" }])
     })
 })
 
