@@ -1006,7 +1006,8 @@ Use this section only when slice.json has an `extends` block (see Step 0).
   "originContext":      "enrollment",
   "previousInstanceId": "…",                 // origin, or the previous copy in the chain
   "addedEvents":        ["courseCapacityWasChanged"],
-  "addedFields":        []                   // fields the read model gains in this step
+  "addedFields":        []                   // fields the read model gains in this step; a subfield by its path,
+                                             // e.g. "organisations[].organisationName" (each item of a list)
 }
 ```
 
@@ -1033,7 +1034,10 @@ stop and report that this extension is already built. Do not edit anything.
   entry. The events feeding a lookup must be in `extends.addedEvents` (the modeler wires them into the copy).
   If they aren't, don't invent them: stop and report the missing inbound event.
 - Each field in `extends.addedFields` becomes an **optional** field of the Doc interface, and an `.optional()`
-  field at the end of the origin's `schema.ts` object (Step 4), so `/openapi.json` shows it.
+  field at the end of the origin's `schema.ts` object (Step 4), so `/openapi.json` shows it. A **path**
+  (`organisations[].organisationName`) is a subfield: optional in the item's interface and `.optional()` at the
+  end of the item's object in `schema.ts`. The `case` that adds an item sets it (from the lookup, as the
+  extension's specifications show), and an item folded before this step simply lacks it.
 - If the origin is `live-report`, re-check Step 2 for the added events. They need the key tag, or a lookup's
   tag. If one fails, invoke `request-feedback`.
 
@@ -1045,7 +1049,8 @@ stop and report that this extension is already built. Do not edit anything.
 - A lookup the step needs gets a `createCollection()` line in `init()` and a `deleteMany()` line in
   `truncate()`, named as in P1.
 - Fields in `extends.addedFields` become optional in the Doc interface, and `.optional()` fields at the end of
-  the response schema in the origin's `schema.ts` (P3).
+  the response schema in the origin's `schema.ts` (P3). A path (`organisations[].organisationName`) is a subfield
+  of the list's items, optional there.
 
 **Queries:** if the extension's specifications run queries the origin doesn't declare yet (Step 0), add them to
 the origin's `readModel.ts` as in "Adding queries" A3–A4, in the same commit.
