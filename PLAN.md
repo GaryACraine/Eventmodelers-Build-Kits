@@ -1045,6 +1045,23 @@ model and build only what's ours.
             - Next: the model (removeMember `--confirm`; the three names-not-ids: My Organisations' name, the
               overview's member email, My Account without `sub`), exported with Gary's go-ahead: the loop's rebuild of
               remove member's screen with the question is the loop proof.
+            - **Names not ids, modelled 2026-10-18** (licensing's model, not yet exported). The check found 5 screens,
+              not 3:
+              - mockups only (their UI re-queued, backend as built): Choose How to Start drops its organisation id
+                line; the Dashboard drops "Organisation ID"; Get Started (My Account) drops Sub and User ID;
+              - My Organisations shows each organisation's name: a new extension slice "my organisations with names"
+                (chapter 1, planned), `organisationWasActivated` hydrating it, `organisations[].organisationName`,
+                a lookup by `organisationId`, one scenario. The export dry run queues it with that path in `addedFields`
+                and re-queues 5 screens only; `GET /my-organisations` is the one contract change;
+              - **open, for Gary:** the members' email on the Dashboard (both Dashboard cards still warn on `userId`).
+                The email is identity's (ADR-059), so it's a decision between contexts, not a field to add.
+            - Found: an extension that adds a subfield to a list's items (each organisation's name) couldn't be bound
+              on the screen, wasn't in the contract and wasn't in the extension's `addedFields`: emcli compared fields
+              by name only, and a screen saw only the read model it displays. Closed in emcli `87bfa84` (`extendedFields`
+              shared by the contract and the mockup check; `copyDelta` names a subfield by its path; tests
+              mutation-checked; `event-model` slicing.md). Closed in the kit: the contract comparer holds a subfield
+              path pending until its extension is built (template test, mutation-checked); `build-state-view` builds a
+              path as an optional item field; `build-screen` binds what the contract has beyond slice.json.
             - Found: a `FormCard` with a heading wasn't named by it, so the form wasn't a landmark (the account
               journey lost Email changed's form). Closed in the kit: the heading names the form (template test,
               mutation-checked).

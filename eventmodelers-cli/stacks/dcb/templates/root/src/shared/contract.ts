@@ -74,7 +74,8 @@ export function extensionFields(slices: ExtensionSlice[], contract: Json): Map<s
     return out
 }
 
-const MISSING_RESPONSE_FIELD = /^response(?:\[\])?\.(\w+): in the contract, missing from the code$/
+/** A field, or a subfield by its path (`organisations[].organisationName`), the code doesn't serve yet */
+const MISSING_RESPONSE_FIELD = /^response(?:\[\])?\.(\w+(?:(?:\[\])?\.\w+)*): in the contract, missing from the code$/
 
 const METHODS = ["get", "post", "put", "patch", "delete"]
 

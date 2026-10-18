@@ -226,6 +226,20 @@ describe("a field a read model's extension adds (ADR-019): pending until the ext
         expect(report.differ).toEqual([{ op: "GET /course-ratings/{courseId}", what: ["response.ratingCount: in the contract, missing from the code"] }])
     })
 
+    test("a subfield an extension adds to each item of a list is pending by its path", () => {
+        const withAuthor = () => {
+            const doc = grown()
+            ;(doc as any).components.schemas.CourseRatings.properties.comments.items.properties.author = { type: "string" }
+            return doc
+        }
+        const added = extensionFields([{ ...extension(false), extends: { addedFields: [{ name: "ratingCount" }, { name: "comments[].author" }] } }], withAuthor())
+        const report = compareContract(served(), withAuthor(), { pendingFields: added })
+        expect(report.differ).toEqual([])
+        expect(report.pendingFields).toEqual([{ op: "GET /course-ratings/{courseId}", fields: ["comments[].author", "ratingCount"] }])
+        // without the extension, the missing subfield differs
+        expect(compareContract(served(), withAuthor()).differ[0].what).toContain("response.comments[].author: in the contract, missing from the code")
+    })
+
     test("once the extension is built, its field must be served", () => {
         const report = compareContract(served(), grown(), { pendingFields: extensionFields([extension(true)], grown()) })
         expect(report.differ.map(d => d.op)).toEqual(["GET /course-ratings/{courseId}"])

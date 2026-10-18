@@ -111,6 +111,9 @@ Check that `web/src/lib/api-types.ts` now has every `apiEndpoint` of this slice.
 older than the slice: stop and set the job to Blocked ("api/openapi.json lacks <path>: export the model again").
 Never edit the contract or the types (the `api-types` check compares them). Body and response types come from
 it: `components["schemas"]["<Command>Body"]` for a command, `components["schemas"]["<ReadModel>"]` for a read model.
+A read model's type is its final shape, with what its extensions add (optional, since a document folded before one
+lacks it); slice.json's `readmodels[]` holds only this slice's fields. A mockup binding a field the contract has
+and slice.json doesn't (a name an extension adds) is right: show it, and leave the cell empty when it's absent.
 Rejections: the command's `x-rejections` in the contract, the same as slice.json's `SPEC_ERROR` titles.
 
 ## Step 2 — A form per submitted command
