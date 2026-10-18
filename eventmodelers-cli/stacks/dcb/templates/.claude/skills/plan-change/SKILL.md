@@ -96,9 +96,10 @@ What it needs instead:
 - **(a) The new context's published read model,** queried in-process (as the session lookup is) or over HTTP. This is
   the default. On the board, the old context's chapter may show it as a copy, which emcli marks `--external <new
   context>`: nothing of ours builds it.
-- **(b) A published external event, which the old context translates** into its own command and event. Use this when
-  it must react to the fact or keep its own copy. How events are published is still open (ADR-059 point 4), so
-  stop and ask before planning one.
+- **(b) A published external event** (ADR-061, ADR-073): the owner appends it in the same decision as its own event,
+  from its `Published.ts`. The old context **projects** it as a lookup when it only shows the value (licensing's
+  overview shows a member's email from identity's `userContactDetailsWereUpdated`), and **translates** it into its own
+  command and event only when it must react to the fact or keep its own record.
 
 **The loop works one context at a time** (`.build-kit/.slices/current_context.json`). After the export, switch it with
 `eventmodelers activate-context` to build the other context's slices, then switch back.
@@ -211,7 +212,7 @@ the tags exactly, so it fails until the producer's same-name replacement is buil
   every test and script that set up data through it: find them (`grep -rlE '"/<route>"' src e2e`) and seed with
   `app.given(...)` or drive through the automation instead. Changing only the permission keeps the route, but it is
   still a model change to a built slice.
-- **A published event** (ADR-061: `--published`, read by other contexts; not in emcli until its first use) is part of its context's API.
+- **A published event** (ADR-061, ADR-073: `--published`, read by other contexts) is part of its context's API.
   Any change is a new version (ADR-017/018), released or not, if another context's slice reads it. Retire it as
   ADR-046 supersedes an endpoint. Making a private event published, or changing how a subscriber receives it
   (`subscribed`, `fetched`, `webhook`), is a model change: plan the subscriber's slices with it.
@@ -308,5 +309,6 @@ The full text is in the kit repo (`eventmodelers-cli/stacks/dcb/ADR.md`):
 | 059 | A context's events are its own: other contexts read its published read models or translate its published events. |
 | 056 | Account security: a role's sign-in level is enforced by the API (step-up); account screens come with the kit; policies and evidence live in `security/`. |
 | 061 | Between contexts: pull a published event (default), push a fact, push a request to act, ask synchronously. |
+| 073 | A published event is designed for readers (the current state whole), appended with the owner's own event, and may be projected as a lookup; translate only to react. |
 | 065 | Navigation from the model: flows along the timeline, a menu of entities from the id register, areas for the rest. |
 | 069 | Pages composed from the model: slices export parts, emcli writes each page's parts, the kit renders them; no slice edits a page. |
