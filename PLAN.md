@@ -79,13 +79,24 @@ model and build only what's ours.
     loop proof: the loop built it). No database reset was needed: every journey run uses new people, and the version bumps
     rebuilt the projections. **Distilled:** emcli's `contexts.md` (pattern 1 as a read is proven: emcli `ad37ab4`) and
     `build-automation`'s note. Reacting to a published event and patterns 2–4 stay drafts until their first use.
-    **Still open, for Gary:** pushing the model to the board; `@axe-core/playwright` in the journeys (ADR-072).
+    **Both done 2026-10-18 (Gary's go-ahead):**
+    - **Pushed to the board** (6 chapters, 77 slices, 89 elements created; removals that the model had already made).
+      **Found: the push left the loop's queue on the provisional ids.** 65 built slices in `.build-kit/.slices` named
+      ids the model no longer had, and the next export would have taken them as replaced and queued them to rebuild.
+      **Closed at the root, emcli `91440e9`:** `sync push` writes the board's ids into `.build-kit/.slices` too
+      (`rewriteBuildKitIds`, tested and mutation-checked). **Found too: a dependency's `chapterId` kept a pushed
+      chapter's local id** (chapter 4: 12 links). **Closed, emcli `069faf9`:** `rewriteId` covers it. Licensing was
+      repaired with the push's id map (licensing `22fb9e2`) and the five elements were pushed again; the board diff is clean.
+    - **axe in the journeys:** `@axe-core/playwright` 4.13.0 (the newest at least two weeks old, exact), and
+      `accessible(page, where)` on 13 pages (WCAG 2.2 AA). **Found: Forgotten Your Password's "Back to sign in" was under
+      24px beside the button** (`target-size`, 2.5.8). **Closed in the kit:** `sign-in.tsx`'s side links are 24px
+      targets; the manual (§13, the patterns) says to check pages in the journeys. Journeys mock and sandbox 3/3
+      (licensing `ef57919`).
   3. *(Done 2026-10-18, above.)* **Prove it:** licensing's backend and web tests; the journeys on the mock and the sandbox, now checking the
      Dashboard lists members by email and that a changed email (chapter 0f) shows there. Record in `e2e/`.
   4. **Then:** reset the local database if the rebuilds need it (pre-release, plan-change); distil the ADR-061/073
      skill drafts once the run passes; update this summary.
-  - **Open, for Gary:** pushing the model to the board (not done this session); adding `@axe-core/playwright` to the
-    journeys (ADR-072).
+  - *(Both done 2026-10-18, above.)*
 - **Where we are, and what's next** (2026-10-06; read this first):
   - **Done before the loop** (16.1 to 16.5):
     - **The inbox** for what Paddle tells us, and its translation with a to-do list (ADR-040).
@@ -1150,8 +1161,8 @@ model and build only what's ours.
               "Asks first", and a test reads it through `WorkspaceSchema` (mutation-checked); `d3cdad5`: emcli's
               CLAUDE.md lists every place a local-only element property goes. Licensing's model `178f23b`
               (removeMember asks first): the dry run now queues remove member's UI only, its backend as built.
-            - Found, open: the journeys run no accessibility checker (ADR-072 assumed axe ran there). Adding
-              `@axe-core/playwright` to licensing's `e2e/journey` is a new dependency: for Gary.
+            - Found: the journeys ran no accessibility checker (ADR-072 assumed axe ran there). **Closed
+              2026-10-18** (Gary's go-ahead): axe in licensing's journeys, a kit fix it found, the manual (see "Pick up here").
             - Changed on purpose: a failure that isn't the backend's rejection (Paddle's checkout not opening) now
               shows "Something went wrong. Try again." instead of the exception's text (`errorText`).
     3. **Distil the draft skill sections** once each shape's first slice and the end-to-end run pass (16.6).
@@ -5115,6 +5126,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-13 | Sign-up lessons kept in the model and the kit, not a new skill: emcli warns when a real sign-in's model has no page (or several) that registers a new person (`b74a430`); the `event-model` navigation reference gains "Arriving signed out" (registration, pages an email opens are `link`); `provider-better-auth` says every way into sign-in carries the page; a template test walks the whole chain (PR #289, mutation-checked; licensing `60d6f91`) | Gary asked what to encapsulate after the invitation journey found the header's Sign up losing the page. Signing in is kit code nothing per project varies, so a skill would steer nothing; the joins between its steps needed a test, and the model's part (where people register) a warning |
 | 2026-10-13 | ADR-072 Accepted: a part is put together from the kit's patterns (ViewCard, FormCard, Field/ChoiceGroup, SummaryList, DataTable, RowAction, Value), one error wording, `--confirm` from the model, names not ids (emcli warning), a commit check | Licensing's 14 parts restate the same pieces by hand and drift (raw exception text, unannounced loading, empty states with no way forward, unnamed row actions, an unconfirmed removal, ids for names). GOV.UK, NN/g, WCAG 2.2 and Atomic Design agree: build each recurring piece once with its states and accessibility, confirm only what can't be undone. Gary accepted the recommendations, incl. `--confirm` as a model property |
 | 2026-10-18 | ADR-074 Accepted: a lookup that can change declares `refresh(doc, relatedId, entry)`, and the runners refresh every document that shows a changed entry; always for another context's published event (check 24) | The loop blocked the overview's emails: ADR-022 captured lookup values only at the document's own events, so a changed email never showed. Gary chose refresh at write (Marten's fan-out, Axon's update-every-row) over a read-time join (queries couldn't use the email; the read path would leave the fold) and over licensing translating the event (rejected in ADR-073) |
+| 2026-10-18 | `sync push` rewrites the board's ids into the loop's queue; axe (WCAG 2.2 AA) runs in the journeys | A push that left `.build-kit/.slices` on provisional ids would have queued 65 built slices to rebuild at the next export. ADR-072's accessibility promise needs a browser to check, which only the journeys have |
 | 2026-10-18 | ADR-072/073/074 proven end to end in licensing (journeys mock and sandbox 3/3: members by email, a changed email refreshed onto the Dashboard, Remove's confirmation built by the loop); the contexts drafts distilled for pattern 1 as a read only | The first published event works through the loop in two rounds. Only what ran is distilled: reacting and patterns 2–4 have no first use yet |
 | 2026-10-18 | ADR-073 Accepted: identity publishes `userContactDetailsWereUpdated` (the current contact details whole, Gary's name; appended with the internal event, one append as the outbox); a subscriber may project a published event as a lookup without translating it; `--published`, `Published.ts`, the check allows it | The Dashboard lists members by id (ADR-072 decision 5). Gary chose the published event over a licensing copy (stale after an email change, personal data in licensing's events) and over reading identity's API (identity can't authorise by organisation). Dudycz: publish a designed external event, not internal ones; readers may build read models from it. Gary named it and accepted appending it in the same write |
 

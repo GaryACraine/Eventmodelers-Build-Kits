@@ -8,6 +8,12 @@ import { useSessionState } from "./session"
 import { afterSignUp, type Navigation } from "./navigation"
 
 /**
+ * The small links beside a form ("Forgotten your password?", "Back to sign in"): each is a 24px target at least
+ * (WCAG 2.2, 2.5.8), which a standalone link of small text isn't, next to the form's button.
+ */
+const SIDE_LINKS = "text-sm text-muted-foreground [&_a]:inline-block [&_a]:min-h-6 [&_a]:leading-6"
+
+/**
  * The sign-in screens (ADR-055, ADR-056, ADR-057): the sign-in system's, provided by the kit, never built by the loop.
  * Their headings, labels, buttons and links match emcli's starters (`element mockup --starter sign-in | sign-up |
  * check-email | enter-code | forgot-password | reset-password | link-expired`), so the board shows what people get.
@@ -87,10 +93,10 @@ export function SignInForm({ next }: { next: string }) {
                 Sign in
             </Button>
             <PasskeySignIn onError={setError} />
-            <p className="text-sm text-muted-foreground">
+            <p className={SIDE_LINKS}>
                 <Link to="/forgot-password">Forgotten your password?</Link>
             </p>
-            <p className="text-sm text-muted-foreground">
+            <p className={SIDE_LINKS}>
                 No account yet? <Link to={`/sign-up?next=${encodeURIComponent(next)}`}>Sign up</Link>
             </p>
         </form>
@@ -204,7 +210,7 @@ export function SecondFactorForm({ methods, onStartAgain }: { methods: SecondFac
                     Continue
                 </Button>
             )}
-            <p className="text-sm text-muted-foreground">
+            <p className={SIDE_LINKS}>
                 {method === "otp" && (
                     <button type="button" className="mock-link" onClick={send}>
                         Send a new code
@@ -219,13 +225,13 @@ export function SecondFactorForm({ methods, onStartAgain }: { methods: SecondFac
             {/* A backup code is the way round a lost phone. A passkey isn't offered here: whether this person has one isn't
                 known before they've signed in, and "Sign in with a passkey" is on the first screen ("Start again") */}
             {method !== "backup" && methods.includes("totp") && (
-                <p className="text-sm text-muted-foreground">
+                <p className={SIDE_LINKS}>
                     <button type="button" className="mock-link" onClick={choose("backup")}>
                         Use a backup code
                     </button>
                 </p>
             )}
-            <p className="text-sm text-muted-foreground">
+            <p className={SIDE_LINKS}>
                 <button type="button" className="mock-link" onClick={onStartAgain}>
                     Start again
                 </button>
@@ -275,7 +281,7 @@ export function SignUpForm({ next, navigation }: { next: string; navigation?: Na
             <Button type="submit" disabled={busy}>
                 Sign up
             </Button>
-            <p className="text-sm text-muted-foreground">
+            <p className={SIDE_LINKS}>
                 Already have an account? <Link to={`/sign-in?next=${encodeURIComponent(next)}`}>Sign in</Link>
             </p>
         </form>
@@ -316,13 +322,13 @@ function CheckEmail({ email, landing, onWrongAddress }: { email: string; landing
             <h2>Check your email</h2>
             <p>We've sent a link to {email} to verify your address. Open it to finish signing up.</p>
             {again && <p>{again}</p>}
-            <p className="text-sm text-muted-foreground">
+            <p className={SIDE_LINKS}>
                 Nothing arrived?{" "}
                 <button type="button" className="mock-link" onClick={sendAgain}>
                     Send it again
                 </button>
             </p>
-            <p className="text-sm text-muted-foreground">
+            <p className={SIDE_LINKS}>
                 Wrong address?{" "}
                 <button type="button" className="mock-link" onClick={onWrongAddress}>
                     Sign up again
@@ -353,7 +359,7 @@ export function ForgotPasswordPage() {
             <section className="mock-card" role="status">
                 <h2>Check your email</h2>
                 <p>If {email} has an account, we've sent it a link to choose a new password. It works once, for an hour.</p>
-                <p className="text-sm text-muted-foreground">
+                <p className={SIDE_LINKS}>
                     <Link to="/sign-in">Back to sign in</Link>
                 </p>
             </section>
@@ -371,7 +377,7 @@ export function ForgotPasswordPage() {
             <Button type="submit" disabled={busy}>
                 Send the link
             </Button>
-            <p className="text-sm text-muted-foreground">
+            <p className={SIDE_LINKS}>
                 <Link to="/sign-in">Back to sign in</Link>
             </p>
         </form>
@@ -396,7 +402,7 @@ export function ResetPasswordPage() {
             <section className="mock-card" role="alert">
                 <h2>This link has expired</h2>
                 <p>A link to reset your password works once, for an hour.</p>
-                <p className="text-sm text-muted-foreground">
+                <p className={SIDE_LINKS}>
                     <Link to="/forgot-password">Send me a new link</Link>
                 </p>
             </section>
@@ -416,7 +422,7 @@ export function ResetPasswordPage() {
             <section className="mock-card" role="status">
                 <h2>Your password is changed</h2>
                 <p>Every session was signed out. Sign in with your new password.</p>
-                <p className="text-sm text-muted-foreground">
+                <p className={SIDE_LINKS}>
                     <Link to="/sign-in">Sign in</Link>
                 </p>
             </section>
@@ -457,7 +463,7 @@ export function LinkExpired() {
             <section className="mock-card" role="alert" aria-label="This link has expired">
                 <h2>This link has expired</h2>
                 <p>A link to change your email works once, for an hour. Your email hasn't changed.</p>
-                <p className="text-sm text-muted-foreground">
+                <p className={SIDE_LINKS}>
                     <Link to="/account">Change it again from your account</Link>
                 </p>
             </section>

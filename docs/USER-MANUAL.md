@@ -2042,6 +2042,12 @@ row's Remove button is heard as "Remove alex@example.com". Two things are yours 
   warning (`shows userId, an id, as text`). The skill shows the name instead, adding it to the read model if it
   isn't there.
 
+**Check it in your journeys.** The kit's unit tests run without a browser, so they can't measure a page. Your
+end-to-end journeys can. Add `@axe-core/playwright` (an exact version) and check each page a journey reaches against
+WCAG 2.2 AA. A violation then fails the run, naming the rule and the element. Licensing's `e2e/journey/browser.ts` has
+the helper, `accessible(page, where)`. Its first run found a link too small to tap beside a button (`target-size`),
+which is now fixed in the kit.
+
 **Where each screen leads** (ADR-065). Once a screen's command succeeds, the person goes on to the next page in the
 chapter's timeline, in the same lane: the chapter is one flow, so the timeline already says what comes next. In
 licensing, Activate Organisation leads to Choose How to Start, and reporting the checkout leads to the Dashboard.
