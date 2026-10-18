@@ -1333,6 +1333,12 @@ The scaffold's `src/shared/readModels.ts` runs that definition as any type:
 
   That is the same sequence the stored projection processed, so the result is the same document.
 
+**A value that changes after it's shown** (a student renamed after subscribing) needs one more line in the
+lookup: `refresh(doc, studentId, entry)`, which puts the new name on each course that lists the student. Without
+it, a course keeps the name it took when the student subscribed (ADR-074). You don't write it: say so in a
+specification ("a student renamed after subscribing shows the new name") and the loop declares it. Every type then
+shows the new value as soon as it's recorded.
+
 The route is one generic call, `readModelRoute(courseDetails, …)`. Every slice serves its document the same way.
 The tests run every scenario against all three types (`describe.each(READ_MODEL_TYPES)`), so every commit proves
 the types agree.
@@ -3289,8 +3295,8 @@ other contexts, and licensing reads it (ADR-061, ADR-073). Say to Claude, for ex
   details whole (today, the email), never internal ids like `sub`.
 - *"The Dashboard shows each member's email."* Claude copies the published event into licensing's chapter (it's marked
   external to identity, read from the event store: intake `subscribed`), and adds an extension of the overview that
-  folds it in as a lookup. Licensing records nothing of its own, so a changed email shows the next time the overview
-  is read.
+  folds it in as a lookup. The lookup refreshes the overview of every organisation the person belongs to when their
+  details change (ADR-074), so a changed email shows as soon as it's recorded. Licensing records nothing of its own.
 - *"When an email changes, licensing should …"* (react, not only show): that is a translation, as for Paddle: a to-do
   list, an automation, licensing's own command and event.
 

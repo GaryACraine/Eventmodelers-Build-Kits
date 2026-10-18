@@ -65,13 +65,20 @@ export type ReadModelType = (typeof READ_MODEL_TYPES)[number]
 
 export type ReadModelDoc = Record<string, unknown>
 
-export interface LookupDefinition<L extends ReadModelDoc = ReadModelDoc> {
+export interface LookupDefinition<L extends ReadModelDoc = ReadModelDoc, TDoc extends ReadModelDoc = ReadModelDoc> {
     /** Tag key of the related entity, e.g. "studentId". Primary events reference it through this tag. */
     key: string
     /** The related entity's event types this lookup folds */
     canHandle: string[]
     /** Pure fold of one related entity's lookup entry */
     evolve: (entry: L | null, event: SequencedEvent) => L | null
+    /**
+     * Puts a changed entry on a document that shows it (ADR-074): called for every document a primary event
+     * tagged with `relatedId` has folded into, when this lookup's entry for it changes. Returns the document
+     * unchanged when it no longer shows that id. Declare it whenever the related entity can change after a
+     * document shows it: always for another context's published event.
+     */
+    refresh?: (doc: TDoc, relatedId: string, entry: L | null) => TDoc | null
 }
 
 /** Lookup entries visible to `evolve`: only the ids in the current event's tags. */
@@ -94,7 +101,7 @@ export interface ReadModelDefinition<
     version?: number
     /** Primary event types. Extension slices append to this list. */
     canHandle: string[]
-    lookups?: { [K in keyof TLookups]: LookupDefinition<TLookups[K]> }
+    lookups?: { [K in keyof TLookups]: LookupDefinition<TLookups[K], TDoc> }
     /** Pure fold of one key's document. Return null to delete it. */
     evolve: (doc: TDoc | null, event: SequencedEvent, lookups: LookupViews<TLookups>) => TDoc | null
     /** Named where predicates over the documents (ADR-023). Adding one never rebuilds. */
@@ -164,11 +171,15 @@ interface FoldState {
     setDoc(id: string, doc: ReadModelDoc | null): Promise<void>
     getLookup(name: string, id: string): Promise<ReadModelDoc | null>
     setLookup(name: string, id: string, entry: ReadModelDoc | null): Promise<void>
+    /** The document keys a primary event tagged with this related id has folded into (refreshing lookups only) */
+    getRefs(name: string, id: string): Promise<string[]>
+    addRef(name: string, id: string, key: string): Promise<void>
 }
 
 /**
- * Apply one event — the single place both runners share. Lookups first, then the primary document,
- * whose `evolve` sees only the lookup entries for ids in this event's tags.
+ * Apply one event — the single place both runners share. Lookups first (refreshing the documents that show a
+ * changed entry, ADR-074), then the primary document, whose `evolve` sees only the lookup entries for ids in
+ * this event's tags.
  * `onlyKey` restricts the primary fold to one document (the live runner reads one key).
  */
 async function foldEvent(
@@ -181,7 +192,13 @@ async function foldEvent(
     for (const [name, lookup] of lookups) {
         if (!lookup.canHandle.includes(event.event.type)) continue
         for (const id of tagValues(event, lookup.key)) {
-            await state.setLookup(name, id, lookup.evolve(await state.getLookup(name, id), event))
+            const entry = lookup.evolve(await state.getLookup(name, id), event)
+            await state.setLookup(name, id, entry)
+            if (!lookup.refresh) continue
+            for (const key of await state.getRefs(name, id)) {
+                const doc = await state.getDoc(key)
+                if (doc) await state.setDoc(key, lookup.refresh(doc, id, entry))
+            }
         }
     }
 
@@ -198,6 +215,10 @@ async function foldEvent(
     for (const id of tagValues(event, definition.key)) {
         if (onlyKey !== undefined && id !== onlyKey) continue
         await state.setDoc(id, definition.evolve(await state.getDoc(id), event, views as any))
+        for (const [name, lookup] of lookups) {
+            if (!lookup.refresh) continue
+            for (const relatedId of tagValues(event, lookup.key)) await state.addRef(name, relatedId, id)
+        }
     }
 }
 
@@ -213,10 +234,16 @@ function lookupCollectionName(definition: ReadModelDefinition<any, any>, lookup:
     return `_${definition.collection}_${lookup}`
 }
 
+/** Related id → the document keys showing it, kept for a lookup that refreshes (ADR-074) */
+function refsCollectionName(definition: ReadModelDefinition<any, any>, lookup: string): string {
+    return `${lookupCollectionName(definition, lookup)}_refs`
+}
+
 function storedProjection(definition: ReadModelDefinition<any, any>): Projection {
     const collections = [
         definition.collection,
-        ...lookupEntries(definition).map(([name]) => lookupCollectionName(definition, name))
+        ...lookupEntries(definition).map(([name]) => lookupCollectionName(definition, name)),
+        ...lookupEntries(definition).filter(([, lookup]) => lookup.refresh).map(([name]) => refsCollectionName(definition, name))
     ]
     return pongoProjection({
         name: `${definition.name}Projection`,
@@ -246,7 +273,12 @@ function storedProjection(definition: ReadModelDefinition<any, any>): Projection
                 getDoc: id => find(definition.collection, id),
                 setDoc: (id, doc) => upsert(definition.collection, id, doc),
                 getLookup: (name, id) => find(lookupCollectionName(definition, name), id),
-                setLookup: (name, id, entry) => upsert(lookupCollectionName(definition, name), id, entry)
+                setLookup: (name, id, entry) => upsert(lookupCollectionName(definition, name), id, entry),
+                getRefs: async (name, id) => ((await find(refsCollectionName(definition, name), id))?.keys as string[]) ?? [],
+                addRef: async (name, id, key) => {
+                    const keys = ((await find(refsCollectionName(definition, name), id))?.keys as string[]) ?? []
+                    if (!keys.includes(key)) await upsert(refsCollectionName(definition, name), id, { keys: [...keys, key] })
+                }
             }
             for (const event of events) await foldEvent(definition, event, state)
         },
@@ -306,6 +338,7 @@ export async function readLive(
 
         let doc: ReadModelDoc | null = null
         const entries = new Map<string, ReadModelDoc | null>()
+        const refs = new Set<string>()
         const state: FoldState = {
             getDoc: async () => doc,
             setDoc: async (_, next) => {
@@ -314,6 +347,11 @@ export async function readLive(
             getLookup: async (name, relatedId) => entries.get(`${name}\0${relatedId}`) ?? null,
             setLookup: async (name, relatedId, entry) => {
                 entries.set(`${name}\0${relatedId}`, entry)
+            },
+            // One document: it shows a related id once one of its primary events carried it
+            getRefs: async (name, relatedId) => (refs.has(`${name}\0${relatedId}`) ? [id] : []),
+            addRef: async (name, relatedId) => {
+                refs.add(`${name}\0${relatedId}`)
             }
         }
         for (const event of events) await foldEvent(definition, event, state, id)

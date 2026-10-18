@@ -100,7 +100,8 @@ From the slice definition, extract:
 only its own context's events, never another context's `Events.ts` (ADR-059, the `context-events-private` check).
 The one exception is another context's **published** event (ADR-073): an event in slice.json with `externalSystem` =
 another context and `intake: "subscribed"`. It's read from the shared event store as a **lookup** (requirement 3),
-its type imported from `src/contexts/<owner>/Published.ts`, and its tag checked there. Seed it in tests with that
+its type imported from `src/contexts/<owner>/Published.ts`, and its tag checked there. Its lookup declares `refresh`
+(requirement 3): it carries the owner's current details, which change. Seed it in tests with that
 module's factory. If the owner's `Published.ts` lacks it, the owner's slice isn't built yet: stop and report it.
 
 1. **Keyed GET:** the `path` has the key as its parameter, and the read model is not a list
@@ -111,6 +112,22 @@ module's factory. If the owner's `Published.ts` lacks it, the owner's slice isn'
    that brings the other entity in (`studentWasSubscribed`) carries that entity's id as a tag (`studentId`),
    and the events that hold the data (`studentWasRegistered`) carry the same tag. Each such entity becomes a
    **lookup**.
+   - **A value that can change after a document shows it** (a student renamed, a person's email changed) needs the
+     lookup's **`refresh(doc, relatedId, entry)`** (ADR-074): a pure function that puts the changed entry on a
+     document showing that id, and returns the document unchanged when it no longer shows it. The runners call it
+     for every document a primary event tagged with that id folded into. Without it, a document keeps the value it
+     took when its own event was folded. A specification whose `given` changes the value after the document's own
+     events says you need it. **Always** declare it for another context's published event (the
+     `published-lookup-refresh` check refuses one without it).
+
+     ```ts
+     refresh: (doc, userId, entry) => ({
+         ...doc,
+         members: doc.members.map(m => (m.userId === userId ? { ...m, email: entry?.email } : m))
+     })
+     ```
+     Adding `refresh` to a built read model bumps its `version` (the stored copy is rebuilt to learn which
+     documents show each id).
 
 4. **Live queries** (only when the type is `live-report` and there are queries to build): each query needs a
    required parameter with a `tag` and operator `eq`, `in` or `contains`. A live read finds the query's
@@ -1037,6 +1054,10 @@ stop and report that this extension is already built. Do not edit anything.
   lookup (append the related event to its `canHandle` and handle it in its `evolve`), or append a new lookup
   entry. The events feeding a lookup must be in `extends.addedEvents` (the modeler wires them into the copy).
   If they aren't, don't invent them: stop and report the missing inbound event.
+  - **A first lookup** changes three lines only by inserting into them, which the `extension-additive` check
+    accepts: `defineReadModel<Doc>(` gains the lookups type (`defineReadModel<Doc, { organisations: … }>(`),
+    `evolve: (doc, { event })` gains `lookups`, and the line that builds an item gains the lookup's field. Insert,
+    don't rewrite: a line with a token replaced is refused.
 - Each field in `extends.addedFields` becomes an **optional** field of the Doc interface, and an `.optional()`
   field at the end of the origin's `schema.ts` object (Step 4), so `/openapi.json` shows it. A **path**
   (`organisations[].organisationName`) is a subfield: optional in the item's interface and `.optional()` at the
