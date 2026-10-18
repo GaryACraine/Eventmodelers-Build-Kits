@@ -1057,8 +1057,17 @@ model and build only what's ours.
                 identity's (ADR-059). Gary chose (2026-10-18) identity's published event, read by licensing (ADR-061
                 pattern 1, its first use): **ADR-073 Accepted 2026-10-18** (`userContactDetailsWereUpdated`, Gary's name, appended with registering and
                 changing an email; licensing's overview folds it as a lookup, no translation; `--published` in
-                emcli, `Published.ts` in the kit). Next: build emcli + kit, then licensing's
-                model, then one export with the names above.
+                emcli, `Published.ts` in the kit).
+                - **Built 2026-10-18:** emcli `09b32ff` (`element update --published`; a published event's copy across
+                  contexts marked external, intake `subscribed`; completeness errors on a copy of an unpublished event,
+                  an unmarked one or other fields; export `published: true`, a subscribed copy makes no job; card;
+                  `published.test.ts` through `WorkspaceSchema`, mutation-checked; `event-model` contexts.md, method.md).
+                  Kit: `Published.ts` per context in `build-state-change`/`build-state-view`/`build-automation`; checks
+                  `slice-scope`, `events-append-only`, `event-tags` cover it, `context-events-private` allows another
+                  context's `Published` and refuses a `Published.ts` importing its own `Events` (tests, mutation-checked);
+                  manual §22.9.
+                - Next: licensing's model (identity's two slices replaced, the extension, both Dashboards), then one
+                  export with the names above.
             - Found: an extension that adds a subfield to a list's items (each organisation's name) couldn't be bound
               on the screen, wasn't in the contract and wasn't in the extension's `addedFields`: emcli compared fields
               by name only, and a screen saw only the read model it displays. Closed in emcli `87bfa84` (`extendedFields`

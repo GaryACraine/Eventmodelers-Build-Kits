@@ -44,7 +44,18 @@ From the slice definition, extract:
 Each context has one `Events.ts` at `src/contexts/{context}/Events.ts` that exports tagged event factories.
 **Only your own context's.** Never import another context's `Events.ts`, not even in tests (ADR-059, and the
 `context-events-private` check). A fact another context owns reaches you through its published read model (the
-signed-in person's `userId` comes from the session lookup) or a translation of its published event.
+signed-in person's `userId` comes from the session lookup) or its published event (`src/contexts/<other>/Published.ts`).
+
+**A published event** (`"published": true` on an event in `events[]`, ADR-073) is part of your context's API, read by
+other contexts:
+- its type and factory go in **`src/contexts/{context}/Published.ts`** (create it if missing, same shape as below),
+  never in `Events.ts`. `Published.ts` imports nothing from `Events.ts` (the check refuses it). `Events.ts`
+  re-exports it (`export { … } from "./Published.js"`) and adds its type to the context's event union, so the
+  context's own code reads it as any other event;
+- the decision appends it **beside** the command's own event, in the same `handle` result, as the spec's `then`
+  shows (`[userWasRegistered(…), userContactDetailsWereUpdated(…)]`). It's one append: both or neither;
+- once another context reads it, its fields and tags are fixed: a change is a new version (`plan-change`). Never
+  change an existing one in this job.
 
 ### Event shape
 

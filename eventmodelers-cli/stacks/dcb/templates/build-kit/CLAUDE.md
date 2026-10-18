@@ -157,11 +157,12 @@ It loads every check under `.build-kit/lib/checks/` and rejects the commit if an
   `type:` line changes only that line of the slice's `readModel.ts`, to `retype.to`. No test, route or other
   slice edits, because the existing contract tests are the proof that clients see the same data. With
   `addQueries` too, the queries follow as their own commit, which query-additive checks.
-- **events-append-only** — `src/contexts/{context}/Events.ts` only gains lines: no event is removed or changed
-  (ADR-017). A released event changes only by a new version (ADR-018)
+- **events-append-only** — `src/contexts/{context}/Events.ts` and `Published.ts` only gain lines: no event is
+  removed or changed (ADR-017). A released or published event changes only by a new version (ADR-018, ADR-073)
 - **context-events-private** — no file under `src/contexts/<a>/` imports `src/contexts/<b>/Events`: a context's
-  events are its own (ADR-059). Another context's facts come from its published read model, or its published event
-  translated into ours. How each way between contexts is built: `build-automation`, "Between contexts" (ADR-061)
+  events are its own (ADR-059). Another context's facts come from its published read model, or its published events
+  in `src/contexts/<b>/Published.ts`: read as a lookup to show them (`build-state-view`), translated into ours to react
+  (`build-automation`, "Between contexts", ADR-061, ADR-073). A `Published.ts` never imports its own `Events`
 - **test-file-present** — a changed `decider.ts`, `projection.ts`, `readModel.ts`, or `processor.ts` needs a sibling `*.tests.ts`
 - **no-invented-fields** — heuristic: flags a field used in code that isn't declared anywhere in
   `.build-kit/.slices/{context}/{slice}/slice.json`

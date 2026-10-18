@@ -45,3 +45,16 @@ test('deleting the file is refused; other files are not its business', () => {
   assert.match(run(root, 'D')[0].reason, /only grows/);
   assert.deepStrictEqual(require(CHECK).run({ repoRoot: root, changes: [{ status: 'M', path: 'src/index.ts' }] }), []);
 });
+
+test("Published.ts only grows too: a published event is API (ADR-073)", () => {
+  const root = repo();
+  const PUBLISHED = 'src/contexts/licensing/Published.ts';
+  const before = 'export type MemberWasAdded = Event<"memberWasAdded", { organisationId: string }>\n';
+  fs.writeFileSync(path.join(root, PUBLISHED), before);
+  execSync('git add -A && git commit -q -m published', { cwd: root });
+  const check = () => require(CHECK).run({ repoRoot: root, changes: [{ status: 'M', path: PUBLISHED }] });
+  fs.writeFileSync(path.join(root, PUBLISHED), before + 'export type MemberWasRemoved = Event<"memberWasRemoved", { organisationId: string }>\n');
+  assert.deepStrictEqual(check(), []);
+  fs.writeFileSync(path.join(root, PUBLISHED), before.replace('organisationId: string }', 'organisationId: string; email: string }'));
+  assert.match(check()[0].reason, /Published\.ts only grows/);
+});

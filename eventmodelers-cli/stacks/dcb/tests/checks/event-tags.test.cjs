@@ -64,3 +64,11 @@ test('an existing factory is left alone (its tags change only by a deliberate ch
   add(root, factory('somethingOld', 'whatever'))
   assert.deepStrictEqual(run(root), []);
 });
+
+test("a new factory in Published.ts is checked against the model's tags too (ADR-073)", () => {
+  const root = repo([{ key: 'organisationId' }, { key: 'userId' }]);
+  const PUBLISHED = 'src/contexts/licensing/Published.ts';
+  fs.writeFileSync(path.join(root, PUBLISHED), factory('seatWasReleased', 'organisationId'));
+  const result = require(CHECK).run({ repoRoot: root, changes: [{ status: 'A', path: PUBLISHED }] });
+  assert.match(result[0].reason, /seatWasReleased is tagged organisationId, but the model's eventTags are organisationId, userId/);
+});

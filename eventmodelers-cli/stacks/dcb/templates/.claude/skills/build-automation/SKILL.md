@@ -516,7 +516,9 @@ export const paddleNotificationInbox = paddleInbox(paddleConfig())
 
 ## Between contexts (ADR-061): what each pattern builds. A draft, on first use
 
-> **Draft (ADR-061 Accepted, not yet built).** No slice has been built this way yet. When a slice.json names another context's
+> **Draft (ADR-061 Accepted; ADR-073 builds pattern 1's first use as a read: a lookup in `build-state-view`).** No
+> automation has been built this way yet. The published-events module is `src/contexts/<owner>/Published.ts`, which
+> the `context-events-private` check allows. When a slice.json names another context's
 > published event, or another context's command, follow this. If something it needs is missing (the published-events
 > module, the check's exception), block the job with `request-feedback` naming what's missing; don't improvise. A
 > context never imports another context's `Events.ts` (ADR-059, the `context-events-private` check).
