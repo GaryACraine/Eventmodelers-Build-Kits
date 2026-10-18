@@ -5849,12 +5849,13 @@ made 14 times, then again in every new part.
 - **Every new part is smaller.** It's the mockup's words and order, with the patterns holding the states and the
   accessibility.
 
-### ADR-073: The first published event: identity publishes a person's email, and licensing's views read it (open)
+### ADR-073: The first published event: identity publishes a person's contact details, and licensing's views read them (open)
 
 **Status:** **Proposed, 2026-10-18.** Gary chose the direction (2026-10-18): the members on the Dashboard are shown
 by email, taken from identity's published event (ADR-061 pattern 1, `subscribed`), not from a copy licensing records
 and not from a second read of identity's API. This is the first use of ADR-061, so it settles what ADR-061 point 6
 left for the first use.
+The event's name was settled by Gary the same day: `userContactDetailsWereUpdated`, the wider one.
 **Date:** 2026-10-18
 **Builds on:**
 - ADR-059: a context's events are its own;
@@ -5887,17 +5888,20 @@ left for the first use.
   and event). That is for reacting. Here licensing only shows the value.
 
 **Proposed:**
-1. **Identity publishes one external event, `userEmailWasSet`** (`userId`, `email`, `setAt`), tagged `userId`. It says "this person's email is now this". It isn't `userWasRegistered` or `userEmailWasChanged` marked
-   published: they carry `sub`, they are two shapes for one fact, and publishing them would make identity's internal
-   events its API (Dudycz). Its name is open (see the questions).
+1. **Identity publishes one external event, `userContactDetailsWereUpdated`** (`userId`, `email`, `updatedAt`),
+   tagged `userId`. It carries the person's **current contact details, whole**, every time (Dudycz's summary event),
+   so a reader takes the latest and never merges partial updates. Today that is the email; a name or a phone joins it
+   as a new version (ADR-018) when identity holds one. Registering is its first update.
+   - It isn't `userWasRegistered` or `userEmailWasChanged` marked published: they carry `sub`, they are two shapes
+     for one fact, and publishing them would make identity's internal events its API (Dudycz).
 2. **It is appended in the same decision as the internal event:** registering a user and changing an email each
-   record their own event and `userEmailWasSet`, in one append. In one event store, the append is the outbox:
+   record their own event and `userContactDetailsWereUpdated`, in one append. In one event store, the append is the outbox:
    both are there, or neither is. Dudycz's handler, mapping after the fact, is the alternative. It's needed only when
    the external event needs state the decision doesn't have, which this one doesn't.
 3. **A subscriber may project a published event into a read model**, as a lookup, without translating it into
    events of its own. It translates only when it must react (decide, act, keep its own record), as ADR-061 says.
    ADR-059 point 1 ("no slice of another context projects them") then holds for private events only.
-   - Licensing's overview gains a lookup by `userId` folding `userEmailWasSet`'s email into each member: `members[]`
+   - Licensing's overview gains a lookup by `userId` folding `userContactDetailsWereUpdated`'s email into each member: `members[]`
      gains `email`. That's an extension slice (ADR-019), as My Organisations' name is.
    - No licensing event holds the email, so licensing has no copy of its own to keep current or to erase. A changed
      email shows at the next fold.
@@ -5920,7 +5924,7 @@ left for the first use.
      even before release, since another context's code reads it.
 6. **Licensing's model:**
    - **identity:** "register user" (chapter 0) and "change user email" (chapter 0f) are built, so each is replaced
-     with the same name (ADR-046) and records `userEmailWasSet` too. Their scenarios show it;
+     with the same name (ADR-046) and records `userContactDetailsWereUpdated` too. Their scenarios show it;
    - **licensing:** an extension "organisation overview with emails" (chapter 1) adds `members[].email`. Its scenario
      has identity's published event in its `given`. Both Dashboards show the email, and remove member's row action
      reads "Remove alex@example.com" (ADR-072's `RowAction`).
@@ -5931,10 +5935,7 @@ left for the first use.
    pre-release change). After release, a one-off command in identity would publish each person's current email. It
    isn't needed yet.
 
-**Questions for Gary:**
-- **The name:** `userEmailWasSet` is one fact, named for what happened (the email is now this). The alternative is
-  `userContactDetailsWereUpdated`, wider, so a name or a phone could join it later as a new version. The
-  recommendation is `userEmailWasSet`; contact details can be published as their own event when one is needed.
+**Question for Gary:**
 - **Appending with the decision (2) or mapping afterwards** (Dudycz's handler). The recommendation is appending it,
   for the reason in 2.
 
