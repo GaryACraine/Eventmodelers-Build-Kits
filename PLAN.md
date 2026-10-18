@@ -1066,8 +1066,27 @@ model and build only what's ours.
                   `slice-scope`, `events-append-only`, `event-tags` cover it, `context-events-private` allows another
                   context's `Published` and refuses a `Published.ts` importing its own `Events` (tests, mutation-checked);
                   manual §22.9.
-                - Next: licensing's model (identity's two slices replaced, the extension, both Dashboards), then one
-                  export with the names above.
+                - **Modelled 2026-10-18** (licensing `2442518` kit update, `3ff9c20` model; not exported): identity's
+                  "register user" and "change user email" replaced (same name), each also recording the published
+                  `userContactDetailsWereUpdated`; licensing's chapter 1 gains an Identity Events lane, the subscribed
+                  copy ("identity's contact details updated", no job) and the extension "organisation overview with
+                  emails" (`members[].email`, a lookup by `userId`; its scenario has the contact details before the
+                  membership and a later change); both Dashboards show the email. Completeness: the same 124 errors as
+                  before (draft chapters), no id warnings left.
+                - Found: the loop works one context and never crosses (`current_context.json`), and the export didn't
+                  say what waited elsewhere (the 2026-10-09 follow-up), so the overview's extension would have been
+                  built before identity's `Published.ts` existed. Closed in emcli `f167b3f`: `export --context`, the
+                  export names the loop's context, lists what's queued elsewhere, and warns when a slice reads a
+                  published event whose producer is queued in another context; `handoff.md` (two rounds). Tests
+                  mutation-checked.
+                - Found: in the two-round dry run, round 2 held back the extension ("waits on register user") because
+                  identity's queue on disk wasn't the export's. Closed in emcli `56c18de`: another context's queued or
+                  built slices count as available, and its queue is reported. Tests mutation-checked.
+                - **Hand-off, with Gary's go-ahead:** round 1 `export --chapter "0. …" --chapter "0f. …" --context
+                  identity` (register user and change user email rebuilt, My Account's screen); once the loop is
+                  waiting, round 2 `--chapter "1. …" --chapter "4. …" --context licensing` (the two extensions, five
+                  screens incl. remove member's question: the ADR-072 loop proof). Then the journeys check the
+                  Dashboard's emails and a changed email.
             - Found: an extension that adds a subfield to a list's items (each organisation's name) couldn't be bound
               on the screen, wasn't in the contract and wasn't in the extension's `addedFields`: emcli compared fields
               by name only, and a screen saw only the read model it displays. Closed in emcli `87bfa84` (`extendedFields`
