@@ -43,6 +43,24 @@ model and build only what's ours.
   and access are our domain. Paddle is an outside system: in the model, an automation (and translations of its
   webhooks) that produces a side effect. So the model is designed first, from how other vendors do it, and Paddle is
   fitted to it, not the other way round.
+- **Pick up here (2026-10-18):** ADR-072's names-not-ids and ADR-073 (members by email, from identity's published
+  `userContactDetailsWereUpdated`) are built in emcli and the kit, and modelled in licensing (`3ff9c20`, committed, **not
+  exported**). Full record: ADR-072's entry under 2b.2 ("Names not ids, modelled 2026-10-18"). Next, in order:
+  1. **Round 1, with Gary's go-ahead** (exporting starts the waiting loop at once; check `git status` is clean first):
+     `emcli workspace export --build-kit .build-kit --chapter "0. A person signs up and registers" --chapter "0f. A
+     person changes their email" --context identity`. The loop rebuilds "register user" and "change user email" (each
+     now also records the published event, creating `src/contexts/identity/Published.ts`) and My Account's screen.
+     Don't watch the loop: Gary says when it's waiting.
+  2. **Round 2,** once Gary says the loop is waiting: `--chapter "1. Owner starts a trial" --chapter "4. Admin removes
+     a member" --context licensing`. The loop builds "my organisations with names" and "organisation overview with
+     emails" (a lookup on identity's `Published.ts`) and re-queues five screens: start options, organisation overview,
+     my organisations, remove member (its confirmation question, ADR-072's loop proof) and, from round 1, my account.
+  3. **Prove it:** licensing's backend and web tests; the journeys on the mock and the sandbox, now checking the
+     Dashboard lists members by email and that a changed email (chapter 0f) shows there. Record in `e2e/`.
+  4. **Then:** reset the local database if the rebuilds need it (pre-release, plan-change); distil the ADR-061/073
+     skill drafts once the run passes; update this summary.
+  - **Open, for Gary:** pushing the model to the board (not done this session); adding `@axe-core/playwright` to the
+    journeys (ADR-072).
 - **Where we are, and what's next** (2026-10-06; read this first):
   - **Done before the loop** (16.1 to 16.5):
     - **The inbox** for what Paddle tells us, and its translation with a to-do list (ADR-040).
