@@ -41,3 +41,23 @@ test("another context's published read model, and code outside the contexts, pas
     'src/index.ts': 'import { userWasRegistered } from "./contexts/identity/Events.js"\n',
   }), []);
 });
+
+test("another context's published events (Published.ts) pass; its Events.ts still doesn't (ADR-073)", () => {
+  assert.deepStrictEqual(run({
+    'src/contexts/licensing/slices/organisationoverview/readModel.ts':
+      'import { type UserContactDetailsWereUpdatedEvent } from "../../../identity/Published.js"\n',
+    'src/contexts/identity/Events.ts': 'export { userContactDetailsWereUpdated } from "./Published.js"\n',
+  }), []);
+  const violations = run({
+    'src/contexts/licensing/slices/organisationoverview/readModel.ts': 'import { userEmailWasChanged } from "../../../identity/Events.js"\n',
+  });
+  assert.match(violations[0].reason, /identity\/Published\.ts \(ADR-073\)/);
+});
+
+test("Published.ts never imports its own context's Events (ADR-073)", () => {
+  const violations = run({
+    'src/contexts/identity/Published.ts': 'export { userWasRegistered } from "./Events.js"\n',
+  });
+  assert.strictEqual(violations.length, 1);
+  assert.match(violations[0].reason, /holds only the published events/);
+});

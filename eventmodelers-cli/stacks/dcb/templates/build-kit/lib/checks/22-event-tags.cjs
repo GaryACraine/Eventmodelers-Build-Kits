@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
-const EVENTS = /^src\/contexts\/([^/]+)\/Events\.ts$/;
+const EVENTS = /^src\/contexts\/([^/]+)\/(?:Events|Published)\.ts$/; // Published.ts: the events other contexts read (ADR-073)
 
 /** The tags of each event factory in an Events.ts: { name: [{ key, optional }] } */
 function factoryTags(source) {

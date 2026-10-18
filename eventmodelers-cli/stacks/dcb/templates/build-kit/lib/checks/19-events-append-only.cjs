@@ -3,11 +3,13 @@
 // src/contexts/{context}/Events.ts holds every event a context records (ADR-017). Events in the store are read for
 // good, so a slice commit only adds to it: a removed or changed line would leave stored events no type, or a type
 // they don't fit. A released event changes only by a new version (ADR-018). A deliberate removal before release is
-// a model change made outside the loop's slice commits (ADR-046).
+// a model change made outside the loop's slice commits (ADR-046). Published.ts, the events other contexts read
+// (ADR-073), only grows too: a published event is API.
 
+const path = require('path');
 const { execSync } = require('child_process');
 
-const EVENTS = /^src\/contexts\/[^/]+\/Events\.ts$/;
+const EVENTS = /^src\/contexts\/[^/]+\/(?:Events|Published)\.ts$/;
 
 module.exports = {
   name: 'events-append-only',
@@ -15,7 +17,7 @@ module.exports = {
     const violations = [];
     for (const { path: file, status } of ctx.changes.filter((c) => EVENTS.test(c.path))) {
       if (status === 'D') {
-        violations.push({ path: file, reason: 'deletes the context\'s events — Events.ts only grows (ADR-017)' });
+        violations.push({ path: file, reason: `deletes the context's events — ${path.basename(file)} only grows (ADR-017)` });
         continue;
       }
       let diff = '';
@@ -32,7 +34,7 @@ module.exports = {
       for (const line of removed) {
         violations.push({
           path: file,
-          reason: `removes or changes "${line}" — Events.ts only grows: add your events, leave the others; a released event changes only by a new version (ADR-017, ADR-018)`,
+          reason: `removes or changes "${line}" — ${path.basename(file)} only grows: add your events, leave the others; a released event changes only by a new version (ADR-017, ADR-018)`,
         });
       }
     }

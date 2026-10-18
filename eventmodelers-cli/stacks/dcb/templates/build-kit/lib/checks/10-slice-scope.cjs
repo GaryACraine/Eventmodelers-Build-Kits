@@ -6,6 +6,7 @@
 // DCB path structure: src/contexts/{context}/slices/{slicename}/
 // Exceptions:
 //   - src/contexts/{context}/Events.ts  (shared event union — append-only)
+//   - src/contexts/{context}/Published.ts (the events other contexts read — append-only, ADR-073)
 //   - src/index.ts                      (bootstrap — projection/route/automation wiring)
 //   - src/workflows.ts                  (the Temporal worker's workflows — append-only, ADR-033)
 //   - mocks/{system}/**                 (an external system's container mock, built with its automation — ADR-033)
@@ -15,6 +16,7 @@
 
 const ALLOWED_EXCEPTIONS = [
   /^src\/contexts\/[^/]+\/Events\.ts$/,   // per-context event union (append-only)
+  /^src\/contexts\/[^/]+\/Published\.ts$/, // the context's published events (append-only, ADR-073)
   /^src\/index\.ts$/,                     // projection registration, route wiring
   /^src\/workflows\.ts$/,                 // external automations' workflows (append-only)
   /^mocks\/[^/]+\//,                      // an external system's mock

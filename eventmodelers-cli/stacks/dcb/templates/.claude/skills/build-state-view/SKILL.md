@@ -97,7 +97,11 @@ From the slice definition, extract:
 
 **Fold form** (`readModel.ts`, Steps 3–6) is the default. It needs all of this, which you check in
 `src/contexts/{context}/Events.ts`, where each event's `tags: Tags.fromObj({ … })` is declared. A projection reads
-only its own context's events, never another context's `Events.ts` (ADR-059, the `context-events-private` check):
+only its own context's events, never another context's `Events.ts` (ADR-059, the `context-events-private` check).
+The one exception is another context's **published** event (ADR-073): an event in slice.json with `externalSystem` =
+another context and `intake: "subscribed"`. It's read from the shared event store as a **lookup** (requirement 3),
+its type imported from `src/contexts/<owner>/Published.ts`, and its tag checked there. Seed it in tests with that
+module's factory. If the owner's `Published.ts` lacks it, the owner's slice isn't built yet: stop and report it.
 
 1. **Keyed GET:** the `path` has the key as its parameter, and the read model is not a list
    (`listElement` is not true).

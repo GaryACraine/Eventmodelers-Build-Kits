@@ -3276,3 +3276,23 @@ Two errors are expected while it loads: the role `dcb` and the database `dcb` al
 them). The sign-in service's tables, Temporal's databases and the event store all live on this one server, so all of
 them come across. Restart what uses it afterwards (`npm run infra:start`, then the backend). In our cloud, RDS upgrades a major version itself (a blue/green deployment). On-premises, the release
 notes say to dump and load, as above.
+
+### 22.9 Showing another context's facts: published events
+
+A context's events are its own (ADR-059): licensing never reads identity's `userWasRegistered`. When licensing needs
+something identity knows, such as a member's email on the Dashboard, identity **publishes** an event designed for
+other contexts, and licensing reads it (ADR-061, ADR-073). Say to Claude, for example:
+
+- *"Identity publishes a person's contact details whenever they register or change their email."* Claude adds
+  `userContactDetailsWereUpdated` to identity's register and change-email slices, recorded beside their own events
+  in the same decision, and marks it published (`emcli element update … --published`). It carries the current
+  details whole (today, the email), never internal ids like `sub`.
+- *"The Dashboard shows each member's email."* Claude copies the published event into licensing's chapter (it's marked
+  external to identity, read from the event store: intake `subscribed`), and adds an extension of the overview that
+  folds it in as a lookup. Licensing records nothing of its own, so a changed email shows the next time the overview
+  is read.
+- *"When an email changes, licensing should …"* (react, not only show): that is a translation, as for Paddle: a to-do
+  list, an automation, licensing's own command and event.
+
+Once another context reads a published event, it's API: any change is a new version, even before release. The checks
+keep it so: `Published.ts` only grows, and no context imports another's `Events.ts`.
