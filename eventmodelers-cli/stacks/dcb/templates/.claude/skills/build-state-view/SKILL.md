@@ -231,6 +231,12 @@ Rules for `evolve`. They are what make the three types produce the same data:
   document from `doc?.… ?? 0`. Keep only the fields slice.json declares: update an average incrementally,
   `(average * (count - 1) + value) / count`, rather than storing a hidden sum. Such a document doesn't exist
   until its first event, so its keyed GET answers 404 until then (the UI shows that as empty, not as an error).
+- **A field held only while a state lasts** (draft, ADR-077, licensing 2026-10-19): an optional field whose mapping
+  limits it (`derived:seatChangeWasRefused.reason, while the last seat change is refused`, `…, until the next
+  subscriptionWasRenewed`) is **removed** (`delete next.field`, or left out of the new document) by every event that
+  ends that state, not only set by the one that starts it. Every event that sets the state the field belongs to
+  (here every seat change's event) clears what doesn't belong to its state. A reason left behind shows a later
+  change as refused.
 - Write `canHandle` (and each lookup's `canHandle`) **one event per line**, each followed by a comma except the
   last. Extension slices append to these arrays.
 
@@ -436,6 +442,9 @@ describe.each(READ_MODEL_TYPES)("{slice title} (%s)", type => {
   verbatim** (the `spec-coverage` check matches the titles, an extension's included).
 - **Assert bodies with `toMatchObject`**, never an exact-shape `toEqual`. The read model grows as extension
   slices add fields. An exact-shape assertion would then fail although its scenario still holds.
+- **A field the *then* says is gone** (a specification whose givens end the state a field's mapping limits it to, as
+  above): `expect(getRes.body).not.toHaveProperty("{field}")` after the `toMatchObject`, because `toMatchObject`
+  passes a field left behind (draft, ADR-077).
 - **Nothing type-specific in the file.** No consumers, no `Prefer: wait`, no store setup. That is what lets a
   retype run these tests unchanged.
 - Every test gets a fresh database (the harness does it), so there is no reset code.
