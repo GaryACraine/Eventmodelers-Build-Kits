@@ -3336,6 +3336,17 @@ the prices it was seeded with (the sandbox's).
 | A price per country | the price's country overrides (`unit_price_overrides`) | [Localize prices](https://developer.paddle.com/build/products/offer-localized-pricing) |
 
 A price's trial and tax setting can be changed later (Update a price). Only new checkouts take the change; how a
-subscription bought earlier renews after a tax change is PLAN 16.2b's open question. **The page shows the total with
-tax** (Paddle's `formatted_unit_totals.total`, "£12.00 / month" for a £10 price with VAT added): for "£10 excl. VAT"
-it would show the subtotal instead, a change to the trial offer's slice.
+subscription bought earlier renews after a tax change is PLAN 16.2b's open question.
+
+**Show the tax in full.** Paddle is the merchant of record: it adds the tax for the buyer's country when they pay. So
+the page shows each price as Paddle previews it for them, before tax, the VAT, and the total (`previewPrices`'
+`subtotal`, `tax` and `total`: "£10.00 + £2.00 VAT = £12.00 a month"), never the total alone. Under the prices, say
+that the VAT is for their country (Paddle's preview guesses it from where they are) and that a business with a VAT
+number may not be charged it (the reverse charge: Paddle asks for the number at checkout). Then nothing at payment is
+a surprise. Say to Claude, for example:
+
+- *"Show each seat's price before VAT, the VAT and the total, and say the VAT is for their country."* On a built
+  slice, Claude replaces the trial offer's slice (a same-name replacement: its fields change), with the seat prices
+  split into net, VAT and total fields and the note in its mockup. Only its screen is rebuilt.
+
+In mock mode the mock Paddle adds UK VAT (20%) on top of the seeded prices, as the sandbox does for a buyer here.

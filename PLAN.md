@@ -50,7 +50,15 @@ model and build only what's ours.
   charged it" (the preview guesses the country from the IP; the EU reverse charge). Plan: a same-name replacement of
   licensing's built "trial offer" (pre-release): each seat price becomes net, VAT and total fields; the after-the-trial
   wording and the note in its mockup and notes; a UI-only job. `previewPrices` gains `subtotal` and `tax` (kit
-  `provider-paddle` and licensing's module, tested), and manual §22.10 says so. Not modelled yet.
+  `provider-paddle` and licensing's module, tested), and manual §22.10 says so.
+  - **Modelled and exported 2026-10-19** (kit PR #323): `previewPrices` gives `subtotal`, `tax` and `total`
+    (licensing's module and the kit skill, tests: web 207, `tsc -b` clean); the mock Paddle adds UK VAT (20%) on top,
+    as the sandbox does for a buyer here (`taxRate`, server tests 3/3); "trial offer" replaced by the same name
+    (`model/vat-breakdown.sh`): `webSeatPrice`/`mobileSeatPrice` became `billingCycle` and each seat's `…Net`, `…Vat`,
+    `…Total`, with the note in its mockup and notes. Next: when the loop is waiting, update journey case 4b to the
+    breakdown and run the journeys mock and sandbox.
+  - Found: a field added to a read model doesn't reach its scenarios' steps (a removal does). By design, not a gap:
+    a step takes a field when its example is set (`spec step example`), so the script sets them.
 - **Pick up here (2026-10-19):** ✅ 2b.3 (Gap 4, the trial's length) and ✅ 2b.4 (split "start trial checkout") are
   **done and proven** (ADR-075; see 2b.3 below): journeys mock and sandbox 3/3, licensing `f03ec39`. Next in Phase 16:
   the subscription lifecycle chapters (8: the trial converts and renews, first), or distilling the draft skill

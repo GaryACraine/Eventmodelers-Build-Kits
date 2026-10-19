@@ -565,7 +565,11 @@ export const describePeriod = ({ interval, frequency }: TimePeriod): string => `
  */
 export interface PriceOffer {
     priceId: string
-    /** One unit's charge each period, tax included, as Paddle formats it for the buyer ("£12.00") */
+    /** One unit's charge each period before tax, as Paddle formats it for the buyer ("£10.00") */
+    subtotal: string
+    /** The tax on it for the buyer's country ("£2.00"; "£0.00" where none is charged) */
+    tax: string
+    /** What they pay: subtotal plus tax ("£12.00") */
     total: string
     /** How often it's charged; none for a one-off price */
     billingCycle?: TimePeriod
@@ -580,8 +584,17 @@ export interface PaddleCheckout {
     previewPrices(priceIds: string[]): Promise<PriceOffer[]>
 }
 
-const offer = (priceId: string, total: string, billingCycle?: TimePeriod | null, trialPeriod?: TimePeriod | null): PriceOffer => ({
+/** A unit's charge as Paddle formats it: before tax, the tax, and the two together */
+interface UnitTotals {
+    subtotal: string
+    tax: string
+    total: string
+}
+
+const offer = (priceId: string, { subtotal, tax, total }: UnitTotals, billingCycle?: TimePeriod | null, trialPeriod?: TimePeriod | null): PriceOffer => ({
     priceId,
+    subtotal,
+    tax,
     total,
     ...(billingCycle ? { billingCycle: { interval: billingCycle.interval, frequency: billingCycle.frequency } } : {}),
     ...(trialPeriod ? { trialPeriod: { interval: trialPeriod.interval, frequency: trialPeriod.frequency } } : {})
@@ -644,7 +657,7 @@ function paddleJsCheckout(config: PaddleWebConfig, load: Loader): PaddleCheckout
                 throw new PaddleCheckoutError(`Paddle couldn't preview the prices: ${messageOf(error)}`)
             }
             const offers = response.data.details.lineItems.map(item =>
-                offer(item.price.id, item.formattedUnitTotals.total, item.price.billingCycle, item.price.trialPeriod)
+                offer(item.price.id, item.formattedUnitTotals, item.price.billingCycle, item.price.trialPeriod)
             )
             return inOrder(priceIds, offers)
         },
@@ -724,7 +737,7 @@ function paddleJsCheckout(config: PaddleWebConfig, load: Loader): PaddleCheckout
 
 interface MockLineItem {
     price: { id: string; billing_cycle: TimePeriod | null; trial_period: TimePeriod | null }
-    formatted_unit_totals: { total: string }
+    formatted_unit_totals: UnitTotals
 }
 
 function mockCheckout(config: PaddleWebConfig): PaddleCheckout {
@@ -744,7 +757,7 @@ function mockCheckout(config: PaddleWebConfig): PaddleCheckout {
             if (!response.ok) throw new PaddleCheckoutError(`The mock Paddle answered ${response.status}`)
             const body = (await response.json()) as { data: { details: { line_items: MockLineItem[] } } }
             const offers = body.data.details.line_items.map(item =>
-                offer(item.price.id, item.formatted_unit_totals.total, item.price.billing_cycle, item.price.trial_period)
+                offer(item.price.id, item.formatted_unit_totals, item.price.billing_cycle, item.price.trial_period)
             )
             return inOrder(priceIds, offers)
         },
@@ -804,15 +817,21 @@ from Paddle, so it promises what Paddle will charge. In the model they're a read
 them (`build-screen`: an external read model of this slice's own).
 
 - **The view calls `paddleCheckout().previewPrices([...])`,** with the prices the slice's description names, by our
-  names (`paddlePrice("WEB_TRIAL")`), in `useQuery`. It answers in the order asked, one unit of each: `total` as
-  Paddle formats it for the buyer (their currency, their country's tax: "£12.00"), `billingCycle`, and `trialPeriod`.
-  `describePeriod` says a period ("14 days", "1 month").
+  names (`paddlePrice("WEB_TRIAL")`), in `useQuery`. It answers in the order asked, one unit of each, as Paddle
+  formats it for the buyer (their currency, their country's tax): `subtotal` before tax ("£10.00"), `tax` ("£2.00")
+  and `total` ("£12.00"), then `billingCycle` and `trialPeriod`. `describePeriod` says a period ("14 days", "1 month").
+- **Show the tax in full** (Gary, 2026-10-19, a draft until licensing's "trial offer" replacement is built): Paddle
+  is the merchant of record and adds the buyer's country's tax, so the page shows each price as net, tax and total
+  ("£10.00 + £2.00 VAT = £12.00 a month"), never the total alone, and says the tax is for the buyer's country
+  (Paddle's preview guesses it from their IP) and that a business with a VAT number may not be charged it (the
+  reverse charge). No surprise when they pay.
 - **No `trialPeriod` means no free trial:** the page says so, never a number of days. Paddle refusing (an unknown
   price) rejects, and the view shows the read's error state, never an example figure.
 - **One Paddle.js per page:** `previewPrices` shares the checkout's loaded instance (Paddle.js has one event callback,
   set when it's initialised), so never initialise Paddle.js a second time for prices.
 - **Read from the sandbox (2026-10-19):** each line item's `price` carries `trial_period` (`null` without one) and
-  `billing_cycle`; `formatted_unit_totals.total` includes the tax for the buyer's country (GB: "£12.00" for £10).
+  `billing_cycle`; `formatted_unit_totals` holds `subtotal`, `discount`, `tax` and `total` for the buyer's country
+  (GB: "£10.00", "£0.00", "£2.00", "£12.00" for a £10 price whose tax setting is "excluding tax").
   Paddle.js gives the same in camelCase (`lineItems`, `trialPeriod`, `formattedUnitTotals`).
 
 ### Configuration, from Vite's environment
@@ -876,7 +895,7 @@ Built by the first slice that needs it, as `build-automation` says for any outsi
 - **a price preview,** `POST /pricing-preview` with `{ items: [{ price_id, quantity }] }`, which the web app's offer
   calls in mock mode in place of Paddle.js (ADR-075). Each asked price takes a seeded price's shape in the checkout's
   order (the templates' items: the web seat's, then the mobile seat's), so the mock offers the sandbox's prices and
-  trial. No tax. Any origin, no API key; unseeded, it answers `mock_not_seeded`;
+  trial, with UK VAT (20%) added on top as the sandbox charges a buyer here (`taxRate` sets another). Any origin, no API key; unseeded, it answers `mock_not_seeded`;
 - it keeps what it was asked;
 - `paddleSignature(rawBody, secret, at?)` and `webhookBody(event)`, to deliver a webhook as Paddle signs it.
 
