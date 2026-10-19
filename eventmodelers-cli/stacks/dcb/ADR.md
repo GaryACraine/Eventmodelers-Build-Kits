@@ -6096,3 +6096,123 @@ configure (a grace period is ours), so the rule goes in the skills only.
   read model of the slice's own: a view reading the provider's module), the web's `PagePart.external`.
 - **emcli:** `deriveParts` (the part, above); `event-model` (the rule, and how to model the offer).
 - **Proof:** the journeys, mock and sandbox: the page shows the sandbox's 1-day trial, and the mock's 14 days.
+
+### ADR-076: The trial converts and the subscription renews: a paid period, decided from our own state
+
+**Status:** **Proposed, 2026-10-19.** Gary's answers on the companion events, the Dashboard and the sandbox proof are
+in it (points 3, 4 and Consequences).
+**Date:** 2026-10-19
+**Builds on:**
+- ADR-037 decisions 1 and 6: the seat count we enforce is the one Paddle confirms; a trial has events of its own,
+  and `trialWasConverted` is recorded "when our organisation is still trialing";
+- ADR-039: an automation's data input (`read(readModel, key)`);
+- ADR-041 and ADR-045: Paddle's events reach us through the inbox, and one translation (to-do list
+  `UntranslatedNotifications`) records our events from them;
+- ADR-071: tags are modelled, and never conditional.
+
+**Authorities consulted (ADR-064, payments: Paddle's documentation and our own sandbox runs):**
+- **[Provision access and handle subscription state](https://developer.paddle.com/build/subscriptions/provision-access-webhooks/):**
+  "You don't need to listen for separate events for renewals, upgrades or downgrades, or status changes."
+  `subscription.updated` covers them all: "Something about the subscription has changed, like its status, items,
+  scheduled changes, or billing period", so "reread the cached fields you store". For a trial, the guidance is to "treat
+  the same as `active`".
+- **[transaction.completed](https://developer.paddle.com/webhooks/transactions/transaction-completed/):** a
+  transaction whose origin is `subscription_recurring` is created by Paddle for a subscription's renewal. It's
+  `completed` once Paddle has fully processed it, after it's `paid`.
+- **The sandbox (`paddle.md` §11b, 2026-09-30 and 2026-10-01; the event stream re-read 2026-10-19, 23 conversions of
+  journey trials):**
+  - At a trial's end, `subscription.activated` and `subscription.updated` arrive together, **before** the
+    transaction is billed. Then `transaction.completed` (`subscription_recurring`) arrives, for the seats held at the
+    end.
+  - At a failed renewal, `subscription.updated` (still `active`, **the period moved on**) arrives first, then the
+    payment fails and the status becomes `past_due`.
+  - `subscription.activated` also arrives when a renewal's payment recovers after `past_due`. No event says
+    "converted" or "recovered".
+  - The payment carries `custom_data.organisationId`, the subscription's id, `billing_period` (`starts_at`,
+    `ends_at`), and each item's price and quantity.
+
+**Context:**
+- **Every trial converts, and licensing doesn't know.** The translation has no case for the three events of a
+  conversion, nor for the two of a renewal. It skips each one as `failed` and alerts (16.3a gap 3: a quiet skip would
+  lose a paid subscription after release). Our state stays "trialing" while Paddle has the subscription active.
+- **Paddle's guide reads the period from `subscription.updated`.** For us that event is the wrong signal. It moves the
+  period on before the payment is taken, and it does so even when the payment then fails. If we recorded a renewal
+  from it, chapter 13 would record a renewal that never happened, followed by a payment failure.
+- **A conversion's payment and a renewal's are the same event** (`subscription_recurring`). Only our own state tells
+  them apart.
+
+**Proposed:**
+1. **One command, two outcomes, decided from our events.** For each `transaction.completed` whose origin is
+   `subscription_recurring`, the translation issues `recordPaidPeriod`. Its decider reads the organisation's
+   subscription from `trialWasStarted`, `trialWasConverted` and `subscriptionWasRenewed` (tag `organisationId`):
+   - still trialing → **`trialWasConverted`**;
+   - converted or renewed → **`subscriptionWasRenewed`**;
+   - no trial or subscription → refused, "No subscription for this organisation". "Buy now" (chapter 1b) isn't built,
+     so for now this is retried, then skipped as failed with an alert, as today;
+   - a transaction already recorded → refused, "This payment was already recorded" (tag `transactionId`).
+
+   The choice is made in the decider, against the events, never in the translation from a read model. A projection
+   that lags can't make a conversion look like a renewal.
+2. **Both events carry the paid period and the billed seats:**
+   - `organisationId`, `subscriptionId`, `transactionId`;
+   - `webSeats` and `mobileSeats`, from the transaction's items (the seat prices in config, the trial ones and the
+     paid ones, as `startTrial` counts them);
+   - `periodStartsAt` and `periodEndsAt`, from `billing_period`;
+   - `paddleEventId` and `paddleOccurredAt`.
+
+   The tags are `organisationId`, `subscriptionId`, `transactionId` and `paddleEventId`, every one always present.
+
+   The billed seats are the seats from then on (ADR-037 decision 1). That's how a reduction "at the next period"
+   (chapter 7, `do_not_bill`) will take effect, with no timer of ours.
+3. **The companion events are skipped when they change nothing** (Gary, 2026-10-19). A `subscription.activated` or
+   `subscription.updated` is skipped as `not needed` (`skipPaddleNotification`, no alert) when:
+   - its status is `active` or `trialing`;
+   - its `scheduled_change` is null;
+   - its web and mobile seats equal the organisation's in `OrganisationOverview`, which the translation reads as a
+     data input keyed by `custom_data.organisationId`.
+
+   Anything else keeps today's skip as failed with an alert, until the chapter that owns it translates it: a seat
+   change (6, 7), a scheduled cancel (9), `past_due` and a recovery (13), and an organisation we don't know (1b).
+   A lagging overview can cause only a false alert, never a lost change.
+4. **What the owner sees** (Gary, 2026-10-19): `OrganisationOverview` folds both events (`status: "active"`, the
+   billed seats, and `renewsAt` from `periodEndsAt`). The Dashboard shows "Renews on" in place of "Trial ends at"
+   once the status is active. The amounts and invoices stay in Paddle's customer portal.
+
+**Alternatives considered:**
+- **Record the renewal from `subscription.updated`** (Paddle's guide). Rejected, because the period moves before the
+  payment (above).
+- **Convert on `subscription.activated`.** It's the first event of a conversion. Rejected: it arrives before the
+  payment, and it's also what a recovery sends. A failed first charge (chapter 18) would already read as converted.
+- **Two commands, the translation choosing** (`convertTrial` or `renewSubscription`, from a read model of the status).
+  Rejected: the choice would rest on a projection that can lag. One decider over the events has no race.
+- **Leave the companions alerting until their chapters.** Rejected (Gary): three critical alerts for every
+  conversion, and two for every renewal, all for events that change nothing.
+
+**Not in this ADR:**
+- `TrialFunnel`;
+- a failed first charge (18, 19) or renewal (13), seat changes (6, 7) and cancelling (9, 17);
+- translating again the conversions already skipped in licensing's development database. That's dev data from
+  before release, and those organisations stay "trialing".
+
+**Consequences:**
+- **Model (licensing, chapter 8),** replacing the storm's drafts:
+  - the payment's notification (a copy of chapter 1's) and the to-do list;
+  - the translation's card, showing chapter 1's;
+  - `recordPaidPeriod` with its two events and specifications;
+  - `OrganisationOverview` extended by both events;
+  - the Dashboard's "Renews on".
+
+  Chapter 1's translation `relates-to` the new command, so the loop rebuilds it with the new cases, as chapter 24's
+  were.
+- **Kit:** `provider-paddle`:
+  - a paid period has no "converted" flag, so decide from our own state;
+  - the companion rule;
+  - the mock's `POST /mock/subscriptions/:id/renew`;
+  - `subscriptions.activate` ends a sandbox trial at once;
+  - `next_billed_at` can be brought at most to 30 minutes from now.
+
+  The manual gets §22's "when the trial ends, and each renewal".
+- **Proof** (Gary, 2026-10-19):
+  - the journeys on the mock (renew, twice) and on the sandbox (`subscriptions.activate` ends the journey's trial:
+    Active, "Renews on", the companions `not needed`, nothing `failed`);
+  - one recorded sandbox renewal of about 31 minutes, with `next_billed_at` moved forward.
