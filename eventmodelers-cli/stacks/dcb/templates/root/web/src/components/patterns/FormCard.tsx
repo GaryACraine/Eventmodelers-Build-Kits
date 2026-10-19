@@ -12,7 +12,8 @@ import { Confirm } from "./Confirm"
  * - **Done:** the success line, a status message, for a page that stays; a page with `next` goes on instead.
  * - **After:** what the mockup draws under the button (another system's frame) goes in `after`.
  * - **Confirm:** a command the model marks `confirm` asks first, in the card (`Confirm`); `onSubmit` runs once it's
- *   confirmed.
+ *   confirmed. A form part with a `preview` (navigation.json, ADR-077) shows that view in the question, given the
+ *   values typed (`watch()`): `confirm={{ …, preview: <SeatChangePreviewView {...watch()} />, variant: "default" }}`.
  *
  *   <FormCard title="Invite a member" submit="Send invitation" onSubmit={handleSubmit(send)} pending={pending}
  *             error={errors.root?.message} done={done && "Invitation sent."}>
@@ -44,7 +45,7 @@ export function FormCard({
     error?: string
     done?: ReactNode
     /** The model's `confirm` for this command: the question, and the consequence a person accepts */
-    confirm?: { question: string; consequence: string; confirm: string }
+    confirm?: { question: string; consequence: string; confirm: string; preview?: ReactNode; variant?: "destructive" | "default" }
     /** A form inside another card (a part of a view's card): no card of its own */
     card?: boolean
     /** What the mockup draws under the button: another system's part of the page (Paddle's checkout frame, ADR-044) */

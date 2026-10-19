@@ -194,6 +194,12 @@ const RegisterCourseSchema = z.object({
   ADR-072) asks first: `FormCard`'s `confirm={{ question, consequence, confirm }}`, or `RowAction`'s `confirm={{
   consequence, confirm }}`, with the consequence verbatim (a named constant) and `confirm` = the command's name in
   words ("Remove member"). A command without `confirm` never asks.
+- **A form part with a `preview`** (navigation.json, ADR-077; *a draft until licensing's seat change passes*): the
+  slice's own view of a read model our backend serves (`intake: "api"`), shown in the confirmation, read with the
+  values typed: `confirm={{ question, consequence, confirm, preview: <SeatChangePreviewView organisationId={…}
+  {...watch()} />, variant: "default" }}`. Build that view as any view of our API (`useQuery`, `ReadStates`), its
+  query's parameters from its props, and export it from `index.ts` too; the page doesn't place it. `variant:
+  "default"` for a command that isn't a loss (paying for something); a removal stays destructive.
 - **A form drawn in another slice's list rows** (Remove in each member row) is a `RowAction` alone: the mockup's
   button words as `action`, `onAct` sending the command through `run`, its `pending` and `error`. Its name includes
   the row (the `DataTable` it sits in gives it).
