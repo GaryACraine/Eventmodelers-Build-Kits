@@ -118,8 +118,14 @@ export function toNotification(body: unknown, receivedAt: Date = new Date()): No
   `subscriptionWasRenewed`; no subscription, or the same `transactionId` again, is refused.
 - **The companions change nothing we hold**: a trial's end also sends `subscription.activated` and
   `subscription.updated`, a renewal `subscription.updated`. Skip each as `not needed` when its status is `active` or
-  `trialing`, `scheduled_change` is null and its seats equal the organisation's (its overview, read as a data input);
-  anything else stays a failed skip and an alert until a chapter translates it.
+  `trialing`, `scheduled_change` is null and its seats equal **the seats Paddle bills next** (its overview, read as a
+  data input: a scheduled decrease's numbers while it waits, otherwise the seats we hold; ADR-077); anything else stays
+  a failed skip and an alert until a chapter translates it.
+- **A seat change made outside our app** (Paddle's dashboard) arrives only as `subscription.updated` whose quantities
+  differ from the seats Paddle bills next: record it with an event of its own (licensing: `seatsWereChangedAtPaddle`,
+  with `paddleEventId`), never as our request's event, whose request id would then be a conditional tag (ADR-071,
+  ADR-077). Its command compares `paddleUpdatedAt` with the latest recorded (below): the same is `already done`
+  (our answer was first), older is `superseded`.
 - **`subscriptions.activate` (ending a trial early) is charged as `origin: "subscription_update"`**, not a
   conversion (sandbox, 2026-10-19). To reach a real conversion or renewal sooner, `PATCH /subscriptions/{id}` with
   `next_billed_at` at least 30 minutes ahead and `proration_billing_mode: "do_not_bill"`: it works on a trialing
@@ -376,7 +382,9 @@ const toSubscription = (entity: SubscriptionEntity): PaddleSubscription => ({
 const money = (totals: Totals): Money => ({ amount: Number(totals.grand_total), currencyCode: totals.currency_code })
 const seatsBody = (items: SeatItem[], mode: ProrationMode) => ({
     items: items.map(item => ({ price_id: item.priceId, quantity: item.quantity })),
-    proration_billing_mode: mode
+    proration_billing_mode: mode,
+    // A charge that fails leaves the seats as they were (Paddle's default, said out loud: ADR-037 decision 1)
+    ...(mode === "prorated_immediately" ? { on_payment_failure: "prevent_change" } : {})
 })
 const path = (subscriptionId: string, rest = "") => `/subscriptions/${encodeURIComponent(subscriptionId)}${rest}`
 
@@ -472,7 +480,25 @@ export async function withdrawCancellation(config: PaddleConfig, subscriptionId:
 - **What we didn't start comes only from Paddle's events:** renewals, a failed payment and its recovery, the
   customer's portal, a change made in Paddle's dashboard.
 - **The preview** (`previewSeatChange`) is for the screen that asks the owner to confirm: a read, called by a route of
-  ours, never by the browser (the API key is the backend's).
+  ours, never by the browser (the API key is the backend's). In the model it's an external read model served by our
+  backend (ADR-077; `build-state-view`, "An external read model served by our backend"): ask it with the totals the
+  change would send and the mode it would use, and show `dueNow` (none in a trial or for a decrease) and `nextBill`.
+- **Seat changes, owner's requests** (ADR-077; *draft until licensing's chapters 6, 7 and 12 pass end to end*):
+  - **one at a time per organisation:** the request's decider refuses while another waits for Paddle, so two
+    workflows never race on one subscription;
+  - **the request records the totals to send** (every seat type), worked out by its decider from our events, so a
+    retried activity sends the same state;
+  - **an increase:** `prorated_immediately` (`on_payment_failure: prevent_change`), or `do_not_bill` in a trial, capped
+    by our configured trial seat cap;
+  - **a decrease:** always `do_not_bill` (no credit). The answer's decider chooses: still trialing → the seats are
+    removed now; paid → the decrease is scheduled for `next_billed_at`, and **the renewal applies it with no event of
+    its own**: Paddle's quantity is already lower, so the renewal's paid period (`subscriptionWasRenewed`) carries the
+    lower seats;
+  - **the answer is recorded as the request's outcome even when Paddle's event of the same change came first** (Gary,
+    2026-10-19): every event carries totals, never a difference, so the same state folded twice changes nothing, and
+    the request's to-do item closes from our own state;
+  - **every decider that hands out a seat reads one seat count:** the latest totals of the trial, the paid periods and
+    the seat changes, with a scheduled decrease lowering the assignable limit until the renewal.
 
 | Paddle answers | `kind` | In an activity |
 |---|---|---|
@@ -482,8 +508,19 @@ export async function withdrawCancellation(config: PaddleConfig, subscriptionId:
 
 Codes seen in the sandbox: `not_found` (404), `subscription_update_when_canceled`,
 `subscription_locked_pending_changes`, and "cannot update subscription, as the subscription status is 'past_due'".
-**The code of a declined card on a seat increase isn't recorded yet:** the first slice that handles it reads it from
-the sandbox (card `4000 0027 6000 3184`) and adds it here.
+
+**A seat change Paddle refuses is a business answer, so it's decisive** (ADR-077): the workflow records it as the
+request's outcome (licensing: `seatChangeWasRefused`, with a reason), and the seats stay as they were. *Draft until
+licensing's chapters 6, 7 and 12 pass end to end:*
+
+| Paddle's code | Status | Reason we record |
+|---|---|---|
+| `subscription_payment_declined` ([docs](https://developer.paddle.com/errors/subscriptions/subscription_payment_declined)); `authentication_failed` (sandbox, card `4000 0027 6000 3184`: a later charge asks for 3D Secure, which can't happen without the customer) | 400 | `card declined` |
+| `subscription_update_when_past_due` | 400 | `payment overdue` |
+| `subscription_locked_renewal` ([docs](https://developer.paddle.com/errors/subscriptions/subscription_locked_renewal): "within the 30 minute subscription lock period before renewal") | 409 | `renewal too close` |
+
+Any other refusal records nothing: the item stalls and alerts (a code we haven't seen needs a person). After a
+declined charge Paddle cancels the leftover transaction itself, about 45 seconds later: nothing of ours to undo.
 
 ## Its checkout, from our page: `web/src/providers/paddle/checkout.ts`
 
@@ -897,9 +934,15 @@ Built by the first slice that needs it, as `build-automation` says for any outsi
   numbers again change nothing, a second cancel is refused, an unknown or cancelled subscription is refused with
   Paddle's code. **Versions as Paddle keeps them** (ADR-049): a change gets a new `updated_at`, which its answer and
   the events it adds to the stream carry; a repeat answers the previous `updated_at` and adds no event;
+- **a seat change adds Paddle's events** (ADR-077): `subscription.updated` with the change's `updated_at`, and for a
+  charge (`prorated_immediately`, seats added, not trialing) a `transaction.completed` with `origin:
+  "subscription_update"`. It refuses as Paddle does: `subscription_update_when_past_due` while `past_due`,
+  `subscription_locked_renewal` (409) within 30 minutes of `next_billed_at`;
 - **a failure on purpose over HTTP,** for a test against the mock's container: `POST /mock/fail-next
-  { status, after?, path?, times? }` fails the next API calls whose path ends with `path` (`/cancel`), `times` times in
-  a row, so Temporal's retries leave a window (licensing's "Paddle's event first" case). `/mock/*` calls never fail;
+  { status, code?, after?, path?, times? }` fails the next API calls whose path ends with `path` (`/cancel`), `times`
+  times in a row, so Temporal's retries leave a window (licensing's "Paddle's event first" case). With `code`, the
+  failure is Paddle's refusal with that code (a declined card: `{ status: 400, code: "subscription_payment_declined",
+  path: "/subscriptions/<id>" }`). `/mock/*` calls never fail;
 - **a checkout,** `POST /mock/checkouts` with `{ items: [{ price_id, quantity }], custom_data }`, which the web app's
   mock checkout calls in place of Paddle.js. It completes at once, answers `{ transaction_id }`, and adds the events
   Paddle would for a trial (`subscription.trialing` and `transaction.completed`, made from real ones, with the
@@ -926,7 +969,10 @@ portal's links redacted). Never write a Paddle payload from memory.
 - a busy or failing Paddle loses nothing: the next fetch finishes it;
 - a call run twice changes Paddle once; a refusal carries Paddle's code and isn't retried;
 - the checkout: completed sends the command with the transaction's id; closed sends nothing;
-- the offer: the trial's length and each price as Paddle gives them; a price with no trial says so.
+- the offer: the trial's length and each price as Paddle gives them; a price with no trial says so;
+- a seat change: added, removed in a trial, scheduled once paid, each refusal reason; Paddle's event of our change
+  `already done` either way round; a dashboard change recorded once; the renewal after a decrease bills the lower
+  seats, and its companions are `not needed`.
 
 ## Paddle's sandbox
 

@@ -50,6 +50,16 @@ model and build only what's ours.
   same-name replacements of the translation, `invitemember`, `assignownerwebseat`, the overview and the settings;
   export with Gary's go-ahead; (4) prove: tests, mutation checks, journeys mock and sandbox, a recorded sandbox
   decrease billed lower at the renewal.
+  - **Step 2 done 2026-10-19:** emcli `18c55e6` (`--intake api`: an external read model our backend serves gets a route,
+    the contract, a declared endpoint, a backend job, and a part fetched from our API; 566 tests, four rules each
+    mutation-checked); `event-model` method; kit skills `provider-paddle` (seat changes, refusal codes
+    `subscription_payment_declined`/`authentication_failed`, `subscription_update_when_past_due`,
+    `subscription_locked_renewal` (409), the mock's seat events and `fail-next` `code`), `build-state-view` and
+    `build-screen` (the backend-served read, a draft), `plan-change` (a shared count's holders replaced together;
+    rows 076, 077); manual §22.12.
+  - *Found:* the skill said the mock adds events for every change; licensing's mock adds none for seat changes or a
+    cancel. Seat changes closed in licensing's mock (step 3); a cancel's events stay open (its journeys don't need
+    them; taken up with chapter 9).
   - *Found:* `SeatsAllowed` (`invitemember`, `assignownerwebseat`) folds only `trialWasStarted`, so the seats billed
     at a conversion or renewal aren't enforced. Closed by ADR-077 point 4 (both replaced).
 - ✅ **DONE 2026-10-19: chapter 8, the trial converts and the subscription renews (ADR-076, Accepted by Gary).**

@@ -3379,3 +3379,37 @@ at once, as Paddle does at a trial's end or a renewal. On Paddle's sandbox a cha
 billing date, so a test brings that forward (`next_billed_at`, at least 30 minutes ahead, with `do_not_bill`). Don't
 end a sandbox trial with "Activate now": Paddle charges that as a change to the subscription, not as a renewal, so it
 isn't a conversion. Licensing's `e2e/paddle/conversion-renewal.mjs` does this and records what happened.
+
+### 22.12 Adding and removing seats
+
+The owner buys more seats, or gives some back, from the Dashboard (ADR-077). Paddle bills them: we ask it to change
+the subscription, and what it answers is what happened. One seat change runs at a time for an organisation.
+
+- **Adding seats** is charged at once, for the rest of the month (Paddle works out the amount). Before confirming, the
+  owner sees what's due now and what the next bill will be, as Paddle states them. If the card is declined the seats
+  stay as they were, and the page says so.
+- **Removing seats** gives no refund: the owner has paid for the month, so the seats stay until the renewal, and the
+  next bill is for fewer. The Dashboard shows "6 web seats, 4 from 15 Nov" meanwhile, and no one can be given a seat
+  above the new number. You can't remove seats that people are using: release them first.
+- **In a trial** nothing is charged either way, and a change applies at once. A trial can't grow past its **seat
+  cap**, a setting you configure as you do the grace period, so a trial can't be filled with seats and billed for them
+  all at the end.
+- **Paddle may refuse a change:** a declined card, a payment that's overdue, or the 30 minutes before a renewal
+  (Paddle locks the subscription then). Each is recorded with its reason and shown to the owner; nothing changes.
+- **A change made in Paddle's dashboard** (by your own team) is recorded too, so the seats we enforce always match
+  what Paddle bills.
+
+Say to Claude, for example:
+
+- *"Let the owner add seats of a type, charged pro rata now, with Paddle's preview of the cost first."* Claude adds
+  the request, the workflow that asks Paddle and records its answer, and the preview, which our backend reads from
+  Paddle (`--external Paddle --intake api`: Paddle's preview needs our secret key, so the browser can't ask).
+- *"Let the owner remove seats at the next renewal, never below the seats in use."* The request records the decrease
+  as scheduled once Paddle has it; the renewal's charge, for fewer seats, applies it.
+- *"Cap a trial's seats, configured."* A setup command records the cap, as the grace period's does.
+
+**Trying it out.** The mock Paddle charges an increase at once and adds the events Paddle would send; `POST
+/mock/fail-next { "status": 400, "code": "subscription_payment_declined", "path": "/subscriptions/<id>" }` makes
+the next change a declined card, and `POST /mock/subscriptions/<id>/renew` the renewal that applies a decrease. On
+Paddle's sandbox, a declined charge uses the card `4000 0027 6000 3184` (it asks for 3D Secure, which can't happen
+without the customer), and a decrease reaches its renewal by bringing `next_billed_at` forward, as in §22.11.

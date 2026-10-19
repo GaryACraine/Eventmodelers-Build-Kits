@@ -51,6 +51,8 @@ Read the slice.json first:
   (`build-screen`), an automation fetches it in an activity (`build-automation`). Skip it and build the rest of the
   slice as usual. **Never block for it:** it's a valid model. emcli gives a slice holding nothing else no job, so
   if one reaches you alone, build nothing, set it Done, and say in your report that emcli queued it.
+  **Except `intake: "api"`** (ADR-077): our backend asks the system for it and serves it. Build only its route, as
+  **"An external read model our backend serves"** below says: no `readModel.ts`, no projection.
 - **`retype` block present** (`{ "from": …, "to": … }`) → the model changed an already-built read model's
   type. Follow **"Changing a read model's type"** below. Nothing else changes.
 - **`addQueries` present** (`["availableCourses"]`) → an already-built slice whose specs now run queries its
@@ -1223,6 +1225,63 @@ Run the slice's tests. They already cover every type, and must pass unchanged. C
 
 On the next start, `ensureProjectionsCurrent` rebuilds the stored copy when switching into a stored type
 (async ↔ inline, or live → stored). Switching to live needs nothing.
+
+---
+
+## An external read model our backend serves (`intake: "api"`, ADR-077)
+
+The system holds it, and only our backend may ask (the call needs our secret key: Paddle's seat change preview). It's
+never projected or recorded: each GET asks the system now. *Draft until licensing's seat change preview passes end to
+end.*
+
+- **Inputs:** the path's key and the query's parameters (slice.json `queries`), and, for ids the system needs (the
+  subscription), a read model of ours the element `relates-to`, read in-process with
+  `deps.readModels!.reader(<definition>)(key)`, as an automation reads a data input (ADR-039).
+- **The call** goes through the provider's module (`provider-<system>`; Paddle: `previewSeatChange`), with its config
+  passed to the route from `index.ts` (`configure{SliceName}Route(deps, { paddle: paddleConfig() })`), never read from
+  `process.env` in the slice.
+- **The answer:** the document as the body (the fields its mappings name). The provider's errors: `unavailable` →
+  503, `refused` → 422 with Paddle's detail, unknown key → 404. Nothing is retried in a GET: the page asks again.
+
+File: `src/contexts/{context}/slices/{slicename}/route.ts`
+
+```typescript
+import type { WebApiSetup } from "@dcb-es/event-store-express"
+import type { SliceDependencies } from "../../../../shared/dependencies.js"
+import { registerRead } from "../../../../shared/openapi.js"
+import { requirePermission } from "../../../../shared/signIn.js"
+import { PaddleApiError, type PaddleConfig } from "../../../../providers/paddle/paddle.js"
+import { previewSeatChange } from "../../../../providers/paddle/calls.js"
+import { {inputReadModel} } from "../{inputslice}/readModel.js"
+import { {SliceName}Schema, {SliceName}QuerySchema } from "./schema.js"
+
+// Asks Paddle now and serves its answer (ADR-077): held by Paddle, never projected or recorded
+export function configure{SliceName}Route(deps: SliceDependencies, options: { paddle: PaddleConfig }): WebApiSetup {
+    const path = "{path from slice.json}"
+    registerRead({ path, summary: "{slice title}", response: {SliceName}Schema, query: {SliceName}QuerySchema, notFound: "{Entity} not found" })
+    return router =>
+        router.get(path, requirePermission("{api}"), async (req, res) => {
+            const query = {SliceName}QuerySchema.safeParse(req.query)
+            if (!query.success) return void res.status(400).json({ type: "about:blank", title: "Bad request", status: 400, detail: query.error.message })
+            const basis = await deps.readModels!.reader({inputReadModel})(req.params["{key}"]!)
+            if (!basis) return void res.status(404).json({ type: "about:blank", title: "Not found", status: 404, detail: "{Entity} not found" })
+            try {
+                const answer = await previewSeatChange(options.paddle, basis.subscriptionId, /* the items and mode the change would send */)
+                res.json({ /* the fields, from the answer */ })
+            } catch (error) {
+                if (!(error instanceof PaddleApiError)) throw error
+                const status = error.kind === "refused" ? 422 : 503
+                res.status(status).json({ type: "about:blank", title: error.kind, status, detail: error.message })
+            }
+        })
+}
+```
+
+- **Tests** (`route.tests.ts`): mock the provider's module (`vi.mock`), never the network; the input read model given
+  by its events (`app.given`). One test per specification, named after it; plus 404 for an unknown key, 400 for a bad
+  parameter, 503 when the system is unavailable, 422 when it refuses, and the permission both ways.
+- **Register** the route in `index.ts` (`chore: wire …`) with the provider's config. It has no definition for the
+  `readModels` array.
 
 ---
 

@@ -56,7 +56,8 @@ Each `screens[]` entry with a `mockup` is one screen card:
 mockup, a `data-slice="…"` region): that slice builds it, and the page shows it. Skip it.
 
 **An external read model** (`context: "EXTERNAL"`, with an `externalSystem`) is held by that system, not by our
-API (ADR-052). Never fetch it from our API, and write no MSW handler or API type for it: it has no `apiEndpoint`. Its
+API (ADR-052). **Unless `intake: "api"`** (ADR-077): our backend asks the system and serves it at its `apiEndpoint`,
+so fetch it from our API like any read model of ours (its part has no `external`). Otherwise, never fetch it from our API, and write no MSW handler or API type for it: it has no `apiEndpoint`. Its
 fields come from that system's client in the browser. For the sign-in provider (`Auth`), that's the session:
 `useSession()[field]`, and there's no view of it.
 - **When it's this slice's own** (in `readmodels[]`, and the page's part names it with `external`, ADR-075), write

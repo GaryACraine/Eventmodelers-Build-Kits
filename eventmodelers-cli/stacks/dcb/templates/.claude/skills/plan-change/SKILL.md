@@ -185,6 +185,11 @@ the tags exactly, so it fails until the producer's same-name replacement is buil
   anywhere" (activate organisation, accept invitation) needed both "removed from every role: allowed" and "still
   holding another role: refused" (ADR-070); accept invitation, given only the first, folded a yes/no that the second
   would have caught. Find the holders with `grep -rl "<the rule's decision model>" src/contexts`.
+- **A count every holder enforces gains a new source** (ADR-077: the seats an organisation may hand out, once seat
+  changes, conversions and renewals change them): replace every holder of that decision model in the same plan,
+  before release, each with scenarios given each new event (`invitemember` and `assignownerwebseat` folded only
+  `trialWasStarted` until then). One holder left behind enforces a stale count. Find them with
+  `grep -rl "<the decision model's name>" src/contexts`.
 - **Own command or not** is a judgement for each case. Two slices that `produce` the same event from one command
   is the sign to look (emcli `completeness` warns about it). Give one its own command, or keep the rules in one
   slice.
@@ -310,6 +315,8 @@ The full text is in the kit repo (`eventmodelers-cli/stacks/dcb/ADR.md`):
 | 050 | A command whose intent already holds decides nothing (`[]`, 200); a rejection only when it can't hold. |
 | 052 | A read model another system holds is marked external: nothing of ours builds it, and it makes no job. |
 | 053 | An external event says how it reaches us (`intake`): an endpoint is built only for `webhook`. |
+| 076 | A paid period is decided from our own events (converted while trialing, else renewed); companions that change nothing are `not needed`. |
+| 077 | Seat changes: one at a time, Paddle's answer recorded as the request's outcome; the renewal applies a decrease; an external read model our backend serves is `intake: api`. |
 | 058 | No endpoint unless declared: `api` is a permission, `self` or `anonymous`; a webhook comes from its intake. |
 | 059 | A context's events are its own: other contexts read its published read models or translate its published events. |
 | 056 | Account security: a role's sign-in level is enforced by the API (step-up); account screens come with the kit; policies and evidence live in `security/`. |
