@@ -56,9 +56,14 @@ Each `screens[]` entry with a `mockup` is one screen card:
 mockup, a `data-slice="…"` region): that slice builds it, and the page shows it. Skip it.
 
 **An external read model** (`context: "EXTERNAL"`, with an `externalSystem`) is held by that system, not by our
-API (ADR-052). Never fetch it, and write no view, MSW handler or API type for it: it has no `apiEndpoint`. Its
+API (ADR-052). Never fetch it from our API, and write no MSW handler or API type for it: it has no `apiEndpoint`. Its
 fields come from that system's client in the browser. For the sign-in provider (`Auth`), that's the session:
-`useSession()[field]`. A command never sends its `session:` fields, and a read model keyed by the signed-in person
+`useSession()[field]`, and there's no view of it.
+- **When it's this slice's own** (in `readmodels[]`, and the page's part names it with `external`, ADR-075), write
+  its view all the same: `<Name>View`, exported from `index.ts`, reading that system's client through its provider
+  module (`provider-<system>`; Paddle's offer is `previewPrices`), in `useQuery` with `ReadStates` like any view. Its
+  tests mock that module (`vi.mock`), never the network. A field it may lack (a price with no trial) is shown as the
+  scenario says, never as an example value. A command never sends its `session:` fields, and a read model keyed by the signed-in person
 (`/my-account`, no key in its `apiEndpoint`) is fetched with no key: the API takes both from the token (ADR-055 part 2).
 
 **A screen another system serves** (`externalSystem` on the screen, ADR-057), such as the sign-in screens, is never

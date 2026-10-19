@@ -6019,3 +6019,80 @@ afterwards.
 - **Licensing:** the loop's block on "organisation overview with emails" is cleared after a kit update. It then
   builds it with `refresh`.
 - **Cost:** a person in N organisations means N document writes per email change. Fine at this scale.
+
+### ADR-075: The trial's offer is Paddle's: the page reads it from Paddle's prices, never from our config
+
+**Status:** **Accepted, 2026-10-19 (Gary)**, as proposed: Paddle's prices, and the split.
+**Date:** 2026-10-19
+**Builds on:**
+- ADR-052: a read model held by another system is marked external, and its fields come from that system's client in
+  the browser;
+- ADR-053 and ADR-057: an external event says how it reaches us; a screen another system serves is never ours to
+  build;
+- ADR-036 and ADR-044: Paddle's checkout, opened through the provider's module.
+
+**Authorities consulted (ADR-064, payments: Paddle's documentation):**
+- **[Build a pricing page](https://developer.paddle.com/build/checkout/build-pricing-page):** `Paddle.PricePreview()`
+  is "recommended for most pricing pages". It "returns localized prices", and totals "formatted for the country or
+  region you're working with, including the currency symbol". The page's own figures are placeholders that the
+  preview replaces when it loads.
+- **[Preview prices](https://developer.paddle.com/api-reference/pricing-preview/preview-prices):** each line item's
+  `price` carries its `trial_period` (`interval`, `frequency`; `null` for no trial), with `formatted_totals` and
+  `formatted_unit_totals`.
+
+**Context:**
+- **Gap 4 (16.3a, 2026-10-08):** the page promises a 14-day trial; the sandbox's prices give 1 day. Nothing checks one
+  against the other.
+- **The offer has two sources.** "Start options" (licensing, chapter 1) shows `trialDays`, `webSeatPrice` and
+  `mobileSeatPrice` from a `config` constant (`derived:config.…`: 14, "£10 / month", "£5 / month"). Paddle charges
+  from its prices, and the checkout's summary beside the frame already shows Paddle's figures. The two can disagree,
+  and the fixed figures are wrong in every currency but sterling. Paddle shows the buyer's own currency and tax.
+- **Nothing of ours uses the offer except to show it.** The trial's end comes from Paddle's subscription
+  (`trialWasStarted.trialEndsAt`), and the seats from its items.
+- **"Start trial checkout" is one slice holding two things:** our page's card and Paddle's event, which is the
+  webhook endpoint (ADR-045). Sign-up was split on the same grounds (2026-10-08, ADR-053): one slice for the form, one
+  for the provider's event.
+
+**Proposed:**
+1. **Paddle's prices are the offer.** An external read model, "Trial Offer" (`--external Paddle`), holds the trial's
+   length and each seat's price as Paddle has them. The page reads it with Paddle.js's `PricePreview` for the trial
+   prices (one web seat, one mobile seat), through the provider's module (`provider-paddle`: `previewPrices`, beside
+   `open`, sharing its one Paddle.js). The mock Paddle answers `POST /pricing-preview` from its seeded prices (the
+   sandbox's: £10 and £5 a month, a 1-day trial; no tax).
+   - **Its slice's own card shows it,** so that card's ui job builds the view, reading Paddle's client. Until now an
+     external read model was never a part (ADR-052: the session, read through a form's `session:` fields). emcli now
+     makes one a part when a card of its own slice displays it, and the part names the system (`external`); shown by
+     any other card, it still isn't one.
+2. **"Start options" loses its config fields** (`trialDays`, `webSeatPrice`, `mobileSeatPrice`). A same-name
+   replacement before release; it keeps the organisation's name and a refused trial's reason.
+3. **A price with no trial shows as such:** the page says "no free trial", never a number of days Paddle won't give.
+   An unset or unknown price is the provider module's error (as `open` has today), not a guess.
+4. **"Start trial checkout" is split:**
+   - **"start trial checkout":** Paddle's checkout, the form Paddle serves inside our page (`--external Paddle`,
+     ADR-057: nothing of ours is built for it);
+   - **"paddle notification received":** Paddle's event only, `--intake webhook`. It replaces the built slice: the
+     loop rebuilds the webhook endpoint under the new name, and the old folder is removed.
+5. **A rule for every project** (`event-model`, `build-screen`, `provider-paddle`): a figure another system charges or
+   grants (a price, a trial, a tax) is read from that system, never set in a `derived:config` field.
+
+**Alternatives considered:**
+- **Keep the config, and check it at start** (the backend fetches each trial price and refuses to start, or alerts,
+  when its `trial_period` isn't `trialDays` days). Smaller: no change to the page or the model. Rejected: two sources
+  stay, a price change in Paddle's dashboard stops the service until someone edits the config, and the fixed figures
+  are still sterling for every buyer.
+- **Record the offer as our events** (translate Paddle's `price.created` and `price.updated`, which the Sync already
+  fetches, into `trialOfferWasChanged`, projected into "start options"). Event-sourced, and the backend would know the
+  offer. Rejected for now: nothing of ours decides on the offer, so recording it buys nothing yet, and the figures
+  would still be in one currency. It's the way if a rule ever needs the offer (a "trial too short" refusal, say).
+
+**Not proposed: an emcli warning for point 5.** emcli can't tell a figure another system charges from a value we
+configure (a grace period is ours), so the rule goes in the skills only.
+
+**Consequences:**
+- **Model (licensing, chapter 1):** the external read model "Trial Offer" displayed by "Choose How to Start"; "start
+  options" without its three fields; the two slices of point 4. Queued: "start options" (its replacement), "paddle
+  notification received" (the endpoint, rebuilt), and the page's part.
+- **Kit:** `provider-paddle` (`previewPrices`, the mock's `/pricing-preview`, the rule), `build-screen` (an external
+  read model of the slice's own: a view reading the provider's module), the web's `PagePart.external`.
+- **emcli:** `deriveParts` (the part, above); `event-model` (the rule, and how to model the offer).
+- **Proof:** the journeys, mock and sandbox: the page shows the sandbox's 1-day trial, and the mock's 14 days.
