@@ -43,6 +43,14 @@ model and build only what's ours.
   and access are our domain. Paddle is an outside system: in the model, an automation (and translations of its
   webhooks) that produces a side effect. So the model is designed first, from how other vendors do it, and Paddle is
   fitted to it, not the other way round.
+- **NEXT (Gary, 2026-10-19): show VAT in full on the trial offer, no surprises at payment.** Gary agreed: Paddle (the
+  merchant of record) charges VAT, so the page shows each seat's net price, the VAT and the total for the buyer's
+  country, all from Paddle's preview (`formatted_unit_totals`: subtotal, tax, total), e.g. "£10.00 + £2.00 VAT = £12.00
+  per seat a month after your 1-day trial", with "VAT for your country; businesses with a VAT number may not be
+  charged it" (the preview guesses the country from the IP; the EU reverse charge). Plan: a same-name replacement of
+  licensing's built "trial offer" (pre-release): each seat price becomes net, VAT and total fields; the after-the-trial
+  wording and the note in its mockup and notes; a UI-only job. `previewPrices` gains `subtotal` and `tax` (kit
+  `provider-paddle` and licensing's module, tested), and manual §22.10 says so. Not modelled yet.
 - **Pick up here (2026-10-19):** ✅ 2b.3 (Gap 4, the trial's length) and ✅ 2b.4 (split "start trial checkout") are
   **done and proven** (ADR-075; see 2b.3 below): journeys mock and sandbox 3/3, licensing `f03ec39`. Next in Phase 16:
   the subscription lifecycle chapters (8: the trial converts and renews, first), or distilling the draft skill
