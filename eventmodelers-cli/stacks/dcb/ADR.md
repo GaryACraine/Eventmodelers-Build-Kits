@@ -6216,3 +6216,142 @@ the sandbox proof are in it (points 3, 4 and Consequences).
   - the journeys on the mock (renew, twice) and on the sandbox (`subscriptions.activate` ends the journey's trial:
     Active, "Renews on", the companions `not needed`, nothing `failed`);
   - one recorded sandbox renewal of about 31 minutes, with `next_billed_at` moved forward.
+
+### ADR-077: The owner adds and removes seats: Paddle's answer is the fact, and the renewal applies a decrease
+
+**Status:** **Accepted, 2026-10-19 (Gary)**, as proposed, with point 5's answer recorded even when Paddle's event of
+the same change came first. Gary chose the scope (chapters 6, 7 and 12; 16 later), a configured trial seat cap, and a
+preview of the cost read from Paddle by our backend.
+**Date:** 2026-10-19
+**Builds on:**
+- ADR-037 decisions 1, 4, 5 and 6: the seat count we enforce is the one Paddle confirms; adding seats is our screen,
+  Paddle's preview first; removing takes effect at the next period, with no credit; a trial changes seats only with
+  `do_not_bill`, and is capped;
+- ADR-049 and ADR-050: a decisive answer to our own call is a fact; the same change is recognised by Paddle's
+  `updated_at`; a command may decide nothing;
+- ADR-071: tags are modelled, and never conditional;
+- ADR-075: an external read model that a page reads; ADR-076: the billed seats are the seats from then on, and the
+  companion rule.
+
+**Authorities consulted (ADR-064, payments: Paddle's documentation and our own sandbox runs):**
+- **[Add or remove items](https://developer.paddle.com/build/subscriptions/add-remove-products-prices-addons):**
+  "Change quantities when customers want to increase or decrease the number of units… if your pricing is per user or
+  seat"; "include `on_payment_failure` to control payment failure behavior (defaults to `prevent_change`)"; "You can't
+  make changes to a subscription if the next billing period is within 30 minutes", nor when "the subscription status
+  is `past_due`".
+- **[Proration](https://developer.paddle.com/concepts/subscriptions/proration):** `prorated_immediately`: "the
+  customer is billed the prorated amount now"; `do_not_bill`: "the customer isn't billed for the prorated amount or
+  the full amount". Paddle recommends no mode for either direction: the choice is ours (ADR-037 decision 5).
+- **The sandbox (`paddle.md` §11):**
+  - an increase with `prorated_immediately` answers only once the charge succeeds; `subscription.updated` follows
+    about three seconds later, with the answer's `updated_at`;
+  - a declined card refuses the change (`prevent_change`), the seats stay, and Paddle cancels the leftover
+    transaction itself;
+  - a decrease with `do_not_bill` outside a trial makes no transaction, and Paddle's quantity drops at once. *That the
+    next renewal then bills the lower number is still to be seen* (this ADR's proof);
+  - in a trial only `do_not_bill` is allowed; the same quantities again change nothing (same `updated_at`, no event).
+
+**Context:**
+- **The owner can't change seats.** Chapters 6, 7 and 12 are the storm's drafts, shaped before ADR-049 (Paddle's
+  `subscription.updated` as the step before our fact). A seat change made in Paddle's dashboard alerts as `failed`.
+- **The deciders enforce only the trial's seats.** `SeatsAllowed` (licensing's `invitemember` and
+  `assignownerwebseat`) folds `trialWasStarted` alone, so the seats billed at a conversion or renewal (ADR-076) aren't
+  enforced, and a seat change wouldn't be either.
+- **ADR-037 decision 5 records `seatsWereRemoved` at the renewal.** Since ADR-076, `subscriptionWasRenewed` carries
+  the billed seats, which become the seats: a second event at the renewal would say the same thing again.
+- **A change from Paddle's dashboard can't share our event.** Our own carry the request's id, Paddle's carry its
+  `paddleEventId`; one event with either would be a conditional tag (ADR-071).
+
+**Proposed:**
+1. **One seat change at a time per organisation, requested by the owner, per seat type.**
+   - `requestSeatIncrease` (`seatType`, `addSeats`) and `requestSeatDecrease` (`seatType`, `removeSeats`) record
+     `seatIncreaseWasRequested` / `seatDecreaseWasRequested`, with a generated `seatChangeId` and **the totals to
+     send** (`webSeats`, `mobileSeats`), worked out by the decider from our events, so a retried call sends the same
+     state. Tags: `organisationId`, `seatChangeId`.
+   - Refused: not the owner; no subscription; a seat change still waiting for Paddle; an increase while a decrease is
+     scheduled ("withdraw the decrease first", chapter 16); in a trial, totals above the cap (point 6); a decrease
+     below the seats in use (assigned, and held by pending invitations), or below 1 of a type (removing a type's item
+     altogether is later).
+2. **A workflow per request asks Paddle, and records its answer** (ADR-049; to-do list "seat changes awaiting
+   Paddle", by `seatChangeId`). `changeSeats` sends every item with its quantity:
+   - an increase: `prorated_immediately` with `on_payment_failure: prevent_change`, or `do_not_bill` in a trial;
+   - a decrease: always `do_not_bill` (no credit; ADR-037 decision 5).
+
+   The outcomes, each closing the item:
+   - **`recordSeatsAdded` → `seatsWereAdded`**;
+   - **`recordSeatDecrease` → `seatsWereRemoved` while trialing, `seatDecreaseWasScheduled` (with `effectiveAt`,
+     Paddle's `next_billed_at`) once paid.** The decider chooses from our events, as `recordPaidPeriod` does: a trial
+     pays for nothing, so its decrease applies at once;
+   - **`recordSeatChangeRefused` → `seatChangeWasRefused`** (chapter 12, widened from "a seat increase is declined"):
+     Paddle's refusal is a business answer, so it's decisive. `reason`: `card declined`, `payment overdue`
+     (`past_due`; chapter 13 isn't built, so we hold no such state), `renewal too close` (within 30 minutes). The
+     seats stay; the page says why.
+
+   Each carries `organisationId`, `seatChangeId`, `subscriptionId`, `webSeats`, `mobileSeats` and `paddleUpdatedAt`
+   (not the refusal, which changed nothing). A timeout or 5xx after the retries records nothing and stalls (ADR-032).
+3. **The renewal applies a scheduled decrease, with no event of its own.** `subscriptionWasRenewed` carries the
+   seats Paddle billed (ADR-076 point 2), the lower number. This amends ADR-037 decision 5: no `seatsWereRemoved` at
+   the renewal. Until then the assignable limit is the new number (the paid-for seats stay usable by those who hold
+   them, and none can be added), and the Dashboard shows "6 web seats, 4 from 15 Nov".
+4. **One enforced seat count.** `SeatsAllowed` folds, by `organisationId`, the totals of `trialWasStarted`,
+   `trialWasConverted`, `subscriptionWasRenewed`, `seatsWereAdded`, `seatsWereRemoved` and `seatsWereChangedAtPaddle`
+   (the latest wins: each carries totals, never a difference), and `seatDecreaseWasScheduled` lowers the assignable
+   limit until the next renewal. Every decider that hands out a seat reads it (`invitemember`,
+   `assignownerwebseat`); `acceptinvitation` uses the seats its invitation already holds.
+5. **Paddle's events of a seat change** (the translation):
+   - **A change made outside our app** (Paddle's dashboard): `subscription.updated` whose quantities differ from the
+     seats Paddle bills next → `recordSeatsChangedAtPaddle` → **`seatsWereChangedAtPaddle`** (`organisationId`,
+     `subscriptionId`, `webSeats`, `mobileSeats`, `paddleUpdatedAt`, `paddleEventId`, `paddleOccurredAt`; tags
+     always present).
+   - **Our own change, either way round.** The decider compares versions (ADR-049's table): a version already
+     recorded is skipped as `already done`, an older one as `superseded`. When Paddle's event is recorded first, our
+     answer is still recorded as its request's outcome, so the to-do item closes: the events carry totals, so the
+     same state folded twice changes nothing. A departure from ADR-049's "from our answer, nothing more" (Gary,
+     2026-10-19): the alternative, the translation finding the pending request from a read model, would rest on a
+     projection that can lag.
+   - **The companion rule (ADR-076 point 3) compares Paddle's quantities with the seats Paddle bills next**: the
+     scheduled numbers while a decrease waits, otherwise the seats we hold. Without this, the renewal's
+     `subscription.updated` after a decrease would alert.
+6. **The trial seat cap is configured:** `configureTrialSeatCap` → `trialSeatCapWasConfigured` (`webSeatCap`,
+   `mobileSeatCap`), seeded by a setup command into `LicensingSettings`, as the grace period is (ADR-043). Until it's
+   configured, a trial can't add seats (closed, not open).
+7. **The preview: our backend reads Paddle, and nothing is recorded.** An external read model, "Seat change preview"
+   (`--external Paddle`), served by our backend: a query route calls the provider module's `previewSeatChange` with
+   the totals the change would send, and returns what's due now (none in a trial or for a decrease) and the next bill
+   and its date. Paddle's preview API needs our API key, so unlike ADR-075's `PricePreview` it can't be read in the
+   browser. A new shape for the kit: an external read model served by our backend.
+8. **What the owner sees.** The Dashboard: "Add seats" and "Remove seats" (owner only) and the scheduled decrease
+   (`OrganisationOverview` gains `scheduledWebSeats`, `scheduledMobileSeats`, `scheduledAt`, optional). The seat
+   change page: the type and number, Paddle's preview, Confirm; then the outcome once the item closes: added,
+   removed, scheduled for the renewal, or refused with its reason.
+
+**Alternatives considered:**
+- **Call Paddle from the route, synchronously.** The owner waits on a charge either way, and it's simpler. Rejected:
+  a timeout leaves us not knowing whether the change was made; external calls belong to a workflow with retries and
+  a to-do list (ADR-031, ADR-032, ADR-049).
+- **`seatsWereRemoved` at the renewal** (ADR-037 as written). Rejected: `subscriptionWasRenewed` already carries the
+  billed seats (point 3), and a timer or a second reaction to the renewal would add a race for nothing.
+- **Translate Paddle's event into our own `seatsWereAdded`.** Rejected: its `seatChangeId` would be a conditional
+  tag (ADR-071).
+- **A decrease charged as a credit now** (`prorated_immediately`). Rejected by ADR-037 decision 5 (Gary): the
+  customer keeps what they paid for.
+- **No preview, wording only.** Rejected (Gary): Paddle's prorated, taxed figure is what will be charged.
+
+**Not in this ADR:**
+- withdrawing a scheduled decrease (chapter 16), and removing a seat type altogether;
+- a seat change while `past_due` beyond Paddle's refusal (chapter 13), and after a cancellation is scheduled
+  (chapter 9);
+- automatic purchase when an invitation needs a seat (ADR-037 decision 4, later).
+
+**Consequences:**
+- **Model (licensing):** chapters 6, 7 and 12 replace the storm's drafts (chapter 12 becomes "A seat change is
+  refused"). Same-name replacements before release: the translation (point 5), `invitemember` and
+  `assignownerwebseat` (point 4), "organisation overview" (point 8), "licensing settings" (point 6).
+- **Kit:** `provider-paddle` (the seat change rules, the decline and its reasons, the companion rule's next-bill
+  seats, the mock: a change's `subscription.updated` with its `updated_at`, a charge's `transaction.completed`, a
+  declined card); `build-state-view` and `build-screen` (an external read model served by our backend);
+  `plan-change` (a shared decision model changed in every decider that reads it). The manual's §22: adding and
+  removing seats.
+- **Proof:** the journeys on the mock and the sandbox (add in a trial and paid, above the cap refused, a declined
+  card, remove in a trial and paid, the renewal applying it); a recorded sandbox run in which a `do_not_bill`
+  decrease is billed lower at the renewal (`next_billed_at` brought forward, ADR-076).
