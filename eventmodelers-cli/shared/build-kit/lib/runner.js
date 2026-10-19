@@ -120,6 +120,17 @@ export function rebuildWarning({ outcome, commit, rebuild }) {
   return `rebuild marked Done with no commit; check that the code has the change${changes}`;
 }
 
+/**
+ * A no-commit rebuild blocks the slice, unless it extends another (whose job may have made the change): licensing,
+ * 2026-10-19, "request seat increase" was rebuilt to read three new scenarios, the job saw nothing to do, and the
+ * slice stayed Done without them. The reason says what was to change, so planning it again is informed.
+ */
+export function rebuildBlock({ warning, extension }) {
+  if (!warning || extension) return undefined;
+  return `${warning}. Nothing was committed, so the change isn't built: check slice.json's scenarios against the ` +
+    'tests (one test per scenario, named after it), then plan the slice again';
+}
+
 /** One job's line in .build-kit/metrics/runs.jsonl. */
 export function metricsLine({ at = new Date(), planned, settings, result, outcome, commit, warning }) {
   const usage = result?.usage ?? {};
