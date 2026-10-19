@@ -80,6 +80,25 @@ model and build only what's ours.
   - *Found:* a paid decrease's `subscription.updated` can arrive before Paddle's answer is recorded, and would have
     lowered the seats at once. Closed in ADR-077 point 5 and `provider-paddle`: while our change waits, an event with
     its totals is `already done`, decided from our events. It's in the model's specs, so the loop builds it.
+  - **First build 2026-10-19:** the loop built all 31 slices with nothing blocked. Backend 845/845 tests pass, web
+    235/235, `tsc` and `tsc -b` are clean. Reviewing the code found two bugs:
+    - the four deciders that count seats (invite member, assign owner web seat, request seat increase and decrease)
+      never fold `seatsWereChangedAtPaddle`;
+    - `recordSeatsChangedAtPaddle` held only an increase as waiting, never a decrease or a stall's end.
+
+    The model's fix is licensing `47d7a75` (`seat-changes-reads.sh`, scenarios for each). It's awaiting Gary's
+    go-ahead to export again.
+  - *Found:* both bugs came from events named in the descriptions only: the loop builds a rule from its scenarios.
+    Closed in emcli `15fb7d6` (completeness warns `(scenarios)` when a command's description names an event of its
+    context that no scenario gives it; tested and mutation-checked) and in kit PR #333 (`build-state-change`'s
+    checklist).
+  - *Found:* the contract offered a keyed `GET /seat-change-preview/{organisationId}` that no route served. A read
+    model our backend serves with queries is served by those queries alone. Closed in emcli `15fb7d6` (tested and
+    mutation-checked).
+  - *Found:* licensing's `catalogue.sh` had drifted from the model's tags since ADR-071, which set the tags on the
+    drawings only, so a new context placement came out untagged. emcli's one-event-one-tag-set warning caught it.
+    Fixed in the catalogue (`47d7a75`). The project-only part is the catalogue itself; the check that catches it is
+    emcli's.
 - ✅ **DONE 2026-10-19: chapter 8, the trial converts and the subscription renews (ADR-076, Accepted by Gary).**
   One command, `recordPaidPeriod`, takes each `subscription_recurring` payment. Its decider records `trialWasConverted`
   (still trialing) or `subscriptionWasRenewed`, from our own events, and refuses an organisation with no subscription
