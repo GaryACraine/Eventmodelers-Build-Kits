@@ -820,7 +820,7 @@ them (`build-screen`: an external read model of this slice's own).
   names (`paddlePrice("WEB_TRIAL")`), in `useQuery`. It answers in the order asked, one unit of each, as Paddle
   formats it for the buyer (their currency, their country's tax): `subtotal` before tax ("£10.00"), `tax` ("£2.00")
   and `total` ("£12.00"), then `billingCycle` and `trialPeriod`. `describePeriod` says a period ("14 days", "1 month").
-- **Show the tax in full** (Gary, 2026-10-19, a draft until licensing's "trial offer" replacement is built): Paddle
+- **Show the tax in full** (Gary; proven 2026-10-19: licensing's "trial offer", a table of each seat's price, VAT and total, journeys mock and sandbox): Paddle
   is the merchant of record and adds the buyer's country's tax, so the page shows each price as net, tax and total
   ("£10.00 + £2.00 VAT = £12.00 a month"), never the total alone, and says the tax is for the buyer's country
   (Paddle's preview guesses it from their IP) and that a business with a VAT number may not be charged it (the

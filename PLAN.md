@@ -43,7 +43,7 @@ model and build only what's ours.
   and access are our domain. Paddle is an outside system: in the model, an automation (and translations of its
   webhooks) that produces a side effect. So the model is designed first, from how other vendors do it, and Paddle is
   fitted to it, not the other way round.
-- **NEXT (Gary, 2026-10-19): show VAT in full on the trial offer, no surprises at payment.** Gary agreed: Paddle (the
+- ✅ **DONE (Gary, 2026-10-19): show VAT in full on the trial offer, no surprises at payment.** Gary agreed: Paddle (the
   merchant of record) charges VAT, so the page shows each seat's net price, the VAT and the total for the buyer's
   country, all from Paddle's preview (`formatted_unit_totals`: subtotal, tax, total), e.g. "£10.00 + £2.00 VAT = £12.00
   per seat a month after your 1-day trial", with "VAT for your country; businesses with a VAT number may not be
@@ -55,8 +55,12 @@ model and build only what's ours.
     (licensing's module and the kit skill, tests: web 207, `tsc -b` clean); the mock Paddle adds UK VAT (20%) on top,
     as the sandbox does for a buyer here (`taxRate`, server tests 3/3); "trial offer" replaced by the same name
     (`model/vat-breakdown.sh`): `webSeatPrice`/`mobileSeatPrice` became `billingCycle` and each seat's `…Net`, `…Vat`,
-    `…Total`, with the note in its mockup and notes. Next: when the loop is waiting, update journey case 4b to the
-    breakdown and run the journeys mock and sandbox.
+    `…Total`, with the note in its mockup and notes.
+  - ✅ **Built and proven 2026-10-19:** the loop rebuilt the view (`efd1e61`: a table, the seat as row header, then
+    price, VAT, total; the note under it). Web 207, `tsc -b` clean. Journey case 4b checks each row (mock £10.00 +
+    £2.00 = £12.00; sandbox: the three add up) and the note; expecting £0.00 VAT, it fails. Journeys mock and sandbox
+    3/3 (licensing `ce2ad51`). Next in Phase 16: chapter 8 (the trial converts and renews), or distilling the draft
+    skill sections.
   - Found: a field added to a read model doesn't reach its scenarios' steps (a removal does). By design, not a gap:
     a step takes a field when its example is set (`spec step example`), so the script sets them.
 - **Pick up here (2026-10-19):** ✅ 2b.3 (Gap 4, the trial's length) and ✅ 2b.4 (split "start trial checkout") are
