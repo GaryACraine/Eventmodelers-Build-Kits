@@ -62,6 +62,24 @@ model and build only what's ours.
     them; taken up with chapter 9).
   - *Found:* `SeatsAllowed` (`invitemember`, `assignownerwebseat`) folds only `trialWasStarted`, so the seats billed
     at a conversion or renewal aren't enforced. Closed by ADR-077 point 4 (both replaced).
+  - **Step 3 modelled 2026-10-19 (licensing `d8cfcc8`), export awaiting Gary's go-ahead:** `model/seat-changes.sh`
+    recreates chapters 6, 7 and 12 ("A seat change is refused"), with chapter 25 (the trial seat cap) before them.
+    It also makes same-name replacements of chapter 1's translation (cases 8–9, and case 7 compared with the seats
+    Paddle bills next) and `assign owner web seat`, and of chapter 2's `invite member`. Both read the one seat count,
+    in their descriptions and specs. `seatChangeId` is registered (an entity of an organisation), and the owner holds
+    `seats:change`. Completeness is clean in 1, 2, 6, 7, 12 and 25. Every event's fields are identical across
+    chapters, and nothing is blocked. The mock's seat events and refusals landed in licensing `3d68c3f` (10/10).
+  - *Found:* `requirePermission` read `organisationId` only from the path or the body, so an organisation-scoped
+    query couldn't follow the API standard (`?organisationId=`), and emcli warned on the work-around path. Closed in the
+    kit's code with a template test (kit PR #331, mutation-checked in licensing, 38/38), and in `build-state-view`'s
+    template.
+  - *Found:* `emcli slice status … planned` exited 0 when its gate blocked the slice. So a script (`|| echo`) couldn't
+    tell: two automations planned before the commands they issue were silently blocked. Closed in emcli `7322b5b` (it
+    exits 1; a CLI test, mutation-checked; the `event-model` hand-off reference says to plan an automation after its
+    commands).
+  - *Found:* a paid decrease's `subscription.updated` can arrive before Paddle's answer is recorded, and would have
+    lowered the seats at once. Closed in ADR-077 point 5 and `provider-paddle`: while our change waits, an event with
+    its totals is `already done`, decided from our events. It's in the model's specs, so the loop builds it.
 - ✅ **DONE 2026-10-19: chapter 8, the trial converts and the subscription renews (ADR-076, Accepted by Gary).**
   One command, `recordPaidPeriod`, takes each `subscription_recurring` payment. Its decider records `trialWasConverted`
   (still trialing) or `subscriptionWasRenewed`, from our own events, and refuses an organisation with no subscription
