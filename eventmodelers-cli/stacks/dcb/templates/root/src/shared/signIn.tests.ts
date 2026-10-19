@@ -63,7 +63,8 @@ describe("the API's sign-in check (ADR-037, ADR-055)", () => {
                     router => router.post("/act", requireSession(["userId"]), (req, res) => void res.json(sessionOf(req))),
                     router => router.post("/assign", requirePermission("seat:assign", ["userId"]), (req, res) => void res.json(sessionOf(req))),
                     router => router.get("/seats/:organisationId", requirePermission("seat:read"), (_req, res) => void res.json({ ok: true })),
-                    router => router.get("/notifications", requirePermission("notification:list"), (_req, res) => void res.json({ ok: true }))
+                    router => router.get("/notifications", requirePermission("notification:list"), (_req, res) => void res.json({ ok: true })),
+                    router => router.get("/seat-list/by-type", requirePermission("seat:read"), (_req, res) => void res.json({ ok: true }))
                 ]
             })
         )
@@ -158,6 +159,13 @@ describe("the API's sign-in check (ADR-037, ADR-055)", () => {
 
         test("runs in the organisation the path names", async () => {
             expect((await agent().get("/seats/org-1").set("Authorization", await as("sub-7f3a"))).status).toBe(200)
+        })
+
+        test("runs in the organisation a query's parameters name, and refuses one the caller has no role in", async () => {
+            const query = async (organisationId: string) =>
+                agent().get(`/seat-list/by-type?organisationId=${organisationId}&seatType=web`).set("Authorization", await as("sub-7f3a"))
+            expect((await query("org-1")).status).toBe(200)
+            expect((await query("org-2")).status).toBe(404)
         })
 
         test("answers 404 in an organisation the caller has no role in: it doesn't say whether it exists", async () => {

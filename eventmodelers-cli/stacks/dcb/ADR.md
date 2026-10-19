@@ -6309,6 +6309,12 @@ preview of the cost read from Paddle by our backend.
      same state folded twice changes nothing. A departure from ADR-049's "from our answer, nothing more" (Gary,
      2026-10-19): the alternative, the translation finding the pending request from a read model, would rest on a
      projection that can lag.
+   - **While our own change waits for Paddle's answer**, the decider (which reads the organisation's events, not a
+     projection) skips a `subscription.updated` whose totals are the waiting request's as `already done`: the
+     workflow records the answer. Without this a paid decrease, whose event can arrive before the answer, would be
+     recorded as `seatsWereChangedAtPaddle` and lower the seats at once instead of at the renewal (found while
+     modelling, 2026-10-19). So Paddle's event is recorded first only for a change that's no longer waiting (one
+     that stalled); the answer recorded after it still closes the to-do item.
    - **The companion rule (ADR-076 point 3) compares Paddle's quantities with the seats Paddle bills next**: the
      scheduled numbers while a decrease waits, otherwise the seats we hold. Without this, the renewal's
      `subscription.updated` after a decrease would alert.
