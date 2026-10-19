@@ -43,6 +43,23 @@ model and build only what's ours.
   and access are our domain. Paddle is an outside system: in the model, an automation (and translations of its
   webhooks) that produces a side effect. So the model is designed first, from how other vendors do it, and Paddle is
   fitted to it, not the other way round.
+- **Pick up here (2026-10-19): chapter 8, the trial converts and the subscription renews. ADR-076 Proposed**
+  (one command `recordPaidPeriod` decides `trialWasConverted` or `subscriptionWasRenewed` from our events; the
+  companions `subscription.activated`/`updated` are skipped as `not needed` when they change nothing; the Dashboard
+  shows "Renews on"). Gary's answers (2026-10-19) are in it. Today every converted trial is three critical alerts and
+  stays "trialing" with us. Plan, in order, once Gary accepts:
+  1. **Model** chapter 8 (`licensing/model/chapter-8.sh`, chapter 24's pattern), replacing the storm's drafts.
+     Check that chapter 1's translation is re-queued by its new `relates-to`.
+  2. **The mock:** `POST /mock/subscriptions/:id/renew` (activated if trialing, updated, a `subscription_recurring`
+     payment). The shapes are taken from the sandbox's real conversion events (fixture
+     `trial-conversion.events.json`). Server tests; rebuild the container.
+  3. **Commit, then export** chapters 1 and 8, `--context licensing` (Gary's go-ahead; export last).
+  4. **Prove:**
+     - review and mutation-check what the loop built;
+     - the journeys: mock renew ×2; sandbox `subscriptions.activate` (Active, "Renews on", companions `not needed`,
+       nothing `failed`);
+     - one recorded sandbox renewal of about 31 minutes (`next_billed_at` moved forward).
+  5. **Kit:** `provider-paddle` and manual §22; kit drift; PLAN; memory.
 - ✅ **DONE (Gary, 2026-10-19): show VAT in full on the trial offer, no surprises at payment.** Gary agreed: Paddle (the
   merchant of record) charges VAT, so the page shows each seat's net price, the VAT and the total for the buyer's
   country, all from Paddle's preview (`formatted_unit_totals`: subtotal, tax, total), e.g. "£10.00 + £2.00 VAT = £12.00
@@ -1410,7 +1427,7 @@ model and build only what's ours.
       - [ ] 5. Owner hands over ownership;
       - [ ] 6. Owner buys more seats;
       - [ ] 7. Owner removes seats at the next period;
-      - [ ] 8. The trial converts and the subscription renews;
+      - [ ] 8. The trial converts and the subscription renews (ADR-076 Proposed 2026-10-19; see "Pick up here");
       - [ ] 9. Owner cancels.
     - **Alternatives:**
       - [ ] 10. An invitation expires;
