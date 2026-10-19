@@ -43,11 +43,11 @@ model and build only what's ours.
   and access are our domain. Paddle is an outside system: in the model, an automation (and translations of its
   webhooks) that produces a side effect. So the model is designed first, from how other vendors do it, and Paddle is
   fitted to it, not the other way round.
-- **Pick up here (2026-10-19): chapter 8, the trial converts and the subscription renews. ADR-076 Proposed**
+- **Pick up here (2026-10-19): chapter 8, the trial converts and the subscription renews. ADR-076 Accepted (Gary, 2026-10-19)**
   (one command `recordPaidPeriod` decides `trialWasConverted` or `subscriptionWasRenewed` from our events; the
   companions `subscription.activated`/`updated` are skipped as `not needed` when they change nothing; the Dashboard
   shows "Renews on"). Gary's answers (2026-10-19) are in it. Today every converted trial is three critical alerts and
-  stays "trialing" with us. Plan, in order, once Gary accepts:
+  stays "trialing" with us. Plan, in order:
   1. **Model** chapter 8 (`licensing/model/chapter-8.sh`, chapter 24's pattern), replacing the storm's drafts.
      Check that chapter 1's translation is re-queued by its new `relates-to`.
   2. **The mock:** `POST /mock/subscriptions/:id/renew` (activated if trialing, updated, a `subscription_recurring`
@@ -1427,7 +1427,7 @@ model and build only what's ours.
       - [ ] 5. Owner hands over ownership;
       - [ ] 6. Owner buys more seats;
       - [ ] 7. Owner removes seats at the next period;
-      - [ ] 8. The trial converts and the subscription renews (ADR-076 Proposed 2026-10-19; see "Pick up here");
+      - [ ] 8. The trial converts and the subscription renews (ADR-076 Accepted 2026-10-19; see "Pick up here");
       - [ ] 9. Owner cancels.
     - **Alternatives:**
       - [ ] 10. An invitation expires;
@@ -5223,6 +5223,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-18 | `sync push` rewrites the board's ids into the loop's queue; axe (WCAG 2.2 AA) runs in the journeys | A push that left `.build-kit/.slices` on provisional ids would have queued 65 built slices to rebuild at the next export. ADR-072's accessibility promise needs a browser to check, which only the journeys have |
 | 2026-10-18 | ADR-072/073/074 proven end to end in licensing (journeys mock and sandbox 3/3: members by email, a changed email refreshed onto the Dashboard, Remove's confirmation built by the loop); the contexts drafts distilled for pattern 1 as a read only | The first published event works through the loop in two rounds. Only what ran is distilled: reacting and patterns 2–4 have no first use yet |
 | 2026-10-18 | ADR-073 Accepted: identity publishes `userContactDetailsWereUpdated` (the current contact details whole, Gary's name; appended with the internal event, one append as the outbox); a subscriber may project a published event as a lookup without translating it; `--published`, `Published.ts`, the check allows it | The Dashboard lists members by id (ADR-072 decision 5). Gary chose the published event over a licensing copy (stale after an email change, personal data in licensing's events) and over reading identity's API (identity can't authorise by organisation). Dudycz: publish a designed external event, not internal ones; readers may build read models from it. Gary named it and accepted appending it in the same write |
+| 2026-10-19 | ADR-076 Accepted: the trial converts and the subscription renews. A `subscription_recurring` payment → `recordPaidPeriod`, whose decider records `trialWasConverted` (still trialing) or `subscriptionWasRenewed`, with the billed seats and the period; the companions (`subscription.activated`/`updated`) are skipped as `not needed` when they change nothing; the Dashboard shows "Renews on" | Paddle has no "converted" event, and `subscription.updated` moves the period before the payment (sandbox), so the payment confirms a period and our own events decide which (Gary) |
 
 ## Progress
 

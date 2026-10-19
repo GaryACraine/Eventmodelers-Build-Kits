@@ -6099,8 +6099,8 @@ configure (a grace period is ours), so the rule goes in the skills only.
 
 ### ADR-076: The trial converts and the subscription renews: a paid period, decided from our own state
 
-**Status:** **Proposed, 2026-10-19.** Gary's answers on the companion events, the Dashboard and the sandbox proof are
-in it (points 3, 4 and Consequences).
+**Status:** **Accepted, 2026-10-19 (Gary)**, as proposed. Gary's answers on the companion events, the Dashboard and
+the sandbox proof are in it (points 3, 4 and Consequences).
 **Date:** 2026-10-19
 **Builds on:**
 - ADR-037 decisions 1 and 6: the seat count we enforce is the one Paddle confirms; a trial has events of its own,
@@ -6141,7 +6141,7 @@ in it (points 3, 4 and Consequences).
 - **A conversion's payment and a renewal's are the same event** (`subscription_recurring`). Only our own state tells
   them apart.
 
-**Proposed:**
+**Decision:**
 1. **One command, two outcomes, decided from our events.** For each `transaction.completed` whose origin is
    `subscription_recurring`, the translation issues `recordPaidPeriod`. Its decider reads the organisation's
    subscription from `trialWasStarted`, `trialWasConverted` and `subscriptionWasRenewed` (tag `organisationId`):
