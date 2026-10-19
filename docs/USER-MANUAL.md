@@ -3350,3 +3350,32 @@ a surprise. Say to Claude, for example:
   split into net, VAT and total fields and the note in its mockup. Only its screen is rebuilt.
 
 In mock mode the mock Paddle adds UK VAT (20%) on top of the seeded prices, as the sandbox does for a buyer here.
+
+### 22.11 When the trial ends, and each renewal
+
+When a trial ends, Paddle charges the card for the first paid month, then again every month after (ADR-076). Each
+charge is a **paid period**, from one date to the next, for the seats Paddle billed. The first one turns the trial into
+a paying customer, and each later one renews it. The owner's Dashboard then shows **Active** and **"Renews on"** the
+period's end, in place of "Trial ends at", with the seats Paddle billed. Amounts and invoices stay in Paddle's
+customer portal.
+
+Paddle doesn't say which charge converted a trial: the first and the twelfth look alike. So we decide it from what
+we've already recorded. If the organisation is still trialing, it converted; if not, it renewed. Say to Claude, for
+example:
+
+- *"When Paddle charges for the next period, record it: a conversion if they're still trialing, otherwise a
+  renewal."* Claude adds one command (`recordPaidPeriod`) that the Paddle translation issues for each charge, with
+  two outcomes (`trialWasConverted` and `subscriptionWasRenewed`). It refuses an organisation with no subscription,
+  and the same charge twice.
+- *"Show Active and when it renews on the Dashboard."* The organisation's overview gains `renewsAt`, shown as
+  "Renews on".
+- *"Paddle's other messages about it change nothing: mark them not needed."* Around each charge Paddle also says the
+  subscription is active, or was updated. When they say only what we already hold (active, nothing scheduled, the
+  same seats), they're skipped as **not needed**. Anything else (a seat change, a cancel scheduled, a failed payment)
+  still raises an alert, until the chapter that handles it is built.
+
+**Trying it out.** In mock mode, `POST /mock/subscriptions/<id>/renew` makes the mock Paddle charge the next period
+at once, as Paddle does at a trial's end or a renewal. On Paddle's sandbox a charge comes at the subscription's next
+billing date, so a test brings that forward (`next_billed_at`, at least 30 minutes ahead, with `do_not_bill`). Don't
+end a sandbox trial with "Activate now": Paddle charges that as a change to the subscription, not as a renewal, so it
+isn't a conversion. Licensing's `e2e/paddle/conversion-renewal.mjs` does this and records what happened.
