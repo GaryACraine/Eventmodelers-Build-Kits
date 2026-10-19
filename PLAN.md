@@ -816,6 +816,19 @@ model and build only what's ours.
           - **Found: `plan-change` didn't say that a `displays` link added or removed is a screen-only change.** The
             first plan replaced "report checkout completed" and queued its backend again for nothing (its backend
             fingerprint was unchanged). **Closed:** `plan-change` says so.
+          - **The loop's first round (2026-10-19) built 3 of 5 and blocked 2, rightly:** "paddle notification received"
+            (`da8303d`, and the webhook wired again with `afterRecorded`, `5c77748`) and "report checkout completed"'s
+            screen (`539a531`) built; "start options" (backend and UI) and "trial offer" (UI) blocked.
+            - **Found: a field removed from a read model stayed on its copies.** Chapter 24's copy of StartOptions kept
+              `trialDays` and the two prices, so the contract (which adds a copy's fields to its origin's) kept them,
+              and the loop's contract check refused the rebuilt route. **Closed at the root:** emcli `70b674f`,
+              `element field remove` takes the field off the copies (a read model's) or every instance (a command's or
+              event's) and the scenario steps linked to them; 3 tests, 2 mutations caught, 570 pass. Licensing
+              `9f43d7d`: the copy fixed, its built extension replaced; re-exported 2026-10-19.
+            - **Found: making `previewPrices` required on the checkout module broke another slice's test** that mocks
+              the module with `open` only. My check missed it: `tsc --noEmit -p .` on `web/` checks nothing (its
+              tsconfig only lists references); `tsc -b` is the check, as the loop's `web-tests` runs. The loop fixed the
+              mock in its next job (`539a531`). Lesson recorded in memory; the kit's own check was right.
           - **Open: licensing has two copies of the mock Paddle** (`e2e/paddle/mock.ts`, older, and
             `mocks/paddle/server.ts`, the container's). The new route is in the container's, tested in
             `mocks/paddle/server.tests.ts`. Merge them when the e2e is next touched.
