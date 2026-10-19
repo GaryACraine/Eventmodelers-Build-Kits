@@ -132,6 +132,36 @@ describe("FormCard: the error first, sending shown, confirm when the model says 
         await userEvent.click(screen.getByRole("button", { name: "Remove member" }))
         expect(screen.getByRole("status")).toHaveTextContent("Sent 1")
     })
+
+    it("shows what the command will cost in its question, before it's confirmed (ADR-077)", async () => {
+        const sent: number[] = []
+        function Buy() {
+            const [seats, setSeats] = useState(2)
+            return (
+                <FormCard
+                    title="Add seats"
+                    submit="Add seats"
+                    pending={false}
+                    confirm={{ question: `Add ${seats} seats?`, consequence: "You're charged now for the rest of the month.", confirm: "Pay and add seats", variant: "default", preview: <p>Due now £{seats * 5}.80</p> }}
+                    onSubmit={(e) => {
+                        e.preventDefault()
+                        sent.push(seats)
+                    }}
+                >
+                    <button type="button" onClick={() => setSeats(3)}>
+                        Three
+                    </button>
+                </FormCard>
+            )
+        }
+        renderWithProviders(<Buy />)
+        await userEvent.click(screen.getByRole("button", { name: "Three" }))
+        await userEvent.click(screen.getByRole("button", { name: "Add seats" }))
+        expect(screen.getByText("Due now £15.80")).toBeInTheDocument()
+        expect(screen.getByRole("button", { name: "Pay and add seats" })).not.toHaveClass("bg-destructive")
+        await userEvent.click(screen.getByRole("button", { name: "Pay and add seats" }))
+        expect(sent).toEqual([3])
+    })
 })
 
 describe("Field and ChoiceGroup: errors named by their inputs (GOV.UK; WCAG 3.3.1)", () => {

@@ -39,6 +39,8 @@ export interface PagePart {
     links?: { row?: string; create?: string; onlyOne?: boolean }
     row?: PagePart[]
     external?: string
+    /** A form's: the view its confirmation shows, read with the values typed (ADR-077); not a part of its own */
+    preview?: string
 }
 
 export interface NavigationPage {

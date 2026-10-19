@@ -6324,6 +6324,11 @@ preview of the cost read from Paddle by our backend.
    (`OrganisationOverview` gains `scheduledWebSeats`, `scheduledMobileSeats`, `scheduledAt`, optional). The seat
    change page: the type and number, Paddle's preview, Confirm; then the outcome once the item closes: added,
    removed, scheduled for the renewal, or refused with its reason.
+   **How the preview is shown (2026-10-19, building it):** the seat change commands ask first (`confirm`), and their
+   card also displays the preview read model of their own slice, so emcli makes it the form part's `preview` (no view
+   part of its own) and the kit's `Confirm` shows it in the question, read with the values typed (emcli `c7804e9`;
+   kit `Confirm`/`FormCard` `preview` and `variant`). The owner types the seats, presses Add, and sees Paddle's
+   figures for exactly that change before paying.
 
 **Alternatives considered:**
 - **Call Paddle from the route, synchronously.** The owner waits on a charge either way, and it's simpler. Rejected:
