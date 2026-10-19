@@ -125,7 +125,10 @@ export function toNotification(body: unknown, receivedAt: Date = new Date()): No
   differ from the seats Paddle bills next: record it with an event of its own (licensing: `seatsWereChangedAtPaddle`,
   with `paddleEventId`), never as our request's event, whose request id would then be a conditional tag (ADR-071,
   ADR-077). Its command compares `paddleUpdatedAt` with the latest recorded (below): the same is `already done`
-  (our answer was first), older is `superseded`.
+  (our answer was first), older is `superseded`. And while one of our own seat changes waits for Paddle's answer (a
+  request with no outcome yet), an event whose totals are that request's is `already done` too: the workflow records
+  the answer. Its decider reads the organisation's events for this, never a read model. Otherwise a paid decrease's
+  event, arriving before the answer, would lower the seats at once instead of at the renewal.
 - **`subscriptions.activate` (ending a trial early) is charged as `origin: "subscription_update"`**, not a
   conversion (sandbox, 2026-10-19). To reach a real conversion or renewal sooner, `PATCH /subscriptions/{id}` with
   `next_billed_at` at least 30 minutes ahead and `proration_billing_mode: "do_not_bill"`: it works on a trialing

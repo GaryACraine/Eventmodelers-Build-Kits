@@ -270,8 +270,9 @@ has settled every choice here. Transcribe it and don't invent parameters, operat
 **The read model's `api`** (ADR-058 point 1) says whether it has an endpoint and who may call it, as for a command
 (`build-state-change` Step 7):
 - a permission: `readModelRoute(…, { schema, guard: requirePermission("<api>") })`. The guard runs before the keyed
-  GET and every query, where the path's `:organisationId` is known. Never `router.use(…)`: it runs before the path
-  is matched, so the guard can't see the organisation;
+  GET and every query, where the organisation is known: the path's `:organisationId`, or a query's
+  `?organisationId=` (the permission check reads both). Never `router.use(…)`: it runs before the path is matched,
+  so the guard can't see the organisation;
 - `self`: its session key;
 - `link` (ADR-068): `guard: requireSession([])`, signed in; it's read by the id the link carried (an invitation's
   page). Anyone signed in with the id may read it, so it shows only what the link's recipient needs;
@@ -1234,8 +1235,9 @@ The system holds it, and only our backend may ask (the call needs our secret key
 never projected or recorded: each GET asks the system now. *Draft until licensing's seat change preview passes end to
 end.*
 
-- **Inputs:** the path's key and the query's parameters (slice.json `queries`), and, for ids the system needs (the
-  subscription), a read model of ours the element `relates-to`, read in-process with
+- **Inputs:** the query's parameters (slice.json `queries`; the path is the API standard's
+  `/<read-model>/<query>`, so the key, `organisationId`, is a parameter too, and the permission check reads it there),
+  and, for ids the system needs (the subscription), a read model of ours the element `relates-to`, read in-process with
   `deps.readModels!.reader(<definition>)(key)`, as an automation reads a data input (ADR-039).
 - **The call** goes through the provider's module (`provider-<system>`; Paddle: `previewSeatChange`), with its config
   passed to the route from `index.ts` (`configure{SliceName}Route(deps, { paddle: paddleConfig() })`), never read from
@@ -1263,7 +1265,7 @@ export function configure{SliceName}Route(deps: SliceDependencies, options: { pa
         router.get(path, requirePermission("{api}"), async (req, res) => {
             const query = {SliceName}QuerySchema.safeParse(req.query)
             if (!query.success) return void res.status(400).json({ type: "about:blank", title: "Bad request", status: 400, detail: query.error.message })
-            const basis = await deps.readModels!.reader({inputReadModel})(req.params["{key}"]!)
+            const basis = await deps.readModels!.reader({inputReadModel})(query.data.{key})
             if (!basis) return void res.status(404).json({ type: "about:blank", title: "Not found", status: 404, detail: "{Entity} not found" })
             try {
                 const answer = await previewSeatChange(options.paddle, basis.subscriptionId, /* the items and mode the change would send */)

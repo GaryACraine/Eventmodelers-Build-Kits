@@ -185,8 +185,10 @@ export function requirePermission(permission: string, keys: string[] = []) {
             }
             const lookup = res.locals["sessionLookup"] as SessionLookup | undefined
             const session: Session = { sub: who.sub, email: who.email, ...((lookup && (await lookup(who.sub))) ?? {}) }
-            const request = req as { params?: Record<string, unknown>; body?: Record<string, unknown> }
-            const named = request.params?.[map.tenantKey] ?? request.body?.[map.tenantKey]
+            // The organisation a request names: in its path (a read), its body (a command) or its query string (a query,
+            // GET /<read-model>/<query>?organisationId=…, the API standard)
+            const request = req as { params?: Record<string, unknown>; body?: Record<string, unknown>; query?: Record<string, unknown> }
+            const named = request.params?.[map.tenantKey] ?? request.body?.[map.tenantKey] ?? request.query?.[map.tenantKey]
             const tenant = typeof named === "string" ? named : undefined
             const decision = decide(map, await rolesOf({ sub: who.sub, email: who.email, session }, tenant), permission, who.amr, tenant)
             if (decision === "allow") return next()
