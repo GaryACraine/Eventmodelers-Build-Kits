@@ -14,7 +14,7 @@ import { execFileSync } from 'child_process';
 import { createRealtimeAdapter } from './adapters/realtime-adapter.js';
 import { concernsOf, inProgressConcerns, nextWork, setConcernStatus, settleEntries } from './concerns.js';
 import { LEARNINGS_CAP, contractPath, journalPath, journalTag, memoryBlock, pruneJournal, usesLearnings, withRepeatedNote } from './memory.js';
-import { appendMetrics, metricsLine, rebuildWarning, usageLimitWaitMs } from './runner.js';
+import { appendMetrics, metricsLine, rebuildBlock, rebuildWarning, usageLimitWaitMs } from './runner.js';
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 
@@ -819,13 +819,22 @@ function recordRun(kitDir, projectDir, planned, run, result, failure) {
       if (head !== run?.worktree?.head) commit = head.slice(0, 7);
     } catch {}
     let rebuild;
+    let extension = false;
     if ((planned.concern ?? 'backend') === 'backend' && entry?.folder) {
       try {
-        rebuild = JSON.parse(readFileSync(join(kitDir, '.slices', planned.ctx, entry.folder, 'slice.json'), 'utf-8')).rebuild;
+        const sliceJson = JSON.parse(readFileSync(join(kitDir, '.slices', planned.ctx, entry.folder, 'slice.json'), 'utf-8'));
+        rebuild = sliceJson.rebuild;
+        extension = !!sliceJson.extends;
       } catch {}
     }
     const warning = rebuildWarning({ outcome, commit, rebuild });
     if (warning) console.warn(`\n[ralph] ⚠ "${planned.title}": ${warning}\n`);
+    const block = rebuildBlock({ warning, extension });
+    if (block) {
+      setLocalSliceStatus(kitDir, planned.ctx, planned.id, 'Blocked', { blockedReason: block, blockedAt: new Date().toISOString() }, planned.concern);
+      appendProgressNote(kitDir, 'Rebuild blocked: nothing committed', [`Slice: ${planned.title} (id=${planned.id}, context=${planned.ctx})`, '', `- ${block}`], planned);
+      console.error(`[ralph] Marked "${planned.title}" Blocked: its rebuild committed nothing.`);
+    }
     appendMetrics(kitDir, metricsLine({ planned, settings: result?.settings, result, outcome, commit, warning }));
   } catch (err) {
     console.error('[ralph] Failed to record the run in metrics/runs.jsonl:', err.message);

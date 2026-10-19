@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import {
-  appendMetrics, describeSettings, jobSettings, metricsLine, metricsPath, rebuildWarning, resetTime, settingsArgs, unpinnedWarning, usageLimit, usageLimitWaitMs,
+  appendMetrics, describeSettings, jobSettings, metricsLine, metricsPath, rebuildBlock, rebuildWarning, resetTime, settingsArgs, unpinnedWarning, usageLimit, usageLimitWaitMs,
 } from './runner.js';
 
 test("a project pins its jobs' model, effort and budget; a concern's own setting wins over the default", () => {
@@ -105,4 +105,11 @@ test('a rebuild marked Done with no commit is warned about, with what was to cha
   const planned = { title: 's', id: 'i', ctx: 'c' };
   assert.equal(metricsLine({ planned, outcome: 'Done', commit: null, warning: 'w' }).warning, 'w');
   assert.equal('warning' in metricsLine({ planned, outcome: 'Done', commit: null }), false);
+});
+
+test('a no-commit rebuild blocks the slice, unless it extends another (licensing, 2026-10-19)', () => {
+  const warning = rebuildWarning({ outcome: 'Done', commit: null, rebuild: { changes: ['scenario added: "counts the seats billed at a renewal"'] } });
+  assert.match(rebuildBlock({ warning, extension: false }), /scenario added: "counts the seats billed at a renewal".*plan the slice again/);
+  assert.equal(rebuildBlock({ warning, extension: true }), undefined);
+  assert.equal(rebuildBlock({ warning: undefined, extension: false }), undefined);
 });
