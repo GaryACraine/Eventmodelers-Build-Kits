@@ -136,6 +136,14 @@ model and build only what's ours.
     (a field held only while a state lasts is removed when the state ends, and the test asserts it's gone; a draft),
     in emcli `6441218` (`event-model` `detail.md`: the mapping says when it goes, plus a scenario that ends the state), and in
     the model (licensing `6aa8a46`, chapter 12's overview replaced with that scenario), awaiting export.
+  - **Mock proven 2026-10-19:** the loop rebuilt both replacements (`3995bf8` drops the reason on every later seat
+    change, and its test asserts it's gone; `d90d207` adds the two case 7 tests). Backend 879 tests pass, web 235,
+    `tsc` and `tsc -b` are clean. The mutations of the reason and of the mobile comparison are now caught. The seat
+    changes journey passes in full on the mock, as do the other three journeys (4/4, licensing `68adfc0`), with axe.
+  - *Found:* the web half of the companion rule was still untested. Both case 7 scenarios scheduled only fewer mobile
+    seats, so comparing web with the seats held passed. Closed in emcli `27d1f27` (`event-model` `detail.md`: a rule
+    applied alike to several fields gets examples where each changes) and in the model (licensing `68adfc0`, the
+    translation replaced again), awaiting export.
 - ✅ **DONE 2026-10-19: chapter 8, the trial converts and the subscription renews (ADR-076, Accepted by Gary).**
   One command, `recordPaidPeriod`, takes each `subscription_recurring` payment. Its decider records `trialWasConverted`
   (still trialing) or `subscriptionWasRenewed`, from our own events, and refuses an organisation with no subscription
