@@ -226,7 +226,12 @@ the tags exactly, so it fails until the producer's same-name replacement is buil
 - **Navigation and pages** (ADR-065, ADR-069: `element next`, `element area`, `element route`, `emcli id`) are the
   model too. **The model owns every page**: never edit one by hand, and a page that needs something its parts can't
   give is a model change (or a kit one), never a page file:
-  - **a screen's mockup:** on a built slice, the export re-queues that screen's UI alone (the backend stays as built);
+  - **a screen's mockup, and the read models it displays** (a `displays` link added or removed): on a built slice,
+    the export re-queues that screen's UI alone (the backend stays as built), so it needs no replacement. A
+    replacement would queue the backend again for nothing;
+  - **a figure another system charges or grants, set as config of ours** (a price, a trial's length, ADR-075): a new
+    slice for a read model held by that system (`--external`) with its own card of the page that shows it, and a
+    same-name replacement of the built read model without those fields;
   - **where a screen leads, its page route, the order of a page's parts, its heading, a register entry (kind, label,
     parent), a page's area, or the role map:** rebuilds nothing. The export rewrites `web/src/navigation.json`, which
     the layout and the kit's page read. Run `emcli navigation` before and after: it shows each page's parts and

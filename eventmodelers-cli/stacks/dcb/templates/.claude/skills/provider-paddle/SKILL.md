@@ -1,6 +1,6 @@
 ---
 name: provider-paddle
-description: Paddle (a merchant of record) for the slices that touch it. What Paddle tells us (reading an event as our notification, a webhook's signature, fetching its event stream after a checkpoint), what we ask it to do (seat changes, cancel), and its checkout opened from our page (Paddle.js in web/). The errors, the mock and the sandbox. Read it when a slice's description or a field's mapping names Paddle. A draft on first use.
+description: Paddle (a merchant of record) for the slices that touch it. What Paddle tells us (reading an event as our notification, a webhook's signature, fetching its event stream after a checkpoint), what we ask it to do (seat changes, cancel), its checkout opened from our page and the offer its prices make (Paddle.js in web/). The errors, the mock and the sandbox. Read it when a slice's description or a field's mapping names Paddle. A draft on first use.
 ---
 
 # Paddle: what it tells us, what we ask of it, and its checkout
@@ -508,11 +508,15 @@ export function paddleWebConfig(env: Env = import.meta.env): PaddleWebConfig {
     return { environment, clientToken, mockUrl: env.VITE_PADDLE_MOCK_URL || "http://localhost:4020" }
 }
 
-/** A price's id at Paddle, by our name for it: `paddlePrice("WEB_TRIAL")` is `VITE_PADDLE_PRICE_WEB_TRIAL`. */
+/**
+ * A price's id at Paddle, by our name for it: `paddlePrice("WEB_TRIAL")` is `VITE_PADDLE_PRICE_WEB_TRIAL`. The mock
+ * takes any id, so in `mock` an unset price is `mock_web_trial`, and the app runs with no prices configured.
+ */
 export function paddlePrice(name: string, env: Env = import.meta.env): string {
     const id = env[`VITE_PADDLE_PRICE_${name}`]
-    if (!id) throw new Error(`VITE_PADDLE_PRICE_${name} isn't set`)
-    return id
+    if (id) return id
+    if ((env.VITE_PADDLE_ENVIRONMENT || "mock") === "mock") return `mock_${name.toLowerCase()}`
+    throw new Error(`VITE_PADDLE_PRICE_${name} isn't set`)
 }
 
 export interface CheckoutRequest {
@@ -546,10 +550,50 @@ export interface CheckoutSummary {
 /** Completed, with Paddle's transaction id; or closed by the buyer before paying */
 export type CheckoutOutcome = { completed: true; transactionId: string } | { completed: false }
 
+/** A length of time as Paddle gives it: `frequency` × `interval` */
+export interface TimePeriod {
+    interval: "day" | "week" | "month" | "year"
+    frequency: number
+}
+
+/** "14 days", "1 month": a period as the page says it */
+export const describePeriod = ({ interval, frequency }: TimePeriod): string => `${frequency} ${interval}${frequency === 1 ? "" : "s"}`
+
+/**
+ * A price as Paddle offers it to this buyer now (ADR-075): in their currency, with their country's tax, and its free
+ * trial. The offer is Paddle's, never a figure of ours, so what the page promises is what Paddle charges.
+ */
+export interface PriceOffer {
+    priceId: string
+    /** One unit's charge each period, tax included, as Paddle formats it for the buyer ("£12.00") */
+    total: string
+    /** How often it's charged; none for a one-off price */
+    billingCycle?: TimePeriod
+    /** None when the price has no free trial */
+    trialPeriod?: TimePeriod
+}
+
 export interface PaddleCheckout {
     /** Opens the checkout. Resolves when it completes or the buyer closes it; rejects if it couldn't open */
     open(request: CheckoutRequest): Promise<CheckoutOutcome>
+    /** What these prices cost this buyer, one of each, and their trials (Paddle.js's `PricePreview`), in their order */
+    previewPrices(priceIds: string[]): Promise<PriceOffer[]>
 }
+
+const offer = (priceId: string, total: string, billingCycle?: TimePeriod | null, trialPeriod?: TimePeriod | null): PriceOffer => ({
+    priceId,
+    total,
+    ...(billingCycle ? { billingCycle: { interval: billingCycle.interval, frequency: billingCycle.frequency } } : {}),
+    ...(trialPeriod ? { trialPeriod: { interval: trialPeriod.interval, frequency: trialPeriod.frequency } } : {})
+})
+const inOrder = (priceIds: string[], offers: PriceOffer[]): PriceOffer[] =>
+    priceIds.map(id => {
+        const found = offers.find(o => o.priceId === id)
+        if (!found) throw new PaddleCheckoutError(`Paddle's preview has no price ${id}`)
+        return found
+    })
+const messageOf = (error: unknown) =>
+    error instanceof Error ? error.message : typeof error === "object" && error ? JSON.stringify(error) : String(error)
 
 export class PaddleCheckoutError extends Error {
     constructor(
@@ -591,6 +635,19 @@ function paddleJsCheckout(config: PaddleWebConfig, load: Loader): PaddleCheckout
         })
 
     return {
+        async previewPrices(priceIds) {
+            const instance = await loaded()
+            let response: Awaited<ReturnType<Paddle["PricePreview"]>>
+            try {
+                response = await instance.PricePreview({ items: priceIds.map(priceId => ({ priceId, quantity: 1 })) })
+            } catch (error) {
+                throw new PaddleCheckoutError(`Paddle couldn't preview the prices: ${messageOf(error)}`)
+            }
+            const offers = response.data.details.lineItems.map(item =>
+                offer(item.price.id, item.formattedUnitTotals.total, item.price.billingCycle, item.price.trialPeriod)
+            )
+            return inOrder(priceIds, offers)
+        },
         async open(request) {
             if (busy) throw new PaddleCheckoutError("A checkout is already open")
             busy = true
@@ -665,8 +722,32 @@ function paddleJsCheckout(config: PaddleWebConfig, load: Loader): PaddleCheckout
     }
 }
 
+interface MockLineItem {
+    price: { id: string; billing_cycle: TimePeriod | null; trial_period: TimePeriod | null }
+    formatted_unit_totals: { total: string }
+}
+
 function mockCheckout(config: PaddleWebConfig): PaddleCheckout {
     return {
+        // The mock Paddle answers as Paddle's API does (POST /pricing-preview), from the prices it was seeded with
+        async previewPrices(priceIds) {
+            let response: Response
+            try {
+                response = await fetch(new URL("/pricing-preview", config.mockUrl), {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ items: priceIds.map(price_id => ({ price_id, quantity: 1 })) })
+                })
+            } catch (error) {
+                throw new PaddleCheckoutError(`The mock Paddle didn't answer: ${messageOf(error)}`)
+            }
+            if (!response.ok) throw new PaddleCheckoutError(`The mock Paddle answered ${response.status}`)
+            const body = (await response.json()) as { data: { details: { line_items: MockLineItem[] } } }
+            const offers = body.data.details.line_items.map(item =>
+                offer(item.price.id, item.formatted_unit_totals.total, item.price.billing_cycle, item.price.trial_period)
+            )
+            return inOrder(priceIds, offers)
+        },
         async open(request) {
             let response: Response
             try {
@@ -712,6 +793,25 @@ function mockCheckout(config: PaddleWebConfig): PaddleCheckout {
 - **A declined card stays inside Paddle's checkout** (`checkout.payment.failed`): the buyer tries again there. We
   build none of it.
 
+### The offer: `previewPrices` (ADR-075)
+
+**What a price costs and its free trial are Paddle's,** never figures of ours: the page that offers a trial reads them
+from Paddle, so it promises what Paddle will charge. In the model they're a read model Paddle holds ("Trial Offer",
+`--external Paddle`, its fields mapped `derived:Paddle.PricePreview …`), and its slice's view is the part that shows
+them (`build-screen`: an external read model of this slice's own).
+
+- **The view calls `paddleCheckout().previewPrices([...])`,** with the prices the slice's description names, by our
+  names (`paddlePrice("WEB_TRIAL")`), in `useQuery`. It answers in the order asked, one unit of each: `total` as
+  Paddle formats it for the buyer (their currency, their country's tax: "£12.00"), `billingCycle`, and `trialPeriod`.
+  `describePeriod` says a period ("14 days", "1 month").
+- **No `trialPeriod` means no free trial:** the page says so, never a number of days. Paddle refusing (an unknown
+  price) rejects, and the view shows the read's error state, never an example figure.
+- **One Paddle.js per page:** `previewPrices` shares the checkout's loaded instance (Paddle.js has one event callback,
+  set when it's initialised), so never initialise Paddle.js a second time for prices.
+- **Read from the sandbox (2026-10-19):** each line item's `price` carries `trial_period` (`null` without one) and
+  `billing_cycle`; `formatted_unit_totals.total` includes the tax for the buyer's country (GB: "£12.00" for £10).
+  Paddle.js gives the same in camelCase (`lineItems`, `trialPeriod`, `formattedUnitTotals`).
+
 ### Configuration, from Vite's environment
 
 | Variable | Default | What |
@@ -743,9 +843,11 @@ request, which MSW answers from the slice's `handlers.ts`:
 http.post(`${paddleWebConfig().mockUrl}/mock/checkouts`, () => HttpResponse.json({ transaction_id: "txn_01h8" }, { status: 201 }))
 ```
 
-with the command's example `transactionId`. The module's own tests (`checkout.test.ts`, beside it) cover Paddle.js
+with the command's example `transactionId`. The offer's view mocks the module instead (`vi.mock("@/providers/paddle/checkout")`),
+so its tests set what Paddle offers (a 14-day trial, none, a refusal) without the network. The module's own tests (`checkout.test.ts`, beside it) cover Paddle.js
 through a fake loader (`createPaddleCheckout(config, load)`): completed, closed, an error, a declined card, one
-checkout at a time, Paddle.js not loading, and the mock.
+checkout at a time, Paddle.js not loading, and the mock; and the offer from the sandbox's answer
+(`fixtures/pricing-preview.json`): in the order asked, a price with no trial, a refusal, the mock's request.
 
 ## The mock: `mocks/paddle/`
 
@@ -768,6 +870,10 @@ Built by the first slice that needs it, as `build-automation` says for any outsi
   items, the custom data and the transaction's id; **no `subscription.created`**, as at Paddle). It takes any origin and no API key: the browser calls it.
   **Its container loads the templates** from `mocks/paddle/checkout-trial.events.json` beside `server.ts` (copied
   in by the Dockerfile; `CHECKOUT_EVENTS` names another file); without them it answers `mock_not_seeded`;
+- **a price preview,** `POST /pricing-preview` with `{ items: [{ price_id, quantity }] }`, which the web app's offer
+  calls in mock mode in place of Paddle.js (ADR-075). Each asked price takes a seeded price's shape in the checkout's
+  order (the templates' items: the web seat's, then the mobile seat's), so the mock offers the sandbox's prices and
+  trial. No tax. Any origin, no API key; unseeded, it answers `mock_not_seeded`;
 - it keeps what it was asked;
 - `paddleSignature(rawBody, secret, at?)` and `webhookBody(event)`, to deliver a webhook as Paddle signs it.
 
@@ -783,7 +889,8 @@ portal's links redacted). Never write a Paddle payload from memory.
 - from a checkpoint, only what came after it; nothing new is a no-op;
 - a busy or failing Paddle loses nothing: the next fetch finishes it;
 - a call run twice changes Paddle once; a refusal carries Paddle's code and isn't retried;
-- the checkout: completed sends the command with the transaction's id; closed sends nothing.
+- the checkout: completed sends the command with the transaction's id; closed sends nothing;
+- the offer: the trial's length and each price as Paddle gives them; a price with no trial says so.
 
 ## Paddle's sandbox
 

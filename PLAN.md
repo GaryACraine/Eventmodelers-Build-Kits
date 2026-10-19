@@ -43,6 +43,12 @@ model and build only what's ours.
   and access are our domain. Paddle is an outside system: in the model, an automation (and translations of its
   webhooks) that produces a side effect. So the model is designed first, from how other vendors do it, and Paddle is
   fitted to it, not the other way round.
+- **Pick up here (2026-10-19):** 2b.3 (Gap 4, the trial's length) and 2b.4 (split "start trial checkout") are built in
+  emcli, the kit and licensing's model, and **exported** (see 2b.3 below). The loop builds four jobs: "start options"
+  (backend and screen, without its config fields), "trial offer" (a view of Paddle's offer), "report checkout
+  completed" (screen only) and "paddle notification received" (the webhook endpoint, under its new name). Once Gary
+  says the loop is waiting: the journeys mock and sandbox (the sandbox page shows Paddle's 1-day trial), then tick
+  2b.3 and 2b.4.
 - **Pick up here (2026-10-18):** ADR-072's names-not-ids and ADR-073 (members by email, from identity's published
   `userContactDetailsWereUpdated`) are built in emcli and the kit, and modelled in licensing (`3ff9c20`, committed, **not
   exported**). Full record: ADR-072's entry under 2b.2 ("Names not ids, modelled 2026-10-18"). Next, in order:
@@ -786,8 +792,41 @@ model and build only what's ours.
              database simplify them is part of that step's design.
        3. **Gap 4: the trial's length.** Before release: a check at start that Paddle's trial matches `trialDays`, or
           `trialDays` read from Paddle's price.
+          - **Decided 2026-10-19: ADR-075 Accepted (Gary: Paddle's prices).** The page reads the offer from Paddle
+            (Paddle.js `PricePreview`): an external read model, "Trial Offer", in a slice of its own with its own card
+            of Choose How to Start. "start options" loses `trialDays` and the two prices (a same-name replacement). A
+            price with no trial says so. Rejected: config checked at start (two sources, sterling for everyone), and
+            recording the offer as our events (nothing of ours decides on it yet).
+          - **Built:** emcli `8006423` (`deriveParts`: an external read model shown by a card of its own slice is a view
+            part, `external: <System>`; tested, 3 mutations caught; 567 pass), `21414af` (`event-model`: the lane);
+            kit: `provider-paddle` (`previewPrices` on the checkout module, sharing its one Paddle.js; the mock's
+            `POST /pricing-preview`; the rule), `build-screen` (the view of an external read model of the slice's
+            own), `plan-change`, `PagePart.external`, manual §22.10. Licensing `7d7dc46`: the module and the mock, from
+            the sandbox's real answer (`fixtures/pricing-preview.json`: the trial prices give 1 day, £12.00 and £6.00
+            with GB tax), web 204 pass.
+          - **Found: the page's offer was config of ours** (`derived:config.trialDays`, "£10 / month"), which could
+            disagree with what Paddle charges, and showed pounds to every buyer. **Closed at the root:** ADR-075's rule
+            in `event-model`, `provider-paddle`, `build-screen` and `plan-change`; manual §22.10.
+          - **Found: nothing built the view of a read model another system holds** (ADR-052 made it never a part).
+            **Closed:** emcli `deriveParts` and `build-screen`, above.
+          - **Found: `provider-paddle`'s `paddlePrice` lacked licensing's mock default** (`mock_<name>` when unset in
+            mock), a fix made in licensing only. **Closed:** the skill's code is licensing's again (diffed equal).
+          - **Found: `event-model` said an external read model goes "in that system's lane"**, which emcli refuses (a
+            system lane takes no read model). **Closed:** emcli `21414af`.
+          - **Found: `plan-change` didn't say that a `displays` link added or removed is a screen-only change.** The
+            first plan replaced "report checkout completed" and queued its backend again for nothing (its backend
+            fingerprint was unchanged). **Closed:** `plan-change` says so.
+          - **Open: licensing has two copies of the mock Paddle** (`e2e/paddle/mock.ts`, older, and
+            `mocks/paddle/server.ts`, the container's). The new route is in the container's, tested in
+            `mocks/paddle/server.tests.ts`. Merge them when the e2e is next touched.
        4. **Split "start trial checkout"** (screen, then Paddle's event), replacing the built slice, when that area is
           next touched.
+          - **Done in the model 2026-10-19 (ADR-075 point 4, Gary):** "start trial checkout" is a new slice holding
+            only Paddle's form ("Paddle Checkout", `--external Paddle`: nothing built); "paddle notification received"
+            holds Paddle's event (moved, so its id, copies and links stay), `--intake webhook`, the endpoint queued
+            under the new folder. The old folder was removed by hand (`plan-change`: a replacement of another name).
+            Chapter 20's draft slice of the same title, showing a copy, is renamed "a paddle notification arrives" (the
+            folders would clash). Script: licensing `model/adr-075-trial-offer.sh`.
        5. **NEXT (Gary, 2026-10-12): Gap 1, links between pages, widened to navigation as a whole (ADR-065,
           Accepted).** Flows lead forward along the chapter's timeline; a menu of entities comes from one register
           of the store's tag keys (`emcli id`; tags are global); areas hold the pages that belong to no entity.

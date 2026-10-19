@@ -3308,3 +3308,18 @@ other contexts, and licensing reads it (ADR-061, ADR-073). Say to Claude, for ex
 
 Once another context reads a published event, it's API: any change is a new version, even before release. The checks
 keep it so: `Published.ts` only grows, and no context imports another's `Events.ts`.
+
+### 22.10 Showing what another system charges: prices and trials
+
+A price, a free trial's length or a tax is the payment provider's: it's what Paddle will really charge. **Never type it
+into the model as a number of ours** (ADR-075). Licensing's page once promised a 14-day trial while the sandbox's
+price gave one day, and showed pounds to every buyer. The page reads the offer from Paddle instead, in the buyer's own
+currency and with their country's tax. Say to Claude, for example:
+
+- *"The page shows the trial's length and each seat's price, as Paddle has them."* Claude adds a read model held by
+  Paddle ("Trial Offer", `--external Paddle`) in a slice of its own, with a card of the page that displays it. That
+  card's job builds a view that asks Paddle (`provider-paddle`'s `previewPrices`), never our API.
+- *"If the price has no trial, say so."* The card says there's no free trial, never a number of days.
+
+To change the trial or a price, change it in Paddle's dashboard: the page follows. In mock mode the mock Paddle offers
+the prices it was seeded with (the sandbox's).

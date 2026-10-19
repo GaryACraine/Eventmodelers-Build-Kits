@@ -24,6 +24,8 @@ import { useSessionState } from "./session"
  * ids it takes and where the page gets each; a gated part shows only to who may use it (`action`, by command) or read
  * it (`read`); a form's `next` is where the page goes once its command succeeds; a view's `links` open a row's page,
  * the new page, and the only row of the person's own list; `row` holds the forms put in each of the view's rows.
+ * `external` names the system a view's read model is held by (ADR-075): the view reads that system's client in the
+ * browser, never our API, so the page renders it like any other part.
  */
 export interface PagePart {
     slice: string
@@ -36,6 +38,7 @@ export interface PagePart {
     next?: { route: string; params: Record<string, "route" | "command" | "session"> }
     links?: { row?: string; create?: string; onlyOne?: boolean }
     row?: PagePart[]
+    external?: string
 }
 
 export interface NavigationPage {
