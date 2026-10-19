@@ -612,6 +612,14 @@ Installing either is Gary's decision. The API server is pointed at the sandbox o
 - Overlay checkout: <https://developer.paddle.com/build/checkout/build-overlay-checkout>
 - `Paddle.Checkout.open`: <https://developer.paddle.com/paddlejs/methods/paddle-checkout-open>
 - Create a price: <https://developer.paddle.com/api-reference/prices/create-price>
+- Update a price (its trial and `tax_mode` can change): <https://developer.paddle.com/api-reference/prices/update-price>
+- Products and prices in the dashboard: <https://developer.paddle.com/build/products/create-products-prices>
+- Trials: <https://developer.paddle.com/build/trials/create-trial>, <https://developer.paddle.com/concepts/subscriptions/trials>
+- Tax-inclusive or exclusive prices (the account's Sales tax setting, a price's Tax setting):
+  <https://www.paddle.com/help/sell/tax/do-you-support-tax-inclusiveexclusive-pricing>,
+  <https://developer.paddle.com/changelog/2025/default-automatic-tax-setting>
+- Prices per country: <https://developer.paddle.com/build/products/offer-localized-pricing>
+- Price previews (what the page shows, ADR-075): <https://developer.paddle.com/build/checkout/build-pricing-page>
 - Change subscription items: <https://developer.paddle.com/build/subscriptions/add-remove-products-prices-addons>
 - Cancel subscriptions: <https://developer.paddle.com/build/subscriptions/cancel-subscriptions>
 - Customer portal: <https://developer.paddle.com/concepts/customer-portal>, portal sessions:
