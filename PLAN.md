@@ -99,6 +99,17 @@ model and build only what's ours.
     drawings only, so a new context placement came out untagged. emcli's one-event-one-tag-set warning caught it.
     Fixed in the catalogue (`47d7a75`). The project-only part is the catalogue itself; the check that catches it is
     emcli's.
+  - **Re-export 2026-10-19:** the new scenarios amended four built slices, so the export held them back (ADR-046).
+    Licensing `5c8ec94` makes same-name replacements of all six deciders, and those were re-queued. The loop is
+    building.
+  - *Found:* invite member and assign owner web seat got new scenarios after the loop had built their queued
+    replacement. emcli recorded the current definition as built, so the change was neither held back nor queued, with
+    no message. Closed in emcli `2506777`: a finished rebuild settles at the slice.json last exported (tested and
+    mutation-checked).
+  - *Found:* a replacement's rebuild listed only "dependencies or details changed", not the scenarios the last
+    export had held back, because they were already in the old slice.json. Closed in emcli `c4f753b`: it starts from
+    the built fingerprint and names the held-back changes (tested and mutation-checked). This export ran before the
+    fix, so the loop's lists for the six say less than they should. The build is checked against every scenario.
 - ✅ **DONE 2026-10-19: chapter 8, the trial converts and the subscription renews (ADR-076, Accepted by Gary).**
   One command, `recordPaidPeriod`, takes each `subscription_recurring` payment. Its decider records `trialWasConverted`
   (still trialing) or `subscriptionWasRenewed`, from our own events, and refuses an organisation with no subscription
