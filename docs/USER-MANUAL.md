@@ -3323,3 +3323,19 @@ currency and with their country's tax. Say to Claude, for example:
 
 To change the trial or a price, change it in Paddle's dashboard: the page follows. In mock mode the mock Paddle offers
 the prices it was seeded with (the sandbox's).
+
+**Where each is set in Paddle** (Catalog → Products → the product → its price; the sandbox at
+`sandbox-vendors.paddle.com`, live at `vendors.paddle.com`):
+
+| What | Where | Paddle's documentation |
+|---|---|---|
+| The price and how often it's charged | the price's amount and billing period | [Create products and prices](https://developer.paddle.com/build/products/create-products-prices) |
+| The free trial's length, and whether a card is needed | the price's trial period (`trial_period`: interval, frequency, `requires_payment_method`) | [Create a free or paid trial](https://developer.paddle.com/build/trials/create-trial), [Trials](https://developer.paddle.com/concepts/subscriptions/trials) |
+| VAT included or added on top, for one price | the price's **Tax** setting (`tax_mode`: `internal` included, `external` added, `location` by the buyer's country, `account_setting` the default below) | [Create a price](https://developer.paddle.com/api-reference/prices/create-price), [Update a price](https://developer.paddle.com/api-reference/prices/update-price) |
+| VAT, the account's default | Paddle → Settings → Sales tax: "Include VAT in the price", "Add VAT to the price" or "Automatic based on location" | [Tax-inclusive and exclusive pricing](https://www.paddle.com/help/sell/tax/do-you-support-tax-inclusiveexclusive-pricing), [the location default](https://developer.paddle.com/changelog/2025/default-automatic-tax-setting) |
+| A price per country | the price's country overrides (`unit_price_overrides`) | [Localize prices](https://developer.paddle.com/build/products/offer-localized-pricing) |
+
+A price's trial and tax setting can be changed later (Update a price). Only new checkouts take the change; how a
+subscription bought earlier renews after a tax change is PLAN 16.2b's open question. **The page shows the total with
+tax** (Paddle's `formatted_unit_totals.total`, "£12.00 / month" for a £10 price with VAT added): for "£10 excl. VAT"
+it would show the subtotal instead, a change to the trial offer's slice.
