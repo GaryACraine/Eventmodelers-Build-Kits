@@ -43,6 +43,15 @@ model and build only what's ours.
   and access are our domain. Paddle is an outside system: in the model, an automation (and translations of its
   webhooks) that produces a side effect. So the model is designed first, from how other vendors do it, and Paddle is
   fitted to it, not the other way round.
+- 🚧 **NEXT (Gary, 2026-10-19): chapters 6, 7 and 12, the owner adds and removes seats (ADR-077, Accepted).**
+  Plan: (1) ✅ ADR-077; (2) kit: `provider-paddle` (seat changes, refusal reasons, the companion rule's next-bill seats,
+  the mock's change events and declined card), an external read model served by our backend (`build-state-view`,
+  `build-screen`), `plan-change`, manual §22; (3) licensing model `model/seat-changes.sh`: chapters 6, 7, 12 recreated,
+  same-name replacements of the translation, `invitemember`, `assignownerwebseat`, the overview and the settings;
+  export with Gary's go-ahead; (4) prove: tests, mutation checks, journeys mock and sandbox, a recorded sandbox
+  decrease billed lower at the renewal.
+  - *Found:* `SeatsAllowed` (`invitemember`, `assignownerwebseat`) folds only `trialWasStarted`, so the seats billed
+    at a conversion or renewal aren't enforced. Closed by ADR-077 point 4 (both replaced).
 - ✅ **DONE 2026-10-19: chapter 8, the trial converts and the subscription renews (ADR-076, Accepted by Gary).**
   One command, `recordPaidPeriod`, takes each `subscription_recurring` payment. Its decider records `trialWasConverted`
   (still trialing) or `subscriptionWasRenewed`, from our own events, and refuses an organisation with no subscription
@@ -5243,6 +5252,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-18 | ADR-073 Accepted: identity publishes `userContactDetailsWereUpdated` (the current contact details whole, Gary's name; appended with the internal event, one append as the outbox); a subscriber may project a published event as a lookup without translating it; `--published`, `Published.ts`, the check allows it | The Dashboard lists members by id (ADR-072 decision 5). Gary chose the published event over a licensing copy (stale after an email change, personal data in licensing's events) and over reading identity's API (identity can't authorise by organisation). Dudycz: publish a designed external event, not internal ones; readers may build read models from it. Gary named it and accepted appending it in the same write |
 | 2026-10-19 | ADR-076 Accepted: the trial converts and the subscription renews. A `subscription_recurring` payment → `recordPaidPeriod`, whose decider records `trialWasConverted` (still trialing) or `subscriptionWasRenewed`, with the billed seats and the period; the companions (`subscription.activated`/`updated`) are skipped as `not needed` when they change nothing; the Dashboard shows "Renews on" | Paddle has no "converted" event, and `subscription.updated` moves the period before the payment (sandbox), so the payment confirms a period and our own events decide which (Gary) |
 | 2026-10-19 | A sandbox conversion is proven by bringing the trial's end forward (`next_billed_at` ≥ 30 min ahead, `do_not_bill`), never by `subscriptions.activate` | Activate is charged as origin `subscription_update`, so it's no conversion; moving the billing date gives Paddle's real `subscription_recurring` charge (Gary) |
+| 2026-10-19 | ADR-077 Accepted: the owner adds and removes seats (chapters 6, 7, 12). One change at a time per organisation; a workflow calls Paddle and records its answer (`seatsWereAdded`, `seatsWereRemoved` in a trial, `seatDecreaseWasScheduled` once paid, `seatChangeWasRefused`); the renewal applies a decrease (no `seatsWereRemoved` then, amending ADR-037 decision 5); one enforced `SeatsAllowed`; a dashboard change is `seatsWereChangedAtPaddle`; a configured trial seat cap; the preview read from Paddle by our backend | Paddle's answer is the fact (ADR-049) and the renewal already carries the billed seats (ADR-076); the answer is recorded even when Paddle's event came first, so the request's item closes from our own state, not a lagging read model (Gary) |
 
 ## Progress
 

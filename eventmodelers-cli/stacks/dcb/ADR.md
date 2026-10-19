@@ -6219,8 +6219,9 @@ the sandbox proof are in it (points 3, 4 and Consequences).
 
 ### ADR-077: The owner adds and removes seats: Paddle's answer is the fact, and the renewal applies a decrease
 
-**Status:** **Proposed, 2026-10-19.** Gary chose the scope (chapters 6, 7 and 12; 16 later), a configured trial seat
-cap, and a preview of the cost read from Paddle by our backend.
+**Status:** **Accepted, 2026-10-19 (Gary)**, as proposed, with point 5's answer recorded even when Paddle's event of
+the same change came first. Gary chose the scope (chapters 6, 7 and 12; 16 later), a configured trial seat cap, and a
+preview of the cost read from Paddle by our backend.
 **Date:** 2026-10-19
 **Builds on:**
 - ADR-037 decisions 1, 4, 5 and 6: the seat count we enforce is the one Paddle confirms; adding seats is our screen,
@@ -6305,9 +6306,9 @@ cap, and a preview of the cost read from Paddle by our backend.
    - **Our own change, either way round.** The decider compares versions (ADR-049's table): a version already
      recorded is skipped as `already done`, an older one as `superseded`. When Paddle's event is recorded first, our
      answer is still recorded as its request's outcome, so the to-do item closes: the events carry totals, so the
-     same state folded twice changes nothing. *(A departure from ADR-049's "from our answer, nothing more": Gary to
-     confirm. The alternative, the translation finding the pending request from a read model, would rest on a
-     projection that can lag.)*
+     same state folded twice changes nothing. A departure from ADR-049's "from our answer, nothing more" (Gary,
+     2026-10-19): the alternative, the translation finding the pending request from a read model, would rest on a
+     projection that can lag.
    - **The companion rule (ADR-076 point 3) compares Paddle's quantities with the seats Paddle bills next**: the
      scheduled numbers while a decrease waits, otherwise the seats we hold. Without this, the renewal's
      `subscription.updated` after a decrease would alert.
