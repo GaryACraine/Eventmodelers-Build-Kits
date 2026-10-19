@@ -43,12 +43,10 @@ model and build only what's ours.
   and access are our domain. Paddle is an outside system: in the model, an automation (and translations of its
   webhooks) that produces a side effect. So the model is designed first, from how other vendors do it, and Paddle is
   fitted to it, not the other way round.
-- **Pick up here (2026-10-19):** 2b.3 (Gap 4, the trial's length) and 2b.4 (split "start trial checkout") are built in
-  emcli, the kit and licensing's model, and **exported** (see 2b.3 below). The loop builds four jobs: "start options"
-  (backend and screen, without its config fields), "trial offer" (a view of Paddle's offer), "report checkout
-  completed" (screen only) and "paddle notification received" (the webhook endpoint, under its new name). Once Gary
-  says the loop is waiting: the journeys mock and sandbox (the sandbox page shows Paddle's 1-day trial), then tick
-  2b.3 and 2b.4.
+- **Pick up here (2026-10-19):** ✅ 2b.3 (Gap 4, the trial's length) and ✅ 2b.4 (split "start trial checkout") are
+  **done and proven** (ADR-075; see 2b.3 below): journeys mock and sandbox 3/3, licensing `f03ec39`. Next in Phase 16:
+  the subscription lifecycle chapters (8: the trial converts and renews, first), or distilling the draft skill
+  sections (item 3).
 - **Pick up here (2026-10-18):** ADR-072's names-not-ids and ADR-073 (members by email, from identity's published
   `userContactDetailsWereUpdated`) are built in emcli and the kit, and modelled in licensing (`3ff9c20`, committed, **not
   exported**). Full record: ADR-072's entry under 2b.2 ("Names not ids, modelled 2026-10-18"). Next, in order:
@@ -790,7 +788,7 @@ model and build only what's ours.
                recorded in ADR-056.
           6. **The four auth role-sync slices:** now part of 2b.2f step 5. Whether Better Auth's tables in our own
              database simplify them is part of that step's design.
-       3. **Gap 4: the trial's length.** Before release: a check at start that Paddle's trial matches `trialDays`, or
+       3. ✅ **Gap 4: the trial's length (done 2026-10-19, ADR-075).** Before release: a check at start that Paddle's trial matches `trialDays`, or
           `trialDays` read from Paddle's price.
           - **Decided 2026-10-19: ADR-075 Accepted (Gary: Paddle's prices).** The page reads the offer from Paddle
             (Paddle.js `PricePreview`): an external read model, "Trial Offer", in a slice of its own with its own card
@@ -829,10 +827,17 @@ model and build only what's ours.
               the module with `open` only. My check missed it: `tsc --noEmit -p .` on `web/` checks nothing (its
               tsconfig only lists references); `tsc -b` is the check, as the loop's `web-tests` runs. The loop fixed the
               mock in its next job (`539a531`). Lesson recorded in memory; the kit's own check was right.
+          - **Built and proven 2026-10-19 (round 2):** "start options" (`d708fcf`, screen `8c54709`) and "trial offer"
+            (`ec4de32`: `TrialOfferView` reads `previewPrices`, "No free trial" when the price has none); the chapter 24
+            extension needed no change. Backend 650 pass (3 skipped), web 207, `tsc -b` clean. **Journeys mock and
+            sandbox 3/3** (licensing `f03ec39`, logs `security/results/2026-10-19-…`): the new case 4b reads "Try
+            everything free for 1 day." and each seat's price, from the mock's seeded prices and from Paddle.js's real
+            `PricePreview`. With "14 days" expected, 4b fails. The webhook endpoint, rebuilt as "paddle notification
+            received", carried the sandbox's checkout as before. `provider-paddle`'s offer section is marked proven.
           - **Open: licensing has two copies of the mock Paddle** (`e2e/paddle/mock.ts`, older, and
             `mocks/paddle/server.ts`, the container's). The new route is in the container's, tested in
             `mocks/paddle/server.tests.ts`. Merge them when the e2e is next touched.
-       4. **Split "start trial checkout"** (screen, then Paddle's event), replacing the built slice, when that area is
+       4. ✅ **Split "start trial checkout"** (screen, then Paddle's event), replacing the built slice, when that area is
           next touched.
           - **Done in the model 2026-10-19 (ADR-075 point 4, Gary):** "start trial checkout" is a new slice holding
             only Paddle's form ("Paddle Checkout", `--external Paddle`: nothing built); "paddle notification received"

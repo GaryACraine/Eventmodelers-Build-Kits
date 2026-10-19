@@ -795,6 +795,9 @@ function mockCheckout(config: PaddleWebConfig): PaddleCheckout {
 
 ### The offer: `previewPrices` (ADR-075)
 
+> **Proven 2026-10-19:** licensing's "trial offer" view, built by the loop from this section, and its journeys, mock and
+> sandbox (Paddle.js's real `PricePreview`).
+
 **What a price costs and its free trial are Paddle's,** never figures of ours: the page that offers a trial reads them
 from Paddle, so it promises what Paddle will charge. In the model they're a read model Paddle holds ("Trial Offer",
 `--external Paddle`, its fields mapped `derived:Paddle.PricePreview …`), and its slice's view is the part that shows
