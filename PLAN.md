@@ -118,6 +118,24 @@ model and build only what's ours.
     reviewed by hand. Closed in kit PR #336: such a rebuild blocks the slice, saying what was to change, unless the
     slice extends another (runner test, mutation-checked). It's in licensing (kit-drift 0), and `ralph.js` changed, so
     the loop needs a restart.
+  - **Step 4 (prove), 2026-10-19:** the rebuild of request seat increase is right (`9598973`). Backend 873 tests pass,
+    web 235, `tsc` and `tsc -b` are clean. Mutation checks caught 7 of 8. The miss was the companion rule with a
+    decrease scheduled, which no scenario covered; licensing `8fd0f79` adds two scenarios and replaces the
+    translation, awaiting export. The mock journey `e2e/journey/seat-changes.journey.ts` passes its first six steps:
+    a trial add with Paddle's preview, the trial cap, a trial remove, the conversion, a paid add, and a declined card
+    left as "refused card declined". Every Paddle event of theirs settles, none failed. Our own change's
+    `subscription.updated` is `not needed`, because the companion rule meets it first; `already done` is for one that
+    arrives before our answer.
+  - *Found:* the journeys' mock answered a change to the paid prices with the trial's price ids, so a converted
+    subscription's seats read as unknown prices. Fixed in licensing's mock (`13c3995`, a server test,
+    mutation-checked). It stays project-only: the kit ships no mock, and `provider-paddle` already says a change takes
+    the asked prices.
+  - *Found:* the journey's scheduled decrease, after a declined card, showed "scheduled card declined". The
+    overview's `seatChangeReason` was set by the refusal and never cleared. The kit asserts read models with
+    `toMatchObject`, which passes a field left behind, and no scenario ended a refusal. Closed in `build-state-view`
+    (a field held only while a state lasts is removed when the state ends, and the test asserts it's gone; a draft),
+    in emcli `6441218` (`event-model` `detail.md`: the mapping says when it goes, plus a scenario that ends the state), and in
+    the model (licensing `6aa8a46`, chapter 12's overview replaced with that scenario), awaiting export.
 - ✅ **DONE 2026-10-19: chapter 8, the trial converts and the subscription renews (ADR-076, Accepted by Gary).**
   One command, `recordPaidPeriod`, takes each `subscription_recurring` payment. Its decider records `trialWasConverted`
   (still trialing) or `subscriptionWasRenewed`, from our own events, and refuses an organisation with no subscription
