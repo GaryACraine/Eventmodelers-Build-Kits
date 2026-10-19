@@ -110,6 +110,14 @@ model and build only what's ours.
     export had held back, because they were already in the old slice.json. Closed in emcli `c4f753b`: it starts from
     the built fingerprint and names the held-back changes (tested and mutation-checked). This export ran before the
     fix, so the loop's lists for the six say less than they should. The build is checked against every scenario.
+  - **Rebuild 2026-10-19:** five of the six are right: each folds `seatsWereChangedAtPaddle` (or the waiting
+    decrease and the stall), with a test per scenario. Request seat increase was marked Done with no commit, and
+    three of its scenarios have no test. Licensing `efb41a4` replaces it again, with notes naming the missing fold and
+    tests; it's awaiting the loop's restart and Gary's export go-ahead.
+  - *Found:* the loop marked a no-commit rebuild Done with only a warning, so the missing change went unnoticed until
+    reviewed by hand. Closed in kit PR #336: such a rebuild blocks the slice, saying what was to change, unless the
+    slice extends another (runner test, mutation-checked). It's in licensing (kit-drift 0), and `ralph.js` changed, so
+    the loop needs a restart.
 - ✅ **DONE 2026-10-19: chapter 8, the trial converts and the subscription renews (ADR-076, Accepted by Gary).**
   One command, `recordPaidPeriod`, takes each `subscription_recurring` payment. Its decider records `trialWasConverted`
   (still trialing) or `subscriptionWasRenewed`, from our own events, and refuses an organisation with no subscription
