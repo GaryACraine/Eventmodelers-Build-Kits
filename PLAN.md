@@ -43,23 +43,39 @@ model and build only what's ours.
   and access are our domain. Paddle is an outside system: in the model, an automation (and translations of its
   webhooks) that produces a side effect. So the model is designed first, from how other vendors do it, and Paddle is
   fitted to it, not the other way round.
-- **Pick up here (2026-10-19): chapter 8, the trial converts and the subscription renews. ADR-076 Accepted (Gary, 2026-10-19)**
-  (one command `recordPaidPeriod` decides `trialWasConverted` or `subscriptionWasRenewed` from our events; the
-  companions `subscription.activated`/`updated` are skipped as `not needed` when they change nothing; the Dashboard
-  shows "Renews on"). Gary's answers (2026-10-19) are in it. Today every converted trial is three critical alerts and
-  stays "trialing" with us. Plan, in order:
-  1. **Model** chapter 8 (`licensing/model/chapter-8.sh`, chapter 24's pattern), replacing the storm's drafts.
-     Check that chapter 1's translation is re-queued by its new `relates-to`.
-  2. **The mock:** `POST /mock/subscriptions/:id/renew` (activated if trialing, updated, a `subscription_recurring`
-     payment). The shapes are taken from the sandbox's real conversion events (fixture
-     `trial-conversion.events.json`). Server tests; rebuild the container.
-  3. **Commit, then export** chapters 1 and 8, `--context licensing` (Gary's go-ahead; export last).
-  4. **Prove:**
-     - review and mutation-check what the loop built;
-     - the journeys: mock renew ×2; sandbox `subscriptions.activate` (Active, "Renews on", companions `not needed`,
-       nothing `failed`);
-     - one recorded sandbox renewal of about 31 minutes (`next_billed_at` moved forward).
-  5. **Kit:** `provider-paddle` and manual §22; kit drift; PLAN; memory.
+- ✅ **DONE 2026-10-19: chapter 8, the trial converts and the subscription renews (ADR-076, Accepted by Gary).**
+  One command, `recordPaidPeriod`, takes each `subscription_recurring` payment. Its decider records `trialWasConverted`
+  (still trialing) or `subscriptionWasRenewed`, from our own events, and refuses an organisation with no subscription
+  or the same transaction twice. The companions (`subscription.activated`/`updated`) are skipped as `not needed` when
+  they change nothing (status active or trialing, no scheduled change, the overview's seats). The Dashboard shows
+  Active and "Renews on". Before it, every converted trial was three critical alerts and stayed "trialing" with us.
+  - **Modelled** (licensing `4d5129b`, `model/chapter-8.sh`, with chapter 1's translation replaced by the same name
+    and the overview's copies extended by `renewsAt`); the mock's `POST /mock/subscriptions/:id/renew` (`0b02320`,
+    `b4a2ca5`: server tests 6/6); exported chapters 1 and 8, `--context licensing`. **The loop built** all six jobs,
+    none blocked (`6e4c8fc` … `056af4e`); the review matched ADR-076, no conditional tags.
+  - **Proven** (licensing `2518e13`): backend 654, web 207, `tsc -b` clean. Mutation-checked: always renew → the
+    decider's conversion tests fail; no seat comparison → the translation's seat-change test fails; the companion rule
+    off → journey 10a fails; the mock's three changes each caught. Journeys mock and sandbox 3/3 (case 10: two paid
+    periods on the mock; 10a: companions `not needed`). **On Paddle's sandbox** (`e2e/paddle/conversion-renewal.mjs`,
+    about 64 min): Paddle's real charge after the trial → `trialWasConverted`, then the renewal brought forward →
+    `subscriptionWasRenewed`, each with Paddle's period end; the overview active; every companion `not needed`, none
+    failed. Recorded in `security/results/2026-10-19-chapter-8-sandbox.log`.
+  - *Found:* `emcli chapter remove` left other chapters' dependencies on the removed elements (the translation kept a
+    link to a removed `recordPaidPeriod`). **Closed in emcli `406bce1`**: `removeChapterFrom` drops them, and refuses
+    while one of the chapter's elements is the origin of a copy elsewhere (3 tests, mutation-checked).
+  - *Found:* `subscriptions.activate` (ending a trial early) is charged as origin `subscription_update`, not
+    `subscription_recurring`, so it never reaches a conversion; the plan's sandbox proof was wrong. Moving
+    `next_billed_at` (≥ 30 min ahead, `do_not_bill`) works on a trialing subscription. **Closed in `provider-paddle`**
+    (the skill says so) **and manual §22.11**; the journey and the script use it (Gary chose).
+  - *Found:* the sandbox script's companion check counted the organisation's earlier companions, so it passed before
+    the period's own had arrived (the renewal's was settled after the run, `not needed`). **Closed in the script**:
+    only the period's own companions (from `billing_period.starts_at`, `activated` required for a conversion).
+    It stays a licensing script: the kit has no sandbox harness to hold it.
+  - **Kit** (this PR): `provider-paddle` (a paid period decided from our state, the companion rule, the mock's
+    `/renew`, bringing `next_billed_at` forward); manual §22.11 "When the trial ends, and each renewal".
+  - Dev data left: an earlier journey organisation (`sub_01m59tj8v90k3ktknvxfafwks2`, activated early) stays
+    "trialing" with us; acceptable before release. Next in Phase 16: distilling the draft skill sections, or the
+    next chapter (6/7 seat changes, 9 cancel, 13 recovery each take a companion case that alerts today).
 - ✅ **DONE (Gary, 2026-10-19): show VAT in full on the trial offer, no surprises at payment.** Gary agreed: Paddle (the
   merchant of record) charges VAT, so the page shows each seat's net price, the VAT and the total for the buyer's
   country, all from Paddle's preview (`formatted_unit_totals`: subtotal, tax, total), e.g. "£10.00 + £2.00 VAT = £12.00
@@ -1382,7 +1398,9 @@ model and build only what's ours.
         a renewal, so the translation decides from our own state.
   - [ ] **The `tax_mode` renewal: read after 2026-10-29 15:29 UTC.** The subscription is
     `sub_01m3pwhwcxgpcfptbyceh09dv2` (`org-test-1`). Check whether a renewal bought under `location` (VAT included) is
-    charged on the new `external` basis (VAT on top). It doesn't block 16.3.
+    charged on the new `external` basis (VAT on top). It doesn't block 16.3. Its renewal is a `transaction.completed`
+    with origin `subscription_recurring` (chapter 8): read `details.totals` (subtotal, tax, total) from the stream, as
+    `licensing/e2e/paddle/conversion-renewal.mjs` logs a payment.
   - *Found:*
     - a declined seat increase is refused, and Paddle cancels the leftover charge itself;
     - Paddle refuses any change while `past_due`;
@@ -5224,6 +5242,7 @@ What each `build-*` skill generates and what it verifies:
 | 2026-10-18 | ADR-072/073/074 proven end to end in licensing (journeys mock and sandbox 3/3: members by email, a changed email refreshed onto the Dashboard, Remove's confirmation built by the loop); the contexts drafts distilled for pattern 1 as a read only | The first published event works through the loop in two rounds. Only what ran is distilled: reacting and patterns 2–4 have no first use yet |
 | 2026-10-18 | ADR-073 Accepted: identity publishes `userContactDetailsWereUpdated` (the current contact details whole, Gary's name; appended with the internal event, one append as the outbox); a subscriber may project a published event as a lookup without translating it; `--published`, `Published.ts`, the check allows it | The Dashboard lists members by id (ADR-072 decision 5). Gary chose the published event over a licensing copy (stale after an email change, personal data in licensing's events) and over reading identity's API (identity can't authorise by organisation). Dudycz: publish a designed external event, not internal ones; readers may build read models from it. Gary named it and accepted appending it in the same write |
 | 2026-10-19 | ADR-076 Accepted: the trial converts and the subscription renews. A `subscription_recurring` payment → `recordPaidPeriod`, whose decider records `trialWasConverted` (still trialing) or `subscriptionWasRenewed`, with the billed seats and the period; the companions (`subscription.activated`/`updated`) are skipped as `not needed` when they change nothing; the Dashboard shows "Renews on" | Paddle has no "converted" event, and `subscription.updated` moves the period before the payment (sandbox), so the payment confirms a period and our own events decide which (Gary) |
+| 2026-10-19 | A sandbox conversion is proven by bringing the trial's end forward (`next_billed_at` ≥ 30 min ahead, `do_not_bill`), never by `subscriptions.activate` | Activate is charged as origin `subscription_update`, so it's no conversion; moving the billing date gives Paddle's real `subscription_recurring` charge (Gary) |
 
 ## Progress
 

@@ -111,6 +111,20 @@ export function toNotification(body: unknown, receivedAt: Date = new Date()): No
   `canceled`), and their ids among themselves are in no useful order. Never infer which came first from them.
 - **`transaction.completed` names its subscription** (`data.subscription_id`) and carries our `custom_data`, so the
   transaction the page reported can be matched to its subscription.
+- **A paid period has no "converted" flag** (ADR-076; licensing chapter 8, journeys mock and sandbox, 2026-10-19). A
+  trial's end and every renewal send a `transaction.completed` with `origin: "subscription_recurring"`, carrying
+  `custom_data`, `billing_period` and each item's price and quantity, and the two look alike. The translation sends one
+  command (`recordPaidPeriod`); its decider chooses from our own events: still trialing → `trialWasConverted`, else
+  `subscriptionWasRenewed`; no subscription, or the same `transactionId` again, is refused.
+- **The companions change nothing we hold**: a trial's end also sends `subscription.activated` and
+  `subscription.updated`, a renewal `subscription.updated`. Skip each as `not needed` when its status is `active` or
+  `trialing`, `scheduled_change` is null and its seats equal the organisation's (its overview, read as a data input);
+  anything else stays a failed skip and an alert until a chapter translates it.
+- **`subscriptions.activate` (ending a trial early) is charged as `origin: "subscription_update"`**, not a
+  conversion (sandbox, 2026-10-19). To reach a real conversion or renewal sooner, `PATCH /subscriptions/{id}` with
+  `next_billed_at` at least 30 minutes ahead and `proration_billing_mode: "do_not_bill"`: it works on a trialing
+  subscription (the trial's end moves; the status stays `trialing`). The mock's `POST /mock/subscriptions/:id/renew`
+  sends the same three events at once.
 
 ## The webhook endpoint
 
