@@ -825,6 +825,9 @@ src/contexts/{context}/
 - [ ] Every entry in `specifications[]` maps to a `test(...)` block in `route.tests.ts` AND in `route.integration.tests.ts`
 - [ ] `decider()` handlers object keys match the state properties used in `decide()`
 - [ ] No business rules, defaults, or constraints were added that do not appear in slice.json `description` or `comments`
+- [ ] Every event of this context the command's `description` names is folded by a decision model, and a test gives it
+  (a scenario of its own when slice.json has one, else a test named after the description's rule). Licensing's seat
+  count named `seatsWereChangedAtPaddle` in four descriptions, no scenario gave it, and none of the four read it.
 - [ ] `schema.ts` registers the route (`registerCommand`, same method and path as `route.ts`), and `route.ts` imports `./schema.js`
 - [ ] The body is named `{CommandName}Body` and matches the API contract (`npm run contract:check` shows the route as match)
 - [ ] Route is wired in `src/index.ts`
