@@ -43,7 +43,30 @@ model and build only what's ours.
   and access are our domain. Paddle is an outside system: in the model, an automation (and translations of its
   webhooks) that produces a side effect. So the model is designed first, from how other vendors do it, and Paddle is
   fitted to it, not the other way round.
-- 🚧 **NEXT (Gary, 2026-10-19): chapters 6, 7 and 12, the owner adds and removes seats (ADR-077, Accepted).**
+- 🚧 **NEXT: which licensing chapters come next (proposed 2026-10-20, to iterate with Gary after compaction).**
+  11 of licensing's 26 chapters are still storm drafts; the other 15 are built and proven (1, 2, 4, 6, 7, 8, 10, 11,
+  12, 20, 21, 22, 23, 24, 25). The rest, grouped:
+
+  | Group | Chapters |
+  |---|---|
+  | Payments that fail | 13 A renewal payment fails and recovers · 14 The grace period runs out · 18 The first charge fails and recovers · 19 The first charge never recovers |
+  | Cancelling | 9 Owner cancels · 15 Owner withdraws a cancellation · 17 Owner cancels during the trial |
+  | Members and ownership | 3 Admin changes a member's roles and seats · 5 Owner hands over ownership · 16 A seat decrease is withdrawn (later, Gary 2026-10-19) |
+  | Buying | 1b Owner subscribes without a trial |
+
+  **Recommended: failed payments first (13 and 14, then 18 and 19), then cancelling (9, 15, 17).** Why:
+  - it's the gap production would hit first: Paddle's `subscription.past_due` is in `PADDLE_EVENT_TYPES` but has no
+    translation, so a real failed renewal alerts today; a cancellation starts with the owner, and the app offers none;
+  - chapter 22's grace period is configured but nothing uses it until chapter 14;
+  - it decides what an organisation may do while it owes money, which seat changes' "payment overdue" refusal already
+    assumes;
+  - the four share one shape (Paddle's dunning answer is our fact, then recovery or the grace period's end); 18 and 19
+    are the first charge's versions of 13 and 14.
+
+  Cancelling would follow, reusing chapter 24's cancellation workflow. First step once Gary chooses: an ADR for the
+  chosen chapters, researched with Paddle's docs on dunning (payment recovery), for Gary to accept.
+- ✅ **DONE 2026-10-20: chapters 6, 7 and 12, the owner adds and removes seats (ADR-077, Accepted).** Proven on the
+  mock (journeys 4/4) and Paddle's sandbox (`e2e/paddle/seat-changes.mjs`, PR #342).
   Plan: (1) ✅ ADR-077; (2) kit: `provider-paddle` (seat changes, refusal reasons, the companion rule's next-bill seats,
   the mock's change events and declined card), an external read model served by our backend (`build-state-view`,
   `build-screen`), `plan-change`, manual §22; (3) licensing model `model/seat-changes.sh`: chapters 6, 7, 12 recreated,
