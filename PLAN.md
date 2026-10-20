@@ -152,6 +152,14 @@ model and build only what's ours.
     replaced only for its confirm, which the screen asks, yet a replacement always queued a backend rebuild. Closed in
     emcli `f63eb2e`: a replacement whose backend fingerprint is what's built queues none. The screen rebuilt right
     (licensing `7126a19`).
+  - *Found (2026-10-20, the second try):* the translation's job committed nothing again. The rule was in
+    `build-kit/CLAUDE.md` past the 60 lines it read, and the block it was replanned from said "one test per scenario,
+    named after it", which it followed. Closed in the loop (`lib/ralph.js`, `runner.js` `rebuildBrief`): a rebuild
+    job's task now says up front that its passing tests prove nothing, lists what changed and says to compare example
+    values; the block's reason says the same, not test names. The two tests were brought in line by hand (licensing,
+    3 web seats converted); the web mutation of the companion rule is now caught, as are the mobile and reason ones.
+    Still open: the second scenario's `then` gives `paddleUpdatedAt` 2026-10-22 against a payload `updated_at` of
+    2026-11-15 (the loop spotted it). The test doesn't assert it; fixed in the model at the next replacement.
 - ✅ **DONE 2026-10-19: chapter 8, the trial converts and the subscription renews (ADR-076, Accepted by Gary).**
   One command, `recordPaidPeriod`, takes each `subscription_recurring` payment. Its decider records `trialWasConverted`
   (still trialing) or `subscriptionWasRenewed`, from our own events, and refuses an organisation with no subscription

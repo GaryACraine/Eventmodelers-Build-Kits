@@ -14,7 +14,7 @@ import { execFileSync } from 'child_process';
 import { createRealtimeAdapter } from './adapters/realtime-adapter.js';
 import { concernsOf, inProgressConcerns, nextWork, setConcernStatus, settleEntries } from './concerns.js';
 import { LEARNINGS_CAP, contractPath, journalPath, journalTag, memoryBlock, pruneJournal, usesLearnings, withRepeatedNote } from './memory.js';
-import { appendMetrics, metricsLine, rebuildBlock, rebuildWarning, usageLimitWaitMs } from './runner.js';
+import { appendMetrics, metricsLine, rebuildBlock, rebuildBrief, rebuildWarning, usageLimitWaitMs } from './runner.js';
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 
@@ -842,7 +842,7 @@ function recordRun(kitDir, projectDir, planned, run, result, failure) {
 }
 
 // What the agent is to build, above its routine: the loop has chosen the job (one concern of one slice).
-function taskHeader(planned, claimed) {
+function taskHeader(planned, claimed, rebuild) {
   const concern = planned.concern ?? 'backend';
   return [
     '## Your task (set by the loop)',
@@ -855,6 +855,7 @@ function taskHeader(planned, claimed) {
     `When you finish, set \`concerns.${concern}.status\` there to "Done", or to "Blocked" with \`blockedReason\` ` +
       '(the loop stamps `blockedAt` itself). The loop derives the slice\'s `status` from its concerns.',
     '',
+    ...rebuildBrief(rebuild),
     '---',
     '',
     '',
@@ -864,7 +865,7 @@ function taskHeader(planned, claimed) {
 // A tracked job's prompt: the task header, then (in a kit with learnings/) the memory the loop gives it (memory.js:
 // its concern's lessons, its open journal notes, a UI's backend commit body when there's no API contract), then its routine.
 function jobPrompt(kitDir, projectDir, planned, claimed, routine) {
-  const header = taskHeader(planned, claimed);
+  const header = taskHeader(planned, claimed, (planned.concern ?? 'backend') === 'backend' ? rebuildOf(kitDir, planned) : undefined);
   if (!usesLearnings(kitDir)) return header + routine;
   const memory = memoryBlock({ kitDir, projectDir, planned });
   console.log(`[ralph] memory: ${memory.text.length} chars (${memory.summary || 'nothing yet'})`);
@@ -872,6 +873,18 @@ function jobPrompt(kitDir, projectDir, planned, claimed, routine) {
     console.warn(`[ralph] learnings over the cap of ${LEARNINGS_CAP}: ${memory.overCap.join(', ')}. The agent is asked to merge them.`);
   }
   return header + memory.text + routine;
+}
+
+// The slice's `rebuild` block in its slice.json, if the export queued it as one
+function rebuildOf(kitDir, planned) {
+  try {
+    const { slices } = JSON.parse(readFileSync(join(kitDir, '.slices', planned.ctx, 'index.json'), 'utf-8'));
+    const entry = (slices ?? []).find((s) => s.id === planned.id);
+    if (!entry?.folder) return undefined;
+    return JSON.parse(readFileSync(join(kitDir, '.slices', planned.ctx, entry.folder, 'slice.json'), 'utf-8')).rebuild;
+  } catch {
+    return undefined;
+  }
 }
 
 function isStillPlanned(kitDir, planned) {

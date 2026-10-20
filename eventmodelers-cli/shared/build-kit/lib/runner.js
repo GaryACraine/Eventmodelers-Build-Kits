@@ -127,8 +127,28 @@ export function rebuildWarning({ outcome, commit, rebuild }) {
  */
 export function rebuildBlock({ warning, extension }) {
   if (!warning || extension) return undefined;
-  return `${warning}. Nothing was committed, so the change isn't built: check slice.json's scenarios against the ` +
-    'tests (one test per scenario, named after it), then plan the slice again';
+  return `${warning}. Nothing was committed, so the change isn't built: compare each scenario's given, when and then ` +
+    "example values with its test's data (a test named after a changed scenario can pass on old values), then plan the " +
+    'slice again';
+}
+
+/**
+ * What a rebuild job is told up front, in its task: its folder's code is the old slice's, so tests that pass prove
+ * nothing, and what changed. Licensing, 2026-10-20: the translation's job, twice, found tests named after its two
+ * changed scenarios, saw them pass and committed nothing, though a given's web seats had gone from 2 to 3; the rule
+ * was in CLAUDE.md, past what it read.
+ */
+export function rebuildBrief(rebuild) {
+  if (!rebuild) return [];
+  const changes = Array.isArray(rebuild.changes) ? rebuild.changes : [];
+  return [
+    '**This is a rebuild** (slice.json\'s `rebuild` block): the code in its folder is what was built before, so its ' +
+      'tests passing proves nothing. Make every change below, then commit; a rebuild that commits nothing is blocked.',
+    ...changes.map((c) => `- ${c}`),
+    'A changed scenario\'s test holds old values: compare every given, when and then example in slice.json with that ' +
+      'test\'s data, value by value, and change what differs.',
+    '',
+  ];
 }
 
 /** One job's line in .build-kit/metrics/runs.jsonl. */

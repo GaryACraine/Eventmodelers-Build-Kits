@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import {
-  appendMetrics, describeSettings, jobSettings, metricsLine, metricsPath, rebuildBlock, rebuildWarning, resetTime, settingsArgs, unpinnedWarning, usageLimit, usageLimitWaitMs,
+  appendMetrics, describeSettings, jobSettings, metricsLine, metricsPath, rebuildBlock, rebuildBrief, rebuildWarning, resetTime, settingsArgs, unpinnedWarning, usageLimit, usageLimitWaitMs,
 } from './runner.js';
 
 test("a project pins its jobs' model, effort and budget; a concern's own setting wins over the default", () => {
@@ -112,4 +112,18 @@ test('a no-commit rebuild blocks the slice, unless it extends another (licensing
   assert.match(rebuildBlock({ warning, extension: false }), /scenario added: "counts the seats billed at a renewal".*plan the slice again/);
   assert.equal(rebuildBlock({ warning, extension: true }), undefined);
   assert.equal(rebuildBlock({ warning: undefined, extension: false }), undefined);
+});
+
+test('a rebuild job is told up front that passing tests prove nothing, what changed, and to compare example values', () => {
+  const brief = rebuildBrief({ changes: ['scenario changed: "skips what bills next" (given trialWasConverted webSeats 2 → 3)'] }).join('\n');
+  assert.match(brief, /This is a rebuild/);
+  assert.match(brief, /tests passing proves nothing/);
+  assert.match(brief, /- scenario changed: "skips what bills next" \(given trialWasConverted webSeats 2 → 3\)/);
+  assert.match(brief, /value by value/);
+  assert.deepEqual(rebuildBrief(undefined), []);
+});
+
+test("a no-commit rebuild's block asks for the example values to be compared, not the test names", () => {
+  assert.match(rebuildBlock({ warning: 'w', extension: false }), /example values with its test's data/);
+  assert.doesNotMatch(rebuildBlock({ warning: 'w', extension: false }), /named after it\)/);
 });
