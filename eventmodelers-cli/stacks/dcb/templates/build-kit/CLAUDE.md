@@ -104,7 +104,10 @@ When asked to build a slice, always follow this flow:
      change says so: its code is the replaced slice's, ADR-046). **A Planned slice is never "already built"**, even
      when its folder has code and passing tests: compare the code with slice.json, its descriptions included, and
      make every change `rebuild.changes` lists. An automation's change is often only in its description and its
-     links, which no test catches. Committing nothing is right only when nothing is left to change (an extension
+     links, which no test catches. A `scenario changed` means the test named after it holds old values, so its passing isn't
+     proof it's built: compare every given, when and then example in the scenario with that test's data, value by
+     value, and change what differs (the export names the values that moved when it can: `given trialWasConverted
+     webSeats 2 → 3`). Committing nothing is right only when nothing is left to change (an extension
      whose origin's job did it); say so in the job's summary. Use the slice type's skill as usual, but **update the existing
      files** in its folder to the new slice.json (fields, rules, scenarios), don't write them anew; keep what still
      holds, add a test per new scenario, and drop tests of removed ones. Change a line in place rather than adding a

@@ -144,6 +144,14 @@ model and build only what's ours.
     seats, so comparing web with the seats held passed. Closed in emcli `27d1f27` (`event-model` `detail.md`: a rule
     applied alike to several fields gets examples where each changes) and in the model (licensing `68adfc0`, the
     translation replaced again), awaiting export.
+  - *Found (2026-10-20, the export of `68adfc0` and `27f6907`):* both backend rebuilds committed nothing and were
+    blocked. (a) The translation's job found tests named after the two changed scenarios, saw them pass and stopped,
+    though the given's web seats had gone from 2 to 3 (the slice's note said so too). Closed in emcli `f63eb2e`
+    (`scenario changed` names the example values that moved) and the kit's loop rules (`build-kit/CLAUDE.md`: a
+    changed scenario's test holds old values; compare every example value by value). (b) "request seat increase" was
+    replaced only for its confirm, which the screen asks, yet a replacement always queued a backend rebuild. Closed in
+    emcli `f63eb2e`: a replacement whose backend fingerprint is what's built queues none. The screen rebuilt right
+    (licensing `7126a19`).
 - ✅ **DONE 2026-10-19: chapter 8, the trial converts and the subscription renews (ADR-076, Accepted by Gary).**
   One command, `recordPaidPeriod`, takes each `subscription_recurring` payment. Its decider records `trialWasConverted`
   (still trialing) or `subscriptionWasRenewed`, from our own events, and refuses an organisation with no subscription
