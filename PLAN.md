@@ -160,6 +160,12 @@ model and build only what's ours.
     3 web seats converted); the web mutation of the companion rule is now caught, as are the mobile and reason ones.
     Still open: the second scenario's `then` gives `paddleUpdatedAt` 2026-10-22 against a payload `updated_at` of
     2026-11-15 (the loop spotted it). The test doesn't assert it; fixed in the model at the next replacement.
+  - **Sandbox proven 2026-10-20** (`e2e/paddle/seat-changes.mjs`, licensing `85e942e`, logs in `security/results/`):
+    in the trial, a seat added and removed at once and free; the real conversion; once paid, Paddle takes the paid
+    prices in place of the trial's (credit and charge in one transaction) and charges the preview's figure (£12.00);
+    a decrease is scheduled with no credit, and the renewal bills the lower number (ADR-037's open question closed).
+    Every companion `not needed`, no alert. Journeys mock 4/4, sandbox 3/3. Open: the declined card is proven on the
+    mock only (the sandbox needs Paddle's card-update checkout in a browser; asked Gary).
 - ✅ **DONE 2026-10-19: chapter 8, the trial converts and the subscription renews (ADR-076, Accepted by Gary).**
   One command, `recordPaidPeriod`, takes each `subscription_recurring` payment. Its decider records `trialWasConverted`
   (still trialing) or `subscriptionWasRenewed`, from our own events, and refuses an organisation with no subscription
